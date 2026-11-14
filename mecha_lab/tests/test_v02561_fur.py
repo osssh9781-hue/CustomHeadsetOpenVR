@@ -110,7 +110,10 @@ def direction(P):
 
 eq = np.abs(roots[:, 2]) < 0.1                                       # (round the sphere's equator: the normal flat)
 pg = fur.mch_fur
-pg.lie, pg.gravity = 0.0, 0.0
+tilt = cf.current_part(fur)                                         # (0.24.159 the drawn area's own tilt)
+check('the drawn area is the fur\'s Area 1, with the tilt it was drawn with (the next fur\'s values)', len(pg.parts) == 1
+      and tilt is not None and abs(tilt.lie - S.mch_fur.lie) < 1e-6 and cf.part_sizes(fur).get(1, 0) > 100)
+tilt.lie, pg.gravity = 0.0, 0.0
 settle(fur)
 P, cv = strands(fur)
 roots = P[:, 0]
@@ -120,7 +123,7 @@ tipdir = (P[:, -1] - P[:, 0]) / np.linalg.norm(P[:, -1] - P[:, 0], axis=1)[:, No
 tipang = np.degrees(np.arccos(np.clip(np.einsum('ij,ij->i', tipdir, nrm), -1, 1)))
 check(f'Lie Down 0, Gravity 0: every strand straight out of the skin (worst {max(straight.max(), tipang.max()):.1f} deg '
       f'from the normal, root and tip)', max(straight.max(), tipang.max()) < 2.0)
-pg.lie = math.pi / 2                                               # (Lie Down: an angle from the normal - 90 flat)
+tilt.lie = math.pi / 2                                              # (Lie Down: an angle from the normal - 90 flat)
 settle(fur)
 P, _cv = strands(fur)
 dd = direction(P)
@@ -129,7 +132,7 @@ eq = np.abs(P[:, 0, 2]) < 0.1
 flat = np.abs(np.einsum('ij,ij->i', dd, nrm)).max()
 check(f'Lie Down 90 deg (Flow 0): flat on the skin (|dir . normal| at most {flat:.3f}), pointing down the body round the '
       f'equator (dir.z {dd[eq, 2].mean():.2f})', flat < 0.03 and dd[eq, 2].mean() < -0.95)
-pg.flow = math.radians(90)
+tilt.flow = math.radians(90)
 settle(fur)
 P, _cv = strands(fur)
 dd = direction(P)
@@ -137,51 +140,59 @@ eq = np.abs(P[:, 0, 2]) < 0.1
 side = np.abs(dd[eq, 0]).mean()
 check(f'Flow Angle 90: the fur lies sideways instead (|dir.x| {side:.2f}, dir.z {dd[eq, 2].mean():.2f})',
       side > 0.9 and abs(dd[eq, 2].mean()) < 0.1)
-pg.flow = 0.0
-# combing (Shift + drag): a drag to the right across the middle - the fur under the brush lies to the right, the rest
-# down the body as before
-comb = cf.Comb(C, fur, FRONT, radius=40.0, strength=1.0)
-k = sum(comb.step((440 + 20 * i, 500), (460 + 20 * i, 500)) for i in range(6))
+tilt.flow = 0.0
+# 0.24.159 areas: a second area drawn below (a band across the lower front) - its own tilt; the first area unchanged
+pg.part_soft = 0
+cf.perform(C, ellipse(500, 360, 110, 30), FRONT)                    # (z -0.85 .. -0.55: screen up = +z)
+a2 = cf.current_part(fur)
+a2.flow = math.radians(90)
+a2.lie = math.radians(30)
 settle(fur)
 P, _cv = strands(fur)
 dd = direction(P)
 r0 = P[:, 0]
-sx_, sy_ = 500 + r0[:, 0] * 200, 500 + r0[:, 2] * 200
-under = (np.abs(sy_ - 500) < 15) & (sx_ > 450) & (sx_ < 550)
-away = np.abs(sy_ - 500) > 70
-check(f'Comb: a drag to the right across the middle ({k} points of the body combed) - the fur under the brush lies to '
-      f'the right (dir.x {dd[under, 0].mean():.2f}), flat on the skin still; away from it down the body (dir.z '
-      f'{dd[away, 2].mean():.2f})', under.sum() > 20 and dd[under, 0].mean() > 0.9
-      and np.abs(np.einsum('ij,ij->i', dd[under], r0[under] / np.linalg.norm(r0[under], axis=1)[:, None])).max() < 0.05
-      and dd[away, 2].mean() < -0.9)
-pg.lie = math.radians(45)
-settle(fur)
-P, _cv = strands(fur)
-dd = direction(P)
-r0 = P[:, 0]
-sx_, sy_ = 500 + r0[:, 0] * 200, 500 + r0[:, 2] * 200
-under = (np.abs(sy_ - 500) < 15) & (sx_ > 450) & (sx_ < 550)
 nn = r0 / np.linalg.norm(r0, axis=1)[:, None]
 ang = np.degrees(np.arccos(np.clip(np.einsum('ij,ij->i', dd, nn), -1, 1)))
-check(f'... Lie Down 45 deg: the combed fur 45 deg off the normal (measured {ang[under].mean():.1f}), leaning to the '
-      f'right (dir.x {dd[under, 0].mean():.2f})', abs(ang[under].mean() - 45) < 3 and dd[under, 0].mean() > 0.6)
-pg.lie = math.pi / 2
-settle(fur)
-P, _cv = strands(fur)                                               # (before the drag that Esc takes back)
-comb2 = cf.Comb(C, fur, FRONT, radius=40.0, strength=1.0)
-comb2.step((500, 600), (500, 640))                                  # (an upward drag lower down ...)
-comb2.undo()                                                        # (... Esc: taken back)
-settle(fur)
-P2, _cv = strands(fur)
-check('... Esc during a drag: the combing as it was before that drag (every strand the same)', P2.shape == P.shape
-      and np.allclose(P2, P, atol=1e-5))
-cf.clear_comb(fur)
+ids = cf.part_ids(fur)
+lower = (r0[:, 2] < -0.6) & (r0[:, 2] > -0.8)
+upper = np.abs(r0[:, 2]) < 0.1
+tan = dd - nn * np.einsum('ij,ij->i', dd, nn)[:, None]
+tan /= np.maximum(np.linalg.norm(tan, axis=1), 1e-9)[:, None]
+check(f'Area 2 drawn below, set to Lie Down 30 deg, Flow 90: its fur 30 deg off the normal (measured '
+      f'{ang[lower].mean():.1f}), tilted sideways (|tangent x| {np.abs(tan[lower, 0]).mean():.2f}, z {np.abs(tan[lower, 2]).mean():.2f}); Area 1 still flat and '
+      f'down the body (measured {ang[upper].mean():.1f} deg, dir.z {dd[upper, 2].mean():.2f})', len(pg.parts) == 2
+      and pg.part_index == 1 and lower.sum() > 20 and abs(ang[lower].mean() - 30) < 3
+      and np.abs(tan[lower, 0]).mean() > 0.85 and np.abs(tan[lower, 2]).mean() < 0.1     # (sideways: round the sphere)
+      and abs(ang[upper].mean() - 90) < 3 and dd[upper, 2].mean() < -0.95)
+for o in C.selected_objects:
+    o.select_set(False)
+fur.select_set(True)
+C.view_layer.objects.active = fur
+r = bpy.ops.mch.fur_part(index=0)
+pg.parts[pg.part_index].lie = math.radians(45)
 settle(fur)
 P, _cv = strands(fur)
 dd = direction(P)
-eq = np.abs(P[:, 0, 2]) < 0.1
-check(f'Clear Comb: down the body again (dir.z {dd[eq, 2].mean():.2f})', dd[eq, 2].mean() < -0.95)
-pg.lie = 0.0
+r0 = P[:, 0]
+nn = r0 / np.linalg.norm(r0, axis=1)[:, None]
+ang = np.degrees(np.arccos(np.clip(np.einsum('ij,ij->i', dd, nn), -1, 1)))
+lower = (r0[:, 2] < -0.6) & (r0[:, 2] > -0.8)
+upper = np.abs(r0[:, 2]) < 0.1
+check(f'pick Area 1 (the window), set its Lie Down to 45 deg: only Area 1 changes (measured {ang[upper].mean():.1f}); '
+      f'Area 2 keeps its 30 deg ({ang[lower].mean():.1f})', 'FINISHED' in r and pg.part_index == 0
+      and abs(ang[upper].mean() - 45) < 3 and abs(ang[lower].mean() - 30) < 3)
+# overlap: the last drawn area wins where they overlap
+cf.perform(C, ellipse(500, 500, 30, 30), FRONT)                     # (a small area in Area 1's middle)
+ids2 = cf.part_ids(fur)
+check('a third area drawn over the middle of Area 1: those points are Area 3\'s now (the last drawn wins), the rest '
+      'Area 1\'s still', len(pg.parts) == 3 and (ids2 == 3).sum() > 0 and (ids2 == 1).sum() > 0
+      and (ids2 == 1).sum() + (ids2 == 3).sum() == (ids == 1).sum() + (ids2 == 3).sum() - ((ids == 1) & (ids2 == 3)).sum()
+      and sorted(cf.part_sizes(fur)) == [1, 2, 3])
+pg.part_soft = 4
+settle(fur)
+check('Part Soft 4: the borders blended, the strands still there', len(strands(fur)[0]) > 0)
+for part in pg.parts:
+    part.lie, part.flow = 0.0, 0.0
 pg.gravity = 2.0
 settle(fur)
 P, _cv = strands(fur)

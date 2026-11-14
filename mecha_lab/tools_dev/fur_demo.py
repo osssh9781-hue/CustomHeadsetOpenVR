@@ -1,6 +1,7 @@
 """Fur demo (0.24.157): the test human with tiger-stripe polypaint and three furs drawn on it (the areas given as
 outlines in pixels through a front view, as the Fur tool's lasso gives them): short striped fur over the chest and
-belly (colour from the polypaint), a long clumped mane round the neck and shoulders, curly fleece on the upper arms.
+belly (colour from the polypaint; three areas of one fur, each its own tilt - the middle straight down, the sides down
+and out), a long clumped mane round the neck and shoulders, curly fleece on the upper arms.
 Cycles, shaded and with the body's wireframe.
 
     <blender python> fur_demo.py <out dir>
@@ -78,8 +79,8 @@ def fur(area, **values):
 
 
 furs = []
-furs.append(fur(poly([(-0.17, 1.42), (0.17, 1.42), (0.15, 1.0), (-0.15, 1.0)]),     # chest and belly: short, striped
-                density=110000.0, length=0.05, length_random=0.4, lie=math.radians(58), flow=0.0, gravity=0.3, curl=0.0,
+furs.append(fur(poly([(-0.07, 1.42), (0.07, 1.42), (0.07, 1.0), (-0.07, 1.0)]),     # chest and belly: Area 1 the
+                density=110000.0, length=0.05, length_random=0.4, lie=math.radians(70), flow=0.0, gravity=0.3, curl=0.0,
                 frizz=0.3, clump=0.25, clump_size=10, root_thick=0.0007, tip_thick=0.00008, segments=6,
                 edge_soft=3, use_polypaint=True, tip_blend=0.15, tip_color=(0.95, 0.85, 0.65, 1.0)))
 furs.append(fur(poly([(-0.22, 1.62), (0.22, 1.62), (0.23, 1.47), (0.1, 1.44), (-0.1, 1.44), (-0.23, 1.47)]),
@@ -92,17 +93,19 @@ for side in (1, -1):                                                            
                     gravity=0.2, curl=0.9, curl_turns=3.0, frizz=0.15, clump=0.3, clump_size=8, root_thick=0.0009,
                     tip_thick=0.0003, segments=20, edge_soft=2, use_polypaint=False,
                     root_color=(0.82, 0.78, 0.7, 1.0), tip_color=(0.95, 0.93, 0.88, 1.0), tip_blend=0.5))
-# comb the chest fur down and out from the middle (Shift + drag in the tool): two strokes, one each side
+# (0.24.159) the chest fur's sides: two more areas of the same fur, each its own tilt - down and out from the middle
+# (a V), less flat than the middle; drawn with the chest fur selected, then each area's Lie Down / Flow Angle set
 chest = furs[0]
-for o in C.selected_objects:
-    o.select_set(False)
-chest.select_set(True)
-C.view_layer.objects.active = chest
-for side in (1, -1):
-    comb = cf.Comb(C, chest, FRONT, radius=70.0, strength=1.0)
-    for i in range(8):
-        a, b = (side * 0.02 + side * 0.017 * i, 1.4 - 0.045 * i), (side * 0.02 + side * 0.017 * (i + 1), 1.4 - 0.045 * (i + 1))
-        comb.step(px(*a), px(*b))
+for side in (-1, 1):
+    for o in C.selected_objects:
+        o.select_set(False)
+    chest.select_set(True)
+    C.view_layer.objects.active = chest
+    cf.perform(C, poly([(side * 0.07, 1.42), (side * 0.18, 1.42), (side * 0.16, 1.0), (side * 0.07, 1.0)]), FRONT)
+    part = cf.current_part(chest)
+    part.lie = math.radians(55)
+    part.flow = math.radians(side * 55)
+print('chest areas', [(p_.name, round(math.degrees(p_.lie)), round(math.degrees(p_.flow))) for p_ in chest.mch_fur.parts])
 total = sum(cf.strands(o) for o in furs)
 print('furs', len(furs), 'strands', total)
 
@@ -141,6 +144,18 @@ md.use_even_offset = False
 wme.materials.clear()
 wme.materials.append(wmat)
 for name, wire in (('fur_shaded', False), ('fur_wire', True)):
+    wo.hide_render = not wire
+    S.render.filepath = os.path.join(OUT, name + '.png')
+    t0 = time.time()
+    bpy.ops.render.render(write_still=True)
+    print('saved', S.render.filepath, f'{time.time() - t0:.0f} s')
+# (0.24.159) a close look at the chest: the three areas' tilts - the middle straight down, the sides down and out
+cam.data.lens = 50
+look = Vector((0.0, -0.12, 1.22))
+cam.location = (0.12, -0.78, 1.3)
+cam.rotation_euler = (look - cam.location).to_track_quat('-Z', 'Y').to_euler()
+S.render.resolution_x, S.render.resolution_y = 900, 900
+for name, wire in (('fur_chest_shaded', False), ('fur_chest_wire', True)):
     wo.hide_render = not wire
     S.render.filepath = os.path.join(OUT, name + '.png')
     t0 = time.time()

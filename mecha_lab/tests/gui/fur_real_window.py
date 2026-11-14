@@ -6,7 +6,8 @@ tool by REAL drags (xdotool) on the test human (striped polypaint):
   2. a REAL Alt + drag over its left part: that part taken away
   3. a REAL drag on the belly: the same fur, more area
   4. a REAL drag on the window's Length slider: the strands longer
-  5. shots: solid with the wireframe, Cycles
+  5. (0.24.159) a REAL click on the window's "Area 1", a REAL drag on its Lie Down: only that area's tilt changes
+  6. shots: solid with the wireframe, Cycles
 """
 import os
 import subprocess
@@ -328,39 +329,65 @@ def flow():
         round(float(lens.max()), 4))
     res['4 a REAL drag on the window\'s Length: the fur longer (the strands redone)'] = (
         fur.mch_fur.length > l0 * 1.2 and lens.max() > l0 * 1.15)
-    # 5: comb - a REAL Shift + drag across the chest fur, to the screen's right: the fur there lies that way
-    fur.mch_fur.lie = math.radians(80)
+    # 5: areas (0.24.159) - a REAL click on the window's "Area 1" row (the chest), a REAL drag on its Lie Down: only
+    #    the chest's fur stands up more; the belly (Area 2) as it was
     fur.mch_fur.gravity = 0.0
     yield 1.0
-    w, a, r = view3d()
-    rv = a.spaces.active.region_3d
-    y_mid = Vector((0.0, -0.13, 1.25))
-    p0 = screen_of(y_mid + Vector((-0.12, 0.0, 0.0)))
-    p1 = screen_of(y_mid + Vector((0.12, 0.0, 0.0)))
-    C.window_manager.mch_fur_comb_size = 45
-    xdo('mousemove', int(p0[0]), int(p0[1]))
-    yield 0.4
-    xdo('keydown', 'shift')
-    yield 0.2
-    xdo('mousedown', 1)
-    yield 0.3
-    for i in range(1, 21):
-        xdo('mousemove', int(p0[0] + (p1[0] - p0[0]) * i / 20), int(p0[1] + (p1[1] - p0[1]) * i / 20))
-        yield 0.05
-    yield 0.3
-    xdo('mouseup', 1)
-    yield 0.3
-    xdo('keyup', 'shift')
-    yield 1.5
-    P5 = roots_of(fur)
-    dirs = P5[:, 1] - P5[:, 0]
-    dirs = dirs / np.linalg.norm(dirs, axis=1)[:, None]
-    near = np.abs(P5[:, 0, 2] - y_mid.z) < 0.02
-    far = np.abs(P5[:, 0, 2] - y_mid.z) > 0.08
-    log('5 comb: strands near the drag', int(near.sum()), 'dir.x', round(float(dirs[near, 0].mean()), 2) if near.any() else None,
-        '- away: dir.z', round(float(dirs[far, 2].mean()), 2) if far.any() else None)
-    res['5 a REAL Shift + drag across the chest fur (comb): the fur there lies across (+x), away from it down the body'] = (
-        near.sum() > 10 and dirs[near, 0].mean() > 0.6 and far.sum() > 10 and dirs[far, 2].mean() < -0.5)
+
+    def tilts():
+        P = roots_of(fur)
+        d = P[:, 1] - P[:, 0]
+        d = d / np.linalg.norm(d, axis=1)[:, None]
+        out = []
+        for i in range(0, len(P), 3):
+            ok, loc, nrm, _f = human.closest_point_on_mesh(Vector(P[i, 0]))
+            out.append((P[i, 0, 2], math.degrees(math.acos(max(-1.0, min(1.0, Vector(d[i]).dot(nrm)))))))
+        a = np.array(out)
+        return a[a[:, 0] > 1.25, 1].mean(), a[a[:, 0] < 1.2, 1].mean()
+    c0, b0 = tilts()
+    pg = fur.mch_fur
+
+    def area_row(prefix):
+        w, a, r = view3d()
+        with C.temp_override(window=w, area=a, region=r):
+            its = sp.items(C, r.width, r.height, ui_factor(C, r))
+        return next((i for i in its if getattr(i, 'label', '').startswith(prefix) and i.clickable()), None)
+    row = None
+    C.window_manager.mch_side_scroll = 0.0
+    yield from wait_draws(2)
+    for _i in range(30):
+        row = area_row('Area 1')
+        if row is not None:
+            break
+        w, a, r = view3d()
+        with C.temp_override(window=w, area=a, region=r):
+            sp.scroll_by(C, r.width, r.height, ui_factor(C, r), 100)
+        yield from wait_draws(1)
+    if row is not None:
+        yield from press(row)
+    picked = pg.part_index
+    lie_before = [round(math.degrees(p_.lie), 1) for p_ in pg.parts]
+    it = yield from scrolled_item('Lie Down')
+    if it is not None:
+        w, a, r = view3d()
+        x, y = int(r.x + it.x + it.w * 0.5), int(w.height - (r.y + it.y + it.h / 2))
+        xdo('mousemove', x, y)
+        yield 0.5
+        xdo('mousedown', 1)
+        yield 0.3
+        for i in range(1, 16):
+            xdo('mousemove', x - i * 12, y)
+            yield 0.06
+        yield 0.3
+        xdo('mouseup', 1)
+        yield 2.0
+    lie_after = [round(math.degrees(p_.lie), 1) for p_ in pg.parts]
+    c1, b1 = tilts()
+    log('5 areas: row', row is not None, '- picked', picked, '- Lie Down per area', lie_before, '->', lie_after,
+        '- measured chest', round(c0, 1), '->', round(c1, 1), 'belly', round(b0, 1), '->', round(b1, 1))
+    res['5 a REAL click on "Area 1" in the window, a REAL drag on its Lie Down: only the chest stands up more, the belly '
+        '(Area 2) as it was'] = (row is not None and picked == 0 and lie_after[0] < lie_before[0] - 10
+                                 and lie_after[1:] == lie_before[1:] and c1 < c0 - 8 and abs(b1 - b0) < 2)
     yield 1.0
     shot('2_fur_wire.png')
     S.render.engine = 'CYCLES'

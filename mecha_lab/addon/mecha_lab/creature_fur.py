@@ -10,8 +10,9 @@ body's points (attribute ``mch_fur_<id>``), so the fur follows the body when it 
     New Fur         the next draw makes a new fur (its own settings)
 
 Strands: Density (per square metre: more area, more strands), Length (+ Random), Lie Down (the angle from the skin's normal: 0 standing out, 90 flat) and
-Flow Angle (which way they lie: 0 = down the body, turned about the skin); 0.24.158 Shift + drag combs it - each part lies
-the way it was combed (a direction a point of the body, ``mch_fcomb_<id>``, blended by Comb Soft), Gravity (bends them down toward the tip),
+Flow Angle (which way they tilt, turned round the normal: 0 = down the body) - 0.24.159 (user: "노말 방향으로 기울기를 내가
+조정하면 안 빗어도 되잖아" -> "영역마다 기울기 기억") each area drawn keeps its own Lie Down / Flow Angle (pick it in the
+window, change it: only that part; Part Soft blends the borders), Gravity (bends them down toward the tip),
 Curl (+ Turns), Frizz (small random wobble), Clump (tips gathered into tufts of about Clump Size strands), Root /
 Tip Thickness, Segments.  Colour: the body's polypaint (its colour attribute, sampled at each root) or a Root Colour,
 going to the Tip Colour by Tip Blend.  Viewport %: the share drawn in the viewport (all of them render).
@@ -34,14 +35,16 @@ from mathutils import Matrix, Vector
 from . import core_geometry as cg
 
 TREE = 'MCH Fur'
-TREE_VERSION = 7
+TREE_VERSION = 10
 MOD = 'MCH Fur'
 MAT = 'MCH Fur'
 AREA_KEY = 'mch_fur_area'          # on a fur object: the body attribute that holds its area
 FUR_KEY = 'mch_fur'                # on a fur object (1)
 NEW_KEY = 'mch_fur_new'            # window manager flag: the next draw makes a new fur
 COLLECTION = 'Creature Fur'
-COMB_KEY = 'mch_fur_comb'          # on a fur object: the body attribute that holds its combing (a direction a point)
+PART_KEY = 'mch_fur_parts'         # on a fur object: the body attribute naming each point's area (1, 2 ...; 0 none)
+LIE_KEY = 'mch_fur_lies'           # ... its tilt from the normal there (radians)
+FLOW_KEY = 'mch_fur_flows'         # ... which way it tilts there ((cos, sin, 0) of the Flow Angle)
 
 # (prop, socket name, socket type, default, min, max) - the values each fur keeps (its modifier's inputs)
 LIVE = (
@@ -60,7 +63,7 @@ LIVE = (
     ('tip_thick', 'Tip Thickness', 'FLOAT', 0.00012, 0.0, 0.05),
     ('segments', 'Segments', 'INT', 8, 2, 64),
     ('edge_soft', 'Edge Soft', 'INT', 3, 0, 60),
-    ('comb_soft', 'Comb Soft', 'INT', 4, 0, 60),
+    ('part_soft', 'Part Soft', 'INT', 3, 0, 60),
     ('use_polypaint', 'Use Polypaint', 'BOOL', True, None, None),
     ('root_color', 'Root Color', 'COLOR', (0.32, 0.22, 0.14, 1.0), None, None),
     ('tip_color', 'Tip Color', 'COLOR', (0.75, 0.62, 0.45, 1.0), None, None),
@@ -73,9 +76,9 @@ DESCS = {
     'density': 'Strands per square metre of the area (20000: 2 a square centimetre) - more area, more strands',
     'length': 'A strand\'s length',
     'length_random': 'Some strands shorter (0.35: down to 65 %)',
-    'lie': 'The angle from the skin\'s normal: 0 standing straight out of the skin, 90 flat on it',
-    'flow': 'Which way the fur lies where it is not combed: 0 down the body; turns the combed fur too',
-    'comb_soft': 'The combing blended between the parts combed different ways (more: smoother)',
+    'lie': 'The tilt from the skin\'s normal: 0 standing straight out of the skin, 90 flat on it (the selected area\'s)',
+    'flow': 'Which way it tilts, turned round the normal: 0 down the body (the selected area\'s)',
+    'part_soft': 'Between areas tilted differently: blended over this many rings of points (0: a sharp border)',
     'gravity': 'Bends the strands down toward their tips',
     'curl': 'Curls round each strand (how wide)',
     'curl_turns': 'How many turns along a strand',
@@ -209,7 +212,8 @@ def fur_tree():
     _socket(ng, 'Geometry', 'GEOMETRY')
     _socket(ng, 'Body', 'OBJECT')
     _socket(ng, 'Area', 'STRING')
-    _socket(ng, 'Comb', 'STRING')
+    _socket(ng, 'Lie Attr', 'STRING')
+    _socket(ng, 'Flow Attr', 'STRING')
     _socket(ng, 'Color Attribute', 'STRING')
     _socket(ng, 'Material', 'MATERIAL')
     for _p, name, kind, default, lo, hi in LIVE:
@@ -228,21 +232,7 @@ def fur_tree():
     b.feed(blur.inputs['Value'], w0)
     b.feed(blur.inputs['Iterations'], I['Edge Soft'])
     body = b.store(oi.outputs['Geometry'], 'mch_fur_w', b.math('MULTIPLY', blur.outputs['Value'], w0))
-    # the combing blended between the parts: its direction blurred by how much each point was combed (the uncombed
-    # points do not water it down), how much it is combed blurred on its own (the soft edge); x 2: a stroke's middle
-    # stays combed all the way
-    craw = b.attr(I['Comb'], 'FLOAT_VECTOR').outputs['Attribute']
-    cmag = b.vec('LENGTH', craw)
-    dblur = b.node('GeometryNodeBlurAttribute', data_type='FLOAT_VECTOR')
-    b.feed(dblur.inputs['Value'], craw)
-    b.feed(dblur.inputs['Iterations'], I['Comb Soft'])
-    b.feed(dblur.inputs['Weight'], b.math('ADD', cmag, 1e-6))
-    mblur = b.node('GeometryNodeBlurAttribute', data_type='FLOAT')
-    b.feed(mblur.inputs['Value'], cmag)
-    b.feed(mblur.inputs['Iterations'], I['Comb Soft'])
-    cvec = b.vec('SCALE', b.vec('NORMALIZE', dblur.outputs['Value']),
-                 scale=b.math('MINIMUM', b.math('MULTIPLY', mblur.outputs['Value'], 2.0), 1.0))
-    body = b.store(body, 'mch_fur_c', cvec, 'FLOAT_VECTOR')  # (soft inside:
+    # (0.24.159 each area's own tilt: taken below, from the area's own points)  # (soft inside:
     #                                                                                   never past what was drawn)
     w = b.attr('mch_fur_w').outputs['Attribute']
     density = I['Density']
@@ -263,6 +253,47 @@ def fur_tree():
     pos = b.node('GeometryNodeInputPosition').outputs['Position']
     pts = b.store(pts, 'mch_p0', pos, 'FLOAT_VECTOR')
     pts = b.store(pts, 'mch_i', idx, 'INT')
+    # 0.24.159 each area's own tilt (Lie Down, Flow Angle) a point of the body: the area cut out of the body, blended
+    # there between areas (Part Soft), each root taking the nearest area point's - points outside the area never
+    # count (on a face across the area's border they would tilt the roots there); a fur with none stored (before
+    # 0.24.159) uses its Lie Down / Flow Angle everywhere
+    lraw = b.attr(I['Lie Attr'])
+    fraw = b.attr(I['Flow Attr'], 'FLOAT_VECTOR')
+    cut = b.node('GeometryNodeSeparateGeometry', domain='POINT')
+    b.feed(cut.inputs['Geometry'], body)
+    b.feed(cut.inputs['Selection'], b.math('GREATER_THAN', w0, 0.0))
+    lblur = b.node('GeometryNodeBlurAttribute', data_type='FLOAT')
+    b.feed(lblur.inputs['Value'], lraw.outputs['Attribute'])
+    b.feed(lblur.inputs['Iterations'], I['Part Soft'])
+    fblur = b.node('GeometryNodeBlurAttribute', data_type='FLOAT_VECTOR')
+    b.feed(fblur.inputs['Value'], fraw.outputs['Attribute'])
+    b.feed(fblur.inputs['Iterations'], I['Part Soft'])
+    amesh = b.store(cut.outputs['Selection'], 'mch_tl', lblur.outputs['Value'])
+    amesh = b.store(amesh, 'mch_tf', fblur.outputs['Value'], 'FLOAT_VECTOR')
+    nearest = b.node('GeometryNodeSampleNearest', domain='POINT')
+    b.feed(nearest.inputs['Geometry'], amesh)
+    b.feed(nearest.inputs['Sample Position'], b.node('GeometryNodeInputPosition').outputs['Position'])
+    sl = b.node('GeometryNodeSampleIndex', data_type='FLOAT', domain='POINT')
+    b.feed(sl.inputs['Geometry'], amesh)
+    b.feed(sl.inputs['Value'], b.attr('mch_tl').outputs['Attribute'])
+    b.feed(sl.inputs['Index'], nearest.outputs['Index'])
+    sf = b.node('GeometryNodeSampleIndex', data_type='FLOAT_VECTOR', domain='POINT')
+    b.feed(sf.inputs['Geometry'], amesh)
+    b.feed(sf.inputs['Value'], b.attr('mch_tf', 'FLOAT_VECTOR').outputs['Attribute'])
+    b.feed(sf.inputs['Index'], nearest.outputs['Index'])
+    gflow = b.node('ShaderNodeCombineXYZ')
+    b.feed(gflow.inputs[0], b.math('COSINE', I['Flow Angle']))
+    b.feed(gflow.inputs[1], b.math('SINE', I['Flow Angle']))
+    lsw = b.node('GeometryNodeSwitch', input_type='FLOAT')
+    b.feed(lsw.inputs['Switch'], lraw.outputs['Exists'])
+    b.feed(lsw.inputs['False'], I['Lie Down'])
+    b.feed(lsw.inputs['True'], sl.outputs['Value'])
+    fsw = b.node('GeometryNodeSwitch', input_type='VECTOR')
+    b.feed(fsw.inputs['Switch'], fraw.outputs['Exists'])
+    b.feed(fsw.inputs['False'], gflow.outputs['Vector'])
+    b.feed(fsw.inputs['True'], sf.outputs['Value'])
+    pts = b.store(pts, 'mch_fur_lie', lsw.outputs['Output'])
+    pts = b.store(pts, 'mch_fur_fl', fsw.outputs['Output'], 'FLOAT_VECTOR')
     pp = b.attr(I['Color Attribute'], 'FLOAT_COLOR')
     use_pp = b.node('FunctionNodeBooleanMath', operation='AND')
     b.feed(use_pp.inputs[0], I['Use Polypaint'])
@@ -312,15 +343,13 @@ def fur_tree():
     f0 = b.vec('SUBTRACT', down, b.vec('SCALE', n_, scale=b.vec('DOT_PRODUCT', down, n_)))
     side = b.vec('CROSS_PRODUCT', n_, (1.0, 0.0, 0.0))
     f = b.vec('NORMALIZE', b.vec('ADD', f0, b.vec('SCALE', side, scale=0.002)))  # (flat on the skin, down it)
-    # combed: the combing's direction flat on the skin, as much as it was combed there (its length, up to 1)
-    cv = b.attr('mch_fur_c', 'FLOAT_VECTOR').outputs['Attribute']
-    ct = b.vec('SUBTRACT', cv, b.vec('SCALE', n_, scale=b.vec('DOT_PRODUCT', cv, n_)))
-    cw = b.math('MINIMUM', b.math('MULTIPLY', b.vec('LENGTH', ct), 1.0), 1.0)
-    f = b.vec('NORMALIZE', b.mix_vec(cw, f, b.vec('NORMALIZE', b.vec('ADD', ct, b.vec('SCALE', f, scale=1e-4)))))
-    ang = I['Flow Angle']
-    f = b.vec('ADD', b.vec('SCALE', f, scale=b.math('COSINE', ang)),
-              b.vec('SCALE', b.vec('CROSS_PRODUCT', n_, f), scale=b.math('SINE', ang)))
-    lie = I['Lie Down']                                                       # (an angle from the normal)
+    # the area's direction: turned round the normal by its Flow Angle ((cos, sin) at the point, blended)
+    cs = b.node('ShaderNodeSeparateXYZ')
+    b.feed(cs.inputs[0], b.vec('NORMALIZE', b.vec('ADD', b.attr('mch_fur_fl', 'FLOAT_VECTOR').outputs['Attribute'],
+                                                    (1e-6, 0.0, 0.0))))
+    f = b.vec('ADD', b.vec('SCALE', f, scale=cs.outputs['X']),
+              b.vec('SCALE', b.vec('CROSS_PRODUCT', n_, f), scale=cs.outputs['Y']))
+    lie = b.attr('mch_fur_lie').outputs['Attribute']                          # (an angle from the normal)
     d0 = b.vec('NORMALIZE', b.vec('ADD', b.vec('SCALE', n_, scale=b.math('COSINE', lie)),
                                   b.vec('SCALE', f, scale=b.math('SINE', lie))))
     d = b.vec('ADD', d0, b.vec('SCALE', down, scale=b.math('MULTIPLY', I['Gravity'], t)))
@@ -623,14 +652,17 @@ def new_fur(context, body, pg_from):
         pass
     ob[FUR_KEY] = 1
     ob[AREA_KEY] = 'mch_fur_' + uuid.uuid4().hex[:8]
-    ob[COMB_KEY] = ob[AREA_KEY].replace('mch_fur_', 'mch_fcomb_')
+    ob[PART_KEY] = ob[AREA_KEY].replace('mch_fur_', 'mch_fpart_')
+    ob[LIE_KEY] = ob[AREA_KEY].replace('mch_fur_', 'mch_flie_')
+    ob[FLOW_KEY] = ob[AREA_KEY].replace('mch_fur_', 'mch_fflow_')
     mat = fur_material()
     data.materials.append(mat)
     mod = ob.modifiers.new(MOD, 'NODES')
     mod.node_group = fur_tree()
     gs.set_input(mod, 'Body', body)
     gs.set_input(mod, 'Area', ob[AREA_KEY])
-    gs.set_input(mod, 'Comb', ob[COMB_KEY])
+    gs.set_input(mod, 'Lie Attr', ob[LIE_KEY])
+    gs.set_input(mod, 'Flow Attr', ob[FLOW_KEY])
     gs.set_input(mod, 'Material', mat)
     _BUSY[0] = True
     try:
@@ -680,6 +712,10 @@ def perform(context, loops, projector, erase=False):
     if made:
         cur = new_fur(context, body, context.scene.mch_fur)
     inside = paint_area(body, cur[AREA_KEY], idx, 0.0 if erase else 1.0)
+    if not erase:
+        part = current_part(cur)
+        lie, flow = (part.lie, part.flow) if part is not None else (cur.mch_fur.lie, cur.mch_fur.flow)
+        add_part(cur, idx, lie, flow)                 # (0.24.159 this area keeps the tilt it was drawn with)
     push(cur)                                         # (the body's polypaint name, if it changed)
     try:
         setattr(wm, NEW_KEY, False)
@@ -693,7 +729,8 @@ def perform(context, loops, projector, erase=False):
     context.view_layer.update()
     n = strands(cur, context)
     what = 'new fur' if made else ('area taken away' if erase else 'area added')
-    return f'{cur.name} on {body.name}: {what} - {inside:,} points of the body in its area, {n:,} strands'
+    tail = '' if erase else f' (Area {cur.mch_fur.part_index + 1}: its own Lie Down / Flow Angle)'
+    return f'{cur.name} on {body.name}: {what} - {inside:,} points of the body in its area, {n:,} strands{tail}'
 
 
 def apply_fur(context, ob):
@@ -704,159 +741,155 @@ def apply_fur(context, ob):
     return ob
 
 
-# ---- combing ------------------------------------------------------------------------------------------------------
+# ---- areas: each drawn area its own tilt (0.24.159) ------------------------------------------------------------------
 
-def comb_attr(fur):
-    """The fur's combing on its body: a direction a point (its length: how much it is combed, 0 .. 1)."""
-    body = fur.parent
-    name = fur.get(COMB_KEY)
-    if body is None or not name:
-        return None
-    me = body.data
+def _point_attr(me, name, kind, fill):
+    """The body's point attribute ``name`` (made, filled with ``fill``, when it is not there)."""
     a = me.attributes.get(name)
-    if a is None or a.domain != 'POINT' or a.data_type != 'FLOAT_VECTOR':
-        if a is not None:
-            me.attributes.remove(a)
-        a = me.attributes.new(name, 'FLOAT_VECTOR', 'POINT')
+    if a is not None and (a.domain != 'POINT' or a.data_type != kind):
+        me.attributes.remove(a)
+        a = None
+    if a is None:
+        a = me.attributes.new(name, kind, 'POINT')
+        n = len(me.vertices)
+        if kind == 'INT':
+            a.data.foreach_set('value', np.full(n, int(fill), np.int32))
+        elif kind == 'FLOAT':
+            a.data.foreach_set('value', np.full(n, float(fill), np.float32))
+        else:
+            a.data.foreach_set('vector', np.tile(np.array(fill, np.float32), n))
     return a
 
 
-class Comb:
-    """One combing drag on a fur: the body's points as the view sees them (taken once), then each piece of the drag
-    lays the fur under the brush the way it goes (``step``)."""
-
-    def __init__(self, context, fur, projector, radius, strength=1.0):
-        self.fur, self.body, self.projector = fur, fur.parent, projector
-        self.radius, self.strength = float(radius), float(strength)
-        me = self.body.data
-        n = len(me.vertices)
-        co = np.empty(n * 3, np.float32)
-        me.vertices.foreach_get('co', co)
-        no = np.empty(n * 3, np.float32)
-        me.vertex_normals.foreach_get('vector', no)
-        M = np.array(self.body.matrix_world, float)
-        self.P = co.reshape(-1, 3) @ M[:3, :3].T + M[:3, 3]
-        Nn = no.reshape(-1, 3) @ np.linalg.inv(M[:3, :3])
-        self.xy, front = _screen(projector, self.P)
-        if getattr(projector, 'is_perspective', False):
-            tow = np.array(projector.eye, float) - self.P
-        else:
-            tow = np.broadcast_to(-np.array(projector.view_dir, float), self.P.shape)
-        w = np.zeros(n, np.float32)
-        area = me.attributes.get(fur.get(AREA_KEY, ''))
-        if area is not None:
-            area.data.foreach_get('value', w)
-        self.ok = front & (np.einsum('ij,ij->i', Nn, tow) > 0.0) & (w > 0.0)     # (seen, facing, in the fur's area)
-        self.attr = comb_attr(fur)
-        self.v = np.zeros(n * 3, np.float32)
-        self.attr.data.foreach_get('vector', self.v)
-        self.v = self.v.reshape(-1, 3)
-        self.before = self.v.copy()
-        self.Mi3 = np.linalg.inv(M[:3, :3])
-        self.dg = context.evaluated_depsgraph_get()
-        self.ev = self.body.evaluated_get(self.dg)
-        self.Mi = self.body.matrix_world.inverted()
-
-    def _hit(self, xy):
-        o, d = self.projector.ray(xy)
-        ok, loc, _n, _i = self.ev.ray_cast(self.Mi @ Vector(o), (self.Mi.to_3x3() @ Vector(d)).normalized())
-        return (self.body.matrix_world @ loc) if ok else None
-
-    def step(self, a, b):
-        """The drag from screen point ``a`` to ``b``: the points within the brush of that piece combed its way.
-        Returns how many."""
-        a, b = np.array(a, float), np.array(b, float)
-        seg = b - a
-        L2 = float(seg @ seg)
-        if L2 < 1.0:
-            return 0
-        pa, pb = self._hit(tuple(a)), self._hit(tuple(b))
-        if pa is None or pb is None:
-            return 0
-        dw = np.array(tuple(pb - pa), float)
-        if np.linalg.norm(dw) < 1e-12:
-            return 0
-        dl = self.Mi3 @ dw                                       # (the body's own space: the attribute's)
-        dl /= np.linalg.norm(dl)
-        t = np.clip(((self.xy - a) @ seg) / L2, 0.0, 1.0)
-        dist = np.linalg.norm(self.xy - (a + t[:, None] * seg), axis=1)
-        sel = self.ok & (dist < self.radius)
-        if not sel.any():
-            return 0
-        f = ((1.0 - dist[sel] / self.radius) ** 2 * self.strength)[:, None]
-        self.v[sel] = self.v[sel] * (1.0 - f) + dl[None, :] * f
-        self.attr.data.foreach_set('vector', self.v.ravel())
-        self.body.data.update()
-        self.fur.update_tag()
-        return int(sel.sum())
-
-    def undo(self):
-        self.attr.data.foreach_set('vector', self.before.ravel())
-        self.body.data.update()
-        self.fur.update_tag()
+def part_ids(fur):
+    """Which area (1, 2 ...; 0 none) each point of the body belongs to."""
+    me = fur.parent.data
+    a = me.attributes.get(fur.get(PART_KEY, ''))
+    ids = np.zeros(len(me.vertices), np.int32)
+    if a is not None and a.data_type == 'INT':
+        a.data.foreach_get('value', ids)
+    return ids
 
 
-def clear_comb(fur):
-    a = comb_attr(fur)
+def part_sizes(fur):
+    """Points of each area that still have fur (the area's weight), area number -> count."""
+    ids = part_ids(fur)
+    me = fur.parent.data
+    w = np.zeros(len(me.vertices), np.float32)
+    a = me.attributes.get(fur.get(AREA_KEY, ''))
     if a is not None:
-        a.data.foreach_set('vector', np.zeros(len(a.data) * 3, np.float32))
-        fur.parent.data.update()
-        fur.update_tag()
+        a.data.foreach_get('value', w)
+    live = ids[(w > 0.0) & (ids > 0)]
+    return {int(k): int(v) for k, v in zip(*np.unique(live, return_counts=True))} if len(live) else {}
 
 
-class MCH_OT_fur_comb(bpy.types.Operator):
-    """Shift + drag on the selected fur: comb it - the fur under the brush lies the way you drag (flat on the skin,
-    round its normal), each part its own way.  Comb Size / Strength in the window"""
-    bl_idname = 'mch.fur_comb'
-    bl_label = 'Comb Fur'
+def write_part(fur, k):
+    """Area ``k`` (0-based)'s tilt into its points of the body."""
+    me = fur.parent.data
+    part = fur.mch_fur.parts[k]
+    sel = part_ids(fur) == k + 1
+    la = _point_attr(me, fur[LIE_KEY], 'FLOAT', part.lie)
+    fa = _point_attr(me, fur[FLOW_KEY], 'FLOAT_VECTOR', (math.cos(part.flow), math.sin(part.flow), 0.0))
+    lv = np.empty(len(me.vertices), np.float32)
+    la.data.foreach_get('value', lv)
+    lv[sel] = part.lie
+    la.data.foreach_set('value', lv)
+    fv = np.empty(len(me.vertices) * 3, np.float32)
+    fa.data.foreach_get('vector', fv)
+    fv = fv.reshape(-1, 3)
+    fv[sel] = (math.cos(part.flow), math.sin(part.flow), 0.0)
+    fa.data.foreach_set('vector', fv.ravel())
+    me.update()
+    fur.update_tag()
+
+
+def add_part(fur, idx, lie, flow):
+    """A new area of the fur at the body's points ``idx`` with this tilt (the last drawn wins where they overlap)."""
+    if not fur.get(PART_KEY):                         # (a fur from before 0.24.159: its names now)
+        fur[PART_KEY] = fur[AREA_KEY].replace('mch_fur_', 'mch_fpart_')
+        fur[LIE_KEY] = fur[AREA_KEY].replace('mch_fur_', 'mch_flie_')
+        fur[FLOW_KEY] = fur[AREA_KEY].replace('mch_fur_', 'mch_fflow_')
+        from . import geo_sculpt as gs
+        mod = fur.modifiers.get(MOD)
+        if mod is not None:
+            gs.set_input(mod, 'Lie Attr', fur[LIE_KEY])
+            gs.set_input(mod, 'Flow Attr', fur[FLOW_KEY])
+    me = fur.parent.data
+    pa = _point_attr(me, fur[PART_KEY], 'INT', 0)
+    _point_attr(me, fur[LIE_KEY], 'FLOAT', lie)                   # (first time: every point this tilt)
+    _point_attr(me, fur[FLOW_KEY], 'FLOAT_VECTOR', (math.cos(flow), math.sin(flow), 0.0))
+    pg = fur.mch_fur
+    part = pg.parts.add()
+    k = len(pg.parts)
+    part.name = f'Area {k}'
+    _BUSY[0] = True
+    try:
+        part.lie, part.flow = lie, flow
+        pg.part_index = k - 1
+    finally:
+        _BUSY[0] = False
+    ids = part_ids(fur)
+    ids[np.asarray(idx, int)] = k
+    pa.data.foreach_set('value', ids)
+    write_part(fur, k - 1)
+    return part
+
+
+def current_part(fur):
+    pg = fur.mch_fur
+    return pg.parts[pg.part_index] if 0 <= pg.part_index < len(pg.parts) else None
+
+
+def _upd_part(self, context):
+    """An area's Lie Down / Flow Angle changed: its points of the body, and the next area / fur start from it."""
+    if _BUSY[0]:
+        return
+    fur = self.id_data
+    if not isinstance(fur, bpy.types.Object) or not is_fur(fur) or fur.parent is None:
+        return
+    pg = fur.mch_fur
+    k = next((i for i, p in enumerate(pg.parts) if p == self), None)
+    if k is None:
+        return
+    write_part(fur, k)
+    _BUSY[0] = True
+    try:
+        pg.lie, pg.flow = self.lie, self.flow
+        sc = getattr(context, 'scene', None)
+        if sc is not None and hasattr(sc, 'mch_fur'):
+            sc.mch_fur.lie, sc.mch_fur.flow = self.lie, self.flow
+    finally:
+        _BUSY[0] = False
+
+
+class MCH_PG_FurPart(bpy.types.PropertyGroup):
+    lie: FloatProperty(name='Lie Down', default=math.radians(50), min=0.0, max=math.pi / 2, subtype='ANGLE',
+                       update=_upd_part, description=DESCS['lie'])
+    flow: FloatProperty(name='Flow Angle', default=0.0, min=-2 * math.pi, max=2 * math.pi, subtype='ANGLE',
+                        update=_upd_part, description=DESCS['flow'])
+
+
+class MCH_OT_fur_part(bpy.types.Operator):
+    """Pick this area of the selected fur: the Lie Down / Flow Angle sliders are its (change them: only this part)"""
+    bl_idname = 'mch.fur_part'
+    bl_label = 'Fur Area'
     bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
-
-    def invoke(self, context, event):
-        fur = active_fur(context)
-        if fur is None or fur.parent is None:
-            self.report({'WARNING'}, 'Comb: select a fur first (or draw one)')
-            return {'CANCELLED'}
-        region, rv3d = context.region, context.region_data
-        if region is None or rv3d is None or region.type != 'WINDOW':
-            return {'PASS_THROUGH'}
-        wm = context.window_manager
-        self.comb = Comb(context, fur, cg.Projector(region, rv3d), getattr(wm, 'mch_fur_comb_size', 60),
-                         getattr(wm, 'mch_fur_comb_strength', 1.0))
-        self.last = (event.mouse_region_x, event.mouse_region_y)
-        self.region = region
-        self.count = 0
-        wm.modal_handler_add(self)
-        return {'RUNNING_MODAL'}
-
-    def modal(self, context, event):
-        if event.type in {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE'}:
-            q = (event.mouse_region_x, event.mouse_region_y)
-            if math.dist(q, self.last) >= 6.0:
-                self.count += self.comb.step(self.last, q)
-                self.last = q
-                self.region.tag_redraw()
-            return {'RUNNING_MODAL'}
-        if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
-            self.report({'INFO'}, f'{self.comb.fur.name}: combed')
-            return {'FINISHED'}
-        if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
-            self.comb.undo()
-            return {'CANCELLED'}
-        return {'RUNNING_MODAL'}
-
-
-class MCH_OT_fur_comb_clear(bpy.types.Operator):
-    """The selected fur's combing taken off: it lies down the body again (Flow Angle)"""
-    bl_idname = 'mch.fur_comb_clear'
-    bl_label = 'Clear Comb'
-    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    index: IntProperty(default=0, options={'SKIP_SAVE'})
 
     @classmethod
     def poll(cls, context):
         return active_fur(context) is not None
 
     def execute(self, context):
-        clear_comb(active_fur(context))
+        pg = active_fur(context).mch_fur
+        if not 0 <= self.index < len(pg.parts):
+            return {'CANCELLED'}
+        pg.part_index = self.index
+        try:
+            from . import side_panel
+            side_panel.dirty()
+        except (ImportError, AttributeError):
+            pass
         return {'FINISHED'}
 
 
@@ -882,7 +915,7 @@ def _upd_obj(self, context):
 
 
 SOFT = {'density': 100000.0, 'length': 0.3, 'gravity': 3.0, 'curl': 2.0, 'curl_turns': 10.0, 'frizz': 1.0,
-        'clump_size': 60, 'root_thick': 0.005, 'tip_thick': 0.005, 'segments': 32, 'edge_soft': 20}
+        'clump_size': 60, 'root_thick': 0.005, 'tip_thick': 0.005, 'segments': 32, 'edge_soft': 20, 'part_soft': 20}
 # (the slider's range: a drag across it a usable step - Length up to 0.3, not the 5 it can be typed to)
 
 
@@ -915,7 +948,9 @@ def _props(update):
 
 
 class MCH_PG_Fur(bpy.types.PropertyGroup):
-    __annotations__ = _props(_upd_obj)
+    __annotations__ = {**_props(_upd_obj),
+                       'parts': bpy.props.CollectionProperty(type=MCH_PG_FurPart),
+                       'part_index': IntProperty(default=0, min=0)}
 
 
 class MCH_OT_fur_new(bpy.types.Operator):
@@ -961,22 +996,32 @@ def draw(layout, context):
         col.label(text=f'{ob.name} on {ob.parent.name if ob.parent else "?"}: {strands(ob, context):,} strands (live)')
     else:
         col.label(text='The next fur')
+    # 0.24.159 the tilt: each area drawn its own (pick an area, change it: only that part)
+    col = layout.column(align=True)
+    part = current_part(ob) if ob is not None else None
+    if ob is not None and len(pg.parts):
+        sizes = part_sizes(ob)
+        col.label(text='Tilt (each area its own - pick one)')
+        for i, p_ in enumerate(pg.parts):
+            if sizes.get(i + 1, 0) == 0:
+                continue                                  # (an area taken away all over)
+            o = col.operator('mch.fur_part', text=f'{p_.name}   {math.degrees(p_.lie):.0f}\u00b0  dir '
+                                                   f'{math.degrees(p_.flow):.0f}\u00b0', depress=(i == pg.part_index))
+            o.index = i
+    else:
+        col.label(text='Tilt (the next area)')
+    tilt = part if part is not None else pg
+    col.prop(tilt, 'lie')
+    col.prop(tilt, 'flow')
+    col.prop(pg, 'part_soft')
     for group, props in (('Strands', ('density', 'length', 'length_random', 'segments', 'display')),
-                         ('Shape', ('lie', 'flow', 'gravity', 'curl', 'curl_turns', 'frizz', 'clump', 'clump_size')),
+                         ('Shape', ('gravity', 'curl', 'curl_turns', 'frizz', 'clump', 'clump_size')),
                          ('Thickness', ('root_thick', 'tip_thick')),
                          ('Area', ('edge_soft', 'seed'))):
         col = layout.column(align=True)
         col.label(text=group)
         for p in props:
             col.prop(pg, p)
-    col = layout.column(align=True)
-    col.label(text='Comb: Shift + drag on the fur')
-    wm = context.window_manager
-    col.prop(wm, 'mch_fur_comb_size')
-    col.prop(wm, 'mch_fur_comb_strength')
-    col.prop(pg, 'comb_soft')
-    if ob is not None:
-        col.operator('mch.fur_comb_clear', text='Clear Comb')
     col = layout.column(align=True)
     col.label(text='Color')
     col.prop(pg, 'use_polypaint')
@@ -998,11 +1043,10 @@ def draw(layout, context):
 
 
 HELP = ('Draw an area on a body: fur grows there',
-        'Draw again: more area on the selected fur',
-        'Alt + draw: take area away;  New Fur: a second fur',
-        'Shift + drag: comb - it lies the way you drag')
+        'Draw again: another area of the selected fur (its own tilt)',
+        'Alt + draw: take area away;  New Fur: a second fur')
 
-CLASSES = (MCH_PG_Fur, MCH_OT_fur_new, MCH_OT_fur_apply, MCH_OT_fur_comb, MCH_OT_fur_comb_clear)
+CLASSES = (MCH_PG_FurPart, MCH_PG_Fur, MCH_OT_fur_new, MCH_OT_fur_apply, MCH_OT_fur_part)
 
 
 def register():
@@ -1011,16 +1055,11 @@ def register():
     bpy.types.Scene.mch_fur = bpy.props.PointerProperty(type=MCH_PG_Fur)
     bpy.types.Object.mch_fur = bpy.props.PointerProperty(type=MCH_PG_Fur)
     setattr(bpy.types.WindowManager, NEW_KEY, BoolProperty(default=False, options={'SKIP_SAVE'}))
-    bpy.types.WindowManager.mch_fur_comb_size = IntProperty(name='Comb Size', default=60, min=4, soft_max=400,
-                                                           description='The comb\'s radius on the screen (pixels)')
-    bpy.types.WindowManager.mch_fur_comb_strength = FloatProperty(name='Comb Strength', default=0.8, min=0.0, max=1.0,
-                                                                 subtype='FACTOR',
-                                                                 description='How far one drag turns the fur its way')
+
 
 
 def unregister():
-    for attr, holder in (('mch_fur', bpy.types.Scene), ('mch_fur', bpy.types.Object), (NEW_KEY, bpy.types.WindowManager),
-                         ('mch_fur_comb_size', bpy.types.WindowManager), ('mch_fur_comb_strength', bpy.types.WindowManager)):
+    for attr, holder in (('mch_fur', bpy.types.Scene), ('mch_fur', bpy.types.Object), (NEW_KEY, bpy.types.WindowManager)):
         try:
             delattr(holder, attr)
         except AttributeError:

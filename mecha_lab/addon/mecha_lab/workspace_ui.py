@@ -973,8 +973,7 @@ class MCH_TOOL_creature_fur(bpy.types.WorkSpaceTool):
                       'fur, Alt: take it away.  RMB: shapes, Esc: exit')
     bl_icon = 'ops.mesh.extrude_region_move'
     bl_widget = None
-    # 0.24.158 Shift + drag: comb the selected fur (before the shared lasso, which takes any modifier)
-    bl_keymap = (('mch.fur_comb', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'shift': True}, None),) + _tool_keymap('FUR')
+    bl_keymap = _tool_keymap('FUR')
 
     def draw_settings(context, layout, tool):
         _draw_tool_settings(context, layout, tool)
