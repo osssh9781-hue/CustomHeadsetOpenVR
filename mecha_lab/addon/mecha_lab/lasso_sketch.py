@@ -25,7 +25,7 @@ from . import core_geometry as cg
 from . import tool_state as ts
 
 KEY = 'mch_lasso_sketch'          # Scene ID prop (JSON) - Ctrl+Z steps back through it
-MODES = {'CUT', 'SPLIT', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'HIDE',
+MODES = {'CUT', 'SPLIT', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'HIDE',
          'PRESS'}   # 0.24.1 + Plate Detail 1 / 2, Box Hide; 0.24.95 Cloth Drape, Press Cut (the sketch = the stamp)
 
 
@@ -182,10 +182,10 @@ def commit(context, alt=False):
     elif mode == 'ZONE':
         from . import zones                # 0.24.95 Lasso Zone sketch: the combined outline (islands, holes) is the zone
         msg = zones.perform(context, loops, proj)
-    elif mode in {'DETAIL', 'DETAIL2', 'DETAIL3'} and alt:
+    elif mode in {'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4'} and alt:
         from . import live_subtract        # 0.24.26 Alt+Enter: take the sketch out (live detail or engrave)
         msg = live_subtract.perform(context, 'DETAIL', loops, proj, tool=mode)
-    elif mode in {'DETAIL', 'DETAIL2', 'DETAIL3'}:
+    elif mode in {'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4'}:
         from . import plate_detail as pd
         msg = pd.perform(context, loops, proj, mode)
     elif mode == 'HIDE':

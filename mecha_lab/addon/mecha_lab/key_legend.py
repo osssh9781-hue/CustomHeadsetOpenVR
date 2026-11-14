@@ -20,6 +20,7 @@ ALT = {
     'DETAIL': 'cut that area out of the live detail',
     'DETAIL2': 'cut that area out of the live detail',
     'DETAIL3': 'cut that area out of the live detail',
+    'DETAIL4': 'cut that area out of the live detail',
     'SDRAW': 'cut out / carve in',
 }
 EXTRA = {

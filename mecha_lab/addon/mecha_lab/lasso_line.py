@@ -17,7 +17,7 @@ from mathutils import Vector
 from . import target_rules
 
 MODES = {'HIDE', 'CAPE', 'HAIR', 'FUR', 'GARMENT', 'HOOD', 'SCARF', 'CUT', 'SPLIT', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'ZONE', 'SPIKE', 'SCALES',
-         'DETAIL', 'DETAIL2', 'DETAIL3'}      # 0.24.20 + Plate Detail 1 / 2 / 3
+         'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4'}      # 0.24.20 + Plate Detail 1 / 2 / 3 (/ 4, 0.24.161)
 CAPS = (('ROUND', 'Round', 'Round line ends'), ('FLAT', 'Flat', 'Square line ends'))
 
 

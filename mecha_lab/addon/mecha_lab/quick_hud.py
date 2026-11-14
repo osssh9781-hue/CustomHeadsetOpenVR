@@ -85,6 +85,7 @@ SPEC = {
     'DETAIL': [(_detail, 'height'), (_detail, 'lift')],
     'DETAIL2': [(_detail, 'height'), (_detail, 'lift')],
     'DETAIL3': [(_detail, 'profile'), (_detail, 'height'), (_detail, 'lift')],
+    'DETAIL4': [(_detail, 'r_height'), (_detail, 'r_rim'), (_detail, 'r_strength'), (_detail, 'r_chips')],
     'SDRAW': [(_sdraw, 'profile'), (_sdraw, 'width'), (_sdraw, 'height'), (_sdraw, 'edge')],
     'SCREW': [(_screw, 'kind'), (_screw, 'radius'), (_screw, 'height')],
     'PRESS': [(_scene('mch_press'), 'result'), (_scene('mch_press'), 'speed'), (_scene('mch_press'), 'start'),

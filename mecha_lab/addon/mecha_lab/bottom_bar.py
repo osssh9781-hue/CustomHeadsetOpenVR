@@ -28,6 +28,7 @@ BAR_TOOLS = (
     ('DETAIL', 'Detail', '', 'MESH_PLANE', 'mch.set_tool', 'DETAIL'),
     ('DETAIL2', 'Detail 2', '', 'SURFACE_NSURFACE', 'mch.set_tool', 'DETAIL2'),
     ('DETAIL3', 'Detail 3', '', 'MESH_PLANE', 'mch.set_tool', 'DETAIL3'),
+    ('DETAIL4', 'Detail 4', '', 'MESH_PLANE', 'mch.set_tool', 'DETAIL4'),
     ('SCREW', 'Screw', '', 'RADIOBUT_ON', 'mch.set_tool', 'SCREW'),
     ('TUBE', 'Curve', '', 'CURVE_BEZCURVE', 'mch.set_tool', 'TUBE'),
     ('TUBE_SAME', 'Line Curve', '', 'CURVE_BEZCURVE', 'mch.set_tool', 'TUBE_SAME'),

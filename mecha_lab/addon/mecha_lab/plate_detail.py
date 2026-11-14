@@ -520,8 +520,9 @@ def preset_layers(count, size):
 # -----------------------------------------------------------------------------
 
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty  # noqa: E402
+from . import plate_rough as _pr  # noqa: E402
 
-KINDS = {'DETAIL': 'TRIM', 'DETAIL2': 'RISE', 'DETAIL3': 'FLAT'}
+KINDS = {'DETAIL': 'TRIM', 'DETAIL2': 'RISE', 'DETAIL3': 'FLAT', 'DETAIL4': 'ROUGH'}   # 0.24.161 + Rough Rim
 TOOL_OF_KIND = {k: t for t, k in KINDS.items()}
 FLAT_FRAC = 0.02             # 0.24.10 Plate Detail 3: panel height = this x the drawn size
 DIRECTIONS = (('OUT', 'Edge High', 'The edge is highest, layers step down inward to the flat inside'),
@@ -530,7 +531,7 @@ SCREW_ITEMS = (('0', 'No Screw', ''), ('1', '1 Screw', ''), ('2', '2 Screws', ''
 SPACING_PX = 20                # face size on screen for the surface patch (0.24.2: light, like Armor Plate)
 RISE_DEFAULT = dict(height=0.035, ramp=0.12)
 LENGTHS = ('w1', 'h1', 'w2', 'h2', 'w3', 'h3', 'base', 'center', 'screw_r', 'screw_depth', 'height', 'ramp', 'lift',
-           'foot', 'flat_h')
+           'foot', 'flat_h') + _pr.LENGTHS          # (0.24.161 + Rough Rim's)
 _SYNC = [False]
 
 
@@ -588,10 +589,44 @@ def _changed(self, _context):
         _queue(ob)
 
 
+def _rough_changed(self, _context):
+    """0.24.161 a Rough Rim value: straight into its modifier (the base stays)."""
+    if _SYNC[0]:
+        return
+    ob = self.id_data
+    if isinstance(ob, bpy.types.Object) and is_detail(ob) and self.kind == 'ROUGH':
+        remember(ob)
+        _pr.push(ob)
+
+
+def _rough_props():
+    """The Rough Rim settings (0.24.161), added to MCH_PG_PlateDetail below."""
+    ann = {}
+    for prop, _s, label, desc, soft in _pr.LENGTH_PROPS:
+        ann[prop] = FloatProperty(name=label, default=0.01, min=0.0, soft_max=soft, unit='LENGTH', precision=4,
+                                  update=_rough_changed, description=desc)
+    for prop, _s, label, desc, lo, hi in _pr.MIX_PROPS:
+        ann[prop] = FloatProperty(name=label, default=0.0, min=lo, max=hi, update=_rough_changed, description=desc)
+    ann['r_profile'] = EnumProperty(name='Edge', items=_pr.PROFILES, default='ROUND', update=_rough_changed)
+    ann['r_center'] = FloatProperty(name='Center', default=0.1, min=0.0, max=1.0, update=_rough_changed,
+                                    description='How much of the texture inside the rim (0 = only along the edge)')
+    ann['r_chips'] = FloatProperty(name='Chips', default=0.0, min=0.0, max=1.0, update=_rough_changed,
+                                   description='Pieces broken off the edge: the outline eaten in, in bites and chunks')
+    ann['r_seed'] = IntProperty(name='Seed', default=0, min=0, max=100000, update=_rough_changed,
+                                description='Another random pattern')
+    ann['r_detail'] = FloatProperty(name='Detail', default=6.0, min=1.0, max=16.0, update=_rough_changed,
+                                    description='How finely the plate is divided: about this many faces across one '
+                                                'feature (kept under a face limit on a big plate)')
+    ann['r_preset'] = EnumProperty(name='Preset', items=[(p[0], p[1], p[2]) for p in _pr.PRESETS], default='CONCRETE')
+    ann['r_cell'] = FloatProperty(default=0.0, options={'HIDDEN'})          # (mean face edge of the base patch)
+    return ann
+
+
 class MCH_PG_PlateDetail(bpy.types.PropertyGroup):
     """Settings of a live Plate Detail object (lengths in the object's units)."""
     live: BoolProperty(default=False)
-    kind: EnumProperty(items=(('TRIM', 'Trim', ''), ('RISE', 'Rise', ''), ('FLAT', 'Flat', '')), default='TRIM')
+    kind: EnumProperty(items=(('TRIM', 'Trim', ''), ('RISE', 'Rise', ''), ('FLAT', 'Flat', ''), ('ROUGH', 'Rough Rim', '')),
+                       default='TRIM')
     region: PointerProperty(type=bpy.types.Mesh)
     size: FloatProperty(default=1.0)
     layers: IntProperty(name='Layers', default=2, min=1, max=3, update=_changed)
@@ -628,6 +663,9 @@ class MCH_PG_PlateDetail(bpy.types.PropertyGroup):
                           update=_changed, description='Plate Detail 3: height of the flat panel above the surface')
 
 
+MCH_PG_PlateDetail.__annotations__.update(_rough_props())
+
+
 class MCH_PG_PlateDetailScene(bpy.types.PropertyGroup):
     """Settings for the next detail: lengths as FRACTIONS of the drawn size (the
     last edited detail is remembered this way, so a bigger outline gets a
@@ -656,6 +694,7 @@ def default_fractions(layers):
         f[f'w{i}'], f[f'h{i}'] = LAYER_PRESETS[3][i - 1]
     f['screw_r'] = f['w1'] * SCREW_R_FRAC
     f['screw_depth'] = f['h1'] * SCREW_DEPTH_FRAC
+    f.update(_pr.DEFAULT)                    # (0.24.161 Rough Rim: lengths as fractions, the rest as they are)
     return f
 
 
@@ -666,8 +705,13 @@ def remember(ob):
     st = bpy.context.scene.mch_pdetail
     size = max(p.size, 1e-9)
     f = _fractions(bpy.context.scene)
-    for k in LENGTHS:
-        f[k] = getattr(p, k) / size
+    rough = p.kind == 'ROUGH'                 # (0.24.161 each kind remembers its own values only: a trim's untouched
+    for k in LENGTHS:                         #  Rough Rim defaults must not become the next rough plate's)
+        if (k in _pr.LENGTHS) == rough or k == 'lift':
+            f[k] = getattr(p, k) / size
+    if rough:
+        for k in _pr.PLAIN:
+            f[k] = getattr(p, k)
     f['wall_angle'] = p.wall_angle
     st.fractions = json.dumps(f)
     st.layers, st.direction, st.screws, st.profile = p.layers, p.direction, p.screws, p.profile
@@ -691,6 +735,15 @@ def set_preset(ob, layers):
 def build_mesh(p, name):
     """The detail mesh for settings ``p`` (a live detail's mch_pdetail, or a plain namespace)."""
     embed = p.size * 0.002
+    if p.kind == 'ROUGH':
+        # 0.24.161 Plate Detail 4: the base shell only; its shape and texture are the Rough Rim modifier
+        me, edge = _pr.build_base(p.region, embed, p.size * 0.0004, name=name)
+        _SYNC[0], was = True, _SYNC[0]
+        try:
+            p.r_cell = edge
+        finally:
+            _SYNC[0] = was
+        return me
     if p.kind == 'RISE':
         return build_rise(p.region, p.height, p.ramp, embed=embed, profile=p.profile, lift=p.size * 0.0004 + p.lift,
                           name=name, wall_angle=p.wall_angle, foot=p.foot)
@@ -716,6 +769,8 @@ def rebuild(ob):
     me.name = ob.name
     from . import live_subtract
     live_subtract.apply(bpy.context, ob)      # 0.24.21 the Alt outlines cut out again
+    if p.kind == 'ROUGH':
+        _pr.push(ob)                          # 0.24.161 the Rough Rim modifier with this plate's values
     return me
 
 
@@ -755,7 +810,7 @@ def perform(context, loops, projector, tool='DETAIL'):
     st = context.scene.mch_pdetail
     f = default_fractions(st.layers)
     f.update(_fractions(context.scene))
-    me = bpy.data.meshes.new(target.name + {'TRIM': '_Detail', 'RISE': '_Rise', 'FLAT': '_Panel'}[kind])
+    me = bpy.data.meshes.new(target.name + {'TRIM': '_Detail', 'RISE': '_Rise', 'FLAT': '_Panel', 'ROUGH': '_Rough'}[kind])
     ob = bpy.data.objects.new(me.name, me)
     coll = target.users_collection[0] if target.users_collection else context.scene.collection
     coll.objects.link(ob)
@@ -773,6 +828,8 @@ def perform(context, loops, projector, tool='DETAIL'):
         p.layers, p.direction, p.screws, p.profile = st.layers, st.direction, st.screws, st.profile
         for k in LENGTHS:
             setattr(p, k, f[k] * local_size)
+        for k in _pr.PLAIN:
+            setattr(p, k, f.get(k, _pr.DEFAULT[k]))
         p.wall_angle = f.get('wall_angle', 90.0)
         p.live = True
     finally:
@@ -786,8 +843,13 @@ def perform(context, loops, projector, tool='DETAIL'):
         o.select_set(False)
     ob.select_set(True)
     context.view_layer.objects.active = ob
-    what = {'TRIM': f'{p.layers}-layer trim', 'RISE': 'smooth rise', 'FLAT': 'flat panel'}[kind]
+    what = {'TRIM': f'{p.layers}-layer trim', 'RISE': 'smooth rise', 'FLAT': 'flat panel',
+            'ROUGH': f'rough rim - {_preset_label(p.r_preset)}'}[kind]
     return f'Plate Detail "{ob.name}" on {target.name} ({what}, {len(ob.data.polygons)} faces)'
+
+
+def _preset_label(pid):
+    return next((r[1] for r in _pr.PRESETS if r[0] == pid), pid)
 
 
 def engrave(context, loops, projector, tool='DETAIL'):
@@ -810,10 +872,17 @@ def engrave(context, loops, projector, tool='DETAIL'):
     f.update(_fractions(context.scene))
     p = types.SimpleNamespace(region=region, size=local_size, kind=KINDS.get(tool, 'TRIM'), layers=st.layers,
                               direction=st.direction, screws=st.screws, profile=st.profile,
-                              wall_angle=f.get('wall_angle', 90.0), **{k: f[k] * local_size for k in LENGTHS})
+                              wall_angle=f.get('wall_angle', 90.0), **{k: f[k] * local_size for k in LENGTHS},
+                              **{k: f.get(k, _pr.DEFAULT[k]) for k in _pr.PLAIN})
     p.lift = 0.0
     try:
         me = build_mesh(p, 'MCH_DetailEngrave')
+        if p.kind == 'ROUGH':                # 0.24.161 the finished rough plate (its modifier on a temporary object)
+            base = me
+            try:
+                me = _pr.evaluated(context, p, base)
+            finally:
+                bpy.data.meshes.remove(base)
     except ValueError as ex:
         raise cg.CutError(f'Detail could not be built ({ex}).')
     finally:
@@ -851,7 +920,7 @@ def engrave(context, loops, projector, tool='DETAIL'):
                 bpy.data.meshes.remove(res)
     finally:
         cg.remove_object_and_mesh(cutter)
-    what = {'TRIM': 'trim', 'RISE': 'rise', 'FLAT': 'panel'}[p.kind]
+    what = {'TRIM': 'trim', 'RISE': 'rise', 'FLAT': 'panel', 'ROUGH': 'rough plate'}[p.kind]
     return f'Engraved a {what} into "{target.name}" (Alt)'
 
 
@@ -859,6 +928,8 @@ def apply_detail(ob):
     """Keep the mesh as it is; drop the live data."""
     from . import live_subtract
     p = ob.mch_pdetail
+    if p.kind == 'ROUGH':
+        _pr.bake(bpy.context, ob)             # 0.24.161 the Rough Rim modifier made real
     region = p.region
     p.live = False
     p.region = None
@@ -962,6 +1033,8 @@ def draw(layout, context, tool='DETAIL'):
         col = box.column(align=True)
         if kind == 'TRIM':
             _draw_trim(col, p)
+        elif kind == 'ROUGH':
+            _draw_rough(box, p)
         elif kind == 'FLAT':
             col.prop(p, 'flat_h')
             col.prop(p, 'lift')
@@ -984,6 +1057,8 @@ def draw(layout, context, tool='DETAIL'):
         col = layout.column(align=True)
         if kind == 'TRIM':
             _draw_trim(col, st, scene_mode=True)
+        elif kind == 'ROUGH':
+            _draw_rough_presets(col, _fractions(context.scene).get('r_preset', 'CONCRETE'))
         elif kind == 'FLAT':
             col.label(text='Flat panel, straight walls, no trim layers')
         else:
@@ -992,8 +1067,74 @@ def draw(layout, context, tool='DETAIL'):
         layout.label(text='Sizes follow the outline; adjust them after drawing', icon='INFO')
     tip = {'TRIM': 'Draw a closed outline on a plate: flat inside, trim along the edge',
            'RISE': 'Draw a closed outline: the surface rises smoothly inside it',
-           'FLAT': 'Draw a closed outline on a plate: a flat raised panel'}[kind]
+           'FLAT': 'Draw a closed outline on a plate: a flat raised panel',
+           'ROUGH': 'Draw a closed outline: a plate with a rough rim (concrete, stone, skin)'}[kind]
     layout.label(text=tip)
+
+
+def _draw_rough_presets(col, current):
+    """0.24.161 the ten Rough Rim presets, two per row."""
+    grid = col.grid_flow(row_major=True, columns=2, even_columns=True, align=True)
+    for pid, label, _d, _v in _pr.PRESETS:
+        grid.operator('mch.pdetail_rough_preset', text=label, depress=(pid == current)).preset = pid
+
+
+def _draw_rough(box, p):
+    col = box.column(align=True)
+    _draw_rough_presets(col, p.r_preset)
+    col = box.column(align=True)
+    col.prop(p, 'r_height')
+    col.prop(p, 'r_ramp')
+    col.row(align=True).prop(p, 'r_profile', expand=True)
+    col = box.column(align=True)
+    col.label(text='Rim')
+    col.prop(p, 'r_rim')
+    col.prop(p, 'r_strength')
+    col.prop(p, 'r_feature')
+    col.prop(p, 'r_chips')
+    col.prop(p, 'r_center')
+    col = box.column(align=True)
+    col.label(text='Texture Mix')
+    for prop, *_r in _pr.MIX_PROPS:
+        col.prop(p, prop)
+    col = box.column(align=True)
+    row = col.row(align=True)
+    row.prop(p, 'r_seed')
+    row.prop(p, 'r_detail')
+    col.prop(p, 'lift')
+
+
+class MCH_OT_pdetail_rough_preset(bpy.types.Operator):
+    """Plate Detail 4 preset (for the selected rough plate and the next ones)"""
+    bl_idname = 'mch.pdetail_rough_preset'
+    bl_label = 'Rough Rim Preset'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    preset: EnumProperty(items=[(r[0], r[1], r[2]) for r in _pr.PRESETS])
+
+    @classmethod
+    def description(cls, context, properties):
+        return dict((r[0], r[2]) for r in _pr.PRESETS).get(properties.preset, '')
+
+    def execute(self, context):
+        import json
+        vals = _pr.preset_values(self.preset)
+        ob = active_detail(context)
+        if ob is not None and ob.mch_pdetail.kind == 'ROUGH':
+            p = ob.mch_pdetail
+            _SYNC[0] = True
+            try:
+                for k, v in vals.items():
+                    setattr(p, k, v * p.size if k in _pr.LENGTHS else v)
+            finally:
+                _SYNC[0] = False
+            remember(ob)
+            _pr.push(ob)
+        else:
+            st = context.scene.mch_pdetail
+            f = _fractions(context.scene)
+            f.update(vals)
+            st.fractions = json.dumps(f)
+        return {'FINISHED'}
 
 
 class MCH_PT_plate_detail(bpy.types.Panel):
@@ -1072,7 +1213,8 @@ class MCH_OT_pdetail_rise_preset(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_PG_PlateDetail, MCH_PG_PlateDetailScene, MCH_OT_pdetail_rise_preset, MCH_OT_pdetail_layers, MCH_OT_pdetail_apply,
+CLASSES = (MCH_PG_PlateDetail, MCH_PG_PlateDetailScene, MCH_OT_pdetail_rise_preset, MCH_OT_pdetail_rough_preset,
+           MCH_OT_pdetail_layers, MCH_OT_pdetail_apply,
            MCH_OT_pdetail_remove, MCH_PT_plate_detail)
 
 

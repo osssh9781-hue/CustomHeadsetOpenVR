@@ -21,7 +21,7 @@ from . import core_geometry as cg
 
 # modes remembered: the ones that make a new object (see cut_engine StrokeLogic._execute_closed)
 MODES = {'PLATE', 'CPLATE', 'FLOWER', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'WRINKLE', 'DETAIL', 'DETAIL2',
-         'DETAIL3', 'BASE', 'CBASE', 'SDRAW', 'SCAPE', 'SCURVE', 'BRIDGE', 'SBRUSH', 'SPIKE', 'SCALES', 'BELT',
+         'DETAIL3', 'DETAIL4', 'BASE', 'CBASE', 'SDRAW', 'SCAPE', 'SCURVE', 'BRIDGE', 'SBRUSH', 'SPIKE', 'SCALES', 'BELT',
          'RIDGE', 'SHELL'}
 _LAST = [None]
 

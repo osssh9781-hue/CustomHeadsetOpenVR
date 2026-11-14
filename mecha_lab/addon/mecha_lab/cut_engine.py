@@ -1423,6 +1423,7 @@ _COLORS = {
     'DETAIL': (0.95, 0.85, 0.35, 1.0),            # 0.24 Plate Detail: yellow
     'DETAIL2': (0.95, 0.85, 0.35, 1.0),
     'DETAIL3': (0.95, 0.85, 0.35, 1.0),
+    'DETAIL4': (0.95, 0.85, 0.35, 1.0),           # 0.24.161 Plate Detail 4 (Rough Rim)
 }
 
 
@@ -1763,7 +1764,7 @@ class StrokeLogic:
         return PROFILE_POPUP if self.mode in {'BASE', 'CBASE'} else SHAPE_POPUP
 
     def _needs_target(self):
-        return self.mode not in {'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'ZONE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE',
+        return self.mode not in {'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'ZONE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE',
                                  'FLOWER', 'SCURVE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'SDRAW', 'PRESS',
                                  'GREEBLE', 'CGREEBLE', 'FUR'}
 
@@ -1895,7 +1896,7 @@ class StrokeLogic:
             except RuntimeError as ex:
                 self.report({'WARNING'}, str(ex))
             return {'CANCELLED'}
-        if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER',
+        if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'FLOWER',
                      'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'FUR'} and self.shape == 'LASSO' and self.brush.line_open:
             self.brush.line_open = False
         self.ui = ui_scale(context)
@@ -2263,7 +2264,7 @@ class StrokeLogic:
             elif self.mode == 'PLATE':
                 from . import armor_plate
                 msg = armor_plate.perform_plate(context, loops, self.projector)
-            elif self.mode in {'CPLATE', 'DETAIL', 'DETAIL2', 'DETAIL3'} and self.inverted():
+            elif self.mode in {'CPLATE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4'} and self.inverted():
                 from . import live_subtract        # 0.24.21 Alt + draw: cut that area out of the live plate
                 msg = live_subtract.perform(context, 'CPLATE' if self.mode == 'CPLATE' else 'DETAIL', loops,
                                             self.projector, tool=self.mode)
@@ -2303,7 +2304,7 @@ class StrokeLogic:
             elif self.mode == 'ZONE':
                 from . import zones                # 0.24.95 Lasso Zone: Paint / Split Zone from the shared lasso
                 msg = zones.perform(context, loops, self.projector)
-            elif self.mode in {'DETAIL', 'DETAIL2', 'DETAIL3'}:
+            elif self.mode in {'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4'}:
                 from . import plate_detail
                 msg = plate_detail.perform(context, loops, self.projector, self.mode)
             elif self.mode == 'HIDE':
@@ -2425,7 +2426,7 @@ class StrokeLogic:
         if self.shape in {'LASSO', 'CURVE_LASSO'}:
             self._clean_points()
             if self.shape == 'LASSO' and len(self.pts) >= 2 and (self.line_open or len(self.pts) == 2):
-                if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER',
+                if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'FLOWER',
                      'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'FUR'}:
                     self.report({'WARNING'}, 'This tool needs a closed outline (3+ points)')
                     return {'RUNNING_MODAL'}
@@ -2599,7 +2600,7 @@ class StrokeLogic:
             self._hint(context)
             self.region.tag_redraw()
             return {'RUNNING_MODAL'}
-        if et == 'F' and ev == 'PRESS' and self.shape == 'LASSO' and self.mode not in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'FLOWER',
+        if et == 'F' and ev == 'PRESS' and self.shape == 'LASSO' and self.mode not in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'FLOWER',
                      'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'FUR'}:
             self.line_open = not self.line_open
             self.brush.line_open = self.line_open
@@ -2829,7 +2830,8 @@ class MCH_OT_cut_stroke(StrokeLogic, bpy.types.Operator):
         ('HIDE', 'Box Hide', 'Hide the meshes inside the shape (Alt: show again)'),
         ('DETAIL', 'Plate Detail', 'Low trim detail on the plate under the outline'),
         ('DETAIL2', 'Plate Detail 2', 'Smooth rise on the surface under the outline'),
-        ('DETAIL3', 'Plate Detail 3', 'Flat raised panel (no trim layers) on the surface under the outline')],
+        ('DETAIL3', 'Plate Detail 3', 'Flat raised panel (no trim layers) on the surface under the outline'),
+        ('DETAIL4', 'Plate Detail 4', 'Raised plate with a rough rim (concrete, stone, creature skin) under the outline')],
         default='CUT')
     force: BoolProperty(name='Force', default=False, options={'SKIP_SAVE', 'HIDDEN'},
                         description='Run this mode even though another Mecha tool is active')

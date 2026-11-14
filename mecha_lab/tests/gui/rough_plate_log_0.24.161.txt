@@ -1,0 +1,15 @@
+1 preset cell True - next plate preset BROKEN
+2 plate: Slab_Rough kind ROUGH preset BROKEN on Slab faces 33736 - rough std rim 0.111 inside 0.008 - near the edge chipped 57%
+shot 1_broken_wire.png True
+3 Strength cell True strength 22.6 -> 50.1 mm - rim height std 3.82 -> 7.51 mm - base kept True
+4 skin cell True - plate preset SKIN wrinkles 1.0 chips 0.0 - plates 1
+shot 2_skin_wire.png True
+5 Alt: faces 134944 -> 135232 - points left in the hole 0 - live True - modifier True
+shot 3_cut_wire.png True
+shot 4_cycles.png True
+PASS 1 a REAL click on "Broken Concrete" in the window: the next plate will be Broken Concrete
+PASS 2 a REAL Free Draw outline on the slab: a live rough plate (Broken Concrete), its rim rough, its edge chipped
+PASS 3 a REAL drag on the window's Strength: the rim rougher at once (the base kept), a short drag a moderate change
+PASS 4 a REAL click on "Creature Skin" with the plate selected: that plate becomes Creature Skin
+PASS 5 a REAL Alt + drag inside the plate: a hole cut out, the plate still live
+5/5 passed
