@@ -650,12 +650,13 @@ def _rough_props():
                                                '(0 a round dome)')
     # 0.24.163 Layered Cliff: a sea cliff's face on the top
     ann['r_layer'] = FloatProperty(name='Layer', default=0.035, min=0.0001, soft_max=0.3, unit='LENGTH', precision=4,
-                                   update=_rough_changed, description='How wide each slab of the strata is')
+                                   update=_rough_changed, description='Layered Cliff: each stacked plate\'s thickness')
     ann['r_dip'] = FloatProperty(name='Strata Angle', default=math.radians(40.0), min=-math.pi / 2, max=math.pi / 2,
                                  subtype='ANGLE', update=_rough_changed,
-                                 description='The strata lines turned off the rise direction (0 = across it)')
+                                 description='Layered Cliff: the plates tilted toward the compass direction')
     ann['r_depth'] = FloatProperty(name='Depth', default=0.022, min=0.0, soft_max=0.2, unit='LENGTH', precision=4,
-                                   update=_rough_changed, description='How much the slabs differ in depth')
+                                   update=_rough_changed,
+                                   description='Layered Cliff: how wavy the plates\' outlines are (a height under the steps)')
     ann['r_cell'] = FloatProperty(default=0.0, options={'HIDDEN'})          # (mean face edge of the base patch)
     return ann
 
@@ -1144,10 +1145,10 @@ def _draw_cliff(box, p):
     col.prop(p, 'r_height')
     _draw_compass(box, p)
     col = box.column(align=True)
-    col.label(text='Strata')
-    col.prop(p, 'r_layer')
-    col.prop(p, 'r_dip')
-    col.prop(p, 'r_depth')
+    col.label(text='Plates (stacked)')
+    col.prop(p, 'r_layer', text='Plate Thickness')
+    col.prop(p, 'r_dip', text='Plate Tilt')
+    col.prop(p, 'r_depth', text='Wavy Outlines')
     col = box.column(align=True)
     col.label(text='Rock')
     col.prop(p, 'r_feature', text='Joint Size')

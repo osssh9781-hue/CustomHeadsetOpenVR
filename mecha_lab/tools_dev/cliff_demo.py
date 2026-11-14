@@ -1,5 +1,6 @@
 """Rock styles demo (0.24.163): Plate Detail 4's new styles on a rocky ground (outlines through a top view, as the lasso
-gives them) - Layered Cliff (a sea cliff's face on the top: slanted strata slabs, joints; rising toward the north),
+gives them) - Layered Cliff (rock plates stacked one on another, set back inward - the user's sketch; rising toward
+the north),
 Columnar Basalt (rising toward the east), Creature Carapace (a raised lip along the outline with lines on it, a groove,
 the middle a smooth ridge).  Cycles, shaded and with the wireframe (a wireframe shader: the cliff / carapace are dense),
 a wide view and close ones.
@@ -145,12 +146,8 @@ def render(name):
     for wire in (False, True):
         for key, ob in plates.items():
             rgb, attr = LOOK[key]
-            ob.data.materials.clear() if ob.data.materials else None
-            m = mat(key + (' wire' if wire else ''), rgb, 0.75, wire, attr)
-            if ob.data.materials:
-                ob.data.materials[0] = m
-            else:
-                ob.data.materials.append(m)
+            ob.data.materials.clear()
+            ob.data.materials.append(mat(key + (' wire' if wire else ''), rgb, 0.75, wire, attr))
         S.render.filepath = os.path.join(OUT, name + ('_wire' if wire else '_shaded') + '.png')
         t0 = time.time()
         bpy.ops.render.render(write_still=True)
@@ -160,7 +157,7 @@ def render(name):
 S.render.resolution_x, S.render.resolution_y = 1400, 900
 aim((0.3, -10.5, 6.4), (-0.4, -0.2, 0.3), 32)
 render('rock_wide')
-aim((-1.4, -3.2, 2.0), (-3.0, 0.9, 0.3), 38)                         # the cliff, from the south-east: its slabs
+aim((-1.6, -3.4, 0.75), (-3.1, 0.3, 0.3), 36)                        # the cliff, low from the south: its stacked plates
 render('rock_cliff')
 aim((2.9, -4.6, 1.7), (0.6, -2.2, 0.05), 40)                         # the carapace
 render('rock_carapace')

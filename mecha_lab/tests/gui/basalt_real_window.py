@@ -6,7 +6,7 @@ a sea cliff ("절벽의 옆면 같은 돌의 깊이 차이가 윗면에") and a 
   2. a REAL Free Draw outline: basalt columns rising east (the compass default)
   3. a REAL click on the window's "N": they rise north instead
   4. a REAL drag on the window's Slope: flatter (rebuilt once the drag stops)
-  5. a REAL click on "Layered Cliff" (the plate selected): the cliff - strata slabs stepping across its top
+  5. a REAL click on "Layered Cliff" (the plate selected): rock plates stacked one on another
   6. a REAL click on "Creature Carapace": a raised lip along the outline, a groove, the middle up again
   7. shots: solid with the wireframe, Cycles
 """
@@ -308,15 +308,13 @@ def flow():
         yield from press(it)
     yield 2.0
     co, top, d = evaluated_top(A)
-    line = top & (d > p.r_ramp * 2) & (np.abs(co[:, 0]) < 0.03)
-    pts = co[line]
-    pts = pts[np.argsort(pts[:, 1])]
-    steps = np.abs(np.diff(pts[:, 2])) if len(pts) > 2 else np.zeros(1)
+    zz = co[top, 2]
+    hist, _edges = np.histogram(zz, bins=int(max(zz.max() / (p.r_layer * 0.1), 10)))
+    peaks = int(((hist[1:-1] > hist[:-2]) & (hist[1:-1] > hist[2:]) & (hist[1:-1] > len(zz) * 0.01)).sum())
     log('5 cliff cell', it is not None, '- style', p.r_style, 'modifier', A.modifiers.get(pr.MOD) is not None,
-        '- steps along the plate', int((steps > 0.25 * p.r_depth).sum()), 'biggest', round(float(steps.max()) * 1000), 'mm')
-    res['5 a REAL click on "Layered Cliff": a cliff - strata slabs stepping across its top'] = (
-        it is not None and p.r_style == 'CLIFF' and A.modifiers.get(pr.MOD) is not None
-        and (steps > 0.25 * p.r_depth).sum() >= 3)
+        '- the top at', peaks, 'plate levels (Plate Thickness', round(p.r_layer * 1000), 'mm)')
+    res['5 a REAL click on "Layered Cliff": rock plates stacked one on another (the top at several plate levels)'] = (
+        it is not None and p.r_style == 'CLIFF' and A.modifiers.get(pr.MOD) is not None and peaks >= 3)
     shot('3_cliff.png')
     # 6: a REAL click on "Creature Carapace"
     it = yield from scrolled_item('Creature Carapace')
