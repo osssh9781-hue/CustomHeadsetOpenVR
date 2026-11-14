@@ -1,0 +1,18 @@
+1 preset cell True - next plate BASALT COLUMNS
+2 plate Slab_Rough style COLUMNS columns 182 - rise toward 90 - height vs x 0.9
+shot 1_basalt_east.png True
+3 N cell True - rise toward 0 - height vs y 0.89 vs x -0.0
+shot 2_basalt_north.png True
+4 Slope cell True slope 0.85 -> 0.24 - tallest - shortest 528 -> 344 mm
+5 cliff cell True - style CLIFF modifier True - height change across the lines (x) 16.2 along them (y) 5.8 mm a cell
+shot 3_cliff.png True
+6 carapace cell True - profile CARAPACE - lip 59 groove 34 middle 199 mm
+shot 4_carapace.png True
+shot 5_cycles.png True
+PASS 1 a REAL click on "Columnar Basalt" in the window: the next plate will be basalt columns
+PASS 2 a REAL outline: basalt columns rising east (the compass default)
+PASS 3 a REAL click on "N": the columns rise north instead
+PASS 4 a REAL drag on the window's Slope to the left: flatter (rebuilt once the drag stopped)
+PASS 5 a REAL click on "Layered Cliff": rock layers in lines running down the cliff (north here)
+PASS 6 a REAL click on "Creature Carapace": a raised lip along the outline, a groove, the middle up again
+6/6 passed

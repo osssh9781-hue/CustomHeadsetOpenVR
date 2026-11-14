@@ -28,7 +28,7 @@ from .creature_fur import _B, _socket
 
 MOD = 'MCH Rough Rim'
 TREE = 'MCH Rough Rim'
-TREE_VERSION = 12
+TREE_VERSION = 13
 D_ATTR = 'mch_rd'              # distance to the outline (object units)
 TOP_ATTR = 'mch_rtop'          # 1 on the top layer, 0 on the bottom layer
 UP_ATTR = 'mch_rup'            # the surface normal under the point
@@ -110,17 +110,18 @@ PRESETS = (
      'direction (N / E / S / W in the window)',
      dict(r_style='COLUMNS', r_height=0.18, r_feature=0.05, r_slope=0.85, r_hrand=0.3, r_gap=0.003, r_round=0.0025,
           r_tilt=math.radians(5.0))),
-    # 0.24.163 (user, with a photo of a sea cliff and a sketch: "바위 옆 단면이 판이 겹겹"): rock plates stacked on the top
-    ('CLIFF', 'Layered Cliff', 'A sea cliff of stacked rock plates: from the outline inward each plate a step higher '
-     '(Plate Thickness), set back from the one under it, their outlines wavy, tilted a little; the whole rising toward '
+    # 0.24.163 (user, with a photo of a sea cliff: "절벽의 옆면 같은 돌의 깊이 차이가 윗면에"); 0.24.165 ("좀 더 세로로
+    # 그어져야 될 거 같아 - 저렇게 패턴이 아니라"): rock layers standing on edge - long lines down the cliff
+    ('CLIFF', 'Layered Cliff', 'A sea cliff\'s rock: layers standing on edge, long lines running down the cliff (toward '
+     'the compass direction), each layer its own height, leaning, thin laminae scored in them; the whole rising toward '
      'the compass direction',
-     dict(r_style='CLIFF', r_height=0.09, r_ramp=0.18, r_profile='CHAMFER', r_rim=0.2, r_center=1.0, r_strength=0.004,
-          r_feature=0.08, r_bumps=0.3, r_cells=0.0, r_cracks=0.5, r_wrinkles=0.0, r_pits=0.0, r_grain=0.3, r_chips=0.12,
-          r_slope=0.6, r_layer=0.022, r_dip=math.radians(6.0), r_depth=0.04)),
+     dict(r_style='CLIFF', r_height=0.09, r_ramp=0.18, r_profile='CHAMFER', r_rim=0.2, r_center=1.0, r_strength=0.003,
+          r_feature=0.08, r_bumps=0.25, r_cells=0.0, r_cracks=0.0, r_wrinkles=0.0, r_pits=0.0, r_grain=0.25, r_chips=0.12,
+          r_slope=0.6, r_layer=0.03, r_dip=math.radians(30.0), r_depth=0.01, r_wave=0.5, r_lturn=0.0)),
     # 0.24.163 (user, with a photo of a rock creature: "테두리 부분이 외곽 라인 잡듯이 조금 튀어나오고 가운데는 다시 볼록하게")
     ('CARAPACE', 'Creature Carapace', 'A carapace plate: a raised lip along the outline with lines along it, a groove '
      'inside, the middle a smooth ridge',
-     dict(r_height=0.02, r_ramp=0.035, r_profile='CARAPACE', r_lip=0.45, r_dome=3.0, r_ridge=0.8, r_rim=0.07,
+     dict(r_height=0.02, r_ramp=0.016, r_profile='CARAPACE', r_lip=0.45, r_dome=3.0, r_ridge=0.8, r_rim=0.035,
           r_center=0.0, r_strength=0.004, r_feature=0.035, r_bumps=0.1, r_cells=0.0, r_cracks=0.0, r_wrinkles=0.6,
           r_pits=0.0, r_grain=0.12, r_chips=0.0)),
 )
@@ -128,14 +129,14 @@ PRESET_IDS = tuple(p[0] for p in PRESETS)
 COLUMN_LENGTHS = ('r_gap', 'r_round', 'r_layer', 'r_depth')   # (0.24.163 Basalt's / the Cliff's lengths)
 LENGTHS = tuple(p[0] for p in LENGTH_PROPS) + COLUMN_LENGTHS
 PLAIN = ('r_profile', 'r_center', 'r_chips', 'r_seed', 'r_detail', 'r_preset', 'r_style', 'r_slope', 'r_hrand', 'r_tilt',
-         'r_compass', 'r_lip', 'r_dome', 'r_ridge', 'r_dip') + tuple(p[0] for p in MIX_PROPS)
+         'r_compass', 'r_lip', 'r_dome', 'r_ridge', 'r_dip', 'r_wave', 'r_lturn') + tuple(p[0] for p in MIX_PROPS)
 COLUMN_DEFAULT = dict(next(p[3] for p in PRESETS if p[0] == 'BASALT'))
 DEFAULT = {}
 for _d in (COLUMN_DEFAULT, next(p[3] for p in PRESETS if p[0] == 'CLIFF'), next(p[3] for p in PRESETS if p[0] == 'CARAPACE'),
            PRESETS[0][3]):
     DEFAULT.update(_d)
 DEFAULT.update(r_style='ROUGH', r_seed=0, r_detail=6.0, r_preset='CONCRETE', r_compass=math.radians(90.0), r_ridge=0.0,
-               r_lip=0.45, r_dome=1.2)
+               r_lip=0.45, r_dome=1.2, r_wave=0.5, r_lturn=0.0)
 COMPASS = (('N', 'N', 0.0), ('E', 'E', 90.0), ('S', 'S', 180.0), ('W', 'W', 270.0))
 
 
@@ -438,14 +439,15 @@ def _inputs(ng):
     _socket(ng, 'Lip', 'FLOAT', 0.45, 0.0, 1.0)              # (0.24.163 Rim + Dome)
     _socket(ng, 'Dome', 'FLOAT', 1.2, 0.0, 10.0)
     _socket(ng, 'Ridge', 'FLOAT', 0.0, 0.0, 1.0)
-    for sock in ('Up', 'Rise'):                              # (0.24.163 Layered Cliff: the plate's frame, the compass)
-        s_ = ng.interface.new_socket(sock, in_out='INPUT', socket_type='NodeSocketVector')
-        s_.default_value = (0.0, 0.0, 1.0) if sock == 'Up' else (1.0, 0.0, 0.0)
+    for sock in ('Up', 'Rise', 'Across'):                    # (0.24.163 Layered Cliff: the plate's frame, the compass;
+        s_ = ng.interface.new_socket(sock, in_out='INPUT', socket_type='NodeSocketVector')   # 0.24.165 across the lines)
+        s_.default_value = {'Up': (0.0, 0.0, 1.0), 'Rise': (1.0, 0.0, 0.0), 'Across': (0.0, 1.0, 0.0)}[sock]
     _socket(ng, 'Strata', 'FLOAT', 0.0, 0.0, 1.0)
     _socket(ng, 'Slope', 'FLOAT', 0.0, 0.0, 1.0)
     _socket(ng, 'Layer', 'FLOAT', 0.03, 0.0, 100.0)
     _socket(ng, 'Strata Angle', 'FLOAT', 0.7, -10.0, 10.0)
     _socket(ng, 'Depth', 'FLOAT', 0.01, 0.0, 100.0)
+    _socket(ng, 'Wave', 'FLOAT', 0.5, 0.0, 1.0)               # (0.24.165 the strata lines wander)
     ng.interface.new_socket('Geometry', in_out='OUTPUT', socket_type='NodeSocketGeometry')
 
 
@@ -528,6 +530,47 @@ def _profile(b, I, d2, depth):
 D2_ATTR = 'mch_rd2'            # (inside the node group only) the distance to the eaten outline
 
 
+def _white(b, w, seed, k):
+    """A random 0 - 1 per whole number ``w`` (channel ``k``)."""
+    n = b.node('ShaderNodeTexWhiteNoise', noise_dimensions='1D')
+    b.feed(n.inputs['W'], b.math('ADD', w, b.math('ADD', b.math('MULTIPLY', seed, 17.13), 101.7 * k)))
+    return n.outputs['Value']
+
+
+def _strata(b, I, pos, d2, ramp):
+    """0.24.165 Layered Cliff (user: "좀 더 세로로 그어져야 될 거 같아 - 저렇게 패턴이 아니라"; the photos: a sea
+    cliff's steep strata, sandstone's laminae): the rock in layers standing on edge - long lines running one way (along
+    the rise by default: down the cliff, "세로"), each layer its own height (hard ones stand out, soft ones worn back:
+    Depth), each leaning so it drops sharply at one side (Strata Angle), thin laminae scored inside, a groove at each
+    layer's edge; the lines wander (Wave), are not evenly spaced, and fade out here and there - not an even pattern.
+    Layer = the layers' spacing.  Returns the height to add (0 at the outline's foot)."""
+    lay = b.math('MAXIMUM', I['Layer'], 1e-6)
+    seed = I['Seed']
+    across = b.vec('DOT_PRODUCT', pos, I['Across'])
+    ql = b.vec('SCALE', pos, scale=b.math('DIVIDE', 1.0, b.math('MULTIPLY', lay, 8.0)))      # (1 = eight layers)
+    wander = b.math('MULTIPLY', b.math('SUBTRACT', _noise(b, ql, _seed(b, seed, 15), 0.6, 0.5, 0.4).outputs['Factor'],
+                                       0.5), b.math('MULTIPLY', b.math('MULTIPLY', I['Wave'], lay), 9.0))
+    uneven = b.math('MULTIPLY', b.math('SUBTRACT', _noise(b, b.vec('SCALE', ql, scale=2.0), _seed(b, seed, 16), 1.0, 1.0,
+                                                          0.4).outputs['Factor'], 0.5), 0.9)   # (layers not all as thick)
+    u = b.math('ADD', b.math('DIVIDE', b.math('ADD', across, wander), lay), uneven)
+    step = b.math('FLOOR', u)
+    f = b.math('SUBTRACT', u, step)
+    hard = _white(b, step, seed, 1)
+    band = b.math('MULTIPLY', b.math('SUBTRACT', hard, 0.5), b.math('MULTIPLY', I['Depth'], 2.0))   # (hard / soft)
+    lean = b.math('MULTIPLY', b.math('MULTIPLY', b.math('TANGENT', I['Strata Angle']), lay), b.math('SUBTRACT', f, 0.5))
+    edge = b.math('MINIMUM', f, b.math('SUBTRACT', 1.0, f))
+    groove = b.math('MULTIPLY', _map(b, edge, 0.0, 0.09, -0.7, 0.0, 'SMOOTHSTEP'), I['Depth'])
+    k = b.math('ADD', 3.0, b.math('FLOOR', b.math('MULTIPLY', _white(b, step, seed, 2), 3.0)))        # (3 - 5 laminae)
+    v = b.math('MULTIPLY', f, k)
+    fv = b.math('SUBTRACT', v, b.math('FLOOR', v))
+    lam = _map(b, b.math('MINIMUM', fv, b.math('SUBTRACT', 1.0, fv)), 0.0, 0.14, -0.3, 0.0, 'SMOOTHSTEP')
+    fade = _map(b, _noise(b, b.vec('SCALE', ql, scale=0.7), _seed(b, seed, 17), 1.0, 2.0, 0.5).outputs['Factor'],
+                0.35, 0.6, 0.0, 1.0, 'SMOOTHSTEP')                     # (the lines fade out here and there)
+    lines = b.math('MULTIPLY', b.math('ADD', groove, b.math('MULTIPLY', lam, I['Depth'])), fade)
+    calm = _map(b, d2, 0.0, b.math('MULTIPLY', ramp, 0.5), 0.0, 1.0, 'SMOOTHSTEP')   # (a clean foot at the outline)
+    return b.math('MULTIPLY', b.math('ADD', b.math('ADD', band, lean), lines), calm)
+
+
 def _store_sel(b, geo, name, value, sel):
     n = b.node('GeometryNodeStoreNamedAttribute', data_type='FLOAT', domain='POINT')
     b.feed(n.inputs['Geometry'], geo)
@@ -604,12 +647,7 @@ def _build(b, I):
     geo = _store_sel(b, geo, OUT_ATTR, b.math('MULTIPLY', b.math('MULTIPLY', tex, amount), foot), is_top)
     rough = b.attr(OUT_ATTR).outputs['Attribute']
 
-    # 0.24.163 Layered Cliff (user: "절벽의 옆면 같은 돌의 깊이 차이가 윗면에" and a sketch: "바위 옆 단면이 판이 겹겹"):
-    # plates stacked one on another - the height cut into steps Layer thick (each plate's edge a short steep wall,
-    # Edge Width of a step), the plates' outlines wavy (a slow noise Depth high under the steps), the plates tilted a
-    # little (Plate Tilt, toward the compass); the whole plate rising toward the compass (Slope)
-    wavy = b.math('MULTIPLY', b.math('SUBTRACT', _noise(b, q, _seed(b, seed, 15), 0.3, 3.0, 0.5).outputs['Factor'], 0.5),
-                  b.math('MULTIPLY', I['Depth'], 2.0))
+    # the whole plate rising toward the compass (Slope; Layered Cliff only)
     along = b.vec('DOT_PRODUCT', pos, I['Rise'])
     ast = b.node('GeometryNodeAttributeStatistic', data_type='FLOAT', domain='POINT')
     b.feed(ast.inputs['Geometry'], geo)
@@ -617,8 +655,6 @@ def _build(b, I):
     rise_t = _clamp01(b, b.math('DIVIDE', b.math('SUBTRACT', along, ast.outputs['Min']),
                                 b.math('MAXIMUM', b.math('SUBTRACT', ast.outputs['Max'], ast.outputs['Min']), 1e-9)))
     rise = b.math('ADD', b.math('SUBTRACT', 1.0, I['Slope']), b.math('MULTIPLY', I['Slope'], rise_t))
-    tilt = b.math('MULTIPLY', b.math('TANGENT', I['Strata Angle']),                     # (about the plate's middle)
-                  b.math('SUBTRACT', along, ast.outputs['Mean']))
 
     # 3) raised: the profile from the eaten outline + the texture (never under the surface); where it comes down to
     #    nothing (a chip, the foot) it goes on down just under the surface - the surface shows there, not a thin film
@@ -627,16 +663,7 @@ def _build(b, I):
     b.feed(dstat.inputs['Geometry'], geo)
     b.feed(dstat.inputs['Attribute'], d)
     shape = b.math('MULTIPLY', _profile(b, I, d2, dstat.outputs['Max']), rise)
-    lay = b.math('MAXIMUM', I['Layer'], 1e-6)
-    edge0 = _map(b, d2, 0.0, b.math('MULTIPLY', lay, 0.25), 0.0, 1.0, 'SMOOTHSTEP')   # (the outermost plate a whole
-    calm = _map(b, d2, 0.0, b.math('MULTIPLY', ramp, 0.5), 0.0, 1.0, 'SMOOTHSTEP')      #  Layer thick right at the outline;
-    u = b.math('DIVIDE', b.math('SUBTRACT', b.math('ADD', shape, b.math('ADD', b.math(           #  the plates in from it wavy)
-        'MULTIPLY', edge0, b.math('MULTIPLY', lay, 1.05)), b.math('MULTIPLY', wavy, calm))), tilt), lay)
-    step = b.math('FLOOR', u)
-    plates = b.math('ADD', b.math('MULTIPLY', b.math('ADD', step, _map(b, b.math('SUBTRACT', u, step), 0.8, 1.0, 0.0, 1.0,
-                                                                         'SMOOTHSTEP')), lay), tilt)
-    plates = b.math('MAXIMUM', plates, b.math('MULTIPLY', edge0, lay))   # (the bottom plate everywhere, tilted or not)
-    shape = b.math('ADD', shape, _when(b, I['Strata'], b.math('MULTIPLY', b.math('SUBTRACT', plates, shape), I['Strata'])))
+    shape = b.math('ADD', shape, _when(b, I['Strata'], b.math('MULTIPLY', _strata(b, I, pos, d2, ramp), I['Strata'])))
     h = b.math('MAXIMUM', b.math('ADD', shape, b.math('MULTIPLY', rough, I['Strength'])), 0.0)
     low = b.math('MAXIMUM', b.math('MULTIPLY', I['Height'], 0.03), 1e-7)
     h = b.math('ADD', h, b.math('MULTIPLY', I['Sink'], b.math('SUBTRACT', _clamp01(b, b.math('DIVIDE', h, low)), 1.0)))
@@ -680,7 +707,9 @@ def level_for(p, faces):
     edge = max(getattr(p, 'r_cell', 0.0), 1e-9)
     feat = p.r_feature
     if getattr(p, 'r_style', 'ROUGH') == 'CLIFF':
-        feat = min(feat, max(p.r_layer, 1e-9) * 0.6)            # (0.24.163 a slab's sharp drop needs ~10 faces a layer)
+        feat = min(feat, max(p.r_layer, 1e-9) * 0.3)            # (0.24.165 a layer's drop and its laminae: ~20 faces)
+    elif getattr(p, 'r_profile', '') == 'CARAPACE':
+        feat = min(feat, max(p.r_ramp, 1e-9) * 0.8)             # (0.24.165 the thin lip: a few faces across it)
     want = edge * max(p.r_detail, 0.5) / max(feat, 1e-9)
     lv = max(0, int(math.ceil(math.log2(max(want, 1.0)))))
     while lv > 0 and faces * 4 ** lv > MAX_FACES:
@@ -692,7 +721,11 @@ def values(p, faces):
     """Modifier input values for settings ``p``."""
     cliff = getattr(p, 'r_style', 'ROUGH') == 'CLIFF'
     up = mean_normal(p.region)
-    v = {'Up': tuple(up), 'Rise': tuple(rise_dir(p, up)), 'Ridge': float(p.r_ridge),
+    rise = rise_dir(p, up)
+    t = float(getattr(p, 'r_lturn', 0.0))                      # (0.24.165 the lines: along the rise, turned by Line Turn)
+    line = rise * math.cos(t) + up.cross(rise) * math.sin(t)
+    v = {'Up': tuple(up), 'Rise': tuple(rise), 'Across': tuple(up.cross(line).normalized()), 'Ridge': float(p.r_ridge),
+         'Wave': float(getattr(p, 'r_wave', 0.5)),
          'Strata': 1.0 if cliff else 0.0, 'Slope': float(p.r_slope) if cliff else 0.0,   # (0.24.163 Layered Cliff only)
          'Layer': float(p.r_layer), 'Strata Angle': float(p.r_dip), 'Depth': float(p.r_depth)}
     v.update({'Level': level_for(p, faces), 'Profile': PROFILE_INDEX.get(p.r_profile, 0), 'Center': float(p.r_center),

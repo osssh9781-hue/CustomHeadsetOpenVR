@@ -650,13 +650,22 @@ def _rough_props():
                                                '(0 a round dome)')
     # 0.24.163 Layered Cliff: a sea cliff's face on the top
     ann['r_layer'] = FloatProperty(name='Layer', default=0.035, min=0.0001, soft_max=0.3, unit='LENGTH', precision=4,
-                                   update=_rough_changed, description='Layered Cliff: each stacked plate\'s thickness')
-    ann['r_dip'] = FloatProperty(name='Strata Angle', default=math.radians(40.0), min=-math.pi / 2, max=math.pi / 2,
-                                 subtype='ANGLE', update=_rough_changed,
-                                 description='Layered Cliff: the plates tilted toward the compass direction')
-    ann['r_depth'] = FloatProperty(name='Depth', default=0.022, min=0.0, soft_max=0.2, unit='LENGTH', precision=4,
+                                   update=_rough_changed, description='Layered Cliff: how far apart the rock layers\' '
+                                                                       'lines are')
+    ann['r_dip'] = FloatProperty(name='Strata Angle', default=math.radians(30.0), min=-math.radians(80.0),
+                                 max=math.radians(80.0), subtype='ANGLE', update=_rough_changed,
+                                 description='Layered Cliff: each layer leans - high at one side, a sharp drop at the '
+                                             'other (0 = flat-topped layers)')
+    ann['r_depth'] = FloatProperty(name='Depth', default=0.022, min=0.0, soft_max=0.1, unit='LENGTH', precision=4,
                                    update=_rough_changed,
-                                   description='Layered Cliff: how wavy the plates\' outlines are (a height under the steps)')
+                                   description='Layered Cliff: how much the layers differ in height (hard ones stand '
+                                               'out, soft ones worn back) and how deep the lines are scored')
+    ann['r_wave'] = FloatProperty(name='Wave', default=0.5, min=0.0, max=1.0, update=_rough_changed,
+                                  description='Layered Cliff: how much the lines wander (0 = straight)')
+    ann['r_lturn'] = FloatProperty(name='Line Turn', default=0.0, min=-math.pi / 2, max=math.pi / 2, subtype='ANGLE',
+                                   update=_rough_changed,
+                                   description='Layered Cliff: the lines\' direction - 0 = along the rise (down the '
+                                               'cliff), 90 = across it')
     ann['r_cell'] = FloatProperty(default=0.0, options={'HIDDEN'})          # (mean face edge of the base patch)
     return ann
 
@@ -1145,10 +1154,12 @@ def _draw_cliff(box, p):
     col.prop(p, 'r_height')
     _draw_compass(box, p)
     col = box.column(align=True)
-    col.label(text='Plates (stacked)')
-    col.prop(p, 'r_layer', text='Plate Thickness')
-    col.prop(p, 'r_dip', text='Plate Tilt')
-    col.prop(p, 'r_depth', text='Wavy Outlines')
+    col.label(text='Rock Layers (lines)')
+    col.prop(p, 'r_layer', text='Line Spacing')
+    col.prop(p, 'r_depth', text='Line Depth')
+    col.prop(p, 'r_dip', text='Layer Lean')
+    col.prop(p, 'r_wave')
+    col.prop(p, 'r_lturn')
     col = box.column(align=True)
     col.label(text='Rock')
     col.prop(p, 'r_feature', text='Joint Size')
@@ -1191,7 +1202,10 @@ def _draw_rough(box, p):
         return
     col = box.column(align=True)
     col.prop(p, 'r_height')
-    col.prop(p, 'r_ramp')
+    if p.r_profile == 'CARAPACE':
+        col.prop(p, 'r_ramp', text='Lip Width')      # (0.24.165 the raised outline's width)
+    else:
+        col.prop(p, 'r_ramp')
     col.row(align=True).prop(p, 'r_profile', expand=True)
     if p.r_profile == 'CARAPACE':                     # 0.24.163 Rim + Dome
         row = col.row(align=True)

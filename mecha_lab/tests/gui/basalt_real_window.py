@@ -6,7 +6,8 @@ a sea cliff ("절벽의 옆면 같은 돌의 깊이 차이가 윗면에") and a 
   2. a REAL Free Draw outline: basalt columns rising east (the compass default)
   3. a REAL click on the window's "N": they rise north instead
   4. a REAL drag on the window's Slope: flatter (rebuilt once the drag stops)
-  5. a REAL click on "Layered Cliff" (the plate selected): rock plates stacked one on another
+  5. a REAL click on "Layered Cliff" (the plate selected): rock layers in long lines running down the cliff (north
+     here; 0.24.165 - before that, stacked plates)
   6. a REAL click on "Creature Carapace": a raised lip along the outline, a groove, the middle up again
   7. shots: solid with the wireframe, Cycles
 """
@@ -308,13 +309,17 @@ def flow():
         yield from press(it)
     yield 2.0
     co, top, d = evaluated_top(A)
-    zz = co[top, 2]
-    hist, _edges = np.histogram(zz, bins=int(max(zz.max() / (p.r_layer * 0.1), 10)))
-    peaks = int(((hist[1:-1] > hist[:-2]) & (hist[1:-1] > hist[2:]) & (hist[1:-1] > len(zz) * 0.01)).sum())
+    q = co[top & (d > p.r_ramp * 0.55)]               # (0.24.165 lines down the cliff: here north, along y)
+    ij = np.round(q[:, :2] / 0.03).astype(int)
+    keys, inv = np.unique(ij, axis=0, return_inverse=True)
+    zm = np.bincount(inv.ravel(), q[:, 2]) / np.bincount(inv.ravel())
+    cell = {tuple(k): z_ for k, z_ in zip(keys, zm)}
+    dx = float(np.mean([abs(cell[(a_ + 1, b_)] - z_) for (a_, b_), z_ in cell.items() if (a_ + 1, b_) in cell]))
+    dy = float(np.mean([abs(cell[(a_, b_ + 1)] - z_) for (a_, b_), z_ in cell.items() if (a_, b_ + 1) in cell]))
     log('5 cliff cell', it is not None, '- style', p.r_style, 'modifier', A.modifiers.get(pr.MOD) is not None,
-        '- the top at', peaks, 'plate levels (Plate Thickness', round(p.r_layer * 1000), 'mm)')
-    res['5 a REAL click on "Layered Cliff": rock plates stacked one on another (the top at several plate levels)'] = (
-        it is not None and p.r_style == 'CLIFF' and A.modifiers.get(pr.MOD) is not None and peaks >= 3)
+        '- height change across the lines (x)', round(dx * 1000, 1), 'along them (y)', round(dy * 1000, 1), 'mm a cell')
+    res['5 a REAL click on "Layered Cliff": rock layers in lines running down the cliff (north here)'] = (
+        it is not None and p.r_style == 'CLIFF' and A.modifiers.get(pr.MOD) is not None and dx > 2.5 * dy)
     shot('3_cliff.png')
     # 6: a REAL click on "Creature Carapace"
     it = yield from scrolled_item('Creature Carapace')

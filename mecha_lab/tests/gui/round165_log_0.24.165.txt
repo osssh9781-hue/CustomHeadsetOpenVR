@@ -1,0 +1,19 @@
+1 cliff cell True - plate Slab_Rough style CLIFF - across / along the lines 3.28
+shot 1_cliff_lines.png True
+1b Line Turn cell True turn 0 -> 90 - across / along now 3.03
+shot 2_cliff_turned.png True
+2 carapace cell True - lip width 46 mm = 1.6 % of the plate - lip 59 groove 34 middle 199 mm
+shot 3_carapace.png True
+3 Edge Spikes cell True - spikes 0 -> 14
+3b plate Ball_CreaturePlate - spikes 14 - roots at 0.84 - 0.98 of the plate's reach that way (1 = its edge)
+shot 4_spikes.png True
+4 Key cell True - style KEY - parts ['Block.A', 'Block.B'] closed [True, True] - keys 1 style KEY width 15.0 mm
+shot 5_key.png True
+5 Scale Parts cell True - Scale Round True outline line (a ridge in its profile) True - lines 1
+shot 6_scales.png True
+PASS 1 a REAL click on "Layered Cliff" + a REAL outline: long lines down the cliff; a REAL drag on "Line Turn": they turn
+PASS 2 a REAL click on "Creature Carapace": a thin lip along the outline (under 2 % of the plate), a groove, the middle up
+PASS 3 a REAL drag on "Edge Spikes" + a REAL outline on a ball: a plate with that many spikes, on its outline only
+PASS 4 a REAL click on "Key" + a REAL Shift + drag across a block: two closed parts, one square key
+PASS 5 a REAL click on "Scale Parts" + a REAL line on the ball: scales laid, each with a line round its outline
+5/5 passed

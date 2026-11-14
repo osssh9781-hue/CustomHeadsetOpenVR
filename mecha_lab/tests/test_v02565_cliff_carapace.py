@@ -1,9 +1,9 @@
 """0.24.163 (user, with two photos: a sea cliff - "절벽의 옆면 같은 돌의 깊이 차이가 윗면에 있어야" - and a rock creature's
 carapace - "테두리 부분이 외곽 라인 잡듯이 조금 튀어나오고 가운데는 다시 볼록하게 ... 내부는 디테일이 많으면 안 돼, 외곽 부분만
 라인, 내부는 릿지 같고"; "높이는 동서남북 기준으로 돌릴 수 있게"): Plate Detail 4's Layered Cliff (a sea cliff's face on the
-top: rock plates stacked one on another, set back inward, wavy outlines - the user's sketch "바위 옆 단면이 판이
-겹겹" - rising toward a compass direction) and Creature
-Carapace (a raised lip along the outline with lines on it, a groove inside, the middle a smooth ridge).  Measured on the
+top; 0.24.165 "좀 더 세로로 그어져야 될 거 같아 - 저렇게 패턴이 아니라": rock layers standing on edge, long lines
+running down the cliff - rising toward a compass direction) and Creature Carapace (a raised lip along the outline with
+lines on it, a groove inside, the middle a smooth ridge; 0.24.165 "외곽 라인이 너무 두꺼워": the lip thinner).  Measured on the
 evaluated mesh; outlines through a fixed top view.  The real clicks: tests/gui/basalt_real_window.py."""
 import math
 
@@ -69,62 +69,93 @@ p = cl.mch_pdetail
 e = ev(cl)
 top = (e[pr.TOP_ATTR] > 0.5) & (e[pr.D_ATTR] > p.r_ramp * 1.2)
 z = e['co'][top, 2]
-check(f'Layered Cliff: a live plate with the rough plate\'s modifier, style Cliff (strata, the compass) - top from '
+check(f'Layered Cliff: a live plate with the rough plate\'s modifier, style Cliff (rock layers, the compass) - top from '
       f'{z.min() * 1000:.0f} to {z.max() * 1000:.0f} mm', pd.is_detail(cl) and p.r_style == 'CLIFF'
       and cl.modifiers.get(pr.MOD) is not None and z.max() > p.r_height * 0.8)
 xs = e['co'][top]
 cx = corr(xs[:, 0], xs[:, 2])
 check(f'...rising toward the compass direction (east by default: height vs x {cx:.2f})', cx > 0.3, cx)
-# stacked plates (user's sketch: "바위 옆 단면이 판이 겹겹"): the top in steps Plate Thickness high - most of it at a
-# whole number of plates (tilted a little) - the outermost plate one thick at the outline, higher plates set back inward
+# 0.24.165 (user: "좀 더 세로로 그어져야 될 거 같아 - 저렇게 패턴이 아니라"): rock layers standing on edge - long lines
+# running down the cliff (along the rise), not the stacked plates' rings
+
+
+def aniso(e_, res=0.03):
+    """Mean height change between neighbouring cells of a grid on the top: along x, along y."""
+    t_ = (e_[pr.TOP_ATTR] > 0.5) & (e_[pr.D_ATTR] > p.r_ramp * 1.2)
+    q = e_['co'][t_]
+    ij = np.round(q[:, :2] / res).astype(int)
+    keys, inv = np.unique(ij, axis=0, return_inverse=True)
+    zm = np.bincount(inv.ravel(), q[:, 2]) / np.bincount(inv.ravel())
+    cell = {tuple(k): z_ for k, z_ in zip(keys, zm)}
+    dx = [abs(cell[(a + 1, b_)] - z_) for (a, b_), z_ in cell.items() if (a + 1, b_) in cell]
+    dy = [abs(cell[(a, b_ + 1)] - z_) for (a, b_), z_ in cell.items() if (a, b_ + 1) in cell]
+    return float(np.mean(dx)), float(np.mean(dy))
+
+
+ax_, ay_ = aniso(e)
+check(f'...in lines running down the cliff (east): the height changes across them {ay_ / ax_:.1f} x as much as along '
+      f'them ({ay_ * 1000:.1f} vs {ax_ * 1000:.1f} mm a cell)', ay_ > 2.5 * ax_, (ax_, ay_))
+
+
+def lines_across(e_, spacing):
+    """How many lines a strip across the middle crosses: its height (binned along y) wiggling round its own running
+    mean over two spacings."""
+    t_ = (e_[pr.TOP_ATTR] > 0.5) & (e_[pr.D_ATTR] > p.r_ramp * 0.55)      # (the lines reach in to half the edge)
+    q = e_['co'][t_]
+    strip = q[np.abs(q[:, 0] - (-2.5)) < spacing * 0.5]
+    res = spacing / 8.0
+    iy = np.round(strip[:, 1] / res).astype(int)
+    keys, inv = np.unique(iy, return_inverse=True)
+    zm = np.bincount(inv.ravel(), strip[:, 2]) / np.bincount(inv.ravel())
+    k = 16
+    run = np.convolve(zm, np.ones(k) / k, mode='same')
+    r_ = (zm - run)[k:-k]
+    return int((np.diff(np.sign(r_)) != 0).sum())
+
+
 lay = p.r_layer
-
-
-def levels(e_):
-    t_ = (e_[pr.TOP_ATTR] > 0.5)
-    zz = e_['co'][t_, 2]
-    return zz, e_[pr.D_ATTR][t_]
-
-
-zz, dd = levels(e)
-hist, edges_ = np.histogram(zz, bins=int(max(zz.max() / (lay * 0.1), 10)))
-peaks = int(((hist[1:-1] > hist[:-2]) & (hist[1:-1] > hist[2:]) & (hist[1:-1] > len(zz) * 0.01)).sum())
-check(f'...plates stacked: the top\'s heights gather at {peaks} levels (about every Plate Thickness, '
-      f'{lay * 1000:.0f} mm), not spread evenly', peaks >= 3, peaks)
-ring = (dd > lay * 0.7) & (dd < lay * 1.5)               # (in from the outline: Chips bite up to about half a plate)
-inner = dd > p.r_ramp * 0.8
-h_ring, h_in = float(np.median(zz[ring])), float(np.median(zz[inner]))
-check(f'...the outermost plate about one thick at the outline ({h_ring * 1000:.0f} mm, Plate Thickness {lay * 1000:.0f} mm), '
-      f'the plates set back inward stand higher ({h_in * 1000:.0f} mm)', 0.4 * lay < h_ring < 1.6 * lay and h_in > 3 * lay,
-      (h_ring, h_in))
+n1 = lines_across(e, lay)
 p.r_layer = lay * 0.5
-zz2, _dd2 = levels(ev(cl))
-hist2, _e2 = np.histogram(zz2, bins=int(max(zz2.max() / (lay * 0.05), 10)))
-peaks2 = int(((hist2[1:-1] > hist2[:-2]) & (hist2[1:-1] > hist2[2:]) & (hist2[1:-1] > len(zz2) * 0.005)).sum())
-check(f'...Plate Thickness halved: more, thinner plates ({peaks} -> {peaks2} levels)', peaks2 > peaks, (peaks, peaks2))
+n2 = lines_across(ev(cl), lay * 0.5)
+check(f'...Line Spacing halved: more lines across the middle ({n1} -> {n2} turns)', n2 > n1 * 1.4, (n1, n2))
 p.r_layer = lay
+p.r_lturn = math.radians(90.0)
+bx, by = aniso(ev(cl))
+check(f'...Line Turn 90: the lines run across the cliff instead (change along x {bx / by:.1f} x along y)', bx > 2.0 * by,
+      (bx, by))
+p.r_lturn = 0.0
 h_a = ev(cl)['co'][top, 2]
-p.r_depth = p.r_depth * 2.0
+p.r_wave = 0.0
 h_b = ev(cl)['co'][top, 2]
-check(f'...Wavy Outlines: the plates\' outlines change ({np.abs(h_a - h_b).mean() * 1000:.1f} mm on average)',
-      np.abs(h_a - h_b).mean() > 0.1 * lay)
-p.r_depth = p.r_depth * 0.5
+check(f'...Wave 0: straight lines (the top changes {np.abs(h_a - h_b).mean() * 1000:.1f} mm on average)',
+      np.abs(h_a - h_b).mean() > 0.05 * p.r_depth)
+p.r_wave = 0.5
+dep0, dip0 = p.r_depth, p.r_dip
+p.r_depth, p.r_dip = 0.0, 0.0
+cx0, cy0 = aniso(ev(cl))
+check(f'...Line Depth 0 and Layer Lean 0: no lines (across / along {cy0 / max(cx0, 1e-9):.1f})', cy0 < 1.6 * cx0, (cx0, cy0))
+p.r_depth, p.r_dip = dep0, dip0
 for key, axis, sign in (('N', 1, 1), ('W', 0, -1)):
     pick(cl)
     bpy.ops.mch.pdetail_compass(direction=key)
     e2 = ev(cl)
-    t2 = (e2[pr.TOP_ATTR] > 0.5) & (e2[pr.D_ATTR] > p.r_ramp * 1.2)
-    c2 = corr(e2['co'][t2, axis], e2['co'][t2, 2]) * sign
-    check(f'...the {key} button: rising toward {"-+"[sign > 0]}{"xy"[axis]} ({c2:.2f})', c2 > 0.3, c2)
+    t2 = (e2[pr.TOP_ATTR] > 0.5) & (e2[pr.D_ATTR] > p.r_ramp * 0.55)
+    a_ = e2['co'][t2, axis] * sign
+    lo_, hi_ = np.quantile(a_, [1 / 3, 2 / 3])
+    zz_ = e2['co'][t2, 2]
+    rise_ = float(np.median(zz_[a_ > hi_]) - np.median(zz_[a_ < lo_]))
+    check(f'...the {key} button: rising toward {"-+"[sign > 0]}{"xy"[axis]} (that third {rise_ * 1000:.0f} mm higher than '
+          f'the other end\'s)', rise_ > 0.15 * p.r_height * p.r_slope, rise_)
+nx, ny = aniso(ev(cl))
+check(f'...and the lines turn with it (rising west: across / along {ny / nx:.1f})', ny > 2.0 * nx, (nx, ny))
 p.r_slope = 0.0
-dip0, dep0 = p.r_dip, p.r_depth
-p.r_dip = 0.0                                                       # (and the plates not tilted, not wavy: level)
 p.r_depth = 0.0
+p.r_dip = 0.0
 e3 = ev(cl)
 t3 = (e3[pr.TOP_ATTR] > 0.5) & (e3[pr.D_ATTR] > p.r_ramp * 1.2)
-check(f'...Slope 0, Plate Tilt 0, Wavy 0: level (height vs x {corr(e3["co"][t3, 0], e3["co"][t3, 2]):.2f}, vs y {corr(e3["co"][t3, 1], e3["co"][t3, 2]):.2f})',
+check(f'...Slope 0, no lines: level (height vs x {corr(e3["co"][t3, 0], e3["co"][t3, 2]):.2f}, vs y {corr(e3["co"][t3, 1], e3["co"][t3, 2]):.2f})',
       abs(corr(e3['co'][t3, 0], e3['co'][t3, 2])) < 0.3 and abs(corr(e3['co'][t3, 1], e3['co'][t3, 2])) < 0.3)
-p.r_dip, p.r_depth = dip0, dep0
+p.r_depth, p.r_dip = dep0, dip0
 pick(cl)
 n_ev = len(cl.evaluated_get(C.evaluated_depsgraph_get()).data.polygons)
 bpy.ops.mch.pdetail_apply()
@@ -147,6 +178,8 @@ def at(lo, hi):
 
 
 lip, groove, mid, crest = at(0.85 * w, 1.15 * w), at(2.0 * w, 2.4 * w), at(0.45 * deep, 0.55 * deep), at(0.92 * deep, deep + 1)
+check(f'Creature Carapace: the lip thin (Lip Width {w * 1000:.0f} mm = {w / q.size * 100:.1f} % of the plate\'s size; '
+      f'0.24.163 had 3.5 %)', w / q.size < 0.02, (w, q.size))
 check(f'Creature Carapace: a raised lip along the outline ({lip * 1000:.0f} mm), a groove inside it ({groove * 1000:.0f} mm), '
       f'then up again to the middle ({mid * 1000:.0f} -> {crest * 1000:.0f} mm)', q.r_profile == 'CARAPACE'
       and lip > groove * 1.2 and crest > mid > groove and crest > lip, (lip, groove, mid, crest))

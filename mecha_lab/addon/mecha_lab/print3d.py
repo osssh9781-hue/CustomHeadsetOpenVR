@@ -455,20 +455,26 @@ def depth_field(outer, holes, res=48):
     return pts, d
 
 
-def place_pins(pieces, r, count):
-    """Pin centres (2D) on each piece: as deep in it as can be, spread apart.  ``count`` 'AUTO' = 2 where two fit (so
-    the parts cannot turn), else 1.  Returns ([(x, y)], pieces with no room)."""
+def place_pins(pieces, r, count, auto_n=2, owners=None):
+    """Pin centres (2D) on each piece: as deep in it as can be, spread apart.  ``count`` 'AUTO' = ``auto_n`` where they
+    fit (round pins: 2, so the parts cannot turn; a square key: 1), else fewer.  ``owners``: a list given gets each
+    pin's piece index.  Returns ([(x, y)], pieces with no room)."""
     out, missed = [], 0
     need = r * 1.9                                   # (the hole and a wall round it)
-    for outer, holes in pieces:
+    for pi, (outer, holes) in enumerate(pieces):
         pts, d = depth_field(outer, holes)
         ok = d >= need
         if not ok.any():
             missed += 1
             continue
         cand, cd = pts[ok], d[ok]
-        want = 2 if count == 'AUTO' else int(count)
-        chosen = [cand[int(np.argmax(cd))]]
+        want = auto_n if count == 'AUTO' else int(count)
+        if want == 1:                                # (one: of the deepest places, the one nearest the middle)
+            mid = np.asarray(outer, float).mean(0)
+            near = cd >= cd.max() * 0.97
+            chosen = [cand[near][int(np.argmin(np.linalg.norm(cand[near] - mid, axis=1)))]]
+        else:
+            chosen = [cand[int(np.argmax(cd))]]
         while len(chosen) < want:
             sep = np.min(np.linalg.norm(cand[:, None, :] - np.array(chosen)[None], axis=2), 1)
             good = sep >= r * 3.5
@@ -477,20 +483,35 @@ def place_pins(pieces, r, count):
             score = np.where(good, sep + 0.6 * cd, -1.0)
             chosen.append(cand[int(np.argmax(score))])
         out.extend(tuple(c) for c in chosen)
+        if owners is not None:
+            owners.extend([pi] * len(chosen))
     return out, missed
 
 
 def _cylinder(c, n, r, z0, z1, chamfer0=0.0, chamfer1=0.0, segs=32):
     """A closed cylinder along ``n`` from c + n z0 to c + n z1, radius r, its ends chamfered by chamfer0 / chamfer1."""
-    n, u, w = _basis(n)
     rings = [(z0, r - chamfer0)] if chamfer0 > 0 else []
     rings += [(z0 + chamfer0, r), (z1 - chamfer1, r)]
     rings += [(z1, r - chamfer1)] if chamfer1 > 0 else []
+    return _solid(c, n, rings, segs)
+
+
+def _solid(c, n, rings, segs=32, axis=None):
+    """A closed solid along ``n`` through ``rings`` [(z, size)]: round (``segs`` sides, size = radius), or - ``segs`` 4 -
+    a square, size = its half width, one side along ``axis``."""
+    n, u, w = _basis(n)
+    if axis is not None:
+        a = Vector(axis) - n * Vector(axis).dot(n)
+        if a.length > 1e-9:
+            u = a.normalized()
+            w = n.cross(u)
+    square = segs == 4
     verts, faces = [], []
     for z, rr in rings:
         for k in range(segs):
-            a = 2 * math.pi * k / segs
-            verts.append(Vector(c) + n * z + (u * math.cos(a) + w * math.sin(a)) * rr)
+            a = 2 * math.pi * k / segs + (math.pi / 4 if square else 0.0)
+            rad = rr * (math.sqrt(2.0) if square else 1.0)                  # (a square's corner)
+            verts.append(Vector(c) + n * z + (u * math.cos(a) + w * math.sin(a)) * rad)
     for i in range(len(rings) - 1):
         for k in range(segs):
             k2 = (k + 1) % segs
@@ -555,9 +576,13 @@ def _set_origin(ob):
     ob.location = Vector(c)
 
 
+KEY_TAPER = 0.15            # 0.24.165 a square key 15 % narrower at its tip than at the cut (it finds its socket)
+
+
 def pin_size(context, pieces):
-    """(radius, length out of the cut) for the pins: set in the window, or Auto from the cut (the deepest
-    point's depth from the cut's border x 0.25, 1.5 - 8 mm across)."""
+    """(radius - a Key: half its width -, length out of the cut) for the pins: set in the window, or Auto from the cut
+    (the deepest point's depth from the cut's border: round pins x 0.25, 1.5 - 8 mm across, twice as long; a key
+    x 0.3, 2 - 15 mm wide, 1.2 x as long)."""
     pg = context.scene.mch_print
     if not pg.pin_auto:
         return blender_units(context, pg.pin_diameter / 2000.0), blender_units(context, pg.pin_length / 1000.0)
@@ -566,9 +591,23 @@ def pin_size(context, pieces):
         _p, d = depth_field(outer, holes, 32)
         if len(d):
             deep = max(deep, float(d.max()))
+    if pg.pin_style == 'KEY':
+        r = max(min(deep * 0.3, blender_units(context, 0.0075)), blender_units(context, 0.001))
+        return r, r * 2.4
     r = min(deep * 0.25, blender_units(context, 0.004))               # (8 mm across at most)
     r = max(r, blender_units(context, 0.00075))                       # (1.5 mm at least)
     return r, r * 4.0
+
+
+def piece_axis(outer):
+    """The long way of a piece of the cut (2D, unit): its outline's main axis - a key lies along it."""
+    pts = np.asarray(outer, float)
+    if len(pts) < 3:
+        return (1.0, 0.0)
+    q = pts - pts.mean(0)
+    vals, vecs = np.linalg.eigh(q.T @ q)
+    a = vecs[:, int(np.argmax(vals))]
+    return (float(a[0]), float(a[1]))
 
 
 def cut_with_pins(context, ob, co, n, pg=None):
@@ -586,7 +625,11 @@ def cut_with_pins(context, ob, co, n, pg=None):
         pieces = islands(loops2d)
         r, length = pin_size(context, pieces)
         tol = blender_units(context, pg.clearance / 1000.0)
-        centres, missed = place_pins(pieces, r + tol, pg.pin_count)
+        key = pg.pin_style == 'KEY'
+        owners = []
+        centres, missed = place_pins(pieces, (r + tol) * (math.sqrt(2.0) if key else 1.0), pg.pin_count,
+                                     1 if key else 2, owners)       # (a square key cannot turn: one is enough)
+        axes = [piece_axis(pieces[o][0]) for o in owners]
         neg_me, c1 = _half(me, co, n, False)
         pos_me, c2 = _half(me, co, n, True)
     finally:
@@ -607,9 +650,24 @@ def cut_with_pins(context, ob, co, n, pg=None):
         parts.append(part)
     neg, pos = parts
     world = [(co + u * x + w * y) for x, y in centres]
+    world_axes = [(u * ax + w * ay) for ax, ay in axes]
     pins = []
     ch = min(r * 0.3, length * 0.2)
-    if centres and pg.pin_style == 'PEG':
+    if centres and key:
+        # 0.24.165 (user, with photos of a Dovetail Key add-on: "레퍼런스로 준 거 참고해서"): a square key on the part
+        # below - along its piece of the cut, narrowing to its tip, the tip chamfered - and a square socket a
+        # Clearance wider all round (and deeper) in the part above, narrowing the same way
+        tip = r * (1.0 - KEY_TAPER)
+        ch = min(r * 0.25, length * 0.2)
+        embed = min(r * 1.5, length)
+        at = r + (tip - r) * (length - ch) / length
+        keys = _mesh('MCH_Keys', [_solid(c, n, [(-embed, r), (0.0, r), (length - ch, at), (length, at - ch * 0.7)], 4, a)
+                                  for c, a in zip(world, world_axes)])
+        sockets = _mesh('MCH_Sockets', [_solid(c, n, [(-r * 0.05, r + tol), (0.0, r + tol), (length + tol, tip + tol)], 4, a)
+                                        for c, a in zip(world, world_axes)])
+        _boolean(context, neg, keys, 'UNION')
+        _boolean(context, pos, sockets, 'DIFFERENCE')
+    elif centres and pg.pin_style == 'PEG':
         embed = min(r * 1.5, length)
         pegs = _mesh('MCH_Pegs', [_cylinder(c, n, r, -embed, length, 0.0, ch) for c in world])
         holes = _mesh('MCH_Holes', [_cylinder(c, n, r + tol, -r * 0.05, length + tol) for c in world])
@@ -628,7 +686,7 @@ def cut_with_pins(context, ob, co, n, pg=None):
             pin[PIN_KEY] = ob.name
             pins.append(pin)
     info = json.dumps({'pins': [list(c) for c in world], 'normal': list(n), 'radius': r, 'length': length,
-                       'clearance': tol, 'style': pg.pin_style})
+                       'clearance': tol, 'style': pg.pin_style, 'axes': [list(a) for a in world_axes]})
     for o in parts:
         o['mch_print_pins'] = info                    # (where the pins went - world space at the cut)
     for o in parts + pins:
@@ -642,11 +700,12 @@ def cut_with_pins(context, ob, co, n, pg=None):
     for o in parts + pins:
         o.select_set(True)
     context.view_layer.objects.active = pos
-    style = 'peg + hole' if pg.pin_style == 'PEG' else 'dowel pins to print'
-    msg = (f'Cut "{ob.name}" into 2 parts with {len(centres)} pin{"s" if len(centres) != 1 else ""} ({style}, '
+    style = {'PEG': 'peg + hole', 'DOWEL': 'dowel pins to print', 'KEY': 'square key + socket'}[pg.pin_style]
+    what = 'key' if key else 'pin'
+    msg = (f'Cut "{ob.name}" into 2 parts with {len(centres)} {what}{"s" if len(centres) != 1 else ""} ({style}, '
            f'{fmt(context, r * 2)} wide, {fmt(context, length)} long, {fmt(context, tol)} clearance)')
     if missed:
-        msg += f'; {missed} piece{"s" if missed > 1 else ""} of the cut too thin for a pin'
+        msg += f'; {missed} piece{"s" if missed > 1 else ""} of the cut too thin for a {what}'
     if not (c1 and c2):
         msg += '; the part was not closed - check the cut faces'
     return neg, pos, pins, msg
@@ -799,9 +858,12 @@ class MCH_PG_Print(bpy.types.PropertyGroup):
                               description='Scale to Height: the height the selected parts get (in the unit above)')
     pin_style: EnumProperty(name='Pins', items=(
         ('PEG', 'Peg', 'A peg on one part, a hole (a Clearance wider) in the other'),
-        ('DOWEL', 'Dowel', 'Holes in both parts and separate pins to print')), default='PEG')
+        ('DOWEL', 'Dowel', 'Holes in both parts and separate pins to print'),
+        ('KEY', 'Key', 'A square key (narrowing to its tip, like a dovetail key) on one part, a square socket a '
+                       'Clearance wider in the other - square, so one is enough to stop it turning')), default='PEG')
     pin_count: EnumProperty(name='Count', items=(
-        ('AUTO', 'Auto', 'Two on each piece of the cut where they fit (it cannot turn), else one'),
+        ('AUTO', 'Auto', 'Round pins: two on each piece of the cut where they fit (it cannot turn), else one; a key: '
+                         'one on each piece'),
         ('1', '1', ''), ('2', '2', ''), ('3', '3', ''), ('4', '4', '')), default='AUTO')
     pin_auto: BoolProperty(name='Auto Size', default=True, description='Pin size from the cut (else the values below)')
     # (in mm - what a printer is set up in; the side panel shows a length in metres with 3 decimals: 0.2 mm read 0.000)
@@ -864,7 +926,10 @@ def draw_cut(layout, context):
     col.row(align=True).prop(pg, 'pin_count', expand=True)
     col.prop(pg, 'pin_auto')
     if not pg.pin_auto:
-        col.prop(pg, 'pin_diameter')
+        if pg.pin_style == 'KEY':
+            col.prop(pg, 'pin_diameter', text='Width (mm)')       # (0.24.165 a square key: its width at the cut)
+        else:
+            col.prop(pg, 'pin_diameter')
         col.prop(pg, 'pin_length')
     col.prop(pg, 'clearance')
     col.prop(pg, 'gap')

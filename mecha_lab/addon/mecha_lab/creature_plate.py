@@ -48,7 +48,8 @@ FEATHER_STYLES = [('VANE', 'Vane', 'A thin blade, knife-thin edges, thicker at t
                   ('RIDGE', 'Ridge', 'A sharp ridge along the middle (a diamond cross-section)'),
                   ('SHAFT', 'Shaft', 'A thin vane with a sharp shaft along the middle, like a feather\'s quill')]
 LIVE_KEYS = ('profile', 'peak', 'end_peak', 'direction', 'edge_round', 'edge_thickness', 'sink', 'outline_smooth',
-             'resolution', 'tip_lift', 'feather_style', 'attach')
+             'resolution', 'tip_lift', 'feather_style', 'attach', 'spikes', 'spike_length', 'spike_angle',
+             'spike_random', 'spike_seed')
 POINT_KEYS = ('outline_smooth', 'resolution', 'profile', 'edge_round', 'feather_style')
 # 0.24.145 (user: "방금 그리면서 시작 부분이나 리프트 값을 조정했으면 다음 긋는 선은 그 값을 기억해야 될 거 아녀, 그리고 블렌더를
 # 끄고 새 프로젝트를 열면 기본값") every value you change on a plate goes on to the next plate (the scene's settings - a
@@ -124,6 +125,22 @@ class MCH_PG_CreaturePlate(bpy.types.PropertyGroup):
     attach: FloatProperty(name='Attach Length', default=0.35, min=0.02, max=0.98, subtype='FACTOR', update=_update,
                           description='Feather: how much of it, from where you started drawing, lies on the body - '
                                       'the rest goes straight out (Lift tilts it up)')
+    # 0.24.165 (user: "크리쳐 플레이트에 외곽에 가시 난 버전도 하나 - 외곽에만 랜덤하게"): spikes along the outline only
+    spikes: IntProperty(name='Edge Spikes', default=0, min=0, soft_max=40, max=200, update=_update,
+                        description='Spikes along the outline only, at random places (0 = none)')
+    spike_length: FloatProperty(name='Spike Length', default=0.0, min=0.0, soft_max=2.0, precision=4, unit='LENGTH',
+                                update=_update, description='How long the spikes are (0 = Auto: from the plate\'s '
+                                                            'height and size); each a little longer or shorter by '
+                                                            'Random')
+    spike_angle: FloatProperty(name='Spike Angle', default=math.radians(30.0), min=0.0, max=math.radians(90.0),
+                               subtype='ANGLE', update=_update,
+                               description='Which way they point: 0 = straight out from the outline along the body, '
+                                           '90 = straight up off it')
+    spike_random: FloatProperty(name='Random', default=0.6, min=0.0, max=1.0, update=_update,
+                                description='How uneven the spikes are: their places along the outline, length, '
+                                            'thickness and lean')
+    spike_seed: IntProperty(name='Seed', default=0, min=0, max=100000, update=_update,
+                            description='Another random set of spikes')
     puff: FloatProperty(default=1.0, options={'HIDDEN'})
     live: BoolProperty(default=False, options={'HIDDEN'})
     last_error: StringProperty(default='', options={'HIDDEN', 'SKIP_SAVE'})
@@ -376,6 +393,92 @@ def feather_points(part, p, peak, end_peak, sink):
     return top, bot
 
 
+SPIKE_SEGS = 12
+SPIKE_TAG = 'mch_cplate_spike'       # (a face attribute on the plate: 1 on the spikes' faces)
+
+
+def spike_spots(rim, cos, count, random, seed):
+    """0.24.165 Places for ``count`` spikes along the outline (rim edges: (u, v, w) - an outline edge and the inside
+    point of its triangle), spread out round it, moved along it at random (``random``).  Returns
+    [(edge index, t along it)]."""
+    import random as _rnd
+    if count <= 0 or not rim:
+        return []
+    lens = [(Vector(cos[v]) - Vector(cos[u])).length for u, v, _w in rim]
+    total = sum(lens)
+    if total <= 1e-12:
+        return []
+    rng = _rnd.Random(seed * 7919 + 17)
+    step = total / count
+    start = rng.random() * step
+    acc, out, k = 0.0, [], 0
+    want = sorted(min(total - 1e-9, max(0.0, start + i * step + (rng.random() - 0.5) * random * 0.9 * step)) % total
+                  for i in range(count))
+    for e, ln in enumerate(lens):
+        while k < len(want) and want[k] <= acc + ln:
+            out.append((e, (want[k] - acc) / max(ln, 1e-12)))
+            k += 1
+        acc += ln
+    return out
+
+
+def add_spikes(bm, rim, top, bot, cos, nrms, p, peak, size):
+    """0.24.165 Edge Spikes: a curved cone at each spot along the outline, its root in the plate's rim, pointing out
+    from the outline (Spike Angle up off the body), length / thickness / lean uneven by Random.  Separate shells laid
+    into the plate (its faces tagged)."""
+    import random as _rnd
+    spots = spike_spots(rim, cos, p.spikes, p.spike_random, p.spike_seed)
+    if not spots:
+        return []
+    rng = _rnd.Random(p.spike_seed * 104729 + 3)
+    base_len = p.spike_length if p.spike_length > 0 else max(peak * 1.6, size * 0.06)
+    made = []
+    for e, t in spots:
+        u, v, w = rim[e]
+        a, b = Vector(cos[u]), Vector(cos[v])
+        n = (Vector(nrms[u]).lerp(Vector(nrms[v]), t)).normalized()
+        along = (b - a)
+        if along.length < 1e-12:
+            continue
+        along.normalize()
+        out = along.cross(n)
+        mid = a.lerp(b, t)
+        if out.dot(mid - Vector(cos[w])) < 0:          # (away from the inside point of the edge's triangle)
+            out = -out
+        out = (out - n * out.dot(n)).normalized()
+        rr = p.spike_random
+        ln = base_len * (1.0 + rr * (rng.random() * 1.2 - 0.6))
+        ang = p.spike_angle + rr * (rng.random() - 0.5) * math.radians(40.0)
+        side = rr * (rng.random() - 0.5) * math.radians(50.0)            # (some lean along the outline)
+        d = (out * math.cos(ang) + n * math.sin(ang))
+        d = (d * math.cos(side) + along * math.sin(side)).normalized()
+        rb = ln * (0.2 + rr * (rng.random() - 0.5) * 0.12)
+        root_top = Vector(top[u].co).lerp(Vector(top[v].co), t)
+        root_bot = Vector(bot[u].co).lerp(Vector(bot[v].co), t)
+        root = root_top.lerp(root_bot, 0.5) - out * rb * 0.8 - d * rb * 0.3   # (its root inside the plate's rim)
+        x = d.orthogonal().normalized()
+        y = d.cross(x)
+        curl = n * ln * 0.12                                               # (curved a little up, like a horn)
+        rings = []
+        for f, rf in ((0.0, 1.0), (0.45, 0.58), (0.8, 0.22)):
+            c = root + d * (ln * f) + curl * (f * f)
+            rings.append([bm.verts.new(c + (x * math.cos(2 * math.pi * k / SPIKE_SEGS)
+                                            + y * math.sin(2 * math.pi * k / SPIKE_SEGS)) * rb * rf)
+                          for k in range(SPIKE_SEGS)])
+        tip = bm.verts.new(root + d * ln + curl)
+        faces = [bm.faces.new(list(reversed(rings[0])))]
+        for r0, r1 in zip(rings, rings[1:]):
+            for k in range(SPIKE_SEGS):
+                k2 = (k + 1) % SPIKE_SEGS
+                faces.append(bm.faces.new((r0[k], r0[k2], r1[k2], r1[k])))
+        for k in range(SPIKE_SEGS):
+            faces.append(bm.faces.new((rings[-1][k], rings[-1][(k + 1) % SPIKE_SEGS], tip)))
+        for f_ in faces:
+            f_.smooth = True
+        made.extend(faces)
+    return made
+
+
 def build_mesh(parts, p, peak, end_peak, carve=False):
     """BMesh (world space) of the plate from the cached point sets.  ``carve`` (0.24.23 Alt engrave): the
     same shape turned into the surface (top = surface - normal * height, bottom a hair above the surface)."""
@@ -387,6 +490,10 @@ def build_mesh(parts, p, peak, end_peak, carve=False):
         hi = Vector([max(c[k] for c in cs) for k in range(3)])
         size = max(size, (hi - lo).length)
     sink = p.sink if p.sink > 0 else size * 0.02
+    spike_faces = []
+    spiky = getattr(p, 'spikes', 0) > 0 and not carve    # (other tools build plates with their own settings)
+    lay = bm.faces.layers.int.new(SPIKE_TAG) if spiky else None   # (made before any face:
+    #                                                                     a new layer drops the faces' Python handles)
     for part in parts:
         pts, tris, nb, cos, nrms, shape = (part[k] for k in ('pts', 'tris', 'nb', 'cos', 'nrms', 'shape'))
         ramp = ramp_values(pts, p.direction, part.get('start'))
@@ -417,14 +524,37 @@ def build_mesh(parts, p, peak, end_peak, carve=False):
             for u, v in ((a, b), (b, c), (c, a)):
                 if u < nb and v < nb:
                     rim.add((u, v))
+        third = {}
+        for a, b, c in tris:
+            for u, v, w in ((a, b, c), (b, c, a), (c, a, b)):
+                third[(u, v)] = w
         for u, v in rim:
             if (v, u) in rim:
                 continue         # an inside edge between two outline points (should not happen: split)
             bm.faces.new((top[v], top[u], bot[u], bot[v])).smooth = True
         inner = [top[i] for i in range(nb, len(pts))]
         bmesh.ops.smooth_vert(bm, verts=inner, factor=0.5, use_axis_x=True, use_axis_y=True, use_axis_z=True)
+        if spiky:                                         # 0.24.165 Edge Spikes (the outline only)
+            edges = sorted((u, v, third[(u, v)]) for u, v in rim if (v, u) not in rim)
+            spike_faces.extend(add_spikes(bm, _chain(edges), top, bot, cos, nrms, p, peak, size))
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    for f_ in spike_faces:
+        f_[lay] = 1
     return bm
+
+
+def _chain(edges):
+    """Outline edges (u, v, w) in order round each loop (so the spikes spread round it, not by index)."""
+    nxt = {u: (u, v, w) for u, v, w in edges}
+    out, seen = [], set()
+    for u, _v, _w in edges:
+        k = u
+        while k in nxt and k not in seen:
+            seen.add(k)
+            e = nxt[k]
+            out.append(e)
+            k = e[1]
+    return out
 
 
 def source(ob):
@@ -628,6 +758,13 @@ def draw(layout, context):
     col = target.column(align=True)
     col.prop(p, 'outline_smooth', slider=True)
     col.prop(p, 'resolution')
+    col = target.column(align=True)                          # 0.24.165 spikes along the outline only
+    col.prop(p, 'spikes')
+    if p.spikes > 0:
+        col.prop(p, 'spike_length')
+        col.prop(p, 'spike_angle')
+        col.prop(p, 'spike_random', slider=True)
+        col.prop(p, 'spike_seed')
     if ob is not None:
         target.operator('mch.cplate_apply', icon='CHECKMARK')
     col = layout.column(align=True)

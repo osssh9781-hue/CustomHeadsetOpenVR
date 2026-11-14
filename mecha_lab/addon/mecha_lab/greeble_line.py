@@ -694,21 +694,34 @@ def _mesh(name, bm, smooth=True):
     return name, me
 
 
-def _dome(bm, rx, ry, h, seg=20, rings=6, shape=None):
+LINE_AT, LINE_W = 0.88, 0.025   # 0.24.165 a scale's outline line: a raised bead this far out (of the radius), this wide
+
+
+def _dome(bm, rx, ry, h, seg=20, rings=6, shape=None, line=0.0):
     """A flat-bottomed dome (Z up, bottom at z = 0) of radii rx, ry and height h; ``shape(x, y) -> (x, y)`` bends its
-    outline (a teardrop, a point)."""
+    outline (a teardrop, a point).  0.24.165 (user: "스케일도 외곽 부분에 살짝 라인 잡아 주면"): ``line`` > 0 - a thin
+    raised line running round just inside the outline (a bead ``line`` x h high, a shallow groove inside it)."""
     import bmesh as _bm
+    ss = [math.cos((math.pi / 2) * j / rings) for j in range(rings)] + [0.0]   # (1 = the rim .. 0 = the top)
+    if line > 0:                                          # (more rings where the line runs)
+        lo = LINE_AT - 4 * LINE_W
+        ss = sorted(set([1.0, 0.95] + [LINE_AT + LINE_W * k * 0.5 for k in range(-6, 3)]
+                        + [x for x in ss if 1e-6 < x < lo - 0.02]) | {0.0}, reverse=True)
     verts = []
-    for j in range(rings + 1):
-        a = (math.pi / 2) * j / rings                     # 0 = the rim, pi/2 = the top
+    for j, sj in enumerate(ss):
+        z = math.sqrt(max(0.0, 1.0 - sj * sj)) * h
+        if line > 0:
+            z += h * line * (math.exp(-((sj - LINE_AT) / LINE_W) ** 2)
+                             - 0.45 * math.exp(-((sj - (LINE_AT - 2.2 * LINE_W)) / LINE_W) ** 2))
         ring = []
-        for i in range(seg if j < rings else 1):
+        for i in range(seg if j < len(ss) - 1 else 1):
             t = 2 * math.pi * i / seg
-            x, y = math.cos(t) * math.cos(a), math.sin(t) * math.cos(a)
+            x, y = math.cos(t) * sj, math.sin(t) * sj
             if shape is not None:
                 x, y = shape(x, y)
-            ring.append(bm.verts.new((x * rx, y * ry, math.sin(a) * h)))
+            ring.append(bm.verts.new((x * rx, y * ry, z)))
         verts.append(ring)
+    rings = len(ss) - 1
     for j in range(rings - 1):
         for i in range(seg):
             bm.faces.new((verts[j][i], verts[j][(i + 1) % seg], verts[j + 1][(i + 1) % seg], verts[j + 1][i]))
@@ -719,27 +732,34 @@ def _dome(bm, rx, ry, h, seg=20, rings=6, shape=None):
     _bm.ops.recalc_face_normals(bm, faces=list(bm.faces))
 
 
+SCALE_LINE = 0.14             # 0.24.165 the built-in scales' outline line (x their height)
+
+
 def _scale_meshes():
     """Five scale shapes, Z up, long side along X (the line), about 1 long: they overlap in rows."""
     import bmesh as _bm
     out = []
+    ln = SCALE_LINE                                      # (0.24.165 each with a thin line round its outline)
     bm = _bm.new()                                       # round, a little narrower at the back
-    _dome(bm, 0.5, 0.42, 0.12, shape=lambda x, y: (x, y * (0.8 + 0.2 * x)))
+    _dome(bm, 0.5, 0.42, 0.12, seg=28, shape=lambda x, y: (x, y * (0.8 + 0.2 * x)), line=ln)
     out.append(_mesh('Scale Round', bm))
     bm = _bm.new()                                       # pointed at the front
-    _dome(bm, 0.5, 0.36, 0.12, shape=lambda x, y: (x, y * (1.0 - 0.75 * max(0.0, x)) * (0.85 + 0.15 * (1 - abs(x)))))
+    _dome(bm, 0.5, 0.36, 0.12, seg=28, shape=lambda x, y: (x, y * (1.0 - 0.75 * max(0.0, x)) * (0.85 + 0.15 * (1 - abs(x)))),
+          line=ln)
     out.append(_mesh('Scale Pointed', bm))
     bm = _bm.new()                                       # a keel down the middle
-    _dome(bm, 0.5, 0.4, 0.1)
-    for v in bm.verts:
-        v.co.z += 0.09 * max(0.0, 1.0 - abs(v.co.y) / 0.12) * (v.co.z > 1e-6)
+    _dome(bm, 0.5, 0.4, 0.1, seg=28, line=ln)
+    for v in bm.verts:                                   # (the keel inside the outline line: not over it)
+        rad = math.hypot(v.co.x / 0.5, v.co.y / 0.4)
+        inside = min(1.0, max(0.0, (LINE_AT - 3 * LINE_W - rad) / 0.2))
+        v.co.z += 0.09 * max(0.0, 1.0 - abs(v.co.y) / 0.12) * (v.co.z > 1e-6) * inside
     out.append(_mesh('Scale Keeled', bm))
     bm = _bm.new()                                       # a hexagon plate (a lizard's belly)
-    _dome(bm, 0.5, 0.45, 0.09, seg=6, rings=3)
+    _dome(bm, 0.5, 0.45, 0.09, seg=6, rings=3, line=ln * 1.3)
     out.append(_mesh('Scale Hex', bm, smooth=False))
     bm = _bm.new()                                       # a big domed scute
-    _dome(bm, 0.5, 0.5, 0.2, seg=24, rings=8, shape=lambda x, y: (math.copysign(abs(x) ** 0.7, x),
-                                                                  math.copysign(abs(y) ** 0.7, y)))
+    _dome(bm, 0.5, 0.5, 0.2, seg=32, rings=8, shape=lambda x, y: (math.copysign(abs(x) ** 0.7, x),
+                                                                  math.copysign(abs(y) ** 0.7, y)), line=ln * 0.8)
     out.append(_mesh('Scale Scute', bm))
     return out
 
