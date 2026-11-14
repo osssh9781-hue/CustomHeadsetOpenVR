@@ -1119,6 +1119,11 @@ def draw_scale_line(layout, context):
     greeble_line.draw(layout, context, 'CREATURE')
 
 
+def draw_feather_line(layout, context):
+    from . import greeble_line
+    greeble_line.draw(layout, context, 'FEATHER')
+
+
 def draw_fur(layout, context):
     from . import creature_fur
     creature_fur.draw(layout, context)
@@ -1147,6 +1152,7 @@ DRAWERS = {
     'GSCULPT': draw_geo_sculpt,
     'GREEBLE': draw_greeble,
     'CGREEBLE': draw_scale_line,
+    'FGREEBLE': draw_feather_line,
     'FUR': draw_fur,
     'WDIRT': _weather_drawer('DIRT'), 'WDUST': _weather_drawer('DUST'), 'WLEAF': _weather_drawer('LEAVES'),
     'WSNOW': _weather_drawer('SNOW'),

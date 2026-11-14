@@ -98,6 +98,7 @@ SPEC = {
     'SMOVE': [(_scene('mch_concept'), 'radius_px'), (_scene('mch_concept'), 'path_hardness'),
               (_scene('mch_concept'), 'path_taper')],
     'CGREEBLE': [(_scene('mch_cgreeble'), 'scale'), (_scene('mch_cgreeble'), 'gap'), (_scene('mch_cgreeble'), 'rows')],
+    'FGREEBLE': [(_scene('mch_fgreeble'), 'length'), (_scene('mch_fgreeble'), 'width'), (_scene('mch_fgreeble'), 'gap')],
     'FUR': [(_fur, 'length'), (_fur, 'density'), (_fur_area, 'lie'), (_fur_area, 'curl'), (_fur_area, 'gather')],
     'GREEBLE': [(_scene('mch_greeble'), 'scale'), (_scene('mch_greeble'), 'gap'), (_scene('mch_greeble'), 'rows')],
     'GSCULPT': [(_scene('mch_geo'), 'brush'), (_scene('mch_geo'), 'size_px'), (_scene('mch_geo'), 'intensity')],

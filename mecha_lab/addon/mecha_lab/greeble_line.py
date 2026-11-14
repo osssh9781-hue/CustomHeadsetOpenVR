@@ -53,8 +53,10 @@ STARTER_TAG = 'mch_greeble_starter'
 STARTER_COLL = 'Greeble Parts'
 SIG_KEY = 'mch_greeble_sig'            # on a line's node group: the parts it was built for
 LIVE_KEYS = ('order', 'axis', 'up', 'turn', 'tilt', 'scale', 'scale_random', 'gap', 'rows', 'row_gap', 'sink',
-             'flip_random', 'turn_random', 'seed', 'stagger', 'edge_shrink')
-KINDS = ('MECH', 'CREATURE')
+             'flip_random', 'turn_random', 'seed', 'stagger', 'edge_shrink',
+             'length', 'width', 'grow_end', 'grow_start', 'length_random')      # (0.24.172 Feather Line's)
+KINDS = ('MECH', 'CREATURE', 'FEATHER')
+KIND_ITEMS = [('MECH', 'Greeble Line', ''), ('CREATURE', 'Scale Line', ''), ('FEATHER', 'Feather Line', '')]
 UP_AXES = {'POS_X': (0, 1.0), 'NEG_X': (0, -1.0), 'POS_Y': (1, 1.0), 'NEG_Y': (1, -1.0), 'POS_Z': (2, 1.0),
            'NEG_Z': (2, -1.0)}
 _BUSY = [False]
@@ -109,6 +111,20 @@ def _props(update):
         'edge_shrink': FloatProperty(name='Edge Rows Smaller', default=0.0, min=0.0, max=0.9, update=update,
                                      description='The rows away from the middle get smaller, step by step (0.5: the '
                                                  'outermost row half size) - each row packed with its own size'),
+        # 0.24.172 Feather Line (user: "길이랑 폭은 내가 조정, 끝부분으로 갈수록 길어지게 하는 거랑 시작 부분이 길어지게 하는 탭
+        # 두 개 - 똑같이 길게 / 한쪽만 짧게, 랜덤 길이 하나 넣어서 큰 틀은 유지하면서 중간중간 좀 달라지게")
+        'length': FloatProperty(name='Length', default=1.0, min=0.05, max=20.0, soft_max=4.0, update=update,
+                                description='The parts\' length (the side along them - a feather\'s quill to tip), x'),
+        'width': FloatProperty(name='Width', default=1.0, min=0.05, max=20.0, soft_max=4.0, update=update,
+                               description='The parts\' width, x'),
+        'grow_end': FloatProperty(name='Longer to End', default=0.0, min=0.0, max=5.0, soft_max=2.0, update=update,
+                                  description='Longer and longer toward the end of the line (1: twice as long at the end)'),
+        'grow_start': FloatProperty(name='Longer at Start', default=0.0, min=0.0, max=5.0, soft_max=2.0, update=update,
+                                    description='Longer toward the start of the line (both the same: all longer alike; '
+                                                'one of them: that end longer, the other short)'),
+        'length_random': FloatProperty(name='Length Random', default=0.0, min=0.0, max=0.9, update=update,
+                                       description='Each part a little longer / shorter at random - the overall '
+                                                   'shape (Longer to End / at Start) kept'),
     }
 
 
@@ -188,10 +204,14 @@ class MCH_PG_Greeble(bpy.types.PropertyGroup):
                                                                'tick them again to mix)')}
 
 
+SETTINGS_ATTR = {'MECH': 'mch_greeble', 'CREATURE': 'mch_cgreeble', 'FEATHER': 'mch_fgreeble'}
+
+
 def settings(context_or_scene, kind='MECH'):
-    """The settings and parts list of Greeble Line (MECH) or Scale Line (CREATURE, 0.24.151)."""
+    """The settings and parts list of Greeble Line (MECH), Scale Line (CREATURE, 0.24.151) or Feather Line
+    (FEATHER, 0.24.172)."""
     sc = getattr(context_or_scene, 'scene', context_or_scene)
-    return getattr(sc, 'mch_cgreeble' if kind == 'CREATURE' else 'mch_greeble', None)
+    return getattr(sc, SETTINGS_ATTR.get(kind, 'mch_greeble'), None)
 
 
 def is_line(ob):
@@ -326,7 +346,9 @@ def placements(line, infos, cfg, unit, nearest=None):
     if not infos or line.length <= 1e-9:
         return np.zeros((0, 3)), np.zeros((0, 4)), np.zeros((0, 3)), np.zeros(0, int)
     ct, st_ = abs(math.cos(cfg['turn'])), abs(math.sin(cfg['turn']))
-    w_mean = float(np.mean([st_ * inf[0] + ct * inf[1] for inf in infos])) * cfg['scale'] * unit
+    lf0, wf0 = cfg.get('length', 1.0), cfg.get('width', 1.0)
+    w_mean = float(np.mean([st_ * inf[0] * lf0 + ct * inf[1] * wf0 for inf in infos])) * cfg['scale'] * unit
+    rng_len = random.Random(int(cfg['seed']) * 977 + 13)      # (its own stream: Length Random leaves the rest as it was)
     layout = row_layout(cfg['rows'], cfg.get('edge_shrink', 0.0), w_mean, cfg['row_gap'])
     for r, (rf, off) in enumerate(layout):
         s = 0.0
@@ -336,7 +358,12 @@ def placements(line, infos, cfg, unit, nearest=None):
             j = k % len(infos) if cfg['order'] == 'SEQ' else rng.randrange(len(infos))
             ln, wd, ht, bottom, sv, axes = infos[j]
             f = cfg['scale'] * unit * rf * (1.0 + rng.uniform(-1.0, 1.0) * cfg['scale_random'])
-            L0, W0, H = ln * f, wd * f, ht * f
+            # 0.24.172 Length / Width, longer toward the end / the start, a little random (the overall shape kept)
+            u_at = min(max(s / max(line.length, 1e-9), 0.0), 1.0)
+            lf = lf0 * (1.0 + cfg.get('grow_end', 0.0) * u_at + cfg.get('grow_start', 0.0) * (1.0 - u_at))
+            lf *= 1.0 + rng_len.uniform(-1.0, 1.0) * cfg.get('length_random', 0.0)
+            wf = wf0
+            L0, W0, H = ln * f * lf, wd * f * wf, ht * f
             # (turned / leaning: what it takes up along and across the line - end to end still)
             L, W = ct * L0 + st_ * W0, st_ * L0 + ct * W0
             L = abs(math.cos(cfg['tilt'])) * L + abs(math.sin(cfg['tilt'])) * H
@@ -378,7 +405,15 @@ def placements(line, infos, cfg, unit, nearest=None):
             if abs(yaw) > 1e-12:                            # (a turn on the surface, about its normal)
                 m = Matrix.Rotation(yaw, 3, n) @ m
             sc = Vector(tuple(sv)) * f
+            ia = max(range(3), key=lambda i_: abs(axes[i_][0]))     # (the part's own axis along it, the one across)
+            ic = max(range(3), key=lambda i_: abs(axes[i_][2]))
+            sc[ia] *= lf
+            sc[ic] *= wf
             local = Vector(tuple(bottom)) * f               # (its bottom middle on the surface, sunk by Sink)
+            local[ia] *= lf
+            local[ic] *= wf
+            if cfg.get('base'):                             # (a feather: its quill's base - its origin - on the line)
+                local[ia] = 0.0
             loc = p - m @ local - n * (cfg['sink'] * H)
             locs.append(tuple(loc))
             quats.append(tuple(m.to_quaternion()))
@@ -390,7 +425,9 @@ def placements(line, infos, cfg, unit, nearest=None):
 
 
 def cfg_of(pg):
-    return {k: getattr(pg, k) for k in LIVE_KEYS}
+    cfg = {k: getattr(pg, k) for k in LIVE_KEYS}
+    cfg['base'] = getattr(pg, 'kind', '') == 'FEATHER'
+    return cfg
 
 
 # ---- the line object -------------------------------------------------------------------------------------------------
@@ -629,7 +666,7 @@ def rebuild(ob, context=None, caster=None):
 def new_line(context, target, pts, nrm, parts, pg, kind='MECH'):
     """A Greeble Line (kind CREATURE: a Scale Line) on ``target`` (its child, its space): ``parts`` along the drawn
     line, settings from ``pg``."""
-    name = 'Scale Line' if kind == 'CREATURE' else 'Greeble Line'
+    name = {'CREATURE': 'Scale Line', 'FEATHER': 'Feather Line'}.get(kind, 'Greeble Line')
     me = bpy.data.meshes.new(name)
     ob = bpy.data.objects.new(name, me)
     colls = target.users_collection or (context.scene.collection,)
@@ -695,7 +732,7 @@ def apply_line(context, ob):
         if ms.is_mech(lm) or cs.is_creature(lm):     # (its edges / crevices measured, as the page's Apply does)
             ms.store_curvature(me)
     kind = getattr(getattr(ob, 'mch_greeble_line', None), 'kind', 'MECH')
-    me.name = ob.name = 'Scales' if kind == 'CREATURE' else 'Greeble Parts'    # (0.24.169 a Scale Line's: Scales)
+    me.name = ob.name = {'CREATURE': 'Scales', 'FEATHER': 'Feathers'}.get(kind, 'Greeble Parts')
     if old.users == 0:
         bpy.data.meshes.remove(old)
     for k in (LINE_KEY, STROKE_KEY):
@@ -965,16 +1002,27 @@ PRESETS = {
                    turn_random=math.radians(4), stagger=True),
     'DETAILS': dict(order='RANDOM', axis='AUTO', up='POS_Z', turn=0.0, tilt=0.0, scale=1.0, scale_random=0.4,
                     gap=0.5, rows=1, row_gap=0.5, sink=0.1, flip_random=False, turn_random=math.pi, stagger=False),
+    # 0.24.172 feathers: across the line (their quills on it), overlapping like shingles, a little lifted
+    'FEATHERS': dict(order='SEQ', axis='X', up='POS_Z', turn=math.radians(-75), tilt=math.radians(-8), scale=1.0,
+                     scale_random=0.0, gap=-0.55, rows=1, row_gap=-0.6, sink=0.0, flip_random=False,
+                     turn_random=math.radians(3), stagger=True),
+    # (the realistic scales: overlapping staggered rows, their free edge back along the line)
+    'REAL_SCALES': dict(order='RANDOM', axis='X', up='POS_Z', turn=math.pi, tilt=math.radians(12), scale=1.0,
+                        scale_random=0.1, gap=-0.4, rows=3, row_gap=-0.15, sink=0.15, flip_random=False,
+                        turn_random=math.radians(4), stagger=True),
 }
 SETS = {'MECH': ('Greeble Parts', 'Starter Parts'), 'SCALES': ('Scale Parts', 'Scale Parts'),
-        'DETAILS': ('Creature Detail Parts', 'Detail Parts')}
+        'DETAILS': ('Creature Detail Parts', 'Detail Parts'), 'FEATHERS': ('Feather Parts', 'Feather Parts'),
+        'REAL_SCALES': ('Real Scale Parts', 'Real Scales')}
+SET_KIND = {'MECH': 'MECH', 'SCALES': 'CREATURE', 'DETAILS': 'CREATURE', 'REAL_SCALES': 'CREATURE',
+            'FEATHERS': 'FEATHER'}
 
 
 def make_starters(context, near=None, which='MECH'):
     """A built-in set of parts in a collection beside the model (``near``), sized to it; added to the parts list
     (``which``: MECH - five machine parts for Greeble Line; SCALES / DETAILS for Scale Line, with their settings)."""
     sc = context.scene
-    kind = 'MECH' if which == 'MECH' else 'CREATURE'
+    kind = SET_KIND.get(which, 'CREATURE')
     st = settings(sc, kind)
     coll_name = SETS[which][0]
     coll = bpy.data.collections.get(coll_name)
@@ -991,12 +1039,16 @@ def make_starters(context, near=None, which='MECH'):
         at = Vector((hi.x + size * (2.0 if which == 'MECH' else 4.0), (lo.y + hi.y) * 0.5, lo.z))
         if which == 'DETAILS':
             at.x += size * 3.0
-    meshes = _starter_meshes() if which == 'MECH' else _scale_meshes() if which == 'SCALES' else _detail_meshes()
+    from . import creature_shapes as cs
+    meshes = (_starter_meshes() if which == 'MECH' else _scale_meshes() if which == 'SCALES' else
+              cs.feather_meshes() if which == 'FEATHERS' else cs.scale_meshes_real() if which == 'REAL_SCALES' else
+              _detail_meshes())
     made = []
     for i, (name, me) in enumerate(meshes):
         ob = bpy.data.objects.new(name, me)
         ob[STARTER_TAG] = 1
-        ob.scale = (size, size, size)
+        k = cs.FEATHER_LENGTHS.get(me.get('mch_shape_id', ''), 1.0) if which == 'FEATHERS' else 1.0
+        ob.scale = (size * k, size * k, size * k)      # (each feather its own length)
         ob.location = at + Vector((0.0, 0.0, i * size * 1.2))
         coll.objects.link(ob)
         made.append(ob)
@@ -1017,10 +1069,11 @@ def make_starters(context, near=None, which='MECH'):
 # ---- 0.24.154 stamps: a part from an outline drawn with Shift -------------------------------------------------------
 
 STAMP_TAG = 'mch_greeble_stamp'           # on a stamp part: its kind (MECH / CREATURE)
-STAMP_COLLS = {'MECH': 'Greeble Stamps', 'CREATURE': 'Scale Stamps'}
-STAMP_NAMES = {'MECH': 'Greeble Stamp', 'CREATURE': 'Scale Stamp'}
-STAMP_PROFILES = {'MECH': ('FLAT', 'CHAMFER', 'BEVEL', 'DOME'), 'CREATURE': ('PUFF', 'RIDGE', 'PILLOW')}
-STAMP_START = {'MECH': 'CHAMFER', 'CREATURE': 'PUFF'}
+STAMP_COLLS = {'MECH': 'Greeble Stamps', 'CREATURE': 'Scale Stamps', 'FEATHER': 'Feather Stamps'}
+STAMP_NAMES = {'MECH': 'Greeble Stamp', 'CREATURE': 'Scale Stamp', 'FEATHER': 'Feather Stamp'}
+STAMP_PROFILES = {'MECH': ('FLAT', 'CHAMFER', 'BEVEL', 'DOME'), 'CREATURE': ('PUFF', 'RIDGE', 'PILLOW'),
+                  'FEATHER': ('PUFF', 'RIDGE', 'PILLOW')}
+STAMP_START = {'MECH': 'CHAMFER', 'CREATURE': 'PUFF', 'FEATHER': 'RIDGE'}
 STAMP_RES = 12
 
 
@@ -1117,7 +1170,7 @@ def make_stamp(context, loops, projector, kind='MECH'):
     profile = stamp_profile(st, kind)
     height = st.stamp_height * min(w, h)
     sc = context.scene
-    base = getattr(sc, 'mch_cbase', None) if kind == 'CREATURE' else getattr(sc, 'mch_base', None)
+    base = getattr(sc, 'mch_cbase', None) if kind in ('CREATURE', 'FEATHER') else getattr(sc, 'mch_base', None)
     if base is None:
         raise cg.CutError('Base Mesh settings missing')
     p = _StampSettings(base, profile, height, st.stamp_edge * height)
@@ -1258,7 +1311,7 @@ class MCH_OT_greeble_stroke(bpy.types.Operator):
     bl_idname = 'mch.greeble_stroke'
     bl_label = 'Greeble Line'
     bl_options = {'REGISTER', 'UNDO'}
-    kind: EnumProperty(items=[('MECH', 'Greeble Line', ''), ('CREATURE', 'Scale Line', '')], default='MECH',
+    kind: EnumProperty(items=KIND_ITEMS, default='MECH',
                        options={'SKIP_SAVE'})
 
     @classmethod
@@ -1288,6 +1341,8 @@ class MCH_OT_greeble_stroke(bpy.types.Operator):
         if not self.parts:
             self.report({'WARNING'}, ('Scale Line: pick parts first (the window: Scale Parts / Detail Parts / Pick '
                                       'Part)') if self.kind == 'CREATURE' else
+                        'Feather Line: pick a feather first (the window: the feather buttons)' if self.kind == 'FEATHER'
+                        else
                         'Greeble Line: pick parts first (the window: Pick Part / Add Selected / Starter Parts)')
             return {'CANCELLED'}
         try:
@@ -1408,7 +1463,7 @@ class MCH_OT_greeble_pick(bpy.types.Operator):
     bl_idname = 'mch.greeble_pick'
     bl_label = 'Pick Greeble Part'
     bl_options = {'REGISTER', 'UNDO'}
-    kind: EnumProperty(items=[('MECH', 'Greeble Line', ''), ('CREATURE', 'Scale Line', '')], default='MECH',
+    kind: EnumProperty(items=KIND_ITEMS, default='MECH',
                        options={'SKIP_SAVE'})
 
     def invoke(self, context, event):
@@ -1472,10 +1527,11 @@ class MCH_OT_greeble_parts(bpy.types.Operator):
                                 ('STARTER', 'Starter Parts', ''), ('USE_PICKED', 'Use Picked Parts', '')],
                          default='ADD_SELECTED', options={'SKIP_SAVE'})
     index: IntProperty(default=-1, options={'SKIP_SAVE'})
-    kind: EnumProperty(items=[('MECH', 'Greeble Line', ''), ('CREATURE', 'Scale Line', '')], default='MECH',
+    kind: EnumProperty(items=KIND_ITEMS, default='MECH',
                        options={'SKIP_SAVE'})
     which: EnumProperty(items=[('MECH', 'Starter Parts', ''), ('SCALES', 'Scale Parts', ''),
-                               ('DETAILS', 'Detail Parts', '')], default='MECH', options={'SKIP_SAVE'})
+                               ('DETAILS', 'Detail Parts', ''), ('FEATHERS', 'Feather Parts', ''),
+                               ('REAL_SCALES', 'Real Scales', '')], default='MECH', options={'SKIP_SAVE'})
 
     def execute(self, context):
         st = settings(context, self.kind)
@@ -1508,7 +1564,7 @@ class MCH_OT_greeble_parts(bpy.types.Operator):
         elif self.action == 'STARTER':
             near = active_line(context)
             near = near.parent if near is not None else context.active_object
-            which = self.which if self.kind == 'CREATURE' else 'MECH'
+            which = self.which if self.kind == 'CREATURE' else 'FEATHERS' if self.kind == 'FEATHER' else 'MECH'
             made = make_starters(context, near if near is not None and near.type == 'MESH' else None, which)
             msg = f'{len(made)} {SETS[which][1].lower()} made beside the model (collection "{SETS[which][0]}") - ' \
                   f'yours to change' + ('; the settings set for them' if which != 'MECH' else '')
@@ -1535,7 +1591,7 @@ class MCH_OT_greeble_stamp_profile(bpy.types.Operator):
     bl_idname = 'mch.greeble_stamp_profile'
     bl_label = 'Stamp Profile'
     bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
-    kind: EnumProperty(items=[('MECH', 'Greeble Line', ''), ('CREATURE', 'Scale Line', '')], default='MECH',
+    kind: EnumProperty(items=KIND_ITEMS, default='MECH',
                        options={'SKIP_SAVE'})
     profile: EnumProperty(items=STAMP_PROFILE_ITEMS, default='CHAMFER', options={'SKIP_SAVE'})
 
@@ -1631,6 +1687,27 @@ class MCH_TOOL_scale_line(bpy.types.WorkSpaceTool):
         draw(layout, context, 'CREATURE')
 
 
+class MCH_TOOL_feather_line(bpy.types.WorkSpaceTool):
+    bl_space_type = 'VIEW_3D'
+    bl_context_mode = 'OBJECT'
+    bl_idname = 'mecha.feather_line'
+    bl_label = 'Mecha Feather Line'
+    bl_description = ('Drag on a creature: feathers along the line, their quills on it, overlapping - 15 feathers, '
+                      'Length / Width, longer toward the end or the start, a little random')
+    bl_icon = 'ops.generic.select_paint'
+    bl_widget = None
+    bl_keymap = (
+        ('mch.greeble_stroke', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, {'properties': [('kind', 'FEATHER')]}),
+        ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None),
+    )
+
+    def draw_settings(context, layout, tool):
+        region = getattr(context, 'region', None)
+        if region is not None and region.type == 'TOOL_HEADER':
+            return
+        draw(layout, context, 'FEATHER')
+
+
 HELP = ('Pick the meshes (Pick Part: click them), then drag on a part',
         'Shift + draw: your own part from the outline (a stamp)',
         'Up: which side faces out of the wall; Along, Turn, Tilt',
@@ -1663,6 +1740,15 @@ def draw(layout, context, kind='MECH'):
     if kind == 'CREATURE':                           # (0.24.151 the built-in sets, each with its settings)
         op(row, 'mch.greeble_parts', 'Scale Parts', action='STARTER', which='SCALES')
         op(row, 'mch.greeble_parts', 'Detail Parts', action='STARTER', which='DETAILS')
+        op(row, 'mch.greeble_parts', 'Real Scales', action='STARTER', which='REAL_SCALES')   # 0.24.172
+        row = col.row(align=True)
+    elif kind == 'FEATHER':                          # 0.24.172 the 15 feathers: a click = that one (the selected line too)
+        from . import creature_shapes as cs
+        cur = feather_in_use(context)
+        col.label(text='Feather (a click: this one - the selected line too)')
+        g = col.grid_flow(row_major=True, columns=3, even_columns=True, align=True)
+        for fid, label, _spec in cs.FEATHERS:
+            g.operator('mch.feather_pick', text=label, depress=fid == cur).feather = fid
         row = col.row(align=True)
     else:
         op(row, 'mch.greeble_parts', 'Starter Parts', action='STARTER')
@@ -1711,6 +1797,11 @@ def draw(layout, context, kind='MECH'):
     col.row(align=True).prop(pg, 'axis', expand=True)
     col.prop(pg, 'turn')
     col.prop(pg, 'tilt')
+    if kind == 'FEATHER':                            # 0.24.172 length / width / longer to the end, at the start / random
+        fc = layout.column(align=True)
+        fc.label(text='Feathers along the line')
+        for k in ('length', 'width', 'grow_end', 'grow_start', 'length_random'):
+            fc.prop(pg, k, slider=k != 'length' and k != 'width')
     for k in ('scale', 'scale_random', 'gap', 'rows', 'row_gap', 'edge_shrink', 'sink', 'turn_random', 'seed'):
         col.prop(pg, k)
     col.prop(pg, 'stagger')
@@ -1729,8 +1820,56 @@ def draw(layout, context, kind='MECH'):
         op(row, 'mch.greeble_parts', 'Use Picked Parts', action='USE_PICKED')
         row.operator('mch.greeble_apply', text='Apply')
     col = layout.column(align=True)
-    for line in (HELP_CREATURE if kind == 'CREATURE' else HELP):
+    for line in (HELP_CREATURE if kind == 'CREATURE' else HELP_FEATHER if kind == 'FEATHER' else HELP):
         col.label(text=line)
+
+
+HELP_FEATHER = ('Pick a feather (or Pick Part), then drag along the creature',
+                'the feathers\' quills on the line, overlapping; Turn: which way they point',
+                'Longer to End / at Start, Length Random; Rows: layered rows',
+                'Select a line to change it; Enter / Apply = real geometry')
+
+
+def feather_in_use(context):
+    """The feather the selected Feather Line (else the next one) uses - its preset id, or ''."""
+    ln = active_line(context)
+    parts = line_parts(ln) if ln is not None and ln.mch_greeble_line.kind == 'FEATHER' else \
+        picked(settings(context, 'FEATHER'))
+    for p in parts:
+        fid = p.data.get('mch_shape_id', '') if p.type == 'MESH' else ''
+        if fid:
+            return fid
+    return ''
+
+
+class MCH_OT_feather_pick(bpy.types.Operator):
+    """Use this feather (the built-in feathers made beside the model the first time); the selected Feather Line
+    takes it at once"""
+    bl_idname = 'mch.feather_pick'
+    bl_label = 'Feather'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    feather: StringProperty(default='CONTOUR')
+
+    def execute(self, context):
+        st = settings(context, 'FEATHER')
+        ob = next((it.ob for it in st.parts if it.ob is not None and it.ob.type == 'MESH'
+                   and it.ob.data.get('mch_shape_id') == self.feather), None)
+        if ob is None:                               # (the set made beside the model, its settings with it)
+            ln = active_line(context)
+            near = ln.parent if ln is not None else context.active_object
+            make_starters(context, near if near is not None and near.type == 'MESH' else None, 'FEATHERS')
+            ob = next((it.ob for it in st.parts if it.ob is not None and it.ob.type == 'MESH'
+                       and it.ob.data.get('mch_shape_id') == self.feather), None)
+        if ob is None:
+            return {'CANCELLED'}
+        for it in st.parts:
+            it.use = it.ob == ob
+        ln = active_line(context)
+        if ln is not None and ln.mch_greeble_line.kind == 'FEATHER':
+            ln.mch_greeble_line.parts_json = json.dumps([ob.name])
+            rebuild(ln, context)
+        self.report({'INFO'}, f'Feather: {ob.name}' + (f' - {ln.name}' if ln is not None else ' (the next line)'))
+        return {'FINISHED'}
 
 
 HELP_CREATURE = ('Scale Parts / Detail Parts (or Pick Part), then drag on the creature',
@@ -1775,7 +1914,8 @@ class MCH_OT_greeble_material(bpy.types.Operator):
 
 
 CLASSES = (MCH_PG_GreeblePart, MCH_PG_GreebleLine, MCH_PG_Greeble, MCH_OT_greeble_stroke, MCH_OT_greeble_pick,
-           MCH_OT_greeble_parts, MCH_OT_greeble_stamp_profile, MCH_OT_greeble_apply, MCH_OT_greeble_material)
+           MCH_OT_greeble_parts, MCH_OT_greeble_stamp_profile, MCH_OT_greeble_apply, MCH_OT_greeble_material,
+           MCH_OT_feather_pick)
 
 
 def register():
@@ -1783,6 +1923,7 @@ def register():
         bpy.utils.register_class(c)
     bpy.types.Scene.mch_greeble = PointerProperty(type=MCH_PG_Greeble)
     bpy.types.Scene.mch_cgreeble = PointerProperty(type=MCH_PG_Greeble)      # (0.24.151 Scale Line's own)
+    bpy.types.Scene.mch_fgreeble = PointerProperty(type=MCH_PG_Greeble)      # (0.24.172 Feather Line's own)
     bpy.types.Object.mch_greeble_line = PointerProperty(type=MCH_PG_GreebleLine)
     if _material_watch not in bpy.app.handlers.depsgraph_update_post:      # 0.24.170
         bpy.app.handlers.depsgraph_update_post.append(_material_watch)
@@ -1800,17 +1941,24 @@ def register():
             bpy.utils.register_tool(MCH_TOOL_scale_line, separator=True, group=False)
         except (ValueError, RuntimeError):
             pass
+    try:
+        bpy.utils.register_tool(MCH_TOOL_feather_line, after={'mecha.scale_line'}, group=False)
+    except (ValueError, RuntimeError, KeyError):
+        try:
+            bpy.utils.register_tool(MCH_TOOL_feather_line, separator=True, group=False)
+        except (ValueError, RuntimeError):
+            pass
 
 
 def unregister():
     while _material_watch in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(_material_watch)
-    for tool in (MCH_TOOL_scale_line, MCH_TOOL_greeble):
+    for tool in (MCH_TOOL_feather_line, MCH_TOOL_scale_line, MCH_TOOL_greeble):
         try:
             bpy.utils.unregister_tool(tool)
         except (ValueError, RuntimeError, KeyError):
             pass
-    for attr, owner in (('mch_greeble', bpy.types.Scene), ('mch_cgreeble', bpy.types.Scene),
+    for attr, owner in (('mch_greeble', bpy.types.Scene), ('mch_cgreeble', bpy.types.Scene), ('mch_fgreeble', bpy.types.Scene),
                         ('mch_greeble_line', bpy.types.Object)):
         if hasattr(owner, attr):
             delattr(owner, attr)
