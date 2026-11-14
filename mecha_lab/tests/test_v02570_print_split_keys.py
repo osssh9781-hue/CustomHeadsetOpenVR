@@ -178,5 +178,21 @@ small = min(two, key=lambda o: closed(o)[1])
 check(f'"Keys Between 2 Parts" with a straight Split\'s halves selected: one key, on the smaller ({info["on"]})',
       'FINISHED' in r_ and len(info['pins']) == 1 and info['on'] == small.name)
 
+# 6) a straight Print Cut near the top (Shift): the key on the smaller part - the top - pointing down into the rest
+ob = block(0.08, 0.08, 0.1, 'Post')
+neg, pos, pins, msg = p3.cut_with_pins(C, ob, (0, 0, 0.075), (0, 0, 1))
+info = json.loads(pos['mch_print_pins'])
+wt = world_co(pos)
+check(f'a straight cut near the top: the key on the smaller top part ({info["on"]}), pointing down '
+      f'({np.round(info["normal"], 3).tolist()}), below the cut {(0.075 - wt[:, 2].min()) * 1000:.1f} mm ({msg})',
+      info['on'] == pos.name and info['normal'][2] < -0.999 and abs((0.075 - wt[:, 2].min()) - info['length']) < 1e-5)
+
+# 7) a part with a material: its parts keep one slot each (not doubled by the key's boolean)
+ob = block(0.08, 0.08, 0.1, 'Painted')
+ob.data.materials.append(bpy.data.materials.new('Paint'))
+neg, pos, pins, msg = p3.cut_with_pins(C, ob, (0, 0, 0.05), (0, 0, 1))
+check(f'a part with one material: its two parts keep one slot each ({len(neg.data.materials)}, {len(pos.data.materials)})',
+      len(neg.data.materials) == 1 and len(pos.data.materials) == 1)
+
 mecha_lab.unregister()
 summary()

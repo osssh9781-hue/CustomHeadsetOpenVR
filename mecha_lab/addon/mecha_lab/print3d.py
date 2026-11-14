@@ -539,6 +539,27 @@ def _mesh(name, parts):
     return me
 
 
+def _drop_empty_slots(me):
+    """0.24.166 Empty material slots the boolean added (the key's faces on them): those faces to the part's first
+    material, the empty slots gone - one slot per material, as the part had."""
+    mats = list(me.materials)
+    if not mats or all(m is not None for m in mats):
+        return
+    first = next((i for i, m in enumerate(mats) if m is not None), None)
+    if first is None:
+        return
+    idx = np.zeros(len(me.polygons), np.int32)
+    me.polygons.foreach_get('material_index', idx)
+    keep = [i for i, m in enumerate(mats) if m is not None]
+    remap = np.array([keep.index(i) if i in keep else keep.index(first) for i in range(len(mats))], np.int32)
+    idx = remap[np.clip(idx, 0, len(mats) - 1)]
+    for i in reversed(range(len(mats))):
+        if mats[i] is None:
+            me.materials.pop(index=i)
+    me.polygons.foreach_set('material_index', idx)
+    me.update()
+
+
 def _boolean(context, ob, cutter_me, op):
     """``ob``'s mesh with ``cutter_me`` added / taken out (Exact)."""
     from . import core_geometry as cg
@@ -558,6 +579,7 @@ def _boolean(context, ob, cutter_me, op):
         if not len(me.materials):                    # (the evaluated copy keeps them already)
             for m in old.materials:
                 me.materials.append(m)
+        _drop_empty_slots(me)                        # (the boolean adds an empty slot for the key / socket faces)
         if old.users == 0:
             bpy.data.meshes.remove(old)
     finally:
@@ -700,9 +722,15 @@ def cut_with_pins(context, ob, co, n, pg=None):
     neg, pos = parts
     world = [(co + u * x + w * y) for x, y in centres]
     world_axes = [(u * ax + w * ay) for ax, ay in axes]
-    pins = _connect(context, neg, pos, world, [n] * len(world), world_axes, r, length, tol, pg.pin_style, ob.name, coll)
-    info = json.dumps({'pins': [list(c) for c in world], 'normal': list(n), 'radius': r, 'length': length,
-                       'clearance': tol, 'style': pg.pin_style, 'axes': [list(a) for a in world_axes]})
+    carrier, other, nk = neg, pos, n                  # 0.24.166 the keys on the smaller part (the lower one if equal)
+    vn, vp = _volume(neg), _volume(pos)
+    if vp < vn * (1.0 - 1e-4):
+        carrier, other, nk = pos, neg, -n
+    pins = _connect(context, carrier, other, world, [nk] * len(world), world_axes, r, length, tol, pg.pin_style, ob.name,
+                    coll)
+    info = json.dumps({'pins': [list(c) for c in world], 'normal': list(nk), 'radius': r, 'length': length,
+                       'clearance': tol, 'style': pg.pin_style, 'axes': [list(a) for a in world_axes],
+                       'on': carrier.name})
     for o in parts:
         o['mch_print_pins'] = info                    # (where the pins went - world space at the cut)
     for o in parts + pins:
