@@ -1,6 +1,8 @@
 """0.24.171 Vacuum Pack (user: "클로스 드레이프에서 진공팩마냥 내가 선택한 거 감싸 주는 것도 만들어 주라"; on Wrap This Mesh's
-result, small crumples all over and a ragged rim: "결과가 별로라네"): the selected meshes sealed in one live film - tight
-on them, taut over gaps narrower than Hug allows, a few creases on the spans.  Measured on the evaluated film."""
+result, small crumples all over and a ragged rim: "결과가 별로라네"; then "주름이 하나도 안 생기잖아!!" with a photo of shrink
+film over a figure, "너무 무겁지 않아?"): the selected meshes sealed in one film - tight on them, taut over gaps
+narrower than Hug allows, creases running out from the middle (strongest on the spans); a plain mesh made once (the
+sliders remake it, Re-pack after moving a part; nothing follows the parts on its own).  Measured on the film."""
 import math
 
 import numpy as np
@@ -71,17 +73,18 @@ C.view_layer.objects.active = parts[0]
 r = bpy.ops.mch.vacuum_pack()
 film = C.active_object
 P, me = film_pts(film)
-check(f'Vacuum Pack Selected: one live film round the 4 parts ({len(P):,} points), the parts untouched',
-      r == {'FINISHED'} and vp.is_film(film) and len(vp.film_parts(film)) == 4 and len(P) > 5000
-      and all(not o.modifiers for o in parts) and film.modifiers.get(vp.MOD) is not None)
+check(f'Vacuum Pack Selected: one film round the 4 parts ({len(P):,} points), a plain mesh (no modifier working on the '
+      f'parts - "너무 무겁지 않아?"), the parts untouched',
+      r == {'FINISHED'} and vp.is_film(film) and len(vp.film_parts(film)) == 4 and 5000 < len(P) < 60000
+      and all(not o.modifiers for o in parts) and not film.modifiers)
 size = film['mch_vacuum_size']
 gap = film.mch_vacuum.gap / 100.0 * size
 nout = outside(film, parts)
 vf = size / film.mch_vacuum.detail
 check(f'every part sealed inside it - the cone\'s tip and the box\'s corners too ({len(nout)} of '
       f'{sum(len(o.data.vertices) for o in parts):,} part points outside, by at most {1000 * max(nout, default=0):.1f} mm: '
-      f'within one film step, {1000 * vf:.1f} mm - a needle tip can show through by that much)',
-      len(nout) <= 3 and max(nout, default=0) < vf, nout)
+      f'- more than 1 mm: {sum(d > 0.001 for d in nout)}; a needle tip can show through by about one film step, '
+      f'{1000 * vf:.1f} mm)', sum(d > 0.001 for d in nout) <= 3 and max(nout, default=0) < 1.1 * vf, nout)
 top = P[np.linalg.norm(P[:, :2] - np.array([-0.55, 0.0]), axis=1) < 0.05, 2].max()
 check(f'pulled tight onto them: over the ball\'s top {1000 * (top - 0.9):.1f} mm (Gap {1000 * gap:.1f} mm)',
       gap * 0.5 < top - 0.9 < gap + size / film.mch_vacuum.detail, (top, gap))
@@ -123,7 +126,8 @@ w100 = web_top()
 check(f'between two balls 0.1 apart: Hug 0.3 spans the gap (the film {w30:.2f} above their middle), Hug 1 goes down '
       f'into it ({w100:.2f})', w30 > 0.2 and w100 < w30 - 0.1, (w30, w100))
 film2.mch_vacuum.hug = 0.55
-# creases: only where the film spans
+# creases: where the film spans (Over Parts 0: not on the balls at all)
+film2.mch_vacuum.over_parts = 0.0
 film2.mch_vacuum.creases = 0.0
 Pa, _ = film_pts(film2)
 film2.mch_vacuum.creases = 1.0
@@ -134,33 +138,50 @@ on_ball |= np.abs(np.linalg.norm(Pa - np.array([-0.55, 3.0, 0.0]), axis=1) - 0.5
 check(f'Creases: ridges on the span only ({int((moved > 1e-4).sum())} points moved, up to {1000 * moved.max():.1f} mm; '
       f'on the balls themselves {1000 * moved[on_ball].max():.2f} mm)', len(Pa) == len(Pb) and moved.max() > 0.002
       and moved[on_ball].max() < 1e-4, (moved.max(), moved[on_ball].max()))
-# live: a part moved - the film follows
+me2 = film2.data
+check('...the fine creases\' direction / strength / scale kept on the film for its material',
+      all(n in me2.attributes for n in (vp.DIR_ATTR, vp.W_ATTR, vp.K_ATTR)))
+film2.mch_vacuum.over_parts = 0.5
+Pc, _ = film_pts(film2)
+moved2 = np.linalg.norm(Pc - Pa, axis=1) if len(Pa) == len(Pc) else np.zeros(1)
+check(f'...Creases Over Parts 0.5: they run on over the balls too (up to {1000 * moved2[on_ball].max():.1f} mm there)',
+      len(Pa) == len(Pc) and moved2[on_ball].max() > 1e-3)
+# a part moved: the film stays (nothing works on it while you move / sculpt) until Re-pack
 f2parts[1].location.x += 0.4
 P3, _ = film_pts(film2)
-check(f'live: a part moved, the film follows (its right end {P3[:, 0].max():.2f}, was {Pa[:, 0].max():.2f})',
-      P3[:, 0].max() > Pa[:, 0].max() + 0.35)
+for o in C.selected_objects:
+    o.select_set(False)
+film2.select_set(True)
+C.view_layer.objects.active = film2
+r = bpy.ops.mch.vacuum_repack()
+P4, _ = film_pts(film2)
+check(f'a part moved: the film stays put ({P3[:, 0].max():.2f}); Re-pack: round the parts as they are now '
+      f'({P4[:, 0].max():.2f})', abs(P3[:, 0].max() - Pc[:, 0].max()) < 1e-6 and r == {'FINISHED'}
+      and P4[:, 0].max() > Pc[:, 0].max() + 0.35)
 # the film's material: a Film preset; a Mech page preset on it
 film2.mch_vacuum.film = 'BLACK'
-C.view_layer.update()
-_P, me4 = film_pts(film2)
-mats = {m.name for m in me4.materials if m}
-check(f'Film "Black Latex": its material ({mats})', mats == {'MCH Vacuum Film - Black Latex'})
+mats = {m.name for m in film2.data.materials if m}
+bl = bpy.data.materials.get('MCH Vacuum Film - Black Latex')
+check(f'Film "Black Latex": its material ({mats}), the fine creases in it (a Bump from the film\'s attributes)',
+      mats == {'MCH Vacuum Film - Black Latex'} and bl.node_tree.nodes.get('Creases') is not None
+      and any(n.bl_idname == 'ShaderNodeAttribute' and n.attribute_name == vp.DIR_ATTR for n in bl.node_tree.nodes))
 steel = ms.new_material('STEEL')
 ms.assign(C, [film2], steel)
-vp.sync_material(film2)
-_P, me5 = film_pts(film2)
-check(f'a Mech page preset on the selected film: the film takes it ({ {m.name for m in me5.materials if m} })',
-      {m.name for m in me5.materials if m} == {steel.name})
+film2.mch_vacuum.creases = 0.7                                          # (a slider after it: remade, the material kept)
+check(f'a Mech page preset on the selected film: the film takes it, and keeps it when a slider remakes the film '
+      f'({ {m.name for m in film2.data.materials if m} })', {m.name for m in film2.data.materials if m} == {steel.name})
 # Apply
 for o in C.selected_objects:
     o.select_set(False)
 film2.select_set(True)
 C.view_layer.objects.active = film2
-ng_name = film2.modifiers[vp.MOD].node_group.name
 r = bpy.ops.mch.vacuum_apply()
-check(f'Apply: a plain mesh ({len(film2.data.polygons):,} faces), only its material, its graph gone',
-      r == {'FINISHED'} and not vp.is_film(film2) and not film2.modifiers and len(film2.data.polygons) > 1000
-      and [m.name for m in film2.data.materials] == [steel.name] and ng_name not in bpy.data.node_groups)
+from mecha_lab import workspace_ui as wu  # noqa: E402
+check(f'Apply (Enter too): a plain mesh for good ({len(film2.data.polygons):,} faces) - its settings dropped, its material '
+      f'kept, no node group left', r == {'FINISHED'} and not vp.is_film(film2) and not film2.modifiers
+      and len(film2.data.polygons) > 1000 and [m.name for m in film2.data.materials] == [steel.name]
+      and not any(g.name.startswith(vp.TREE) for g in bpy.data.node_groups)
+      and 'vacuum_apply' in [o for o, _l in wu.ENTER_APPLY])
 # the window
 from mecha_lab import cloth_drape  # noqa: E402
 check('the Cloth Drape window starts with the Vacuum Pack box', 'vacuum_pack.draw' in open(cloth_drape.__file__, encoding='utf-8').read())

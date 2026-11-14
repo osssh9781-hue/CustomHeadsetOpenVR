@@ -2619,6 +2619,7 @@ ENTER_APPLY = (
     ('sdraw_apply', 'Surface Draw'),
     ('hair_apply', 'Creature Hair'),
     ('greeble_apply', 'Scale / Greeble Line'),          # 0.24.169 every selected line
+    ('vacuum_apply', 'Vacuum Pack'),                    # 0.24.171 the selected films
     ('clothing_apply', 'Clothing'),
     ('hood_apply', 'Hood'),
     ('scarf_apply', 'Scarf'),
