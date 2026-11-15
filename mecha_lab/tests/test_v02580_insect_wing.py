@@ -164,6 +164,50 @@ lead_z0 = float(np.mean(f0.point(np.array([0.5]), np.array([0.0]))[:, 1]))
 lead_z1 = float(np.mean(f1.point(np.array([0.5]), np.array([0.0]))[:, 1]))
 check(f'its leading edge: the straighter side (the top here, at {lead_z0:.3f} in the plane), Flip: the other one '
       f'({lead_z1:.3f})', lead_z0 > lead_z1)
+# 0.24.174 (user: "인섹트 윙은 내가 그린 대로 안 나와, 혈관이"): the veins follow the shape as drawn - a curved (banana) wing
+ban_in, ban_out = [], []
+for i in range(60):
+    t = i / 59
+    an = math.radians(-20 + 80 * t)
+    w_ = 0.18 * math.sin(math.pi * t) ** 0.7 + 0.02
+    cx, cz = 1.2 * math.sin(an), 1.2 * (1 - math.cos(an))
+    nx_, nz_ = -math.sin(an), math.cos(an)
+    ban_in.append((cx + nx_ * w_ * 0.3, cz + nz_ * w_ * 0.3))
+    ban_out.append((cx - nx_ * w_, cz - nz_ * w_))
+BAN = np.array(ban_in + ban_out[::-1])
+from mecha_lab import outline_mesh as om  # noqa: E402
+ss, ff = np.meshgrid(np.linspace(0.05, 0.95, 19), np.linspace(0.1, 0.9, 9))
+old = iw.Frame(BAN, 0)
+new = iw.HFrame(BAN, 0)
+in_new = om.inside(new.point(ss.ravel(), ff.ravel()).reshape(-1, 2), [BAN]).mean()
+lead_new = new.point(np.linspace(0.05, 0.95, 40), np.zeros(40)).reshape(-1, 2)
+d_lead = om.seg_distance(lead_new, BAN[new.lead_arc], closed=False).max()
+
+
+def spread(fr_):
+    """How evenly its long veins spread across it: their ink in the third by the leading edge, the middle third, the
+    third by the trailing edge (the drawn shape's own across, the same for both frames)."""
+    spec_ = dict(iw.SPEC['FLY'], cross=0.0, cells=0.0)
+    vl, st_ = iw.veins(fr_, spec_)
+    vl = [v for v in vl if not v[2]]                    # (the margin left out: it runs round both edges)
+    px_ = fr_.L / 600.0
+    img, lo_ = iw.raster(fr_, vl, st_, px_)
+    H_, W_ = img.shape[:2]
+    gx_, gy_ = np.meshgrid(lo_[0] + np.arange(W_) * px_, lo_[1] + np.arange(H_) * px_)
+    Q = np.c_[gx_.ravel(), gy_.ravel()]
+    ins = om.inside(Q, [BAN])
+    v = img[..., 0].ravel()[ins]
+    f_ = new.sf(Q[ins])[:, 1]
+    third = [float(v[(f_ >= k / 3) & (f_ < (k + 1) / 3)].sum()) for k in range(3)]
+    return min(third) / max(max(third), 1e-9), third
+
+
+s_old, t_old = spread(old)
+s_new, t_new = spread(new)
+check(f'the veins follow the drawn shape (a curved wing): its long veins spread across it (least / most third '
+      f'{s_new:.2f}; the straight frame before: {s_old:.2f} - bunched to one edge), all its places inside it '
+      f'({in_new * 100:.0f} %), its leading edge on the drawn edge (off {d_lead:.4f} at most)',
+      s_new > 0.12 and s_old < 0.05 and in_new > 0.98 and d_lead < 0.02)
 from mecha_lab import lasso_sketch  # noqa: E402
 S.mch_brush.sketch_first = True                       # (user: "당연히 스케치 모드도 되지?")
 n_before = len([o for o in bpy.data.objects if iw.is_wing(o)])

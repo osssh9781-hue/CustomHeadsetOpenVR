@@ -197,6 +197,7 @@ def placements(body, w, p, size_world, shapes, seed=0):
                 break
     acc = np.array(acc, int)
     P, Nn, T = P[acc], Nn[acc], T[acc]
+    edge = edge_factor(co, w, P, p, size, shapes)
     prng = random.Random(int(p.seed) * 31 + 7)
     ids = list(shapes)
     locs, quats, scls, picks = [], [], [], []
@@ -214,12 +215,37 @@ def placements(body, w, p, size_world, shapes, seed=0):
         ob = shapes[ids[j]]
         sv = Vector(tuple(ob.scale))
         f = size * (1.0 + prng.uniform(-1.0, 1.0) * p.size_random)
-        sc = Vector((sv.x * f * p.length, sv.y * f * p.width, sv.z * f))
-        locs.append(tuple(Vector(P[i]) - n * (p.sink * size)))
+        e = float(edge[i])                          # (0.24.174 Thinner at Edge: smaller, and flatter still)
+        sc = Vector((sv.x * f * p.length * e, sv.y * f * p.width * e, sv.z * f * e * e))
+        locs.append(tuple(Vector(P[i]) - n * (p.sink * size * e)))
         quats.append(tuple(m.to_quaternion()))
         scls.append(tuple(sc))
         picks.append(j)
     return np.asarray(locs, float), np.asarray(quats, float), np.asarray(scls, float), np.asarray(picks, int)
+
+
+def edge_factor(co, w, P, p, size, shapes):
+    """0.24.174 (user: "깃털이랑 비늘 퍼에 달린 거 그거 가생이로 갈수록 얇아지는 버튼"): how big each one is (0..1) by how near
+    the area's edge it sits - Thinner at Edge on: from full size (Edge Width x their length in) down to 1 - Taper at
+    the very edge, smoothly.  All 1 when it is off."""
+    out = np.ones(len(P))
+    if not p.edge_thin or not len(P):
+        return out
+    outside = co[w <= 0.5]
+    if not len(outside):
+        return out
+    from mathutils.kdtree import KDTree
+    kd = KDTree(len(outside))
+    for i, q in enumerate(outside):
+        kd.insert(tuple(q), i)
+    kd.balance()
+    ext = [shape_extent(o) for o in shapes.values()] or [(1.0, 0.5)]
+    zone = max(float(np.mean([e[0] for e in ext])) * size * p.length * p.edge_width, 1e-9)
+    for i, q in enumerate(P):
+        _c, _j, d = kd.find(tuple(q))
+        t = min(max(d / zone, 0.0), 1.0)
+        out[i] = 1.0 - p.edge_taper * (1.0 - t * t * (3.0 - 2.0 * t))
+    return np.clip(out, 0.05, 1.0)
 
 
 def cover_shapes(context, ob):
@@ -307,7 +333,7 @@ DEFAULTS = {'FEATHERS': dict(size=4.0, spacing=0.25, side_spacing=0.6, lift=math
             'SCALES': dict(size=2.2, spacing=0.45, side_spacing=0.6, lift=math.radians(8), length=1.0, width=1.0,
                            sink=0.12,
                            size_random=0.12, shapes_json='["KEELED"]')}
-LIVE = ('size', 'size_random', 'spacing', 'side_spacing', 'lift', 'flow', 'turn_random', 'length', 'width', 'sink', 'seed',
+LIVE = ('edge_thin', 'edge_taper', 'edge_width', 'size', 'size_random', 'spacing', 'side_spacing', 'lift', 'flow', 'turn_random', 'length', 'width', 'sink', 'seed',
         'shapes_json')
 
 
@@ -335,6 +361,12 @@ class MCH_PG_Cover(bpy.types.PropertyGroup):
                         description='Into the skin, x the size')
     seed: IntProperty(name='Seed', default=0, min=0, update=_upd)
     shapes_json: StringProperty(default='["CONTOUR"]', update=_upd)
+    edge_thin: BoolProperty(name='Thinner at Edge', default=False, update=_upd,
+                            description='Smaller and flatter toward the edge of the area (they fade into the skin)')
+    edge_taper: FloatProperty(name='Edge Taper', default=0.8, min=0.0, max=0.95, update=_upd,
+                              description='How much smaller at the very edge (0.8: a fifth of the size there)')
+    edge_width: FloatProperty(name='Edge Width', default=3.0, min=0.2, max=30.0, soft_max=10.0, update=_upd,
+                              description='How far in it goes from the edge, x their length')
     mix: BoolProperty(name='Mix', default=False, description='A click adds the shape to the mix (random among them) '
                                                               'instead of taking it alone')
 
@@ -520,6 +552,11 @@ def draw(layout, context):
     for sid, label, _spec in items:
         g.operator('mch.cover_shape', text=label, depress=sid in chosen).shape = sid
     layout.prop(st, 'mix')
+    col = layout.column(align=True)
+    col.prop(pg, 'edge_thin', toggle=True)           # 0.24.174 the button
+    if pg.edge_thin:
+        col.prop(pg, 'edge_taper')
+        col.prop(pg, 'edge_width')
     col = layout.column(align=True)
     for k in ('size', 'size_random', 'spacing', 'side_spacing', 'lift', 'flow', 'turn_random', 'length', 'width', 'sink', 'seed'):
         col.prop(pg, k)

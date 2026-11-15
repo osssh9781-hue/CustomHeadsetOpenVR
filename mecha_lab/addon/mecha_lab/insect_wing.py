@@ -95,6 +95,7 @@ class Frame:
         if flip:
             lead = arc2 if lead is arc1 else arc1
         self.trail_arc = arc2 if lead is arc1 else arc1
+        self.lead_arc = lead
         if ((P[lead] - self.root) @ self.perp).mean() < 0:
             self.perp = -self.perp                      # (across: + toward the leading edge)
         sw = self.to_sw(P)
@@ -140,6 +141,179 @@ class Frame:
         hi = np.interp(sw[:, 0], self.S, self.lead_w)
         lo = np.interp(sw[:, 0], self.S, self.trail_w)
         return np.c_[sw[:, 0], (hi - sw[:, 1]) / np.maximum(hi - lo, 1e-9)]
+
+
+def _nsum(a):
+    out = np.zeros_like(a)
+    out[1:] += a[:-1]
+    out[:-1] += a[1:]
+    out[:, 1:] += a[:, :-1]
+    out[:, :-1] += a[:, 1:]
+    return out
+
+
+def _harmonic(inside, known, value, iters=3000, tol=1e-7):
+    """A smooth field inside (a grid): ``value`` where ``known``, between them as smooth as it can be (Laplace, the
+    outline a wall - conjugate gradients)."""
+    unk = inside & ~known
+    deg = _nsum(inside.astype(np.float64)) * inside
+    D = np.where(known & inside, value, 0.0)
+    b = _nsum(D) * unk
+    x = np.zeros_like(D)
+
+    def A(v):
+        v = v * unk
+        return (deg * v - _nsum(v) * inside) * unk
+    r = b - A(x)
+    pdir = r.copy()
+    rs = float((r * r).sum())
+    if rs < 1e-30:
+        return np.where(known, D, x)
+    for _ in range(iters):
+        Ap = A(pdir)
+        alpha = rs / max(float((pdir * Ap).sum()), 1e-30)
+        x += alpha * pdir
+        r -= alpha * Ap
+        rs2 = float((r * r).sum())
+        if rs2 < tol * tol * max(float((b * b).sum()), 1e-30):
+            break
+        pdir = r + (rs2 / rs) * pdir
+        rs = rs2
+    return np.where(known, D, x * unk)
+
+
+class HFrame(Frame):
+    """0.24.174 The wing's own frame from the shape as drawn (user: "인섹트 윙은 내가 그린 대로 안 나와, 혈관이" - a curved, a
+    broad or a lobed wing had its veins bunched to one edge, bent or thrown into a notch: they were laid along the
+    straight line from the root to the tip).  Now both of its coordinates are solved inside the drawing: along it (s)
+    a smooth field from the root (0) to the tip (1) that follows its bends (then even by distance), across it (f) a
+    smooth field from the leading edge (0) to the trailing edge (1) - so the veins follow its curve, its width and its
+    lobes.  Same use as ``Frame`` (point, sf, P, L, root, axis, trail_arc)."""
+
+    def __init__(self, P, root_i, flip=False, res=170):
+        super().__init__(P, root_i, flip)
+        P = self.P
+        lo, hi = P.min(0), P.max(0)
+        area = abs(0.5 * float(np.sum(P[:, 0] * np.roll(P[:, 1], -1) - np.roll(P[:, 0], -1) * P[:, 1])))
+        h = min(float((hi - lo).max()) / res, area / max(self.L, 1e-9) / 40.0)   # (40 cells across at least)
+        h = max(h, float((hi - lo).max()) / 700.0)
+        nx, ny = int(np.ceil((hi[0] - lo[0]) / h)) + 3, int(np.ceil((hi[1] - lo[1]) / h)) + 3
+        self.g_lo, self.g_h = lo - h, h
+        gx = self.g_lo[0] + (np.arange(nx) + 0.5) * h
+        gy = self.g_lo[1] + (np.arange(ny) + 0.5) * h
+        X, Y = np.meshgrid(gx, gy)
+        C = np.c_[X.ravel(), Y.ravel()]
+        inside = om.inside(C, [P]).reshape(ny, nx)
+        rim = inside & (_nsum((~inside).astype(np.float64)) > 0)
+        # across: 0 on the leading edge, 1 on the trailing edge (each rim cell: which edge is nearer - by its sides,
+        # not its corners: a long straight side has no corner along it)
+        ri = np.nonzero(rim.ravel())[0]
+        d_lead = om.seg_distance(C[ri], P[self.lead_arc], closed=False)
+        d_trail = om.seg_distance(C[ri], P[self.trail_arc], closed=False)
+        fval = np.zeros(ny * nx)
+        fval[ri] = np.where(d_lead <= d_trail, 0.0, 1.0)
+        F = _harmonic(inside, rim, fval.reshape(ny, nx))
+        # along: 0 round the root, 1 round the tip
+        tip = P[int(np.argmax(np.linalg.norm(P - self.root, axis=1)))]
+        dr = np.linalg.norm(C - self.root, axis=1).reshape(ny, nx)
+        dt = np.linalg.norm(C - tip, axis=1).reshape(ny, nx)
+        r0 = max(self.L * 0.045, 2.5 * h)
+        known = inside & ((dr < r0) | (dt < r0))
+        if not np.any(known & (dr < r0)) or not np.any(known & (dt < r0)):
+            ins = np.nonzero(inside.ravel())[0]
+            known = known.copy().ravel()
+            known[ins[np.argmin(dr.ravel()[ins])]] = True
+            known[ins[np.argmin(dt.ravel()[ins])]] = True
+            known = known.reshape(ny, nx)
+        S0 = _harmonic(inside, known, np.where(dt < dr, 1.0, 0.0))
+        # even by distance: the middle of each step of s, how far along
+        sv = S0[inside]
+        pts = C[inside.ravel()]
+        bins = np.clip((sv * 64).astype(int), 0, 63)
+        cnt = np.bincount(bins, minlength=64)
+        cx = np.bincount(bins, weights=pts[:, 0], minlength=64)
+        cy = np.bincount(bins, weights=pts[:, 1], minlength=64)
+        ok = cnt > 0
+        cen = np.c_[cx[ok] / cnt[ok], cy[ok] / cnt[ok]]
+        lev = (np.arange(64)[ok] + 0.5) / 64.0
+        cen = np.r_[self.root[None], cen, tip[None]]
+        lev = np.r_[0.0, lev, 1.0]
+        cum = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(cen, axis=0), axis=1))]
+        cum /= max(cum[-1], 1e-12)
+        S = np.where(inside, np.interp(S0, lev, cum), 0.0)
+        # out of the drawing: the nearest value inside (for samples just past the edge)
+        S, F = self._spread(S, inside), self._spread(F, inside)
+        self.gS, self.gF = S, F
+        # back from (s, f) to the plane: a table (s x f) of the places inside
+        ns_, nf_ = 161, 33
+        bs = np.clip((S[inside] * (ns_ - 1)).round().astype(int), 0, ns_ - 1)
+        bf = np.clip((F[inside] * (nf_ - 1)).round().astype(int), 0, nf_ - 1)
+        k = bs * nf_ + bf
+        cnt = np.bincount(k, minlength=ns_ * nf_).astype(float)
+        tx = np.bincount(k, weights=pts[:, 0], minlength=ns_ * nf_)
+        ty = np.bincount(k, weights=pts[:, 1], minlength=ns_ * nf_)
+        has = cnt > 0
+        TX = np.where(has, tx / np.maximum(cnt, 1), np.nan).reshape(ns_, nf_)
+        TY = np.where(has, ty / np.maximum(cnt, 1), np.nan).reshape(ns_, nf_)
+        for T in (TX, TY):
+            for i in range(ns_):                      # (gaps filled: along f, then along s)
+                ok = ~np.isnan(T[i])
+                if ok.sum() >= 1 and not ok.all():
+                    T[i] = np.interp(np.arange(nf_), np.nonzero(ok)[0], T[i][ok])
+            for j in range(nf_):
+                ok = ~np.isnan(T[:, j])
+                if ok.sum() >= 1 and not ok.all():
+                    T[:, j] = np.interp(np.arange(ns_), np.nonzero(ok)[0], T[:, j][ok])
+        TX = np.nan_to_num(TX, nan=float(self.root[0]))
+        TY = np.nan_to_num(TY, nan=float(self.root[1]))
+        k5 = np.array([1.0, 2.0, 3.0, 2.0, 1.0]) / 9.0     # (smoothed along s: no steps from the grid)
+        for T in (TX, TY):
+            pad = np.pad(T, ((2, 2), (0, 0)), mode='edge')
+            T[:] = sum(pad[i:i + ns_] * k5[i] for i in range(5))
+        self.TX, self.TY = TX, TY
+
+    @staticmethod
+    def _spread(G, inside):
+        G = G.copy()
+        have = inside.copy()
+        for _ in range(max(G.shape)):
+            if have.all():
+                break
+            s_ = _nsum(np.where(have, G, 0.0))
+            c_ = _nsum(have.astype(np.float64))
+            new = ~have & (c_ > 0)
+            G[new] = s_[new] / c_[new]
+            have = have | new
+        return G
+
+    def _grid(self, G, Q):
+        Q = np.asarray(Q, float)
+        x = np.clip((Q[:, 0] - self.g_lo[0]) / self.g_h - 0.5, 0, G.shape[1] - 1.001)
+        y = np.clip((Q[:, 1] - self.g_lo[1]) / self.g_h - 0.5, 0, G.shape[0] - 1.001)
+        x0, y0 = x.astype(int), y.astype(int)
+        fx, fy = x - x0, y - y0
+        a = G[y0, x0] * (1 - fx) + G[y0, x0 + 1] * fx
+        b = G[y0 + 1, x0] * (1 - fx) + G[y0 + 1, x0 + 1] * fx
+        return a * (1 - fy) + b * fy
+
+    def sf(self, Q):
+        return np.c_[self._grid(self.gS, Q), self._grid(self.gF, Q)]
+
+    def point(self, s, f):
+        s = np.clip(np.asarray(s, float), 0.0, 1.0)
+        f = np.clip(np.asarray(f, float), 0.0, 1.0)
+        shp = s.shape
+        s, f = np.broadcast_arrays(s, f)
+        x = s.ravel() * (self.TX.shape[0] - 1)
+        y = f.ravel() * (self.TX.shape[1] - 1)
+        x0 = np.clip(x.astype(int), 0, self.TX.shape[0] - 2)
+        y0 = np.clip(y.astype(int), 0, self.TX.shape[1] - 2)
+        fx, fy = (x - x0)[:, None], (y - y0)[:, None]
+        T = np.stack([self.TX, self.TY], axis=-1)
+        a = T[x0, y0] * (1 - fy) + T[x0, y0 + 1] * fy
+        b = T[x0 + 1, y0] * (1 - fy) + T[x0 + 1, y0 + 1] * fy
+        out = a * (1 - fx) + b * fx
+        return out.reshape(*np.broadcast_shapes(shp, f.shape), 2)
 
 
 # ---- the veins ----------------------------------------------------------------------------------------------------
@@ -414,7 +588,7 @@ def build(ob, context=None):
     photo = p.preset in PHOTO_LOOK
     spec = SPEC.get(PHOTO_LOOK.get(p.preset, p.preset), SPEC['DRAGONFLY'])
     P = np.array(d['outline'], float)
-    fr = Frame(P, int(d['root']) % len(P), p.flip)
+    fr = HFrame(P, int(d['root']) % len(P), p.flip)       # 0.24.174 its frame from the shape as drawn
     px = fr.L / 1400.0
     if photo:
         img, lo = photo_field(fr, p.preset, px, p.vein_width, spec)

@@ -54,7 +54,8 @@ STARTER_COLL = 'Greeble Parts'
 SIG_KEY = 'mch_greeble_sig'            # on a line's node group: the parts it was built for
 LIVE_KEYS = ('order', 'axis', 'up', 'turn', 'tilt', 'scale', 'scale_random', 'gap', 'rows', 'row_gap', 'sink',
              'flip_random', 'turn_random', 'seed', 'stagger', 'edge_shrink',
-             'length', 'width', 'grow_end', 'grow_start', 'length_random')      # (0.24.172 Feather Line's)
+             'length', 'width', 'grow_end', 'grow_start', 'length_random',      # (0.24.172 Feather Line's)
+             'taper_start', 'taper_end')                                          # (0.24.174 the line's taper)
 KINDS = ('MECH', 'CREATURE', 'FEATHER')
 KIND_ITEMS = [('MECH', 'Greeble Line', ''), ('CREATURE', 'Scale Line', ''), ('FEATHER', 'Feather Line', '')]
 UP_AXES = {'POS_X': (0, 1.0), 'NEG_X': (0, -1.0), 'POS_Y': (1, 1.0), 'NEG_Y': (1, -1.0), 'POS_Z': (2, 1.0),
@@ -125,6 +126,13 @@ def _props(update):
         'length_random': FloatProperty(name='Length Random', default=0.0, min=0.0, max=0.9, update=update,
                                        description='Each part a little longer / shorter at random - the overall '
                                                    'shape (Longer to End / at Start) kept'),
+        # 0.24.174 (user: "스케일 라인도 테이퍼 만들어 줘"): the parts smaller toward an end of the line (all of them:
+        # length, width, height - packed closer there too)
+        'taper_end': FloatProperty(name='Taper End', default=0.0, min=0.0, max=0.95, update=update,
+                                   description='Smaller and smaller toward the end of the line (0.8: a fifth of the size '
+                                               'at the end)'),
+        'taper_start': FloatProperty(name='Taper Start', default=0.0, min=0.0, max=0.95, update=update,
+                                     description='Smaller toward the start of the line'),
     }
 
 
@@ -360,6 +368,9 @@ def placements(line, infos, cfg, unit, nearest=None):
             f = cfg['scale'] * unit * rf * (1.0 + rng.uniform(-1.0, 1.0) * cfg['scale_random'])
             # 0.24.172 Length / Width, longer toward the end / the start, a little random (the overall shape kept)
             u_at = min(max(s / max(line.length, 1e-9), 0.0), 1.0)
+            te, ts_ = cfg.get('taper_end', 0.0), cfg.get('taper_start', 0.0)
+            if te > 0 or ts_ > 0:                       # 0.24.174 Taper: the whole part smaller toward that end
+                f *= max((1.0 - te * u_at) * (1.0 - ts_ * (1.0 - u_at)), 0.03)
             lf = lf0 * (1.0 + cfg.get('grow_end', 0.0) * u_at + cfg.get('grow_start', 0.0) * (1.0 - u_at))
             lf *= 1.0 + rng_len.uniform(-1.0, 1.0) * cfg.get('length_random', 0.0)
             wf = wf0
@@ -1741,6 +1752,12 @@ def draw(layout, context, kind='MECH'):
         op(row, 'mch.greeble_parts', 'Scale Parts', action='STARTER', which='SCALES')
         op(row, 'mch.greeble_parts', 'Detail Parts', action='STARTER', which='DETAILS')
         op(row, 'mch.greeble_parts', 'Real Scales', action='STARTER', which='REAL_SCALES')   # 0.24.172
+        from . import creature_shapes as cs          # 0.24.174 the Fur tool's eight scales: a click = that one
+        cur_s = scale_in_use(context)
+        col.label(text='Scale (a click: this one - the selected line too)')
+        g = col.grid_flow(row_major=True, columns=3, even_columns=True, align=True)
+        for sid, label, _spec in cs.SCALES:
+            g.operator('mch.scale_pick', text=label, depress=sid == cur_s).scale = sid
         row = col.row(align=True)
     elif kind == 'FEATHER':                          # 0.24.172 the 16 feathers: a click = that one (the selected line too)
         from . import creature_shapes as cs
@@ -1802,6 +1819,10 @@ def draw(layout, context, kind='MECH'):
         fc.label(text='Feathers along the line')
         for k in ('length', 'width', 'grow_end', 'grow_start', 'length_random'):
             fc.prop(pg, k, slider=k != 'length' and k != 'width')
+    tc = layout.column(align=True)                   # 0.24.174 every line: smaller toward its ends
+    tc.label(text='Taper (smaller toward an end)')
+    tc.prop(pg, 'taper_start', slider=True)
+    tc.prop(pg, 'taper_end', slider=True)
     for k in ('scale', 'scale_random', 'gap', 'rows', 'row_gap', 'edge_shrink', 'sink', 'turn_random', 'seed'):
         col.prop(pg, k)
     col.prop(pg, 'stagger')
@@ -1872,6 +1893,49 @@ class MCH_OT_feather_pick(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def scale_in_use(context):
+    """0.24.174 The real scale (the Fur tool's) the selected Scale Line (else the next one) uses - its id, or ''."""
+    ln = active_line(context)
+    parts = line_parts(ln) if ln is not None and ln.mch_greeble_line.kind == 'CREATURE' else \
+        picked(settings(context, 'CREATURE'))
+    ids = {p.data.get('mch_shape_id', '') for p in parts if p.type == 'MESH'}
+    from . import creature_shapes as cs
+    found = [i for i in cs.SCALE_IDS if i in ids]
+    return found[0] if len(found) == 1 and len(parts) == 1 else ''
+
+
+class MCH_OT_scale_pick(bpy.types.Operator):
+    """0.24.174 Use this scale (user: "스케일 라인에도 퍼에 있는 비늘 넣어 줘" - the Fur tool's eight real scales, made beside
+    the model the first time); the selected Scale Line takes it at once"""
+    bl_idname = 'mch.scale_pick'
+    bl_label = 'Scale'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    scale: StringProperty(default='KEELED')
+
+    def execute(self, context):
+        st = settings(context, 'CREATURE')
+
+        def find():
+            return next((it.ob for it in st.parts if it.ob is not None and it.ob.type == 'MESH'
+                         and it.ob.data.get('mch_shape_id') == self.scale), None)
+        ob = find()
+        if ob is None:                               # (the set made beside the model, its settings with it)
+            ln = active_line(context)
+            near = ln.parent if ln is not None else context.active_object
+            make_starters(context, near if near is not None and near.type == 'MESH' else None, 'REAL_SCALES')
+            ob = find()
+        if ob is None:
+            return {'CANCELLED'}
+        for it in st.parts:
+            it.use = it.ob == ob
+        ln = active_line(context)
+        if ln is not None and ln.mch_greeble_line.kind == 'CREATURE':
+            ln.mch_greeble_line.parts_json = json.dumps([ob.name])
+            rebuild(ln, context)
+        self.report({'INFO'}, f'Scale: {ob.name}' + (f' - {ln.name}' if ln is not None else ' (the next line)'))
+        return {'FINISHED'}
+
+
 HELP_CREATURE = ('Scale Parts / Detail Parts (or Pick Part), then drag on the creature',
                  'Shift + draw: your own scale / detail from the outline (a stamp)',
                  'Scales: overlapping, staggered rows; Details: scattered',
@@ -1915,7 +1979,7 @@ class MCH_OT_greeble_material(bpy.types.Operator):
 
 CLASSES = (MCH_PG_GreeblePart, MCH_PG_GreebleLine, MCH_PG_Greeble, MCH_OT_greeble_stroke, MCH_OT_greeble_pick,
            MCH_OT_greeble_parts, MCH_OT_greeble_stamp_profile, MCH_OT_greeble_apply, MCH_OT_greeble_material,
-           MCH_OT_feather_pick)
+           MCH_OT_feather_pick, MCH_OT_scale_pick)
 
 
 def register():
