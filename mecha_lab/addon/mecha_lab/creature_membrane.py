@@ -106,8 +106,7 @@ def sheet(context, loops, projector, detail, wobble=0.0002):
     if not len(tris):
         raise cg.CutError('Draw a bigger membrane')
     dg = context.evaluated_depsgraph_get()
-    skip = {o.name for o in context.scene.objects if is_membrane(o) or o.get(DONE_KEY) or o.get('mch_wing')
-            or o.get('mch_wing_done')}
+    skip = _skip_names(context)
     n = len(pts)
     O = np.zeros((n, 3))
     D = np.zeros((n, 3))
@@ -261,6 +260,112 @@ def perform(context, loops, projector):
     mp = context.scene.mch_membrane
     P, tris, pinned, uv, body, nb, hosts = sheet(context, loops, projector, mp.detail,
                                                   0.0006 if mp.style == 'TAUT' else 0.0002)
+    return _create(context, mp, P, tris, pinned, uv, body, hosts)
+
+
+def perform_ring(context, ring_w, ring_pin, ring_owner, view_dir):
+    """0.24.173 (user: "표면에 그리는 게 안 돼, 합치지 않은 여러 개 메쉬에 올릴 수 있게"): the membrane from an outline drawn ON
+    the meshes (Surface): ``ring_w`` its points (world), ``ring_pin`` the ones on a mesh, ``ring_owner`` that mesh's
+    name.  Everything else as a drawn one."""
+    from . import cloth_drape as cd
+    from . import core_geometry as cg
+    if cd.sim_active():
+        raise cg.CutError('Cloth Drape: keep (Enter) or drop (Esc) the cloth you have first')
+    mp = context.scene.mch_membrane
+    P, tris, pinned, uv, body, nb, hosts = sheet_from_ring(context, ring_w, ring_pin, ring_owner, view_dir,
+                                                            mp.detail, 0.0006 if mp.style == 'TAUT' else 0.0002)
+    return _create(context, mp, P, tris, pinned, uv, body, hosts)
+
+
+def _skip_names(context):
+    return {o.name for o in context.scene.objects if is_membrane(o) or o.get(DONE_KEY) or o.get('mch_wing')
+            or o.get('mch_wing_done')}
+
+
+def sheet_from_ring(context, ring_w, ring_pin, ring_owner, view_dir, detail, wobble=0.0002):
+    """The membrane over a 3D outline: filled in the outline's own plane (facing the view), its edge where it was
+    drawn (held where it is on a mesh), inside a smooth surface through the edge - sitting on (held by) a mesh it
+    passes over.  Returns what ``sheet`` does."""
+    from . import core_geometry as cg
+    R = np.asarray(ring_w, float)
+    pin_r = np.asarray(ring_pin, bool)
+    if len(R) < 3:
+        raise cg.CutError('Place at least 3 points')
+    c = R.mean(0)
+    _u, _s, vt = np.linalg.svd(R - c, full_matrices=False)
+    nrm = vt[2]
+    vd = np.asarray(tuple(view_dir), float)
+    if nrm @ vd > 0:                                  # (its face toward the view)
+        nrm = -nrm
+    X = vt[0] - nrm * (vt[0] @ nrm)
+    X /= np.linalg.norm(X)
+    Y = np.cross(nrm, X)
+    Q = np.c_[(R - c) @ X, (R - c) @ Y]
+    size2d = float(np.ptp(Q, axis=0).max())
+    if size2d < 1e-6:
+        raise cg.CutError('Draw a bigger membrane')
+    spacing = size2d / max(detail, 8)
+    # the edge, evenly spaced (its 3D points, and held / not, carried along)
+    seg = np.r_[np.linalg.norm(np.diff(np.r_[Q, Q[:1]], axis=0), axis=1)]
+    total = float(seg.sum())
+    m = max(12, int(total / (spacing * 0.6)))
+    cum = np.r_[0.0, np.cumsum(seg)]
+    ts = np.linspace(0.0, total, m, endpoint=False)
+    idx = np.clip(np.searchsorted(cum, ts, side='right') - 1, 0, len(R) - 1)
+    f = ((ts - cum[idx]) / np.maximum(seg[idx], 1e-12))[:, None]
+    nxt = (idx + 1) % len(R)
+    ring3 = R[idx] * (1 - f) + R[nxt] * f
+    ring2 = Q[idx] * (1 - f) + Q[nxt] * f
+    near = np.where(f[:, 0] < 0.5, idx, nxt)
+    ringpin = (pin_r[idx] & pin_r[nxt]) | (pin_r[near] & (np.minimum(f[:, 0], 1 - f[:, 0]) < 1e-6))
+    ringown = [ring_owner[int(near[i])] if ringpin[i] else None for i in range(m)]
+    pts, tris, nb = om.even_mesh(ring2, spacing, max_points=12000, ring_as_is=True)
+    n = len(pts)
+    base = c + pts[:, 0:1] * X + pts[:, 1:2] * Y       # (on the plane)
+    h = np.zeros(n)
+    h[:nb] = (ring3 - c) @ nrm
+    E = np.r_[tris[:, [0, 1]], tris[:, [1, 2]], tris[:, [2, 0]]]
+    E = np.unique(np.sort(E, axis=1), axis=0)
+    fixed = np.zeros(n, bool)
+    fixed[:nb] = True
+    h = _laplace(n, E, h, fixed)
+    # inside: a mesh right where the membrane passes (a bone under it) holds it
+    dg = context.evaluated_depsgraph_get()
+    skip = _skip_names(context)
+    size = float(np.linalg.norm(np.ptp(ring3, axis=0)))
+    far = size * 2.0 + 1.0
+    on = np.zeros(n, bool)
+    on[:nb] = ringpin
+    owner = list(ringown) + [None] * (n - nb)
+    for i in range(nb, n):
+        o = base[i] + nrm * far
+        hit = _cast(context, dg, tuple(o), tuple(-nrm), skip)
+        if hit is not None and abs((far - hit[0]) - h[i]) < size * 0.06:
+            on[i] = True
+            h[i] = far - hit[0]
+            owner[i] = hit[2]
+    fixed = on.copy()
+    fixed[:nb] = True
+    h = _laplace(n, E, h, fixed)
+    P = base + nrm * h[:, None]
+    P[:nb] = ring3
+    rng = np.random.default_rng(7)
+    free = ~fixed
+    P[free] += nrm * rng.uniform(-1.0, 1.0, (int(free.sum()), 1)) * size * wobble
+    objs = [bpy.data.objects.get(o) if isinstance(o, str) else o for o in owner]
+    held = [objs[i] for i in np.nonzero(on)[0] if objs[i] is not None]
+    body = max(set(held), key=held.count) if held else None
+    hosts = {}
+    for i in np.nonzero(on)[0]:
+        if objs[i] is not None:
+            hosts.setdefault(objs[i].name, []).append(int(i))
+    lo = pts.min(0)
+    uv = (pts - lo) / max(size2d, 1e-9)
+    return P, tris, on, uv, body, nb, hosts
+
+
+def _create(context, mp, P, tris, pinned, uv, body, hosts):
+    from . import core_geometry as cg
     if not np.any(pinned):
         raise cg.CutError('Draw the membrane over your mesh: the parts over it hold it')
     if pinned.all():

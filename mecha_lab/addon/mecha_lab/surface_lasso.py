@@ -23,12 +23,12 @@ import math
 
 import bpy
 from bpy.props import StringProperty
-from mathutils import Vector
+from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
 from . import target_rules
 from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
-MODES = {'CUT', 'SPLIT', 'PLATE', 'WRINKLE', 'CDRAPE', 'ZONE'}
+MODES = {'CUT', 'SPLIT', 'PLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'MEMBRANE'}   # 0.24.173 + Creature Cloth
 PATCH_MODES = {'PLATE', 'WRINKLE', 'CDRAPE', 'ZONE'}        # 0.22.2: Armor Plate / Cloth Plate from a surface outline; 0.24.95 Cloth Drape
 HIT_PX = 12.0
 _draw_ops = []
@@ -81,6 +81,71 @@ class SurfaceTarget:
 
     def normal_world(self, n):
         return (self.nmw @ Vector(n)).normalized()
+
+
+class MultiTarget:
+    """0.24.173 Every visible mesh as one surface (world space) - for Creature Cloth (user: "표면에 그리는 게 안 돼, 합치지
+    않은 여러 개 메쉬에 올릴 수 있게"): its points go on any of the meshes (a wing's bones, each its own object)."""
+
+    def __init__(self, context, skip=()):
+        import numpy as np
+        dg = context.evaluated_depsgraph_get()
+        verts, polys, self.owner = [], [], []
+        lo, hi = None, None
+        for ob in context.view_layer.objects:
+            if ob.type != 'MESH' or not ob.visible_get() or ob.name in skip:
+                continue
+            ev = ob.evaluated_get(dg)
+            me = ev.to_mesh()
+            try:
+                if not len(me.polygons):
+                    continue
+                me.calc_loop_triangles()
+                co = np.empty(len(me.vertices) * 3, np.float64)
+                me.vertices.foreach_get('co', co)
+                M = np.array(ob.matrix_world)
+                co = co.reshape(-1, 3) @ M[:3, :3].T + M[:3, 3]
+                tri = np.empty(len(me.loop_triangles) * 3, np.int64)
+                me.loop_triangles.foreach_get('vertices', tri)
+                base = len(verts)
+                verts.extend(map(tuple, co))
+                polys.extend(map(tuple, tri.reshape(-1, 3) + base))
+                self.owner.extend([ob.name] * (len(tri) // 3))
+                lo = co.min(0) if lo is None else np.minimum(lo, co.min(0))
+                hi = co.max(0) if hi is None else np.maximum(hi, co.max(0))
+            finally:
+                ev.to_mesh_clear()
+        self.bvh = BVHTree.FromPolygons(verts, polys) if polys else None
+        self.name = None
+        self.mw = Matrix.Identity(4)
+        self.imw = Matrix.Identity(4)
+        self.nmw = Matrix.Identity(3)
+        self.size = float(np.linalg.norm(hi - lo)) if lo is not None else 1.0
+
+    def ray(self, origin_w, direction_w):
+        if self.bvh is None:
+            return None
+        d = Vector(direction_w).normalized()
+        loc, nrm, _i, _d = self.bvh.ray_cast(Vector(origin_w), d)
+        if loc is None:
+            return None
+        if nrm.dot(d) > 0:
+            nrm = -nrm
+        return loc, nrm.normalized()
+
+    def nearest(self, p):
+        loc, nrm, _i, _d = self.bvh.find_nearest(p)
+        return (loc, nrm.normalized()) if loc is not None else None
+
+    def owner_at(self, p):
+        _loc, _n, i, _d = self.bvh.find_nearest(Vector(p))
+        return self.owner[i] if i is not None and 0 <= i < len(self.owner) else None
+
+    def to_world(self, p):
+        return Vector(p)
+
+    def normal_world(self, n):
+        return Vector(n).normalized()
 
 
 def trace(target, a, na, b, nb, step=None):
@@ -286,6 +351,9 @@ class SurfaceLogic:
 
     def _hit(self, context, xy):
         origin, direction = self._proj(context).ray(xy)
+        if self.target is None and getattr(self, 'mode', '') == 'MEMBRANE':   # (0.24.173 any of the meshes)
+            from . import creature_membrane
+            self.target = MultiTarget(context, creature_membrane._skip_names(context))
         if self.target is None:
             dg = context.evaluated_depsgraph_get()
             ok, loc, nrm, _i, ob, _m = target_rules.scene_ray(context, dg, Vector(origin), Vector(direction))
@@ -314,9 +382,14 @@ class SurfaceLogic:
         return best
 
     def _segment(self, i):
-        """Surface path from point i to point i + 1 (wraps when closed)."""
+        """Surface path from point i to point i + 1 (wraps when closed).  0.24.173 Creature Cloth: from one mesh to
+        another (a bone to the next) a straight line through the air - its free edge."""
         a, na = self.points[i]
         b, nb = self.points[(i + 1) % len(self.points)]
+        if isinstance(self.target, MultiTarget) and self.target.owner_at(a) != self.target.owner_at(b):
+            a, b = Vector(a), Vector(b)
+            k = max(2, min(200, int((b - a).length / max(self.target.size / 300.0, 1e-6))))
+            return [a.lerp(b, j / k) for j in range(k + 1)]
         return trace(self.target, a, na, b, nb)
 
     def _rebuild(self):
@@ -474,7 +547,35 @@ class SurfaceLogic:
             return None, str(ex)
         return [context.view_layer.objects.active], msg
 
+    def _finish_membrane(self, context):
+        """0.24.173 Creature Cloth from the outline drawn on the meshes: held along the parts traced on a mesh,
+        free along the lines through the air."""
+        from . import core_geometry as cg
+        from . import creature_membrane
+        if len(self.points) < 3:
+            return None, 'Surface: place at least 3 points'
+        self.closed = True
+        self._rebuild()
+        ring, pin, own = [], [], []
+        n = len(self.points)
+        for i, s in enumerate(self.segments):
+            oa = self.target.owner_at(self.points[i][0])
+            ob_ = self.target.owner_at(self.points[(i + 1) % n][0])
+            same = oa is not None and oa == ob_
+            for k, p in enumerate(s[:-1] if len(s) > 1 else s):
+                ring.append(tuple(p))
+                on = same or k == 0
+                pin.append(on)
+                own.append(oa if on else None)
+        try:
+            msg = creature_membrane.perform_ring(context, ring, pin, own, self._proj(context).view_dir)
+        except cg.CutError as ex:
+            return None, str(ex)
+        return [context.view_layer.objects.active], msg
+
     def finish(self, context):
+        if self.mode == 'MEMBRANE':
+            return self._finish_membrane(context)
         if self.mode in PATCH_MODES:
             return self._finish_patch(context)
         if len(self.points) < 3:

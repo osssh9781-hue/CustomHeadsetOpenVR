@@ -59,13 +59,14 @@ def seg_distance(Q, P, closed=True):
     return out
 
 
-def even_mesh(loop, spacing, max_points=60000):
-    """(points N x 2, triangles M x 3, nb): ``loop`` (one closed outline) filled evenly ``spacing`` apart."""
+def even_mesh(loop, spacing, max_points=60000, ring_as_is=False):
+    """(points N x 2, triangles M x 3, nb): ``loop`` (one closed outline) filled evenly ``spacing`` apart.
+    ``ring_as_is``: the loop is already spaced (its points kept as they are: the first ``nb``)."""
     P = np.asarray(loop, float)
     area = abs(0.5 * float(np.sum(P[:, 0] * np.roll(P[:, 1], -1) - np.roll(P[:, 0], -1) * P[:, 1])))
     while area / (spacing * spacing * 0.866) > max_points:
         spacing *= 1.15
-    ring = resample(P, spacing * 0.6)
+    ring = P if ring_as_is else resample(P, spacing * 0.6)
     nb = len(ring)
     lo, hi = ring.min(0), ring.max(0)
     ys = np.arange(lo[1] + spacing * 0.5, hi[1], spacing * 0.866)

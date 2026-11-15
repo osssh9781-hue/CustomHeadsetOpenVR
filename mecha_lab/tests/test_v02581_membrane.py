@@ -208,6 +208,57 @@ fin.location.z -= 0.5
 m4.modifiers[cm.THICK_MOD].show_viewport = True
 check(f'move one finger: its pinned points go with it (+{dz[on_f].mean():.3f}), the rest stay ({np.abs(dz[~on_f]).max():.4f})',
       abs(dz[on_f].mean() - 0.5) < 0.01 and np.abs(dz[~on_f]).max() < 1e-3)
+# Surface (draw ON the meshes; user: "표면에 그리는 게 안 돼, 합치지 않은 여러 개 메쉬에 올릴 수 있게"): click points on the
+# separate bones - along the arm and a finger it follows them, from one bone to another a line through the air
+import types  # noqa: E402
+from mecha_lab import surface_lasso as sl  # noqa: E402
+VIEW = [FRONT]
+sl.make_projector = lambda region, rv3d: VIEW[0]
+
+
+class Ctx:
+    def __init__(self):
+        self.area = types.SimpleNamespace(type='VIEW_3D', header_text_set=lambda t: None, tag_redraw=lambda: None)
+        self.region = types.SimpleNamespace(width=1000, height=1000)
+        self.region_data = object()
+
+    scene = property(lambda self: bpy.context.scene)
+    view_layer = property(lambda self: bpy.context.view_layer)
+    selected_objects = property(lambda self: bpy.context.selected_objects)
+
+    def evaluated_depsgraph_get(self):
+        return bpy.context.evaluated_depsgraph_get()
+
+
+class Op(sl.SurfaceLogic):
+    pass
+
+
+def px(x, z):
+    return tuple(FRONT.to_screen(Vector((x, -3.0, z))))
+
+
+for o in list(bpy.data.objects):
+    if o.get(cm.DONE_KEY):
+        bpy.data.objects.remove(o)                    # (the kept ones out of the way)
+ctx, op = Ctx(), Op()
+ok = op.start(ctx, px(5.1, 1.012), 'MEMBRANE')      # (on the arm, over its middle line)
+for q in [px(5.8, 1.083), px(6.4, 1.15), px(6.9, 0.675), px(7.38, 0.22), px(6.6, -0.29)]:
+    op.click(ctx, q)                                  # (along the arm, down finger A, across to finger B)
+lines = op.world_lines()
+owners = [op.target.owner_at(p) for p, _n in op.points]
+parts_msg = op.finish(ctx)
+m5 = C.active_object
+pin5 = pins(m5) if cm.is_membrane(m5) else np.zeros(1, bool)
+g5 = sorted(g.name for g in m5.vertex_groups if g.name.startswith(cm.HOST_PREFIX)) if cm.is_membrane(m5) else []
+W5 = world(m5) if cm.is_membrane(m5) else np.zeros((1, 3))
+check(f'Surface: points on the separate bones ({owners}) - the membrane from them ({parts_msg[1][:70]}...), held on '
+      f'the meshes it was drawn on ({g5}), free across the air ({int((~pin5).sum())} of {len(pin5)} points), its edge '
+      f'where it was drawn (x {W5[:, 0].min():.2f}..{W5[:, 0].max():.2f})', ok and sl.enabled.__name__ == 'enabled'
+      and 'MEMBRANE' in sl.MODES and isinstance(op.target, sl.MultiTarget) and set(owners) >= {'Arm', 'Finger A'}
+      and cm.is_membrane(m5) and len(g5) >= 2 and 0 < (~pin5).sum() < len(pin5) and W5[:, 0].min() < 5.2
+      and W5[:, 0].max() > 7.3)
+cd.cancel(C)
 try:
     cm.perform(C, loop([(4.0, 3.0), (5.0, 3.0), (5.0, 4.0)]), FRONT)
     err = ''
