@@ -30,6 +30,34 @@
     가운데는 바위가 드러남 — 120 px 면 몇 장이 곡면을 가로질러 판 가운데가 바위 속으로 들어갔음) → 위의 잔 면.
   - Dirt · Snow 등의 **Click a Mesh** 클릭이 도구에 닿지 않던 것(블렌더는 애드온 도구의 키를 뒤에서부터 물어봐서 라쏘가 먼저
     클릭을 가져갔음) → Click a Mesh 일 때 라쏘가 클릭을 넘김.
+- 확인(단위 테스트): 새 test_v02582 7/7(Thinner at Edge 꺼짐 = 예전 그대로, 켜면 가운데 x1.00 · 가장자리 x0.35 · 더 납작 x0.35,
+  Edge Taper 0.3 → 덜 작아짐, Scale Line 비늘 버튼 → 그 비늘이 파츠 · 버튼에 표시, Taper End 0.8 → 끝 0.2 배 · 더 촘촘, Start + End
+  → 양 끝 0.020 · 가운데 0.060(테이퍼 없을 때의 0.60), 선택한 선 라이브). 새 test_v02583 6/6(네 도구 그리기 기본 · Click a Mesh 옵션,
+  그린 곳에 판 + 흙 / 먼지 / 낙엽 / 눈, 판 라이브 · 웨더링이 맨 뒤, 스케치 2 개 → 눈 1 개, Click a Mesh 예전대로). 새 test_v02584 4/4
+  (아래 고친 것 3 개 — 공 위에 그린 눈: 3 cm 넘게 파묻힌 점 0.0 %(예전 120 px 면: 16.1 %), Armor Plate 창의 Face Size 120 그대로).
+  test_v02580 16/16(바나나 모양 날개: 긴 맥이 폭 전체에 퍼짐 — 가장 적은 / 많은 1/3 비율 0.12 넘음, 예전 직선 틀은 0.05 미만 · 한쪽에
+  몰림), test_v02581 18/18(Surface 로 따로 된 뼈 위에 점 → 각 메쉬에 핀). 관련 기존 테스트 75 파일 전부 통과, 마지막 수정 뒤 Armor
+  Plate 28 파일 · Scale / Greeble / Feather Line 7 파일 · Weathering 다시 통과. 블렌더 5.3 에서도 새 테스트 5 파일 50/50.
+- 확인(실제 창, 진짜 마우스 · 키): `round174_real_window.py` 5/5 — **5.2.3 과 5.3.0 둘 다**(`tests/gui/round174_log_0.24.174.txt`,
+  `..._blender53.txt`): Fur 도구 "Scales" 진짜 클릭 + 진짜 라쏘 + "Thinner at Edge" 진짜 클릭 → 가장자리 작아짐, Scale Line "Dragon"
+  진짜 클릭 + 진짜 드래그 + "Taper End" 진짜 드래그 → 끝으로 작아짐, Insect Wing 휜 날개 진짜 라쏘(씬에 Scales 가 있는 채로) → 날개,
+  Dirt 진짜 라쏘 → 벽에 판 + 흙, Snow "Click a Mesh" 진짜 클릭 + 상자 진짜 클릭 → 눈, Creature Cloth Surface 로 따로 된 뼈 3 개 진짜 클릭
+  + 진짜 Enter → 세 메쉬 모두 핀.
+- 확인(압축 파일에서 꺼낸 애드온) 9/9: 버전 · 매니페스트 · 빌드 스탬프 0.24.174, Thinner at Edge, Pangolin 비늘 Scale Line + Taper
+  Start / End, 휜 날개(커버가 있는 씬), 공 위에 그린 Dirt(안 파묻힘 · Face Size 그대로), Click a Mesh 에서 라쏘가 클릭을 넘김.
+- 렌더(셰이딩 위 / 와이어 아래): `dist/thinner_at_edge_0.24.174.jpg`(비늘 · 깃털 각각 왼쪽 꺼짐 / 오른쪽 켜짐),
+  `dist/scale_line_taper_0.24.174.jpg`(위 Dragon Taper End 0.8 · 가운데 Pangolin Start + End 0.75 · 아래 Osteoderm 없음),
+  `dist/insect_wing_follows_shape_0.24.174.jpg`(위 예전 직선 틀 / 아래 이번 — 바나나 · 부채 · 굴곡 날개), `dist/weathering_drawn_0.24.174.jpg`
+  (땅에 그린 Dirt · Dust · Leaves, 바위 위에 그린 Snow), `dist/creature_cloth_surface_0.24.174.jpg`(따로 된 뼈 메쉬 4 개 위 Surface 피막,
+  뒤에서 봄). 실제 창 화면 `dist/weathering_draw_real_window_0.24.174.jpg` · `dist/creature_cloth_surface_real_window_0.24.174.jpg`.
+- 경과(솔직하게): 실제 창 테스트가 처음엔 2/5 — 테스트 물체가 떠 있는 창 밑에 깔려 있었고, 그걸 고치자 Insect Wing 이 Scales 때문에
+  실패하는 진짜 버그와 Click a Mesh 클릭이 안 닿는 진짜 버그가 드러나 고침. 렌더에서 바위 위 눈이 파묻히는 것을 찾아 고침(위). Pangolin
+  Start + End 렌더에서 두 테이퍼가 곱해져 가운데까지 작아 보여서 "둘 중 작은 쪽"으로 바꿈. 데모 스크립트가 "...Parts" 컬렉션을 숨기다가
+  Armor Plates 가 든 "Mechanical Parts" 까지 숨겨 첫 웨더링 렌더가 비어 있었음 — 데모 쪽 실수, 고쳐 다시 렌더. 커버 와이어 렌더가
+  메모리 부족으로 한 번 죽어서 데모의 비늘 · 깃털 수를 줄임.
+- 한계(솔직하게): 그린 웨더링 판은 Armor Plate 처럼 메쉬 **하나** 위에 깔림(땅과 바위에 걸쳐 그리면 가운데가 있는 쪽 하나에만 —
+  바위에는 바위 위에 따로 그리기). Pangolin 비늘은 Part Size 1 에서 작게 나옴(데모는 1.9). 피막은 여전히 충돌 없음(뼈가 천을
+  뚫고 보일 수 있음).
 - **알림 — 블렌더 5.3.0 이 꺼지는 문제**(사용자: "렌더 모드일 때 쉐이더 탭 끌어올리면 꺼져", 크래시 로그): 메카 랩이 아니라 블렌더
   5.3.0 자체의 버그. 아래 영역의 **Asset Browser**(쉐이더 창 왼쪽)가 접혀 있다가(헤더만) 처음 펼쳐질 때, 라이브러리가 All(온라인
   에셋 포함)이고 블렌더의 온라인 접근을 아직 정하지 않은 상태면 "인터넷 꺼짐" 배너를 그리려다가 아직 없는 레이아웃에 써서 꺼짐

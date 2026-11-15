@@ -404,5 +404,5 @@ if ONLY in ('', 'weather'):
     render('weathering_drawn', 0.0015, 'weather')
 if ONLY in ('', 'membrane'):
     S.render.resolution_x, S.render.resolution_y = 1400, 900
-    aim((41.4, -6.5, 1.6), (41.4, 0.0, 0.3), 45)
+    aim((41.6, 6.6, 1.9), (41.4, 0.0, 0.3), 45)                # (from behind: the bones in front of it)
     render('surface_membrane', 0.002, 'membrane')

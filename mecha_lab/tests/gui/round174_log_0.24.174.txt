@@ -1,4 +1,4 @@
-1 Scales cell True cover Scales 633 - Thinner at Edge cell True on True smallest 0.0671 -> 0.0159
+1 Scales cell True cover Scales 627 - Thinner at Edge cell True on True smallest 0.0671 -> 0.0159
 shot 1_thinner_edge.png True
 2 Dragon cell True picked ['DRAGON'] - line Scale Line 35 - Taper End cell True 0.49 first/last 0.1052 0.0525
 shot 2_scale_taper.png True
