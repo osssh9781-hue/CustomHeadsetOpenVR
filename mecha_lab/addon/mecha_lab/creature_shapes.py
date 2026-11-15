@@ -23,12 +23,15 @@ from mathutils import Matrix, Vector
 
 T_ATTR = 'mch_feather_t'
 Y_ATTR = 'mch_feather_y'            # (across, in the feather's lengths: the barbs' lines - instanced too)
+C_ATTR = 'mch_feather_col'          # 0.24.173 each feather's own colours (a pattern: the kestrel's bands and spots)
 
 # (id, label, spec) - L: length (x the Part Size), W: the widest half-width x L, calamus: the bare quill (share of L),
 # widest: where along the vane it is widest, tip: ROUND / POINT / SQUARE, asym: the right vane wider (left narrower),
 # fringe: (depth, count) of the barbs' fringe at the edge, splits: gaps between barb groups, notch: (side, at, depth),
 # bend / sweep / droop: curved down / sideways / drooping at the tip, cup: the vane's edges down, shaft: the rachis'
-# height x W, start: the vane begins this far along (a crest's bare shaft), eye: a round widening at the tip
+# height x W, start: the vane begins this far along (a crest's bare shaft), eye: a round widening at the tip,
+# asym_ramp: the asymmetry only from this far along (less at the base), fluff: (depth, up to) downy ragged barbs at the
+# vane's base, pattern: its own colours (KESTREL), mirror: the narrow vane on the left (+Y)
 FEATHERS = (
     ('CONTOUR', 'Contour', dict(L=0.7, W=0.24, calamus=0.1, widest=0.45, tip='ROUND', cup=0.12, bend=0.05)),
     ('COVERT', 'Covert', dict(L=0.5, W=0.3, calamus=0.08, widest=0.55, tip='ROUND', cup=0.15, bend=0.04)),
@@ -56,6 +59,11 @@ FEATHERS = (
                                     fringe=(0.45, 16), droop=0.12, cup=0.05)),
     ('SPLIT', 'Ragged', dict(L=0.8, W=0.22, calamus=0.1, widest=0.5, tip='ROUND', splits=5, fringe=(0.2, 20),
                              cup=0.1, bend=0.06)),
+    # 0.24.173 (user's photo: a kestrel's tail feather - "이런 모양 깃털만 하나 추가"): long, the tip blunt and round, the
+    # outer vane narrow (less so toward the base), a long bare quill, downy fluff at the vane's base; its own colours
+    ('KESTREL', 'Kestrel Tail', dict(L=1.5, W=0.085, calamus=0.12, widest=0.4, tip='SQUARE', asym=0.55, asym_ramp=0.45,
+                                     bend=0.03, sweep=0.015, cup=0.05, fluff=(0.55, 0.2),
+                                     pattern='KESTREL', mirror=True)),
 )
 FEATHER_IDS = tuple(f[0] for f in FEATHERS)
 
@@ -83,6 +91,44 @@ def _vane_width(u, spec):
     return max(base, 0.0)
 
 
+def _ss(e0, e1, x):
+    t = min(max((x - e0) / (e1 - e0), 0.0), 1.0) if e1 != e0 else float(x >= e0)
+    return t * t * (3.0 - 2.0 * t)
+
+
+def _mix(c0, c1, f):
+    return tuple(a + (b - a) * f for a, b in zip(c0, c1))
+
+
+# colours in linear (a natural brown by default: dark at the base, lighter to the tip)
+_BROWN = ((0.03, 0.022, 0.015), (0.11, 0.07, 0.04), (0.3, 0.22, 0.14))
+_K_WHITE, _K_BLACK = (0.72, 0.68, 0.6), (0.012, 0.01, 0.009)
+_K_RUFOUS, _K_PALE, _K_QUILL = (0.52, 0.19, 0.075), (0.62, 0.36, 0.2), (0.62, 0.55, 0.4)
+
+
+def feather_colour(pattern, x, u, a):
+    """The colour at ``x`` (0 the quill's end .. 1 the tip), ``u`` (along the vane, < 0 the bare quill), ``a`` (-1 the
+    outer vane's edge .. 0 the shaft .. +1 the inner's)."""
+    if pattern != 'KESTREL':
+        return _mix(_BROWN[0], _BROWN[1], x / 0.45) if x < 0.45 else _mix(_BROWN[1], _BROWN[2], (x - 0.45) / 0.55)
+    if u < 0:
+        return _K_QUILL
+    # the inner vane rufous (paler by the shaft), the base downy white
+    c = _mix(_K_RUFOUS, _K_PALE, 1.0 - _ss(0.0, 0.25, abs(a)))
+    if a < 0:                                         # (the outer vane: rufous low, white with black spots higher)
+        w = _ss(0.36, 0.40, u)
+        c = _mix(c, _K_WHITE, w)
+        for su, r in ((0.43, 0.03), (0.56, 0.045)):               # (two black spots on it, roundish)
+            d = math.hypot((u - su) / r, (a + 0.7) / 0.6)
+            c = _mix(c, _K_BLACK, 1.0 - _ss(0.6, 1.15, d))
+    c = _mix(c, _K_WHITE, 1.0 - _ss(0.04, 0.16, u))  # (downy white at the base)
+    band = 0.70 + 0.04 * a if a >= 0 else 0.62       # (the black band near the tip, lower on the outer vane)
+    c = _mix(c, _K_BLACK, _ss(band - 0.012, band + 0.012, u))
+    tip = 0.925 + 0.02 * (1.0 - a * a)               # (the white tip, its edge curved)
+    c = _mix(c, _K_WHITE, _ss(tip - 0.01, tip + 0.01, u))
+    return c
+
+
 def feather_mesh(spec, name='Feather', seed=1):
     """One feather (see the module) as a new mesh."""
     rng = random.Random(seed)
@@ -90,10 +136,15 @@ def feather_mesh(spec, name='Feather', seed=1):
     fr = spec.get('fringe')
     ns = max(26, int(fr[1] * 2.2) + 4) if fr else 26  # (along: enough rows for the fringe's teeth; across each vane)
     nw = 4
+    pattern = spec.get('pattern')
+    if pattern:                                       # (a coloured pattern: rows enough for its bands and spots)
+        ns, nw = 90, 6
     cal = spec.get('calamus', 0.08)
     start = max(cal, spec.get('start', 0.0))
     asym = spec.get('asym', 0.0)
     side = {'L': 1.0 - asym, 'R': 1.0 + asym * 0.6}
+    ramp = spec.get('asym_ramp', 0.0)
+    fluff = spec.get('fluff')
     fringe = spec.get('fringe')
     notch = spec.get('notch')
     splits = sorted(rng.uniform(0.25, 0.85) for _ in range(spec.get('splits', 0)))
@@ -101,6 +152,7 @@ def feather_mesh(spec, name='Feather', seed=1):
     bm = bmesh.new()
     lt = bm.verts.layers.float.new(T_ATTR)
     ly = bm.verts.layers.float.new(Y_ATTR)
+    lc = bm.verts.layers.float_color.new(C_ATTR)
     rows = []
     for i in range(ns + 1):
         x = i / ns
@@ -112,7 +164,13 @@ def feather_mesh(spec, name='Feather', seed=1):
             if u < 0:                                   # (the bare quill: a thin strip)
                 half = W * 0.06 * (1.0 - x / max(start, 1e-6) * 0.3)
             else:
-                half = W * _vane_width(u, spec) * side[sd]
+                if ramp > 0:                            # (the outer vane narrow from ``ramp`` on, wider at the base)
+                    k = 0.45 + 0.55 * min(1.0, u / ramp)
+                    half = W * _vane_width(u, spec) * (1.0 - asym * k if sd == 'L' else 1.0 + asym * 0.6 * k)
+                else:
+                    half = W * _vane_width(u, spec) * side[sd]
+                if fluff is not None and u < fluff[1] and abs(a) > 0.3:    # (downy barbs at the base: ragged)
+                    half *= 1.0 - fluff[0] * (1.0 - u / fluff[1]) * rng.random() * (abs(a) - 0.3) / 0.7
                 if notch is not None and notch[0] in (sd, 'B'):
                     half *= 1.0 - notch[2] * max(0.0, 1.0 - abs(u - notch[1]) / 0.12)
                 if fringe is not None and abs(a) > 0.5:       # (the barbs' fringe: teeth toward the tip)
@@ -126,9 +184,12 @@ def feather_mesh(spec, name='Feather', seed=1):
             # curved along its length: down (bend), sideways (sweep), drooping at the tip (droop)
             z += -spec.get('bend', 0.0) * x * x - spec.get('droop', 0.0) * x ** 3
             y += spec.get('sweep', 0.0) * x * x
+            if spec.get('mirror'):                      # (the narrow vane on the other side, as in the photo)
+                y = -y
             v = bm.verts.new((x * L, y, z))
             v[lt] = x
             v[ly] = y / L
+            v[lc] = (*feather_colour(pattern, x, u, a), 1.0)
             row.append(v)
         rows.append(row)
     gap_rows = set()
@@ -290,11 +351,12 @@ def scale_mesh(spec, name='Scale', seg=36, rings=11, seed=1):
 def feather_material():
     """``MCH Feather``: darker at the base, lighter to the tip (``mch_feather_t``), a little sheen."""
     m = bpy.data.materials.get('MCH Feather')
-    if m is not None and m.get('mch_v') == 3:
+    if m is not None and m.get('mch_v') == 4:
         return m
     if m is None:
         m = bpy.data.materials.new('MCH Feather')
-    m['mch_v'] = 3                                   # (2: the barbs from the feather's own attributes, 3: colours)
+    m['mch_v'] = 4                                   # (2: the barbs from the feather's own attributes, 3: colours,
+    #                                                    4: each feather's own colours - C_ATTR, else the ramp)
     m.use_nodes = True
     nt = m.node_tree
     nt.nodes.clear()
@@ -309,7 +371,15 @@ def feather_material():
     mid = ramp.color_ramp.elements.new(0.45)
     mid.color = (0.11, 0.07, 0.04, 1.0)
     nt.links.new(at.outputs['Fac'], ramp.inputs['Fac'])
-    nt.links.new(ramp.outputs['Color'], pb.inputs['Base Color'])
+    ac = nt.nodes.new('ShaderNodeAttribute')         # (its own colours where it has them - an older one: the ramp)
+    ac.attribute_name, ac.attribute_type = C_ATTR, 'GEOMETRY'
+    mx = nt.nodes.new('ShaderNodeMix')
+    mx.data_type = 'RGBA'
+    sock = {i.identifier: i for i in mx.inputs}
+    nt.links.new(ac.outputs['Alpha'], sock['Factor_Float'])
+    nt.links.new(ramp.outputs['Color'], sock['A_Color'])
+    nt.links.new(ac.outputs['Color'], sock['B_Color'])
+    nt.links.new(next(o for o in mx.outputs if o.identifier == 'Result_Color'), pb.inputs['Base Color'])
     pb.inputs['Roughness'].default_value = 0.55
     # the barbs: fine lines from the shaft out toward the tip either side (a V along it) - a bump, no extra mesh
     ay = nt.nodes.new('ShaderNodeAttribute')
@@ -362,7 +432,7 @@ def scale_material():
 
 
 def feather_meshes():
-    """[(name, mesh)] for the 15 feathers (each scaled to its preset length by its object - see ``FEATHER_LENGTHS``)."""
+    """[(name, mesh)] for the 16 feathers (each scaled to its preset length by its object - see ``FEATHER_LENGTHS``)."""
     out = []
     for i, (fid, label, spec) in enumerate(FEATHERS):
         me = feather_mesh(spec, f'Feather {label}', seed=i + 1)

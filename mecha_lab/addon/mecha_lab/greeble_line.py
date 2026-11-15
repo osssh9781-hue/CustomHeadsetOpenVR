@@ -1692,7 +1692,7 @@ class MCH_TOOL_feather_line(bpy.types.WorkSpaceTool):
     bl_context_mode = 'OBJECT'
     bl_idname = 'mecha.feather_line'
     bl_label = 'Mecha Feather Line'
-    bl_description = ('Drag on a creature: feathers along the line, their quills on it, overlapping - 15 feathers, '
+    bl_description = ('Drag on a creature: feathers along the line, their quills on it, overlapping - 16 feathers, '
                       'Length / Width, longer toward the end or the start, a little random')
     bl_icon = 'ops.generic.select_paint'
     bl_widget = None
@@ -1742,7 +1742,7 @@ def draw(layout, context, kind='MECH'):
         op(row, 'mch.greeble_parts', 'Detail Parts', action='STARTER', which='DETAILS')
         op(row, 'mch.greeble_parts', 'Real Scales', action='STARTER', which='REAL_SCALES')   # 0.24.172
         row = col.row(align=True)
-    elif kind == 'FEATHER':                          # 0.24.172 the 15 feathers: a click = that one (the selected line too)
+    elif kind == 'FEATHER':                          # 0.24.172 the 16 feathers: a click = that one (the selected line too)
         from . import creature_shapes as cs
         cur = feather_in_use(context)
         col.label(text='Feather (a click: this one - the selected line too)')

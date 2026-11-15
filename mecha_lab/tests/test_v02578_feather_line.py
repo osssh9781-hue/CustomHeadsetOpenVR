@@ -33,13 +33,38 @@ faces = [len(me.polygons) for _n, me in fm]
 ext = [np.ptp(coords(me), axis=0) for _n, me in fm]
 base = [coords(me)[:, 0].min() for _n, me in fm]
 lens = sorted(cs.FEATHER_LENGTHS.values())
-check(f'15 feather shapes, light ({min(faces)}..{max(faces)} faces each), each its own outline, the quill base at '
+check(f'16 feather shapes (0.24.173 the kestrel\'s tail from the user\'s photo), light ({min(faces)}..{max(faces)} faces each), each its own outline, the quill base at '
       f'the origin, length along +X, lengths {lens[0]:.2f}..{lens[-1]:.2f}',
-      len(fm) == 15 and len({me.get('mch_shape_id') for _n, me in fm}) == 15 and max(faces) <= 400
+      len(fm) == 16 and len({me.get('mch_shape_id') for _n, me in fm}) == 16 and max(faces) <= 1100
       and all(e[0] > e[1] for e in ext) and all(abs(b) < 0.03 for b in base) and lens[-1] / lens[0] > 2.5
       and all(me.attributes.get(cs.T_ATTR) is not None for _n, me in fm))
 widths = [round(float(e[1] / e[0]), 2) for e in ext]
 check(f'the feathers differ (width / length {sorted(widths)})', len(set(widths)) >= 10)
+kme = dict((me['mch_shape_id'], me) for _n, me in fm)['KESTREL']
+kc = np.empty(len(kme.vertices) * 4, np.float32)
+kme.attributes[cs.C_ATTR].data.foreach_get('color', kc)
+kc = kc.reshape(-1, 4)
+kt = np.empty(len(kme.vertices), np.float32)
+kme.attributes[cs.T_ATTR].data.foreach_get('value', kt)
+kco = coords(kme)
+lum = kc[:, :3].mean(1)
+tipw = lum[kt > 0.985].mean()
+band = lum[(kt > 0.82) & (kt < 0.88)].mean()
+body = kc[(kt > 0.35) & (kt < 0.6) & (kco[:, 1] < -0.01)]
+outer = (kco[:, 1] > 0.004) & (kt > 0.45) & (kt < 0.7)
+check(f'the kestrel\'s tail (the photo): a long blunt feather ({np.ptp(kco[:, 0]) / np.ptp(kco[:, 1]):.1f} x as long as wide), '
+      f'the narrow vane on +Y ({kco[:, 1].max():.3f} vs {-kco[:, 1].min():.3f}), its own colours: a white tip ({tipw:.2f}), a '
+      f'black band ({band:.2f}), rufous ({np.round(body[:, :3].mean(0), 2)}), black spots on the narrow vane '
+      f'({lum[outer].min():.2f}) among white ({lum[outer].max():.2f})',
+      np.ptp(kco[:, 0]) / np.ptp(kco[:, 1]) > 5.0 and kco[:, 1].max() < -kco[:, 1].min() * 0.8 and tipw > 0.5
+      and band < 0.05 and body[:, 0].mean() > 2.5 * body[:, 2].mean() and lum[outer].min() < 0.05
+      and lum[outer].max() > 0.5)
+cme = dict((me['mch_shape_id'], me) for _n, me in fm)['CONTOUR']
+cc = np.empty(len(cme.vertices) * 4, np.float32)
+cme.attributes[cs.C_ATTR].data.foreach_get('color', cc)
+check('the other feathers keep their brown (dark at the base, lighter to the tip), every one opaque in its colours',
+      cc.reshape(-1, 4)[:, 3].min() == 1.0 and cc.reshape(-1, 4)[:, :3].mean(1).max() > 0.2
+      and cc.reshape(-1, 4)[:, :3].mean(1).min() < 0.03)
 sm = cs.scale_meshes_real()
 
 

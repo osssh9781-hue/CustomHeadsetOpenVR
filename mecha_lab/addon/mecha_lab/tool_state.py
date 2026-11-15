@@ -52,7 +52,7 @@ TOOLS = (
      '(Pick Part); each standing on the surface.  Up / Turn / Tilt, Gap, Rows, Stagger, Sink; select a line to change '
      'it, Apply to keep', 'cgreeble', 'OUTLINER_OB_POINTCLOUD', 'mecha.scale_line', 'OK'),
     ('FGREEBLE', 'Feather Line', 'Drag on a creature: feathers along the line, their quills on it, overlapping like '
-     'shingles - 15 feathers (contour, covert, primary, tail, down, plume, owl, hawk, pheasant, crest, ribbon, peacock '
+     'shingles - 16 feathers (contour, covert, primary, tail, down, plume, owl, hawk, pheasant, crest, ribbon, peacock, kestrel '
      '...), Length / Width, Longer to End / at Start, Length Random, Rows; select a line to change it, Enter / Apply to '
      'keep', 'fgreeble', 'OUTLINER_OB_POINTCLOUD', 'mecha.feather_line', 'OK'),
     ('PERF', 'Perforate', 'Sci-fi perforated plate: honeycomb / circle / square / diamond holes through the selected '

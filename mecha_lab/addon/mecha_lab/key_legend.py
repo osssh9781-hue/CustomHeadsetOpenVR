@@ -42,7 +42,7 @@ EXTRA = {
                  'Select a line   change it (Up, Turn, Tilt, Gap, Rows, Stagger ...),  Apply   real geometry',
                  'Shift + draw   your own scale / detail from the outline (a Creature Base Mesh stamp: Puff / Ridge / Pillow)'],
     'FGREEBLE': ['Drag along a creature   feathers along the line, their quills on it, overlapping',
-                 'The window   15 feathers, Length / Width, Longer to End / at Start, Length Random',
+                 'The window   16 feathers, Length / Width, Longer to End / at Start, Length Random',
                  'Select a line   change it;  Enter   Apply (real geometry)'],
     'WDIRT': ['Click a mesh   it becomes dirt (live: its values in the window)', 'Alt + click   back to the shape'],
     'WDUST': ['Click a mesh   it becomes a soft dust layer (live)', 'Alt + click   back to the shape'],
