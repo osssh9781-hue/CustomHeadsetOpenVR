@@ -278,6 +278,27 @@ def raster(fr, vlist, stigma, px):
     return np.stack([R, G], axis=-1), lo
 
 
+def bend_twist(V, fr, bend, twist):
+    """0.24.173 (user: "벌레 날개는 뿌리 부분을 기준으로 밴드랑 트위스트도 추가해 줘"): the wing (plane x, y + height z)
+    twisted round its long axis and bent along it, more and more from the root (nothing at the root) to the tip
+    (``twist`` / ``bend`` there, radians; bend + : toward the view)."""
+    R = V[:, :2] - fr.root
+    a = R @ fr.axis
+    c = R @ fr.perp
+    z = V[:, 2].copy()
+    s = np.clip(a / fr.L, 0.0, None)
+    phi = twist * s                                    # (round the long axis)
+    c, z = c * np.cos(phi) - z * np.sin(phi), c * np.sin(phi) + z * np.cos(phi)
+    if abs(bend) > 1e-9:                               # (along it: an arc, the root's end flat)
+        rr = fr.L / bend
+        th = np.clip(a, 0.0, None) / rr
+        out = a > 0
+        a = np.where(out, rr * np.sin(th) - z * np.sin(th), a)
+        z = np.where(out, rr * (1.0 - np.cos(th)) + z * np.cos(th), z)
+    xy = fr.root + a[:, None] * fr.axis + c[:, None] * fr.perp
+    return np.c_[xy, z]
+
+
 def photo_field(fr, pid, px, vein_width, spec):
     """A photo's veins (white) laid on the drawn wing: each texel's place along / across the wing found in the photo's
     wing.  Returns (img H x W x 2, lo) as ``raster``."""
@@ -412,6 +433,8 @@ def build(ob, context=None):
     zb = -(t + 0.6 * H * hv)
     n = len(pts)
     V = np.r_[np.c_[pts, zt], np.c_[pts, zb]]
+    if abs(p.bend) > 1e-6 or abs(p.twist) > 1e-6:
+        V = bend_twist(V, fr, p.bend, p.twist)
     faces = [tuple(f) for f in tris.tolist()] + [tuple(int(i) + n for i in f[::-1]) for f in tris.tolist()]
     faces += [(i, (i + 1) % nb, (i + 1) % nb + n, i + n) for i in range(nb)]
     O = Vector(d['origin'])
@@ -488,7 +511,7 @@ def _upd(self, context):
                 _BUSY[0] = False
 
 
-LIVE = ('preset', 'vein_height', 'vein_width', 'density', 'thickness', 'detail', 'seed', 'flip')
+LIVE = ('preset', 'vein_height', 'vein_width', 'density', 'thickness', 'detail', 'seed', 'flip', 'bend', 'twist')
 
 
 class MCH_PG_Wing(bpy.types.PropertyGroup):
@@ -503,6 +526,10 @@ class MCH_PG_Wing(bpy.types.PropertyGroup):
     detail: IntProperty(name='Detail', default=220, min=40, max=600, update=_upd,
                         description='Points along the wing\'s length (more: sharper raised veins, heavier)')
     seed: IntProperty(name='Seed', default=0, min=0, update=_upd)
+    bend: FloatProperty(name='Bend', default=0.0, min=-math.radians(150), max=math.radians(150), subtype='ANGLE',
+                        update=_upd, description='Bent along its length from the root (+: toward you)')
+    twist: FloatProperty(name='Twist', default=0.0, min=-math.radians(120), max=math.radians(120), subtype='ANGLE',
+                         update=_upd, description='Twisted round its length from the root')
     flip: BoolProperty(name='Flip Leading Edge', default=False, update=_upd,
                        description='The veins along the other edge')
 
@@ -513,7 +540,7 @@ def _root_index(context, P3, length):
     """The outline point nearest to a mesh (the body the wing grows from) - None when no mesh is near."""
     best = None
     for o in context.view_layer.objects:
-        if o.type != 'MESH' or not o.visible_get() or is_wing(o):
+        if o.type != 'MESH' or not o.visible_get() or is_wing(o) or o.get('mch_wing_done'):
             continue
         Mi = o.matrix_world.inverted()
         for i, q in enumerate(P3):
@@ -533,7 +560,7 @@ def perform(context, loops, projector):
     groups = cg.prepare_loops(loops)
     if not groups:
         raise cg.CutError('Draw a bigger wing')
-    outer = groups[0][0]
+    outer = max((g[0] for g in groups), key=lambda lp: abs(cg.signed_area(lp)))   # (a sketch: its biggest shape)
     origin, X, Y, N = base_mesh.plane_frame(context, projector, groups)
     P3, P2 = [], []
     for q in outer:
@@ -581,6 +608,7 @@ def apply_wing(ob):
     for k in (KEY, 'mch_wing_size'):
         if k in ob.keys():
             del ob[k]
+    ob['mch_wing_done'] = 1
 
 
 def apply_targets(context):
@@ -637,9 +665,9 @@ def draw(layout, context):
     layout.label(text='From photos (white = raised vein)')
     g = layout.grid_flow(row_major=True, columns=2, even_columns=True, align=True)
     for pid, label, *_r in wp.PHOTOS:
-        g.operator('mch.wing_preset', text=label.replace(' (Photo)', ''), depress=pg.preset == pid).preset = pid
+        g.operator('mch.wing_preset', text=label.replace(' (Photo)', ' Photo'), depress=pg.preset == pid).preset = pid
     col = layout.column(align=True)
-    for k in ('vein_height', 'vein_width', 'density', 'thickness', 'detail', 'seed'):
+    for k in ('bend', 'twist', 'vein_height', 'vein_width', 'density', 'thickness', 'detail', 'seed'):
         col.prop(pg, k)
     col.prop(pg, 'flip')
     if ob is not None:

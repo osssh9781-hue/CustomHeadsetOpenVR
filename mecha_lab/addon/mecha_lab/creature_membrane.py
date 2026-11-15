@@ -7,14 +7,14 @@ Draw the membrane's outline over your mesh (a dragon's wing: along the arm and t
 between them): an even sheet fills it.  Where the sheet is over the mesh (the outline's parts drawn on it, the bones
 inside it) it sits on the mesh and is pinned there; the rest spans between (a smooth surface through the pinned
 parts).  Space lets it fall: Blender's own cloth, pins only - no collision (light).  Enter keeps it: a plain mesh,
-parented to the mesh it hangs from, with Thickness (a Solidify); Esc drops it.  Its look: a skin with veins growing
-from where it is held, six presets (Dragon, Bat, Wyvern, Pale (backlit), Demon, Leather).  It runs in Cloth Drape's
+parented to the mesh it hangs from, with Thickness (a Solidify); Esc drops it.  Two styles: Taut Skin / Hanging
+Cloth.  Its look: a skin, six presets (Dragon, Bat, Wyvern, Pale (backlit), Demon, Leather) - no veins (user: "혈관은
+그냥 빼 줘도 돼").  It runs in Cloth Drape's
 session (the same Space / Enter / Esc and window buttons).
 """
 from __future__ import annotations
 
 import math
-import random
 
 import bmesh
 import bpy
@@ -25,20 +25,27 @@ from mathutils import Matrix, Vector
 from . import outline_mesh as om
 
 KEY = 'mch_membrane'              # on a membrane (1)
+DONE_KEY = 'mch_membrane_done'    # on a kept one: never what a new membrane hangs from
 PIN = 'MCH Pin'
 CLOTH_MOD = 'MCH Membrane Cloth'
 THICK_MOD = 'MCH Membrane Thickness'
 UV_NAME = 'UVMap'
 
-# (id, label, skin colour, vein colour (linear), subsurface, wrinkles, vein count x)
+# (id, label, skin colour (linear), subsurface, wrinkles) - 0.24.173 no veins (user: "혈관은 그냥 빼 줘도 돼")
 PRESETS = (
-    ('DRAGON', 'Dragon', (0.22, 0.045, 0.03), (0.42, 0.03, 0.025), 0.35, 0.5, 1.0),
-    ('BAT', 'Bat', (0.045, 0.035, 0.03), (0.018, 0.012, 0.01), 0.15, 1.0, 1.3),
-    ('WYVERN', 'Wyvern', (0.07, 0.11, 0.035), (0.25, 0.06, 0.03), 0.3, 0.6, 0.9),
-    ('PALE', 'Pale (Backlit)', (0.62, 0.36, 0.3), (0.5, 0.03, 0.035), 0.7, 0.35, 1.2),
-    ('DEMON', 'Demon', (0.012, 0.008, 0.008), (0.45, 0.025, 0.01), 0.2, 0.7, 1.0),
-    ('LEATHER', 'Leather', (0.2, 0.11, 0.05), (0.09, 0.045, 0.02), 0.1, 0.9, 0.8),
+    ('DRAGON', 'Dragon', (0.22, 0.045, 0.03), 0.35, 0.5),
+    ('BAT', 'Bat', (0.045, 0.035, 0.03), 0.15, 1.0),
+    ('WYVERN', 'Wyvern', (0.07, 0.11, 0.035), 0.3, 0.6),
+    ('PALE', 'Pale (Backlit)', (0.62, 0.36, 0.3), 0.7, 0.35),
+    ('DEMON', 'Demon', (0.012, 0.008, 0.008), 0.2, 0.7),
+    ('LEATHER', 'Leather', (0.2, 0.11, 0.05), 0.1, 0.9),
 )
+# 0.24.173 two ways it falls (user: "피막은 이 버전까지 해서 옵션을 두 개 만들어 줘"): Taut Skin - the first version
+# (light, stretchy, fine folds over the bones), Hanging Cloth - a plain cloth that hangs (more gravity, heavier)
+STYLES = (('TAUT', 'Taut Skin', 'Light and stretchy: it stays close between the bones, fine folds'),
+          ('CLOTH', 'Hanging Cloth', 'A plain cloth: heavier, more gravity - it hangs and flows down'))
+STYLE_START = {'TAUT': dict(slack=15.0, gravity=100.0, stiffness=25.0, folds=35.0, frames=50),
+               'CLOTH': dict(slack=10.0, gravity=250.0, stiffness=20.0, folds=35.0, frames=80)}
 PRESET_ITEMS = [(p[0], p[1], '') for p in PRESETS]
 LOOK = {p[0]: p for p in PRESETS}
 
@@ -85,20 +92,21 @@ def _laplace(n, edges, val, fixed, iters=400):
     return v
 
 
-def sheet(context, loops, projector, detail):
+def sheet(context, loops, projector, detail, wobble=0.0002):
     """The membrane over the outline: (points N x 3 world, triangles, pinned bool N, uv N x 2, the mesh it hangs from,
     nb).  Raises CutError when nothing of it is over a mesh."""
     from . import core_geometry as cg
     groups = cg.prepare_loops(loops)
     if not groups:
         raise cg.CutError('Draw a bigger membrane')
-    outer = np.array(groups[0][0], float)
+    outer = np.array(max((g[0] for g in groups), key=lambda lp: abs(cg.signed_area(lp))), float)   # (a sketch: its biggest)
     size_px = float(np.ptp(outer, axis=0).max())
     pts, tris, nb = om.even_mesh(outer, max(size_px / max(detail, 8), 1.5), max_points=12000)
     if not len(tris):
         raise cg.CutError('Draw a bigger membrane')
     dg = context.evaluated_depsgraph_get()
-    skip = {o.name for o in context.scene.objects if is_membrane(o) or o.get('mch_wing')}
+    skip = {o.name for o in context.scene.objects if is_membrane(o) or o.get(DONE_KEY) or o.get('mch_wing')
+            or o.get('mch_wing_done')}
     n = len(pts)
     O = np.zeros((n, 3))
     D = np.zeros((n, 3))
@@ -143,7 +151,7 @@ def sheet(context, loops, projector, detail):
     t = _laplace(n, E, t, fixed)
     P = O + D * t[:, None]
     rng = np.random.default_rng(7)                  # (a hair off flat where it is free: it can fold either way)
-    P[~fixed] += D[~fixed] * rng.uniform(-1.0, 1.0, (int((~fixed).sum()), 1)) * size * 0.0002
+    P[~fixed] += D[~fixed] * rng.uniform(-1.0, 1.0, (int((~fixed).sum()), 1)) * size * wobble
     held = [owner[i] for i in np.nonzero(on)[0] if owner[i] is not None]
     body = max(set(held), key=held.count) if held else None
     lo = outer.min(0)
@@ -151,84 +159,10 @@ def sheet(context, loops, projector, detail):
     return P, tris, on, uv, body, nb
 
 
-# ---- the veins (an image in the membrane's own place: growing from where it is held) ----------------------------
-
-def vein_lines(uv, nb, pinned, count=1.0, seed=0):
-    """Veins as polylines in uv: from the held parts of the outline, branching toward the free edge."""
-    rng = random.Random(seed * 131 + 7)
-    ring = uv[:nb]
-    held = ring[pinned[:nb]] if np.any(pinned[:nb]) else uv[pinned]
-    if not len(held):
-        return []
-    free_c = ring[~pinned[:nb]].mean(0) if np.any(~pinned[:nb]) else uv.mean(0)
-    seeds = held[np.linspace(0, len(held) - 1, max(3, int(9 * count))).astype(int)]
-    from mathutils.kdtree import KDTree
-    kd = KDTree(len(held))
-    for i, q in enumerate(held):
-        kd.insert((float(q[0]), float(q[1]), 0.0), i)
-    kd.balance()
-    out = []
-    step = 0.018
-
-    def away(p):
-        """Away from where it is held (the nearest held point): veins spread out, they do not meet."""
-        _c, i, dist = kd.find((float(p[0]), float(p[1]), 0.0))
-        v = p - held[i]
-        if dist < 1e-6:
-            v = free_c - p
-        return math.atan2(v[1], v[0])
-
-    def grow(p, ang, width, gen, steps):
-        line, ws = [p.copy()], [width]
-        for k in range(steps):
-            want = away(p)
-            da = (want - ang + math.pi) % (2 * math.pi) - math.pi
-            ang += 0.15 * da + rng.uniform(-0.3, 0.3)
-            p = p + step * np.array([math.cos(ang), math.sin(ang)])
-            if not om.inside(p[None], [ring])[0]:
-                break
-            line.append(p.copy())
-            width *= 0.985
-            ws.append(width)
-            if gen < 4 and k > 3 and rng.random() < 0.09:
-                side = rng.choice((-1, 1))
-                grow(p.copy(), ang + side * rng.uniform(0.35, 0.8), width * 0.65, gen + 1, int(steps * 0.6))
-        if len(line) > 1:
-            out.append((np.array(line), np.array(ws), False))
-    for s in seeds:
-        to_free = free_c - s
-        ang = math.atan2(to_free[1], to_free[0]) + rng.uniform(-0.5, 0.5)
-        grow(s.copy() + 0.004 * (to_free / max(np.linalg.norm(to_free), 1e-9)), ang, 0.0045, 0, 60)
-    return out
-
-
-def vein_image(name, lines, res=1024):
-    lo, hi = np.zeros(2), np.ones(2)
-    px = 1.0 / res
-    R = om.raster_lines(lo, hi, px, lines) if lines else np.zeros((res + 1, res + 1), np.float32)
-    Hh, Ww = R.shape
-    im = bpy.data.images.get(name)
-    if im is not None and (im.size[0] != Ww or im.size[1] != Hh):
-        bpy.data.images.remove(im)
-        im = None
-    if im is None:
-        im = bpy.data.images.new(name, Ww, Hh, alpha=True, float_buffer=True)
-        im.colorspace_settings.name = 'Non-Color'
-    rgba = np.zeros((Hh, Ww, 4), np.float32)
-    rgba[..., 0] = R
-    rgba[..., 3] = 1.0
-    im.pixels.foreach_set(rgba.ravel())
-    im.update()
-    try:
-        im.pack()
-    except RuntimeError:
-        pass
-    return im
-
-
-def membrane_material(ob, image, preset):
-    _pid, _label, skin, vein, sss, wrinkle, _vc = LOOK.get(preset, PRESETS[0])
-    m = next((s for s in ob.data.materials if s is not None and s.get('mch_membrane_mat')), None)
+def membrane_material(ob, preset):
+    """The skin (a preset's colour, see-through where thin, fine wrinkles) - its own material."""
+    _pid, _label, skin, sss, wrinkle = LOOK.get(preset, PRESETS[0])
+    m = next((s_ for s_ in ob.data.materials if s_ is not None and s_.get('mch_membrane_mat')), None)
     if m is None:
         m = bpy.data.materials.new(f'MCH Membrane ({ob.name})')
         m['mch_membrane_mat'] = 1
@@ -240,28 +174,10 @@ def membrane_material(ob, image, preset):
     out = nt.nodes.new('ShaderNodeOutputMaterial')
     pb = nt.nodes.new('ShaderNodeBsdfPrincipled')
     nt.links.new(pb.outputs[0], out.inputs['Surface'])
+    pb.inputs['Base Color'].default_value = (*skin, 1.0)
     uvn = nt.nodes.new('ShaderNodeUVMap')
     uvn.uv_map = UV_NAME
-    tx = nt.nodes.new('ShaderNodeTexImage')
-    tx.image = image
-    tx.extension = 'EXTEND'
-    nt.links.new(uvn.outputs['UV'], tx.inputs['Vector'])
-    sep = nt.nodes.new('ShaderNodeSeparateColor')
-    nt.links.new(tx.outputs['Color'], sep.inputs[0])
-    vmask = nt.nodes.new('ShaderNodeMath')
-    vmask.operation = 'MULTIPLY'
-    vmask.use_clamp = True
-    nt.links.new(sep.outputs[0], vmask.inputs[0])
-    vmask.inputs[1].default_value = 2.5
-    mix = nt.nodes.new('ShaderNodeMix')
-    mix.data_type = 'RGBA'
-    sock = {i.identifier: i for i in mix.inputs}
-    nt.links.new(vmask.outputs[0], sock['Factor_Float'])
-    sock['A_Color'].default_value = (*skin, 1.0)
-    sock['B_Color'].default_value = (*vein, 1.0)
-    nt.links.new(next(o for o in mix.outputs if o.identifier == 'Result_Color'), pb.inputs['Base Color'])
-    # the skin: fine wrinkles (noise in the membrane's own place) + the veins raised
-    noise = nt.nodes.new('ShaderNodeTexNoise')
+    noise = nt.nodes.new('ShaderNodeTexNoise')       # (the skin: fine wrinkles in the membrane's own place)
     noise.inputs['Scale'].default_value = 60.0
     noise.inputs['Detail'].default_value = 6.0
     noise.inputs['Roughness'].default_value = 0.6
@@ -272,18 +188,17 @@ def membrane_material(ob, image, preset):
     nt.links.new(uvn.outputs['UV'], vor.inputs['Vector'])
     h = nt.nodes.new('ShaderNodeMath')
     h.operation = 'MULTIPLY_ADD'
-    nt.links.new(noise.outputs['Fac'], h.inputs[0])
-    h.inputs[1].default_value = 0.25 * wrinkle
-    nt.links.new(sep.outputs[0], h.inputs[2])
+    nt.links.new(vor.outputs['Distance'], h.inputs[0])
+    h.inputs[1].default_value = 0.6 * wrinkle
     h2 = nt.nodes.new('ShaderNodeMath')
-    h2.operation = 'MULTIPLY_ADD'
-    nt.links.new(vor.outputs['Distance'], h2.inputs[0])
-    h2.inputs[1].default_value = 0.6 * wrinkle
-    nt.links.new(h.outputs[0], h2.inputs[2])
+    h2.operation = 'MULTIPLY'
+    nt.links.new(noise.outputs['Fac'], h2.inputs[0])
+    h2.inputs[1].default_value = 0.25 * wrinkle
+    nt.links.new(h2.outputs[0], h.inputs[2])
     bump = nt.nodes.new('ShaderNodeBump')
     bump.inputs['Strength'].default_value = 0.5
     bump.inputs['Distance'].default_value = 0.003
-    nt.links.new(h2.outputs[0], bump.inputs['Height'])
+    nt.links.new(h.outputs[0], bump.inputs['Height'])
     nt.links.new(bump.outputs['Normal'], pb.inputs['Normal'])
     pb.inputs['Roughness'].default_value = 0.55
     for k, v in (('Subsurface Weight', sss), ('Subsurface Scale', 0.05), ('Sheen Weight', 0.1)):
@@ -302,21 +217,27 @@ def membrane_material(ob, image, preset):
 # ---- the session (in Cloth Drape's: Space / Enter / Esc) ----------------------------------------------------------
 
 def cloth_settings(ob, mp, size):
-    """The window's values on its cloth - 0.24.173 (user: "중력 값도 좀 더 해 봐", "진공팩보단 좀 더 그냥 클로스에 가까워야
-    되는 거 아니야?"): a plain cloth (cotton-like weight and stretch, soft wide folds), not the Vacuum Pack's tight
-    film - it hangs and flows down from where it is pinned."""
+    """The window's values on its cloth: Taut Skin (the first version: light, stretchy, fine folds) or Hanging Cloth
+    (user: "중력 값도 좀 더 해 봐", "진공팩보단 좀 더 그냥 클로스에 가까워야 되는 거 아니야?": cotton-like weight and
+    stretch, soft wide folds - it hangs and flows down)."""
     cm = ob.modifiers.get(CLOTH_MOD)
     if cm is None:
         return
     cs = cm.settings
-    cs.quality = 7
-    cs.mass = 0.3
-    cs.air_damping = 1.0
-    k = 2.0 + mp.stiffness * 0.6                    # (Blender's cotton: 15)
-    cs.tension_stiffness = k
-    cs.compression_stiffness = k
-    cs.shear_stiffness = k
-    cs.bending_stiffness = 5.0 * (0.01 ** (mp.folds / 100.0))      # (0: wide soft folds .. 100: fine ones)
+    if mp.style == 'TAUT':
+        cs.quality = 6
+        cs.mass = 0.15
+        cs.air_damping = 1.5
+        cs.tension_stiffness = cs.compression_stiffness = 2.0 + mp.stiffness * 0.8
+        cs.shear_stiffness = 2.0 + mp.stiffness * 0.3
+        cs.bending_stiffness = 0.5 * (0.02 ** (mp.folds / 100.0))
+    else:
+        cs.quality = 7
+        cs.mass = 0.3
+        cs.air_damping = 1.0
+        k = 2.0 + mp.stiffness * 0.6                # (Blender's cotton: 15)
+        cs.tension_stiffness = cs.compression_stiffness = cs.shear_stiffness = k
+        cs.bending_stiffness = 5.0 * (0.01 ** (mp.folds / 100.0))      # (0: wide soft folds .. 100: fine ones)
     cs.shrink_min = -mp.slack / 100.0               # (looser: more to hang)
     cs.effector_weights.gravity = mp.gravity / 100.0
     cs.vertex_group_mass = PIN
@@ -333,7 +254,7 @@ def perform(context, loops, projector):
     if cd.sim_active():
         raise cg.CutError('Cloth Drape: keep (Enter) or drop (Esc) the cloth you have first')
     mp = context.scene.mch_membrane
-    P, tris, pinned, uv, body, nb = sheet(context, loops, projector, mp.detail)
+    P, tris, pinned, uv, body, nb = sheet(context, loops, projector, mp.detail, 0.0006 if mp.style == 'TAUT' else 0.0002)
     if not np.any(pinned):
         raise cg.CutError('Draw the membrane over your mesh: the parts over it hold it')
     if pinned.all():
@@ -365,11 +286,7 @@ def perform(context, loops, projector):
     vg.add([int(i) for i in np.nonzero(pinned)[0]], 1.0, 'REPLACE')
     ob[KEY] = 1
     size = float(np.linalg.norm(np.ptp(P, axis=0)))
-    lines = vein_lines(uv, nb, pinned, LOOK.get(mp.preset, PRESETS[0])[6] * mp.vein_count, mp.seed)
-    if abs(mp.vein_width - 1.0) > 1e-6:
-        lines = [(q, w * mp.vein_width, cl) for q, w, cl in lines]
-    im = vein_image(f'MCH Membrane Veins ({ob.name})', lines)
-    membrane_material(ob, im, mp.preset)
+    membrane_material(ob, mp.preset)
     if body is not None:                            # (it hangs from the mesh: moves with it)
         ob.parent = body
         ob.matrix_parent_inverse = body.matrix_world.inverted_safe()
@@ -438,6 +355,7 @@ def sim_keep(context):
         thick = True
     if KEY in ob.keys():
         del ob[KEY]
+    ob[DONE_KEY] = 1
     SIM.clear()
     return (f'{ob.name}: kept at frame {frame} ({len(me.vertices):,} points)' +
             (f' + Thickness {mp.thickness:.2f} % (its Solidify)' if thick else ''))
@@ -493,20 +411,26 @@ def _restart(self, context):
 
 
 def _look(self, context):
-    """A preset / the veins: the live membrane's look again."""
+    """A preset: the live membrane's (or the selected one's) look again."""
     SIM = _sim()
     ob = bpy.data.objects.get(SIM.get('ob', '')) if SIM.get('mode') == 'MEMBRANE' else None
     if ob is None:
         ob = context.view_layer.objects.active
-        if ob is None or not any(s is not None and s.get('mch_membrane_mat') for s in getattr(ob.data, 'materials', ())):
+        if ob is None or not any(s_ is not None and s_.get('mch_membrane_mat') for s_ in getattr(ob.data, 'materials', ())):
             return
-    im = next((n.image for s in ob.data.materials if s is not None and s.get('mch_membrane_mat')
-               for n in s.node_tree.nodes if n.bl_idname == 'ShaderNodeTexImage'), None)
-    if im is not None:
-        membrane_material(ob, im, self.preset)
+    membrane_material(ob, self.preset)
+
+
+def _style(self, context):
+    """Taut Skin / Hanging Cloth: its own start values; the live membrane falls again with them."""
+    for k, v in STYLE_START[self.style].items():
+        if abs(getattr(self, k) - v) > 1e-9:
+            setattr(self, k, v)                       # (each restarts it - the last one leaves it at frame 0)
+    _restart(self, context)
 
 
 class MCH_PG_Membrane(bpy.types.PropertyGroup):
+    style: EnumProperty(name='Style', items=STYLES, default='CLOTH', update=_style)
     preset: EnumProperty(name='Skin', items=PRESET_ITEMS, default='DRAGON', update=_look)
     slack: FloatProperty(name='Slack', default=10.0, min=0.0, max=60.0, update=_restart,
                          description='How loose the membrane is (% larger than it was drawn): more to sag and fold')
@@ -521,10 +445,6 @@ class MCH_PG_Membrane(bpy.types.PropertyGroup):
                              description='Added when it is kept (Enter): a Solidify, % of the membrane\'s size')
     detail: IntProperty(name='Detail', default=50, min=10, max=150,
                         description='Points across the membrane (the next one drawn)')
-    vein_count: FloatProperty(name='Veins', default=1.0, min=0.0, max=3.0,
-                              description='How many veins grow from where it is held (the next one drawn)')
-    vein_width: FloatProperty(name='Vein Width', default=1.0, min=0.2, max=4.0)
-    seed: IntProperty(name='Seed', default=0, min=0)
 
 
 def draw(layout, context):
@@ -540,7 +460,8 @@ def draw(layout, context):
         r.operator('mch.cdrape_control', text='Fall / Pause (Space)').action = 'toggle'
         r.operator('mch.cdrape_control', text='Keep (Enter)').action = 'confirm'
         r.operator('mch.cdrape_control', text='Drop (Esc)').action = 'cancel'
-    layout.label(text='Skin and veins')
+    layout.row(align=True).prop(mp, 'style', expand=True)
+    layout.label(text='Skin')
     g = layout.grid_flow(row_major=True, columns=3, even_columns=True, align=True)
     for pid, label, *_r in PRESETS:
         g.prop_enum(mp, 'preset', pid, text=label)
@@ -549,8 +470,7 @@ def draw(layout, context):
         col.prop(mp, k)
     col = layout.column(align=True)
     col.label(text='The next membrane')
-    for k in ('detail', 'vein_count', 'vein_width', 'seed'):
-        col.prop(mp, k)
+    col.prop(mp, 'detail')
     col = layout.column(align=True)
     for line in ('Draw over your mesh: pinned where it is on the mesh',
                  'Space: the rest falls (cloth, pins only)',

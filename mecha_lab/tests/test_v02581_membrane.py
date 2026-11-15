@@ -100,15 +100,9 @@ check(f'a plain cloth, not the Vacuum Pack\'s film (user: "진공팩보단 좀 �
       and cs_.mass >= 0.3 and cs_.tension_stiffness < 20 and cs_.bending_stiffness > 0.5 and not cs_.use_pressure
       and cs_.shrink_min <= 0)
 mat = next(s for s in mem.data.materials if s is not None)
-im = next(n.image for n in mat.node_tree.nodes if n.bl_idname == 'ShaderNodeTexImage')
-px = np.empty(im.size[0] * im.size[1] * 4, np.float32)
-im.pixels.foreach_get(px)
-img = px.reshape(im.size[1], im.size[0], 4)[..., 0]
-uv = np.empty(len(mem.data.loops) * 2, np.float32)
-mem.data.uv_layers['UVMap'].data.foreach_get('uv', uv)
-check(f'its skin with veins: the Dragon preset, the veins\' image (covered {(img > 0.05).mean() * 100:.1f} %, packed), '
-      f'in its own uv', 0.01 < (img > 0.05).mean() < 0.4 and im.packed_file is not None and np.ptp(uv) > 0.9
-      and S.mch_membrane.preset == 'DRAGON')
+check('its skin: the Dragon preset - no veins (user: "혈관은 그냥 빼 줘도 돼"): no image in it, its own uv kept',
+      S.mch_membrane.preset == 'DRAGON' and not any(n.bl_idname == 'ShaderNodeTexImage' for n in mat.node_tree.nodes)
+      and mem.data.uv_layers.get('UVMap') is not None and not any(i.name.startswith('MCH Membrane Veins') for i in bpy.data.images))
 k = 0
 t0 = time.time()
 while cd.step(C):
@@ -128,9 +122,27 @@ W2 = world(mem, evaluated=True)
 check(f'more Slack: it hangs lower (mean {sag.mean():.3f} -> {(W2[~pin, 2] - W0[~pin, 2]).mean():.3f})',
       (W2[~pin, 2] - W0[~pin, 2]).mean() < sag.mean())
 S.mch_membrane.preset = 'BAT'
-bc = next(n for n in mat.node_tree.nodes if n.bl_idname == 'ShaderNodeMix')
-skin = tuple(next(i for i in bc.inputs if i.identifier == 'A_Color').default_value)[:3]
+pb = next(n for n in mat.node_tree.nodes if n.bl_idname == 'ShaderNodeBsdfPrincipled')
+skin = tuple(pb.inputs['Base Color'].default_value)[:3]
 check(f'a skin preset on the live membrane: Bat ({np.round(skin, 3)})', np.allclose(skin, cm.LOOK['BAT'][2], atol=1e-4))
+S.mch_membrane.style = 'TAUT'                         # (user: "피막은 이 버전까지 해서 옵션을 두 개")
+taut = (S.mch_membrane.gravity, S.mch_membrane.slack, mod.settings.mass, round(mod.settings.tension_stiffness, 1),
+        cd.SIM['sess']['frame'])
+while cd.step(C):
+    pass
+Wtaut = world(mem, evaluated=True)
+S.mch_membrane.style = 'CLOTH'
+cloth = (S.mch_membrane.gravity, S.mch_membrane.slack, mod.settings.mass, round(mod.settings.tension_stiffness, 1))
+while cd.step(C):
+    pass
+Wcl = world(mem, evaluated=True)
+dz_t = (Wtaut[~pin, 2] - W0[~pin, 2]).mean()
+dz_c = (Wcl[~pin, 2] - W0[~pin, 2]).mean()
+check(f'two styles: Taut Skin (the first version: gravity / slack / weight / stretch {taut[:4]}, from frame '
+      f'{taut[4]} again) and Hanging Cloth ({cloth}): the cloth hangs lower ({dz_t:.3f} -> {dz_c:.3f})',
+      taut[:2] == (100.0, 15.0) and abs(taut[2] - 0.15) < 1e-6 and taut[3] == 22.0 and cloth[:2] == (250.0, 10.0)
+      and taut[4] == 0
+      and abs(cloth[2] - 0.3) < 1e-6 and dz_c < dz_t, (taut, cloth))
 tg = wu.enter_apply_target(C)
 r = getattr(bpy.ops.mch, tg[0])() if tg else None
 size = cd.SIM.get('size', 0) if cd.SIM else 0
@@ -140,7 +152,7 @@ check(f'Enter keeps it ({tg}): a plain mesh as it hangs (no cloth), Thickness ad
       f'{sol and round(sol.thickness, 4)}), still on the bones (its parent), the frame back',
       tg is not None and tg[0] == 'membrane_keep' and r == {'FINISHED'} and not cd.sim_active()
       and mem.modifiers.get(cm.CLOTH_MOD) is None and sol is not None and sol.thickness > 0
-      and mem.parent == bones and np.abs(W3 - W2).max() < 1e-4 and not cm.is_membrane(mem) and S.frame_current == 1)
+      and mem.parent == bones and np.abs(W3 - Wcl).max() < 1e-4 and not cm.is_membrane(mem) and S.frame_current == 1)
 bones.location.x += 1.0
 moved = world(mem)
 check('it moves with the bones (parented)', np.allclose(moved[:, 0] - W3[:, 0], 1.0, atol=1e-4))
@@ -148,6 +160,18 @@ bones.location.x -= 1.0
 cm.perform(C, loop([(0.3, 1.02), (1.0, 1.1), (0.9, 0.4), (0.3, 0.5)]), FRONT)
 out = cd.cancel(C)
 check(f'Esc drops a new one ({out})', not any(o.get(cm.KEY) for o in bpy.data.objects) and not cd.sim_active())
+from mecha_lab import lasso_sketch  # noqa: E402
+S.mch_brush.sketch_first = True                       # (user: "당연히 스케치 모드도 되지?")
+lasso_sketch.add(C, 'MEMBRANE', loop([(0.3, 1.02), (1.0, 1.1), (1.0, 0.4), (0.3, 0.5)]), FRONT)
+lasso_sketch.add(C, 'MEMBRANE', loop([(0.9, 1.1), (1.6, 1.0), (1.6, 0.3), (0.9, 0.3)]), FRONT)
+msg_s = lasso_sketch.commit(C)
+m3 = C.active_object
+Ws = world(m3)
+check(f'Sketch mode: shapes drawn first, Enter makes the membrane from them ({msg_s[:60]}...)',
+      'MEMBRANE' in lasso_sketch.MODES and cm.is_membrane(m3) and cd.SIM.get('mode') == 'MEMBRANE'
+      and Ws[:, 0].min() < 0.35 and Ws[:, 0].max() > 1.55)
+cd.cancel(C)
+S.mch_brush.sketch_first = False
 try:
     cm.perform(C, loop([(4.0, 3.0), (5.0, 3.0), (5.0, 4.0)]), FRONT)
     err = ''

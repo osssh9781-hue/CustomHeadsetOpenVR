@@ -5,10 +5,12 @@ wireframe on:
 
   1. the Feather Line tool: a REAL click on the new "Kestrel Tail" feather - picked
   2. the Insect Wing tool: a REAL click on "Dragonfly", a REAL lasso beside a body - a wing, its veins raised
-  3. a REAL drag on "Vein Height %", a REAL click on "Bee / Wasp" - the wing laid again
-  4. a REAL Enter - the wing kept
-  5. the Creature Cloth tool: a REAL lasso over a wing's bones - a membrane pinned on them; a REAL Space - it falls
-  6. a REAL click on "Bat"; a REAL Enter - kept: a plain mesh, Thickness, on the bones
+  3. a REAL drag on "Vein Height %", a REAL click on "Cicada Photo" (the user's photo) - the wing laid again
+  4. a REAL drag on "Bend" (from the root), a REAL Enter - the wing kept
+  5. Sketch mode on: two REAL lassos (nothing made yet), a REAL Enter - one wing from both
+  6. the Creature Cloth tool: a REAL click on "Taut Skin", a REAL lasso over a wing's bones - a membrane pinned on
+     them; a REAL Space - it falls
+  7. a REAL click on "Bat"; a REAL Enter - kept: a plain mesh, Thickness, on the bones
 """
 import math
 import os
@@ -320,18 +322,55 @@ def flow():
         yield from slider_drag(it, 0.3, 12)
     yield from wait_draws(2)
     h1 = wing.mch_wing.vein_height if wing else 0
-    it2 = yield from scrolled_item('Bee / Wasp')
+    it2 = yield from scrolled_item('Cicada Photo')
     if it2 is not None:
         yield from press(it2)
     yield from wait_draws(2)
-    log('3 Vein Height cell', it is not None, round(h0, 2), '->', round(h1, 2), '- Bee cell', it2 is not None,
+    log('3 Vein Height cell', it is not None, round(h0, 2), '->', round(h1, 2), '- Cicada Photo cell', it2 is not None,
         'preset', wing and wing.mch_wing.preset)
-    res['3 a REAL drag on "Vein Height %", a REAL click on "Bee / Wasp": the wing laid again'] = (
-        it is not None and abs(h1 - h0) > 0.1 and it2 is not None and wing.mch_wing.preset == 'BEE')
-    shot('2_wing_bee.png')
+    res['3 a REAL drag on "Vein Height %", a REAL click on "Cicada Photo": the wing laid again with the photo\'s veins'] = (
+        it is not None and abs(h1 - h0) > 0.1 and it2 is not None and wing.mch_wing.preset == 'P_CICADA')
+    shot('2_wing_photo.png')
+    co0 = np.array([tuple(wing.matrix_world @ v.co) for v in wing.data.vertices]) if wing else None
+    it = yield from scrolled_item('Bend')
+    if it is not None:
+        yield from slider_drag(it, 0.5, 10)
+    yield from wait_draws(2)
+    bend = wing.mch_wing.bend if wing else 0
+    co1 = np.array([tuple(wing.matrix_world @ v.co) for v in wing.data.vertices]) if wing else None
+    lift = float(np.abs(co1[:, 1] - co0[:, 1]).max()) if wing is not None and len(co1) == len(co0) else \
+        float(np.ptp(co1[:, 1])) if wing is not None else 0.0
+    shot('3_wing_bend.png')
     yield from key_over_view('Return')
-    log('4 after Enter: still live', wing and iw.is_wing(wing), '- faces', wing and len(wing.data.polygons))
-    res['4 a REAL Enter: the wing kept (a plain mesh)'] = wing is not None and not iw.is_wing(wing) and len(wing.data.polygons) > 2000
+    log('4 Bend cell', it is not None, 'bend', round(math.degrees(bend), 1), 'out of the plane', round(lift, 3),
+        '- after Enter: still live', wing and iw.is_wing(wing), '- faces', wing and len(wing.data.polygons))
+    res['4 a REAL drag on "Bend": the wing bent from its root; a REAL Enter: kept (a plain mesh)'] = (
+        it is not None and abs(bend) > math.radians(5) and lift > 0.03 and wing is not None and not iw.is_wing(wing)
+        and len(wing.data.polygons) > 2000)
+    # 5: Sketch mode
+    S.mch_brush.sketch_first = True
+    yield 1.0
+    n0 = len([o for o in S.objects if o.get('mch_wing_done') or iw.is_wing(o)])
+    sk1 = [(1.4 + 0.9 * i / 29, 0.0, 0.45 + 0.01 * math.sin(math.pi * i / 29)) for i in range(30)]
+    sk1 += [(1.4 + 0.9 * (1 - i / 29), 0.0, 0.45 - 0.2 * math.sin(math.pi * (1 - i / 29))) for i in range(30)]
+    sk2 = [(2.1 + 0.25 * math.cos(2 * math.pi * i / 24), 0.0, 0.33 + 0.15 * math.sin(2 * math.pi * i / 24)) for i in range(24)]
+    yield from real_outline(outline_xy(sk1))
+    yield from real_outline(outline_xy(sk2))
+    n1 = len([o for o in S.objects if o.get('mch_wing_done') or iw.is_wing(o)])
+    from mecha_lab import lasso_sketch
+    sketched = lasso_sketch.data(S) is not None
+    shot('4_wing_sketch.png')
+    yield from key_over_view('Return')
+    n2 = len([o for o in S.objects if o.get('mch_wing_done') or iw.is_wing(o)])
+    w2 = next((o for o in S.objects if iw.is_wing(o)), None)
+    log('5 sketch: wings before', n0, 'after two lassos', n1, 'sketch kept', sketched, '- after Enter', n2,
+        'new live wing', w2 and w2.name)
+    res['5 Sketch mode: two REAL lassos (nothing made yet), a REAL Enter: one wing from both'] = (
+        n1 == n0 and sketched and n2 == n0 + 1 and w2 is not None and lasso_sketch.data(S) is None)
+    S.mch_brush.sketch_first = False
+    with C.temp_override(window=w, area=a, region=r):
+        if w2 is not None:
+            iw.apply_wing(w2)
     # 5: Creature Cloth
     with C.temp_override(window=w, area=a, region=r):
         bpy.ops.mch.bar_tool(tool='MEMBRANE')
@@ -341,6 +380,10 @@ def flow():
         C.view_layer.objects.active = None
     S.mch_brush.shape = 'STROKE'
     yield 1.5
+    it_t = yield from scrolled_item('Taut Skin')
+    if it_t is not None:
+        yield from press(it_t)
+    style = S.mch_membrane.style
     mp = [(0.05, -1.0), (0.7, -0.93), (1.4, -0.85), (1.9, -1.32), (2.38, -1.78), (2.0, -1.9), (1.6, -2.28),
           (1.0, -2.1), (0.4, -1.7), (0.05, -1.4)]
     ring3 = []
@@ -356,31 +399,32 @@ def flow():
     if mem is not None:
         g = mem.vertex_groups[cm.PIN].index
         npin = sum(1 for v in mem.data.vertices if any(x.group == g for x in v.groups))
-    log('5 membrane', mem and mem.name, mem and len(mem.data.vertices), 'points', npin, 'pinned; session',
+    log('6 membrane', mem and mem.name, mem and len(mem.data.vertices), 'points', npin, 'pinned; session',
         cd.SIM.get('mode'))
-    shot('3_membrane_drawn.png')
+    shot('5_membrane_drawn.png')
     yield from key_over_view('space')
     for _i in range(80):
         if cd.SIM.get('done'):
             break
         yield 0.5
     fr = (cd.SIM.get('sess') or {}).get('frame', 0)
-    log('5 after Space: frame', fr, 'done', cd.SIM.get('done'))
-    res['5 the Creature Cloth tool: a REAL lasso over the bones: a membrane pinned on them; a REAL Space: it falls'] = (
-        mem is not None and npin > 30 and fr >= 40)
-    shot('4_membrane_fallen.png')
+    log('6 Taut Skin cell', it_t is not None, 'style', style, '- after Space: frame', fr, 'done', cd.SIM.get('done'))
+    res['6 the Creature Cloth tool: a REAL click on "Taut Skin", a REAL lasso over the bones: a membrane pinned on '
+        'them; a REAL Space: it falls'] = (it_t is not None and style == 'TAUT' and mem is not None and npin > 30
+                                           and fr >= 40)
+    shot('6_membrane_fallen.png')
     it = yield from scrolled_item('Bat')
     if it is not None:
         yield from press(it)
     yield from key_over_view('Return')
     sol = mem.modifiers.get(cm.THICK_MOD) if mem else None
-    log('6 Bat cell', it is not None, 'preset', S.mch_membrane.preset, '- after Enter: session', cd.sim_active(),
+    log('7 Bat cell', it is not None, 'preset', S.mch_membrane.preset, '- after Enter: session', cd.sim_active(),
         'modifiers', mem and [m.type for m in mem.modifiers], 'parent', mem and mem.parent and mem.parent.name)
-    res['6 a REAL click on "Bat"; a REAL Enter: kept - a plain mesh, Thickness, on the bones'] = (
+    res['7 a REAL click on "Bat"; a REAL Enter: kept - a plain mesh, Thickness, on the bones'] = (
         it is not None and S.mch_membrane.preset == 'BAT' and not cd.sim_active() and mem is not None
         and mem.modifiers.get(cm.CLOTH_MOD) is None and sol is not None and mem.parent == bones)
     yield from wait_draws(2)
-    shot('5_all.png')
+    shot('7_all.png')
     bpy.types.SpaceView3D.draw_handler_remove(handle, 'WINDOW')
     for k_, v in res.items():
         log(('PASS ' if v else 'FAIL ') + k_)

@@ -137,6 +137,24 @@ wing.mch_wing.vein_height = 0.6
 check(f'live sliders: Vein Density 2 -> more veins ({c1:.3f} -> {c2:.3f}); Vein Height 0 -> a flat plate ({flat:.4f} '
       f'thick = Thickness {wing.mch_wing.thickness} % of the length)', c2 > c1 * 1.3
       and abs(flat - L * wing.mch_wing.thickness / 100.0) < 0.2 * L * wing.mch_wing.thickness / 100.0)
+Wb0 = mesh_data(wing)
+wing.mch_wing.bend = math.radians(60)
+Wb = mesh_data(wing)
+wing.mch_wing.bend = 0.0
+wing.mch_wing.twist = math.radians(45)
+Wt = mesh_data(wing)
+wing.mch_wing.twist = 0.0
+rootp = np.array(wing.matrix_world.translation)
+d0 = np.linalg.norm(Wb0 - rootp, axis=1)
+near = d0 < 0.05 * L
+far = d0 > 0.9 * np.percentile(d0, 99)
+off_b = np.abs(Wb[:, 1] - Wb0[:, 1])
+tip_dir = float(np.mean(Wb[far, 1] - Wb0[far, 1]))
+spread_t = float(np.ptp(Wt[far, 1]))
+check(f'Bend / Twist from the root (user: "뿌리 부분을 기준으로 밴드랑 트위스트"): the root stays (moved {off_b[near].max():.4f}), '
+      f'Bend 60 deg lifts the tip off the plane ({np.abs(tip_dir):.3f} toward you: {tip_dir < 0}), Twist 45 deg turns the '
+      f'tip end round its length (it spans {spread_t:.3f} across the plane, flat {np.ptp(Wb0[far, 1]):.3f})',
+      off_b[near].max() < 0.01 * L and tip_dir < -0.3 * L and spread_t > 0.04 * L and np.ptp(Wb0[far, 1]) < 0.02 * L)
 r = bpy.ops.mch.wing_preset(preset='CICADA')
 check('a preset button: the selected wing takes it (and the next wing too)', r == {'FINISHED'}
       and wing.mch_wing.preset == 'CICADA' and S.mch_wing.preset == 'CICADA')
@@ -146,8 +164,21 @@ lead_z0 = float(np.mean(f0.point(np.array([0.5]), np.array([0.0]))[:, 1]))
 lead_z1 = float(np.mean(f1.point(np.array([0.5]), np.array([0.0]))[:, 1]))
 check(f'its leading edge: the straighter side (the top here, at {lead_z0:.3f} in the plane), Flip: the other one '
       f'({lead_z1:.3f})', lead_z0 > lead_z1)
-iw.perform(C, outline(0.15, -0.4, 1.0, 0.22), FRONT)  # (another, drawn from the root this time)
+from mecha_lab import lasso_sketch  # noqa: E402
+S.mch_brush.sketch_first = True                       # (user: "당연히 스케치 모드도 되지?")
+n_before = len([o for o in bpy.data.objects if iw.is_wing(o)])
+m1 = lasso_sketch.add(C, 'WING', outline(0.15, -0.4, 1.0, 0.22), FRONT)
+m2 = lasso_sketch.add(C, 'WING', outline(0.8, -0.4, 0.5, 0.18), FRONT)          # (added to it: one shape)
+check(f'Sketch mode: drawing only sketches ({m1[:40]}...), no wing yet', len([o for o in bpy.data.objects
+      if iw.is_wing(o)]) == n_before and lasso_sketch.data(S) is not None)
+m3 = lasso_sketch.commit(C)
 w2 = C.active_object
+S.mch_brush.sketch_first = False
+n_after = len([o for o in bpy.data.objects if iw.is_wing(o)])
+check(f'Sketch mode: shapes drawn first (nothing made yet: {n_before} live wing -> still {n_before}), Enter makes one '
+      f'wing from them ({m3}), {np.ptp(mesh_data(w2)[:, 0]):.2f} wide (both shapes)', 'WING' in lasso_sketch.MODES
+      and n_after == n_before + 1 and iw.is_wing(w2) and lasso_sketch.data(S) is None
+      and np.ptp(mesh_data(w2)[:, 0]) > 1.1)
 for o in C.selected_objects:
     o.select_set(False)
 wing.select_set(True)

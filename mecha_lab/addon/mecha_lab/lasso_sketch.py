@@ -26,7 +26,8 @@ from . import tool_state as ts
 
 KEY = 'mch_lasso_sketch'          # Scene ID prop (JSON) - Ctrl+Z steps back through it
 MODES = {'CUT', 'SPLIT', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'HIDE',
-         'PRESS'}   # 0.24.1 + Plate Detail 1 / 2, Box Hide; 0.24.95 Cloth Drape, Press Cut (the sketch = the stamp)
+         'PRESS', 'WING', 'MEMBRANE'}   # 0.24.1 + Plate Detail 1 / 2, Box Hide; 0.24.95 Cloth Drape, Press Cut (the
+#                                               sketch = the stamp); 0.24.173 Insect Wing, Creature Cloth
 
 
 def is_on(context):
@@ -182,6 +183,12 @@ def commit(context, alt=False):
     elif mode == 'ZONE':
         from . import zones                # 0.24.95 Lasso Zone sketch: the combined outline (islands, holes) is the zone
         msg = zones.perform(context, loops, proj)
+    elif mode == 'WING':
+        from . import insect_wing          # 0.24.173 Insect Wing sketch (user: "당연히 스케치 모드도 되지?"): the outline
+        msg = insect_wing.perform(context, loops, proj)
+    elif mode == 'MEMBRANE':
+        from . import creature_membrane    # 0.24.173 Creature Cloth sketch: the combined outline is the membrane
+        msg = creature_membrane.perform(context, loops, proj)
     elif mode in {'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4'} and alt:
         from . import live_subtract        # 0.24.26 Alt+Enter: take the sketch out (live detail or engrave)
         msg = live_subtract.perform(context, 'DETAIL', loops, proj, tool=mode)
