@@ -116,15 +116,15 @@ TOOLS = (
     ('WING', 'Insect Wing', 'Draw a wing\'s outline: a thin insect wing in that shape, its veins raised inside it '
      '(Dragonfly, Damselfly, Bee / Wasp, Fly, Lacewing, Cicada) - Vein Height / Width / Density, '
      'Thickness; no simulation; select a wing to change it, Enter / Apply to keep', 'wing', 'MOD_PARTICLE_INSTANCE', 'mecha.insect_wing', 'OK'),   # 0.24.173
-    ('WDIRT', 'Dirt', 'Click a mesh (a Base Mesh, a plate, a Surface Draw band ...): it becomes dirt - lumpy, clods and '
-     'crumbs over it, brown; live (its values in the window), Alt + click: back to the shape', 'wdirt', 'MOD_DISPLACE',
+    ('WDIRT', 'Dirt', 'Draw an area as with Armor Plate: dirt there - lumpy, clods and crumbs, brown; live (its values in '
+     'the window). Click a Mesh (the window): click a mesh you made to make it dirt, Alt + click: back to the shape', 'wdirt', 'MOD_DISPLACE',
      'mecha.weather_dirt', 'OK'),
-    ('WDUST', 'Dust', 'Click a mesh: it becomes a soft dust layer (smoothed, puffed a little, fine grain); live, Alt + '
-     'click: back to the shape', 'wdust', 'MOD_SMOOTH', 'mecha.weather_dust', 'OK'),
-    ('WLEAF', 'Leaves', 'Click a mesh: leaves piled over it, green to autumn colours, the shape under them as soil; '
-     'live, Alt + click: back to the shape', 'wleaf', 'OUTLINER_OB_POINTCLOUD', 'mecha.weather_leaves', 'OK'),
-    ('WSNOW', 'Snow', 'Click a mesh: it becomes snow - smoothed, puffed (more on top), soft lumps, white with blue '
-     'shade; live, Alt + click: back to the shape', 'wsnow', 'FREEZE', 'mecha.weather_snow', 'OK'),
+    ('WDUST', 'Dust', 'Draw an area as with Armor Plate: a soft dust layer there (smoothed, puffed a little, fine grain); '
+     'live. Click a Mesh (the window): click a mesh, Alt + click: back to the shape', 'wdust', 'MOD_SMOOTH', 'mecha.weather_dust', 'OK'),
+    ('WLEAF', 'Leaves', 'Draw an area as with Armor Plate: leaves piled there, green to autumn colours, soil under '
+     'them; live. Click a Mesh (the window): click a mesh, Alt + click: back to the shape', 'wleaf', 'OUTLINER_OB_POINTCLOUD', 'mecha.weather_leaves', 'OK'),
+    ('WSNOW', 'Snow', 'Draw an area as with Armor Plate: snow there - smoothed, puffed (more on top), soft lumps, white '
+     'with blue shade; live. Click a Mesh (the window): click a mesh, Alt + click: back to the shape', 'wsnow', 'FREEZE', 'mecha.weather_snow', 'OK'),
     ('PMEASURE', 'Print Measure', 'Drag on the model: the length and how much of it is horizontal / vertical (Shift: '
      'straight); kept until cleared. The window: the part\'s size, if it fits the printer, Scale to Height',
      'pmeasure', 'DRIVER_DISTANCE', 'mecha.print_measure', 'OK'),
@@ -223,7 +223,7 @@ QUICK_TOOLS = ('CUT', 'BOOLEAN', 'BASE', 'SUBD', 'SPLIT', 'RADIAL', 'PLATE')   #
 NATIVE_TO_TOOL = {t[5]: t[0] for t in TOOLS if t[5]}
 SHAPE_TOOLS = {'CUT', 'SPLIT', 'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'HIDE', 'DETAIL', 'DETAIL2',
                'DETAIL3', 'DETAIL4', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER', 'SCURVE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'SDRAW',
-               'FUR', 'WING', 'MEMBRANE'}
+               'FUR', 'WING', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW'}
 
 DRAW_TOOLS = SHAPE_TOOLS | {'PRESS'}      # 0.24.95 + Press Cut (Shift + draw its stamp): the lasso settings it keeps
 DRAW_TOOLS |= {'GREEBLE', 'CGREEBLE'}   # 0.24.154 + Greeble / Scale Line (Shift + draw a part)

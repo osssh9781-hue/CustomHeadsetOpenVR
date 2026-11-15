@@ -26,7 +26,7 @@ from . import tool_state as ts
 
 KEY = 'mch_lasso_sketch'          # Scene ID prop (JSON) - Ctrl+Z steps back through it
 MODES = {'CUT', 'SPLIT', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'HIDE',
-         'PRESS', 'WING', 'MEMBRANE'}   # 0.24.1 + Plate Detail 1 / 2, Box Hide; 0.24.95 Cloth Drape, Press Cut (the
+         'PRESS', 'WING', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW'}   # 0.24.1 + Plate Detail 1 / 2, Box Hide; 0.24.95 Cloth Drape, Press Cut (the
 #                                               sketch = the stamp); 0.24.173 Insect Wing, Creature Cloth
 
 
@@ -189,6 +189,9 @@ def commit(context, alt=False):
     elif mode == 'MEMBRANE':
         from . import creature_membrane    # 0.24.173 Creature Cloth sketch: the combined outline is the membrane
         msg = creature_membrane.perform(context, loops, proj)
+    elif mode in {'WDIRT', 'WDUST', 'WLEAF', 'WSNOW'}:
+        from . import weathering           # 0.24.174 Weathering sketch: a plate from the combined outline, made dirt ...
+        msg = weathering.perform(context, loops, proj, weathering.KIND_OF_TOOL[mode])
     elif mode in {'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4'} and alt:
         from . import live_subtract        # 0.24.26 Alt+Enter: take the sketch out (live detail or engrave)
         msg = live_subtract.perform(context, 'DETAIL', loops, proj, tool=mode)

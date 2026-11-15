@@ -1413,6 +1413,10 @@ _COLORS = {
     'SCAPE': (0.8, 0.55, 0.35, 1.0),
     'HAIR': (0.75, 0.7, 0.45, 1.0),
     'FUR': (0.85, 0.65, 0.4, 1.0),
+    'WDIRT': (0.6, 0.45, 0.3, 1.0),
+    'WDUST': (0.75, 0.72, 0.65, 1.0),
+    'WLEAF': (0.55, 0.75, 0.35, 1.0),
+    'WSNOW': (0.85, 0.92, 1.0, 1.0),
     'MEMBRANE': (0.75, 0.4, 0.4, 1.0),
     'WING': (0.55, 0.8, 0.9, 1.0),
     'GARMENT': (0.55, 0.7, 0.85, 1.0),
@@ -1768,7 +1772,7 @@ class StrokeLogic:
     def _needs_target(self):
         return self.mode not in {'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'ZONE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE',
                                  'FLOWER', 'SCURVE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'SDRAW', 'PRESS',
-                                 'GREEBLE', 'CGREEBLE', 'FUR', 'WING', 'MEMBRANE'}
+                                 'GREEBLE', 'CGREEBLE', 'FUR', 'WING', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW'}
 
     def _tangents(self, pts=None):
         pts = self.pts if pts is None else pts
@@ -1866,6 +1870,10 @@ class StrokeLogic:
                     return {'PASS_THROUGH'}
             except (AttributeError, KeyError, TypeError):
                 pass
+        if self.mode in WEATHER_MODES and getattr(context.scene, 'mch_weather_how', 'DRAW') == 'CLICK':
+            # 0.24.174 Dirt / Dust / Leaves / Snow in "Click a Mesh": the click is that operator's (Blender runs an
+            # add-on tool's keys last-first, so this stroke is asked before it)
+            return {'PASS_THROUGH'}
         region = context.region
         if region is None or region.type != 'WINDOW':
             region = next((r for r in context.area.regions if r.type == 'WINDOW'), None)
@@ -1899,7 +1907,7 @@ class StrokeLogic:
                 self.report({'WARNING'}, str(ex))
             return {'CANCELLED'}
         if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'FLOWER',
-                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'FUR', 'WING', 'MEMBRANE'} and self.shape == 'LASSO' and self.brush.line_open:
+                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'FUR', 'WING', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW'} and self.shape == 'LASSO' and self.brush.line_open:
             self.brush.line_open = False
         self.ui = ui_scale(context)
         self.target_names = []
@@ -2288,6 +2296,9 @@ class StrokeLogic:
             elif self.mode == 'MEMBRANE':                # 0.24.173
                 from . import creature_membrane
                 msg = creature_membrane.perform(context, loops, self.projector)
+            elif self.mode in {'WDIRT', 'WDUST', 'WLEAF', 'WSNOW'}:     # 0.24.174 Weathering drawn (as Armor Plate)
+                from . import weathering
+                msg = weathering.perform(context, loops, self.projector, weathering.KIND_OF_TOOL[self.mode])
             elif self.mode == 'WING':                # 0.24.173
                 from . import insect_wing
                 msg = insect_wing.perform(context, loops, self.projector)
@@ -2435,7 +2446,7 @@ class StrokeLogic:
             self._clean_points()
             if self.shape == 'LASSO' and len(self.pts) >= 2 and (self.line_open or len(self.pts) == 2):
                 if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'FLOWER',
-                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'FUR', 'WING', 'MEMBRANE'}:
+                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'FUR', 'WING', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW'}:
                     self.report({'WARNING'}, 'This tool needs a closed outline (3+ points)')
                     return {'RUNNING_MODAL'}
                 if self.mode == 'SPLIT':
@@ -2609,7 +2620,7 @@ class StrokeLogic:
             self.region.tag_redraw()
             return {'RUNNING_MODAL'}
         if et == 'F' and ev == 'PRESS' and self.shape == 'LASSO' and self.mode not in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'FLOWER',
-                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'FUR', 'WING', 'MEMBRANE'}:
+                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'FUR', 'WING', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW'}:
             self.line_open = not self.line_open
             self.brush.line_open = self.line_open
             self.region.tag_redraw()
@@ -2832,6 +2843,10 @@ class MCH_OT_cut_stroke(StrokeLogic, bpy.types.Operator):
         ('HAIR', 'Creature Hair', 'Live dreadlocks / tentacles / quills growing from the drawn area'),
         ('FUR', 'Fur', 'Live fur growing in the drawn area (Alt: the area taken away)'),
         ('MEMBRANE', 'Creature Cloth', 'A membrane: pinned where it is over the mesh, the rest a falling cloth (Space)'),
+        ('WDIRT', 'Dirt', 'A plate in the drawn area, made dirt'),
+        ('WDUST', 'Dust', 'A plate in the drawn area, made dust'),
+        ('WLEAF', 'Leaves', 'A plate in the drawn area, leaves piled on it'),
+        ('WSNOW', 'Snow', 'A plate in the drawn area, made snow'),
         ('WING', 'Insect Wing', 'An insect wing in the drawn outline, its veins raised'),
         ('GARMENT', 'Clothing', 'A live top / pants made from the body inside the drawn outline'),
         ('HOOD', 'Hood', 'A live hood over the head drawn round'),
@@ -2869,6 +2884,7 @@ def event_timer_matches(op, event):
 
 
 STAMP_MODES = {'PRESS', 'GREEBLE', 'CGREEBLE'}   # 0.24.154 Shift + draw = a stamp (no Shift option inside)
+WEATHER_MODES = frozenset({'WDIRT', 'WDUST', 'WLEAF', 'WSNOW'})      # 0.24.174 Dirt / Dust / Leaves / Snow
 
 
 class GateLogic:

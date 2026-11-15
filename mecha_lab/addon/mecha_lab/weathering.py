@@ -41,6 +41,9 @@ VOXELS = 1.2e6                     # 0.24.162 the break-up's voxel budget
 LEAF_COLL = 'MCH Leaf Shapes'
 KINDS = ('DIRT', 'DUST', 'LEAVES', 'SNOW')
 TOOL_OF = {'DIRT': 'WDIRT', 'DUST': 'WDUST', 'LEAVES': 'WLEAF', 'SNOW': 'WSNOW'}
+KIND_OF_TOOL = {v: k for k, v in TOOL_OF.items()}
+HOW = (('DRAW', 'Draw', 'Draw the area (as Armor Plate): a plate there, made dirt / dust / leaves / snow'),
+       ('CLICK', 'Click a Mesh', 'Click a mesh you made: it becomes dirt / dust / leaves / snow'))
 KIND_OF = {v: k for k, v in TOOL_OF.items()}
 LABEL = {'DIRT': 'Dirt', 'DUST': 'Dust', 'LEAVES': 'Leaves', 'SNOW': 'Snow'}
 
@@ -771,6 +774,23 @@ def bake(context, ob):
         del ob[KEY]
 
 
+def perform(context, loops, projector, kind):
+    """0.24.174 (user: "스노우랑 덜트들도 기본적으로 걍 아머플레이트처럼 내가 그리게"): the drawn outline made a plate on the
+    surface (Armor Plate - its own current profile; live under it) and that plate made ``kind`` at once."""
+    from . import armor_plate as ap
+    st = context.scene.mch_plate
+    preset = st.preset if st.preset != 'MRIDGE' else ap.PRESETS[0][0]
+    msg = ap.perform_plate(context, loops, projector, preset)
+    part = context.view_layer.objects.active
+    apply(context, part, kind)
+    try:
+        from . import side_panel
+        side_panel.dirty()
+    except (ImportError, AttributeError):
+        pass
+    return f'{LABEL[kind]}: {part.name} drawn ({msg.split(" (")[0]}) - live, its values in the window'
+
+
 def pick(context, xy):
     from bpy_extras import view3d_utils
     region, rv3d = context.region, context.region_data
@@ -857,6 +877,8 @@ class MCH_OT_weather_click(bpy.types.Operator):
     def invoke(self, context, event):
         if context.area is None or context.area.type != 'VIEW_3D':
             return {'PASS_THROUGH'}
+        if getattr(context.scene, 'mch_weather_how', 'DRAW') == 'DRAW':
+            return {'PASS_THROUGH'}                     # (0.24.174 drawn by default: the lasso has it)
         ob = pick(context, (event.mouse_region_x, event.mouse_region_y))
         if ob is None:
             return {'PASS_THROUGH'}                     # (empty space: the usual click)
@@ -915,6 +937,7 @@ class MCH_OT_weather_bake(bpy.types.Operator):
 def draw(layout, context, kind):
     ob = active(context, kind)
     pg = pg_of(ob, kind) if ob is not None else pg_of(context.scene, kind)
+    layout.row(align=True).prop(context.scene, 'mch_weather_how', expand=True)     # 0.24.174 Draw / Click a Mesh
     col = layout.column(align=True)
     col.label(text=f'{ob.name}: {LABEL[kind]} (live)' if ob is not None else f'The next {LABEL[kind].lower()}')
     for prop, *_r in SPEC[kind]:
@@ -925,16 +948,21 @@ def draw(layout, context, kind):
         o.clear = True
         row.operator('mch.weather_bake', text='Apply')
     col = layout.column(align=True)
-    for line in (f'Click a mesh: it becomes {LABEL[kind].lower()}', 'Alt + click: back to the shape',
-                 'Made with Base Mesh, plates, Surface Draw ... stays live under it'):
+    lines = ((f'Draw an area (as Armor Plate): {LABEL[kind].lower()} there', 'The plate under it stays live',
+              'Click a Mesh (above): turn a mesh you made instead')
+             if getattr(context.scene, 'mch_weather_how', 'DRAW') == 'DRAW' else
+             (f'Click a mesh: it becomes {LABEL[kind].lower()}', 'Alt + click: back to the shape',
+              'Made with Base Mesh, plates, Surface Draw ... stays live under it'))
+    for line in lines:
         col.label(text=line)
 
 
 def _keymap(kind):
+    """0.24.174 Click a Mesh first (it passes the press on in Draw), then the lasso of a drawing tool."""
+    from .workspace_ui import _tool_keymap
     return (('mch.weather_click', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, {'properties': [('kind', kind)]}),
             ('mch.weather_click', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'alt': True},
-             {'properties': [('kind', kind), ('clear', True)]}),
-            ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None))
+             {'properties': [('kind', kind), ('clear', True)]})) + _tool_keymap(TOOL_OF[kind])
 
 
 def _tool(kind, desc):
@@ -950,10 +978,14 @@ def _tool(kind, desc):
 
 
 TOOLS = (
-    _tool('DIRT', 'Click a mesh: it becomes dirt - lumpy, clods and crumbs over it, brown.\nAlt + click: back to the shape'),
-    _tool('DUST', 'Click a mesh: it becomes a soft dust layer.\nAlt + click: back to the shape'),
-    _tool('LEAVES', 'Click a mesh: leaves piled over it (green to autumn).\nAlt + click: back to the shape'),
-    _tool('SNOW', 'Click a mesh: it becomes snow - smoothed, puffed, white.\nAlt + click: back to the shape'),
+    _tool('DIRT', 'Draw an area (as Armor Plate): dirt there - lumpy, clods and crumbs, brown.\n'
+                  'Click a Mesh (the window): click a mesh to make it dirt, Alt + click: back to the shape'),
+    _tool('DUST', 'Draw an area (as Armor Plate): a soft dust layer there.\n'
+                  'Click a Mesh (the window): click a mesh, Alt + click: back to the shape'),
+    _tool('LEAVES', 'Draw an area (as Armor Plate): leaves piled there (green to autumn).\n'
+                    'Click a Mesh (the window): click a mesh, Alt + click: back to the shape'),
+    _tool('SNOW', 'Draw an area (as Armor Plate): snow there - smoothed, puffed, white.\n'
+                  'Click a Mesh (the window): click a mesh, Alt + click: back to the shape'),
 )
 CLASSES = tuple(PGS.values()) + (MCH_OT_weather_click, MCH_OT_weather_bake)
 
@@ -961,6 +993,7 @@ CLASSES = tuple(PGS.values()) + (MCH_OT_weather_click, MCH_OT_weather_bake)
 def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
+    bpy.types.Scene.mch_weather_how = EnumProperty(name='How', items=HOW, default='DRAW')
     for k, cls in PGS.items():
         setattr(bpy.types.Scene, 'mch_w' + k.lower(), PointerProperty(type=cls))
         setattr(bpy.types.Object, 'mch_w' + k.lower(), PointerProperty(type=cls))
@@ -982,6 +1015,8 @@ def unregister():
             bpy.utils.unregister_tool(t)
         except (ValueError, RuntimeError, KeyError):
             pass
+    if hasattr(bpy.types.Scene, 'mch_weather_how'):
+        del bpy.types.Scene.mch_weather_how
     for k in KINDS:
         for holder in (bpy.types.Scene, bpy.types.Object):
             try:

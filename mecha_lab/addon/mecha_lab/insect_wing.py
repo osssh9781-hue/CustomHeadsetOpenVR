@@ -716,9 +716,14 @@ def _root_index(context, P3, length):
     for o in context.view_layer.objects:
         if o.type != 'MESH' or not o.visible_get() or is_wing(o) or o.get('mch_wing_done'):
             continue
+        if not len(o.data.polygons):                 # (points only: the Fur tool's Scales / Feathers - no surface)
+            continue
         Mi = o.matrix_world.inverted()
         for i, q in enumerate(P3):
-            ok, loc, _n, _f = o.closest_point_on_mesh(Mi @ Vector(q))
+            try:
+                ok, loc, _n, _f = o.closest_point_on_mesh(Mi @ Vector(q))
+            except RuntimeError:                     # (no faces once evaluated: not a body)
+                break
             if ok:
                 dd = ((o.matrix_world @ loc) - Vector(q)).length
                 if best is None or dd < best[0]:
