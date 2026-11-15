@@ -96,8 +96,9 @@ check(f'Taper End 0.8: the scales smaller and smaller toward the end (first {T1[
 ln2 = draw_line(taper_start=0.8, taper_end=0.8, scale_random=0.0)
 _p, T2 = attrs(ln2)
 m = len(T2) // 2
-check(f'both ends: small at both, the middle the biggest ({T2[0, 0]:.3f} / {T2[m, 0]:.3f} / {T2[-1, 0]:.3f})',
-      T2[0, 0] < T2[m, 0] * 0.6 and T2[-1, 0] < T2[m, 0] * 0.6)
+check(f'both ends: small at both, the middle the biggest - the smaller of the two falls, not both multiplied ('
+      f'{T2[0, 0]:.3f} / {T2[m, 0]:.3f} / {T2[-1, 0]:.3f}; the middle {T2[m, 0] / T0[0, 0]:.2f} of its size without)',
+      T2[0, 0] < T2[m, 0] * 0.45 and T2[-1, 0] < T2[m, 0] * 0.45 and T2[m, 0] > T0[0, 0] * 0.5)
 ln1.select_set(True)
 C.view_layer.objects.active = ln1
 ln1.mch_greeble_line.taper_end = 0.0

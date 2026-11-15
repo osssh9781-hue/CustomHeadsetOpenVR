@@ -1,0 +1,17 @@
+1 Scales cell True cover Scales 613 - Thinner at Edge cell True on True smallest 0.0671 -> 0.0168
+shot 1_thinner_edge.png True
+2 Dragon cell True picked ['DRAGON'] - line Scale Line 35 - Taper End cell True 0.49 first/last 0.1052 0.0525
+shot 2_scale_taper.png True
+3 wing Insect Wing 36221 frame HFrame
+shot 3_curved_wing.png True
+4 tool mecha.weather_snow - the click reached Click a Mesh: [('LEFTMOUSE', 'PRESS', 'CLICK', 'Box', {'FINISHED'})]
+4 Dirt (how DRAW ) Ground Wall_Plate - Click a Mesh cell True CLICK - box SNOW
+shot 4_weathering.png True
+5 surface membrane Creature Cloth 584 held by ['MCH Pin: Arm Bone', 'MCH Pin: Finger Bone A', 'MCH Pin: Finger Bone B'] session MEMBRANE
+shot 5_surface_membrane.png True
+PASS 1 the Fur tool: a REAL click on "Scales", a REAL lasso, a REAL click on "Thinner at Edge": smaller at the edge
+PASS 2 Scale Line: a REAL click on "Dragon", a REAL drag, a REAL drag on "Taper End": smaller toward the end
+PASS 3 Insect Wing: a REAL lasso of a curved wing - built on its drawn shape
+PASS 4 Dirt: a REAL lasso on the wall - a plate there, made dirt; Snow, "Click a Mesh", a REAL click on the box
+PASS 5 Creature Cloth with Surface: REAL clicks on three bone meshes, a REAL Enter: held on each of them
+5/5 passed

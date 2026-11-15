@@ -370,7 +370,8 @@ def placements(line, infos, cfg, unit, nearest=None):
             u_at = min(max(s / max(line.length, 1e-9), 0.0), 1.0)
             te, ts_ = cfg.get('taper_end', 0.0), cfg.get('taper_start', 0.0)
             if te > 0 or ts_ > 0:                       # 0.24.174 Taper: the whole part smaller toward that end
-                f *= max((1.0 - te * u_at) * (1.0 - ts_ * (1.0 - u_at)), 0.03)
+                # (each its own straight fall along the whole line; both: the smaller of the two - the middle the biggest)
+                f *= max(min(1.0 - te * u_at, 1.0 - ts_ * (1.0 - u_at)), 0.03)
             lf = lf0 * (1.0 + cfg.get('grow_end', 0.0) * u_at + cfg.get('grow_start', 0.0) * (1.0 - u_at))
             lf *= 1.0 + rng_len.uniform(-1.0, 1.0) * cfg.get('length_random', 0.0)
             wf = wf0

@@ -6,7 +6,7 @@
   공장 설정 5.3.0 에서도 똑같이 재현됩니다. 렌더 모드와는 상관없습니다. 피하는 법: 그 영역의 Library 를 Current File 로 바꾸기,
   또는 배너의 Continue Offline / Allow Online Access 를 한 번 누르기(Preferences > System > Network), 또는 그 영역을 다른 에디터로.
   메카 랩은 사용자 설정이라 이것을 스스로 바꾸지 않습니다.
-- Insect Wing · Weathering 그리기 · Surface 피막은 진짜 창 테스트를 5.2.3 에서 했습니다.
+- 이번 진짜 창 테스트(tests/gui/round174_real_window.py)는 5.2.3 과 5.3.0 에서 둘 다 5/5 통과했습니다.
 
 ## 0.24.140
 - **DLSS 의 실제 속도 · 화질은 재지 못했습니다** — 이 서버에는 NVIDIA GPU 가 없어 Blender 가 DLSS 를 받아들이는 부분은 테스트에서

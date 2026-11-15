@@ -98,14 +98,15 @@ if ONLY in ('', 'edge'):
         b = body(f'Body {k + 1}', (x, 0.0, 0.0), (1.0, 1.0, 1.0), rgb)
         C.view_layer.update()
         if grow == 'SCALES':
-            ob = cover(grow, [shape], ring(x, 0.05, 0.78, 0.78), size=2.4, spacing=0.42, side_spacing=0.55,
+            ob = cover(grow, [shape], ring(x, 0.05, 0.78, 0.78), size=3.4, spacing=0.55, side_spacing=0.6,
                        lift=math.radians(9))
         else:
-            ob = cover(grow, [shape], ring(x, 0.05, 0.78, 0.78), size=4.0, spacing=0.3, side_spacing=0.6,
+            ob = cover(grow, [shape], ring(x, 0.05, 0.78, 0.78), size=5.5, spacing=0.4, side_spacing=0.7,
                        lift=math.radians(5), size_random=0.15)
         ob.mch_cover.edge_thin = thin
-        print('edge', ob.name, 'thin', thin, len(ob.data.vertices))
+        n_ = len(ob.data.vertices)
         sc.apply_cover(C, ob)
+        print('edge', ob.name, 'thin', thin, n_, 'parts', len(ob.data.polygons), 'faces')
     tag('edge')
 
 # ---- (2) Scale Line: the Fur tool's scales, Taper ------------------------------------------------------------------
@@ -126,11 +127,12 @@ if ONLY in ('', 'scale'):
         return pts, nrm
 
     st = gl.settings(S, 'CREATURE')
-    for scale_id, z_off, te, ts_ in (('DRAGON', 0.42, 0.8, 0.0), ('PANGOLIN', 0.0, 0.7, 0.7),
+    for scale_id, z_off, te, ts_ in (('DRAGON', 0.42, 0.8, 0.0), ('PANGOLIN', 0.0, 0.75, 0.75),
                                       ('OSTEODERM', -0.42, 0.0, 0.0)):
         select(tail)
         print(scale_id, bpy.ops.mch.scale_pick(scale=scale_id))
         st.taper_end, st.taper_start, st.scale_random = te, ts_, 0.0
+        st.scale = 1.9 if scale_id == 'PANGOLIN' else 1.0          # (the pangolin's plates small at 1)
         pts, nrm = surface_line(z_off, -2.6, 2.6)
         ln = gl.new_line(C, tail, pts, nrm, gl.picked(st), st, 'CREATURE')
         print(scale_id, 'line:', gl.rebuild(ln, C), 'scales, taper', te, ts_)
