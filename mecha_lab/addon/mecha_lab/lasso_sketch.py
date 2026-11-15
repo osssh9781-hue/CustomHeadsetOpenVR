@@ -109,6 +109,8 @@ def add(context, mode, loops, projector, subtract=False):
         v = inv @ cg._plane_hit(o, dv, origin, n)[0]
         return (v.x, v.y)
     local = cg.organize_loops([[to_local(q) for q in lp] for outer, holes in groups for lp in [outer] + holes])
+    if 'start' not in d and not subtract and loops and len(loops[0]):
+        d['start'] = list(to_local(loops[0][0]))       # 0.24.176 where the first shape was started (a wing's root)
     d['items'].append({'op': 'SUB' if subtract else 'ADD',
                        'groups': [[[list(q) for q in o], [[list(q) for q in h] for h in hs]] for o, hs in local]})
     scene[KEY] = json.dumps(d)
@@ -185,7 +187,9 @@ def commit(context, alt=False):
         msg = zones.perform(context, loops, proj)
     elif mode == 'WING':
         from . import insect_wing          # 0.24.173 Insect Wing sketch (user: "당연히 스케치 모드도 되지?"): the outline
-        msg = insect_wing.perform(context, loops, proj)
+        st_ = d.get('start')               # 0.24.176 its root where the first shape was started
+        start = proj.to_screen(_frame(d) @ Vector((st_[0], st_[1], 0.0))) if st_ else None
+        msg = insect_wing.perform(context, loops, proj, start=tuple(start) if start is not None else None)
     elif mode == 'MEMBRANE':
         from . import creature_membrane    # 0.24.173 Creature Cloth sketch: the combined outline is the membrane
         msg = creature_membrane.perform(context, loops, proj)

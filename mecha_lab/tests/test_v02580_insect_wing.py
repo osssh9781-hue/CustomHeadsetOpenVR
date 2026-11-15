@@ -64,8 +64,10 @@ check(f'a drawn outline: an insect wing ({len(wing.data.polygons):,} faces, {dt:
       and len(wing.data.polygons) > 2000 and np.ptp(W[:, 0]) > 1.15 and dt < 4.0, msg)
 d = iw.data(wing)
 root = np.array(d['outline'][d['root']])
-check(f'its root: the outline\'s point nearest the body (drawing started at the tip): x {wing.matrix_world.translation.x:.3f}',
-      'root at the mesh' in msg and wing.matrix_world.translation.x < 0.25)
+# 0.24.176 (user: "벌레 날개도 처음 선 긋는 부분이 벌레 날개 [뿌리] 되게 해 줘"): the root where the drawing was started -
+# here at the far end (before 0.24.176: the point nearest the body)
+check(f'its root: where the drawing was started (here at the far end, x 1.35): x {wing.matrix_world.translation.x:.3f}',
+      'where you started drawing' in msg and wing.matrix_world.translation.x > 1.25)
 L = wing['mch_wing_size']
 front = -W[:, 1]                                       # (toward the viewer: + y is away)
 plane_y = float(np.median(W[:, 1]))

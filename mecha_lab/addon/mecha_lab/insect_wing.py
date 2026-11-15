@@ -22,6 +22,7 @@ import bpy
 import numpy as np
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty
 from mathutils import Vector
+from mathutils.kdtree import KDTree
 
 from . import outline_mesh as om
 
@@ -579,6 +580,87 @@ def data(ob):
         return None
 
 
+def attach_map(context, P2, origin, X, Y, N, L):
+    """0.24.176 (user: "곤충 날개도 크리쳐 클로스처럼 메쉬에 붙게 할 수 있어?"): where the drawn wing lies over a mesh -
+    the wing's plane in cells L / 80 apart; for each cell over a mesh near the plane (within 0.3 L either side, looked at
+    from in front: the side facing you) how far that surface is from the plane (along N, + toward you) and which mesh.
+    Returns dict(step, cells [[x, y, disp, host]], hosts [names]) or None (nothing under it)."""
+    from . import creature_membrane as cm
+    dg = context.evaluated_depsgraph_get()
+    skip = cm._skip_names(context)
+    P2 = np.asarray(P2, float)
+    step = L / 80.0
+    lo, hi = P2.min(0), P2.max(0)
+    gx = lo[0] + (np.arange(int(math.ceil((hi[0] - lo[0]) / step)) + 1) + 0.5) * step - step
+    gy = lo[1] + (np.arange(int(math.ceil((hi[1] - lo[1]) / step)) + 1) + 0.5) * step - step
+    G = np.stack(np.meshgrid(gx, gy), -1).reshape(-1, 2)
+    sel = om.inside(G, [P2]) | (om.seg_distance(G, P2) < step)
+    band = 0.3 * L
+    cells, hosts = [], []
+    for k in np.nonzero(sel)[0]:
+        p = origin + X * float(G[k, 0]) + Y * float(G[k, 1])
+        h = cm._cast(context, dg, p + N * band, -N, skip)
+        if h is None or h[0] > 2.0 * band:
+            continue
+        name = h[2].name
+        if name not in hosts:
+            hosts.append(name)
+        cells.append([round(float(G[k, 0]), 7), round(float(G[k, 1]), 7), round(band - h[0], 7), hosts.index(name)])
+    return dict(step=step, cells=cells, hosts=hosts) if cells else None
+
+
+def attach_disp(pts, A, L):
+    """(how far each point of the wing moves along its plane's normal, the mesh holding it: host index or -1): the
+    points over a mesh onto it, the rest of the wing easing back into its plane within a quarter of its length."""
+    cells = np.asarray(A['cells'], float)
+    step = float(A['step'])
+    n = len(pts)
+    out = np.zeros(n)
+    held = np.full(n, -1, np.int64)
+    if not len(cells):
+        return out, held
+    kd = KDTree(len(cells))
+    for i, c in enumerate(cells):
+        kd.insert((float(c[0]), float(c[1]), 0.0), i)
+    kd.balance()
+    blend = 0.25 * L
+    eps = (0.25 * step) ** 2
+    for i in range(n):
+        near = kd.find_n((float(pts[i][0]), float(pts[i][1]), 0.0), 6)
+        d0 = near[0][2]
+        if d0 >= blend:
+            continue
+        w = [1.0 / (dd * dd + eps) for _c, _j, dd in near]
+        val = sum(wi * cells[j, 2] for wi, (_c, j, _dd) in zip(w, near)) / sum(w)
+        if d0 <= 0.75 * step:
+            out[i] = val
+            held[i] = int(cells[near[0][1], 3])
+        else:
+            f = 1.0 - (d0 - 0.75 * step) / (blend - 0.75 * step)
+            out[i] = val * f * f * (3.0 - 2.0 * f)
+    return out, held
+
+
+def main_host(A):
+    """The mesh holding most of it (the one it is parented to)."""
+    if not A or not A.get('cells'):
+        return None
+    k = np.bincount(np.asarray([c[3] for c in A['cells']], np.int64)).argmax()
+    return bpy.data.objects.get(A['hosts'][int(k)])
+
+
+def follow(ob, A):
+    """The wing a child of the mesh holding most of it, where it is (moved / turned with it)."""
+    host = main_host(A)
+    if host is None or ob.parent is not None or host == ob:
+        return host
+    mw = ob.matrix_world.copy()
+    ob.parent = host
+    ob.matrix_parent_inverse = host.matrix_world.inverted_safe()
+    ob.matrix_world = mw
+    return host
+
+
 def build(ob, context=None):
     """The wing laid from its outline and its settings (mesh, veins image, material).  Returns faces."""
     d = data(ob)
@@ -609,15 +691,26 @@ def build(ob, context=None):
     V = np.r_[np.c_[pts, zt], np.c_[pts, zb]]
     if abs(p.bend) > 1e-6 or abs(p.twist) > 1e-6:
         V = bend_twist(V, fr, p.bend, p.twist)
+    held = None
+    A = d.get('attach')
+    if A and p.stick:                                  # 0.24.176 the part over a mesh on it, the rest easing back
+        disp, held = attach_disp(pts, A, fr.L)
+        V[:n, 2] += disp
+        V[n:, 2] += disp
+        follow(ob, A)
     faces = [tuple(f) for f in tris.tolist()] + [tuple(int(i) + n for i in f[::-1]) for f in tris.tolist()]
     faces += [(i, (i + 1) % nb, (i + 1) % nb + n, i + n) for i in range(nb)]
-    O = Vector(d['origin'])
-    X, Y, N = Vector(d['x']), Vector(d['y']), Vector(d['n'])
-    M = np.array([tuple(X), tuple(Y), tuple(N)], float)
-    W3 = V @ M + np.array(tuple(O))
-    inv = ob.matrix_world.inverted()
-    Ml = np.array(inv)
-    Lc = W3 @ Ml[:3, :3].T + Ml[:3, 3]
+    if 'lo' in d:                                      # 0.24.176 its plane in its own space: moved with what holds it
+        M = np.array([d['lx'], d['ly'], d['ln']], float)
+        Lc = V @ M + np.array(d['lo'], float)
+    else:                                              # (a wing from before: its plane in the world)
+        O = Vector(d['origin'])
+        X, Y, N = Vector(d['x']), Vector(d['y']), Vector(d['n'])
+        M = np.array([tuple(X), tuple(Y), tuple(N)], float)
+        W3 = V @ M + np.array(tuple(O))
+        inv = ob.matrix_world.inverted()
+        Ml = np.array(inv)
+        Lc = W3 @ Ml[:3, :3].T + Ml[:3, 3]
     me = ob.data
     bm = bmesh.new()
     vs = [bm.verts.new(tuple(c)) for c in Lc]
@@ -645,6 +738,14 @@ def build(ob, context=None):
     for poly in me.polygons:
         poly.use_smooth = True
     me.update()
+    from . import creature_membrane as cm             # (which mesh holds which points: a Hook to each other one on Enter)
+    for vg in [g for g in ob.vertex_groups if g.name.startswith(cm.HOST_PREFIX)]:
+        ob.vertex_groups.remove(vg)
+    if held is not None:
+        for hi_, name in enumerate(A['hosts']):
+            idx = [int(i) for i in np.nonzero(held == hi_)[0]]
+            if idx:
+                ob.vertex_groups.new(name=cm.HOST_PREFIX + name).add(idx + [i + n for i in idx], 1.0, 'REPLACE')
     # the veins' image (crisp in the material)
     iname = f'MCH Wing Veins ({ob.name})'
     im = bpy.data.images.get(iname)
@@ -685,7 +786,7 @@ def _upd(self, context):
                 _BUSY[0] = False
 
 
-LIVE = ('preset', 'vein_height', 'vein_width', 'density', 'thickness', 'detail', 'seed', 'flip', 'bend', 'twist')
+LIVE = ('preset', 'vein_height', 'vein_width', 'density', 'thickness', 'detail', 'seed', 'flip', 'bend', 'twist', 'stick')
 
 
 class MCH_PG_Wing(bpy.types.PropertyGroup):
@@ -706,42 +807,29 @@ class MCH_PG_Wing(bpy.types.PropertyGroup):
                          update=_upd, description='Twisted round its length from the root')
     flip: BoolProperty(name='Flip Leading Edge', default=False, update=_upd,
                        description='The veins along the other edge')
+    stick: BoolProperty(name='Stick to Mesh', default=True, update=_upd,
+                        description='As Creature Cloth: the part drawn over a mesh sits on it, the rest eases back into the '
+                                    'wing; the wing follows that mesh (its child; on Enter a Hook to each other mesh it is on)')
 
 
 # ---- drawing -------------------------------------------------------------------------------------------------------
 
-def _root_index(context, P3, length):
-    """The outline point nearest to a mesh (the body the wing grows from) - None when no mesh is near."""
-    best = None
-    for o in context.view_layer.objects:
-        if o.type != 'MESH' or not o.visible_get() or is_wing(o) or o.get('mch_wing_done'):
-            continue
-        if not len(o.data.polygons):                 # (points only: the Fur tool's Scales / Feathers - no surface)
-            continue
-        Mi = o.matrix_world.inverted()
-        for i, q in enumerate(P3):
-            try:
-                ok, loc, _n, _f = o.closest_point_on_mesh(Mi @ Vector(q))
-            except RuntimeError:                     # (no faces once evaluated: not a body)
-                break
-            if ok:
-                dd = ((o.matrix_world @ loc) - Vector(q)).length
-                if best is None or dd < best[0]:
-                    best = (dd, i)
-    if best is None or best[0] > 0.25 * length:
-        return None
-    return best[1]
-
-
-def perform(context, loops, projector):
+def perform(context, loops, projector, start=None):
+    """``start``: where the drawing was started (screen; else the first drawn point) - 0.24.176 (user: "벌레 날개도 처음
+    선 긋는 부분이 벌레 날개 [뿌리] 되게 해 줘") the wing's root is there, always (before: the point nearest a mesh)."""
     from . import base_mesh
     from . import core_geometry as cg
+    if start is None:
+        try:
+            start = tuple(loops[0][0])
+        except (IndexError, TypeError):
+            start = None
     groups = cg.prepare_loops(loops)
     if not groups:
         raise cg.CutError('Draw a bigger wing')
     outer = max((g[0] for g in groups), key=lambda lp: abs(cg.signed_area(lp)))   # (a sketch: its biggest shape)
     origin, X, Y, N = base_mesh.plane_frame(context, projector, groups)
-    P3, P2 = [], []
+    P3, P2, Q = [], [], []
     for q in outer:
         o, dvec = projector.ray(q)
         o, dvec = Vector(o), Vector(dvec)
@@ -751,22 +839,30 @@ def perform(context, loops, projector):
         p = o + dvec * ((origin - o).dot(N) / den)
         P3.append(tuple(p))
         P2.append(((p - origin).dot(X), (p - origin).dot(Y)))
+        Q.append((float(q[0]), float(q[1])))
     if len(P2) < 3:
         raise cg.CutError('Draw the wing facing you')
     P2 = np.array(P2, float)
     step = max(1, len(P2) // 400)
-    P2, P3 = P2[::step], P3[::step]
+    P2, P3, Q = P2[::step], P3[::step], np.array(Q[::step], float)
     length = float(np.linalg.norm(P2 - P2[:, None], axis=2).max()) if len(P2) < 2000 else float(np.ptp(P2, axis=0).max())
     if length < 1e-6:
         raise cg.CutError('Draw a bigger wing')
-    root = _root_index(context, P3, length)
+    if start is not None:                              # (the drawn outline point nearest where it was started)
+        root = int(np.argmin(((Q - np.array(start[:2], float)) ** 2).sum(1)))
+    else:
+        root = 0
     st = context.scene.mch_wing
+    A = attach_map(context, P2, origin, X, Y, N, length)       # 0.24.176 (before it exists: not on itself)
     me = bpy.data.meshes.new('Insect Wing')
     ob = bpy.data.objects.new('Insect Wing', me)
     (context.collection or context.scene.collection).objects.link(ob)
-    ob.matrix_world = __import__('mathutils').Matrix.Translation(Vector(P3[root if root is not None else 0]))
-    ob[KEY] = json.dumps(dict(outline=P2.round(7).tolist(), root=int(root if root is not None else 0),
-                              origin=tuple(origin), x=tuple(X), y=tuple(Y), n=tuple(N)))
+    ob.matrix_world = __import__('mathutils').Matrix.Translation(Vector(P3[root]))
+    Mi = ob.matrix_world.inverted()
+    R = Mi.to_3x3()
+    ob[KEY] = json.dumps(dict(outline=P2.round(7).tolist(), root=int(root),
+                              origin=tuple(origin), x=tuple(X), y=tuple(Y), n=tuple(N),
+                              lo=tuple(Mi @ origin), lx=tuple(R @ X), ly=tuple(R @ Y), ln=tuple(R @ N), attach=A))
     _BUSY[0] = True
     try:
         for k in LIVE:
@@ -778,16 +874,26 @@ def perform(context, loops, projector):
         o.select_set(False)
     ob.select_set(True)
     context.view_layer.objects.active = ob
-    where = 'its root at the mesh beside it' if root is not None else 'its root where you started drawing'
+    where = 'its root where you started drawing'
+    if A and ob.mch_wing.stick and ob.parent is not None:
+        others = [h for h in A['hosts'] if h != ob.parent.name]
+        where += f', on {ob.parent.name}' + (f' (+ {", ".join(others)})' if others else '') + ' - it follows it'
     return (f'{ob.name}: a {dict((i[0], i[1]) for i in PRESET_ITEMS)[ob.mch_wing.preset]} wing ({nf:,} faces), {where} '
             f'- Enter: keep')
 
 
-def apply_wing(ob):
+def apply_wing(ob, context=None):
+    """Kept as it is (no longer live); 0.24.176 the points on other meshes than the one it is a child of: a Hook to
+    each (as Creature Cloth).  Returns those meshes' names."""
+    hooked = []
+    if context is not None and ob.parent is not None and ob.mch_wing.stick:
+        from . import creature_membrane as cm
+        hooked = cm.hook_hosts(context, ob)
     for k in (KEY, 'mch_wing_size'):
         if k in ob.keys():
             del ob[k]
     ob['mch_wing_done'] = 1
+    return hooked
 
 
 def apply_targets(context):
@@ -807,9 +913,11 @@ class MCH_OT_wing_apply(bpy.types.Operator):
 
     def execute(self, context):
         obs = apply_targets(context)
+        hooked = []
         for ob in obs:
-            apply_wing(ob)
-        self.report({'INFO'}, 'Insect Wing kept: ' + ', '.join(o.name for o in obs))
+            hooked += apply_wing(ob, context)
+        self.report({'INFO'}, 'Insect Wing kept: ' + ', '.join(o.name for o in obs)
+                    + (f' (also held by {", ".join(hooked)}: hooks)' if hooked else ''))
         return {'FINISHED'}
 
 
@@ -849,6 +957,7 @@ def draw(layout, context):
     for k in ('bend', 'twist', 'vein_height', 'vein_width', 'density', 'thickness', 'detail', 'seed'):
         col.prop(pg, k)
     col.prop(pg, 'flip')
+    col.prop(pg, 'stick')                              # 0.24.176
     if ob is not None:
         layout.operator('mch.wing_apply', text='Apply (Enter)', icon='CHECKMARK')
     col = layout.column(align=True)
@@ -857,7 +966,8 @@ def draw(layout, context):
 
 
 HELP = ('Draw a wing\'s outline: the veins raised inside it',
-        'Its root: the point nearest the body (else where you start)',
+        'Its root: where you start drawing',
+        'Drawn over a mesh: it sits on it and follows it (Stick to Mesh)',
         'Select a wing: its sliders lay it again;  Enter: keep')
 
 CLASSES = (MCH_PG_Wing, MCH_OT_wing_apply, MCH_OT_wing_preset)
