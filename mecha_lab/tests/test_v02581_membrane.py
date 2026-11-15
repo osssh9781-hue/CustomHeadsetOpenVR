@@ -172,6 +172,42 @@ check(f'Sketch mode: shapes drawn first, Enter makes the membrane from them ({ms
       and Ws[:, 0].min() < 0.35 and Ws[:, 0].max() > 1.55)
 cd.cancel(C)
 S.mch_brush.sketch_first = False
+# meshes not joined (user: "피막은 여러 개 안 합쳐진 메쉬로도 작동 가능하지?"): an arm and two fingers, each its own object
+parts = []
+for name, a_, b_, rr in (('Arm', (5, 0, 1.0), (6.4, 0, 1.15), 0.06), ('Finger A', (6.4, 0, 1.15), (7.4, 0, 0.2), 0.04),
+                         ('Finger B', (6.4, 0, 1.15), (6.6, 0, -0.3), 0.04)):
+    bm = bmesh.new()
+    bone(a_, b_, rr)
+    me_ = bpy.data.meshes.new(name)
+    bm.to_mesh(me_)
+    bm.free()
+    o = bpy.data.objects.new(name, me_)
+    S.collection.objects.link(o)
+    parts.append(o)
+C.view_layer.update()
+cm.perform(C, loop([(x + 5.0, z) for x, z in PTS]), FRONT)
+m4 = C.active_object
+groups = sorted(g.name for g in m4.vertex_groups if g.name.startswith(cm.HOST_PREFIX))
+while cd.step(C):
+    pass
+out = cd.confirm(C)
+hooks = [md for md in m4.modifiers if md.type == 'HOOK']
+check(f'meshes not joined: pinned on each of them ({groups}), kept: parented to the one holding most '
+      f'({m4.parent and m4.parent.name}), a Hook to each other one ({[h.object.name for h in hooks]}) - {out}',
+      len(groups) == 3 and m4.parent in parts and len(hooks) == 2
+      and {h.object for h in hooks} == set(parts) - {m4.parent})
+m4.modifiers[cm.THICK_MOD].show_viewport = False        # (its own points, the Solidify's offset aside)
+Wk = world(m4, evaluated=True)
+fin = next(o for o in parts if o.name == 'Finger A')
+g_f = m4.vertex_groups[cm.HOST_PREFIX + 'Finger A'].index
+on_f = np.array([any(x.group == g_f for x in v.groups) for v in m4.data.vertices])
+fin.location.z += 0.5
+Wm = world(m4, evaluated=True)
+dz = (Wm[:, 2] - Wk[:, 2])[:len(m4.data.vertices)]           # (the membrane's own points; Solidify's copies after)
+fin.location.z -= 0.5
+m4.modifiers[cm.THICK_MOD].show_viewport = True
+check(f'move one finger: its pinned points go with it (+{dz[on_f].mean():.3f}), the rest stay ({np.abs(dz[~on_f]).max():.4f})',
+      abs(dz[on_f].mean() - 0.5) < 0.01 and np.abs(dz[~on_f]).max() < 1e-3)
 try:
     cm.perform(C, loop([(4.0, 3.0), (5.0, 3.0), (5.0, 4.0)]), FRONT)
     err = ''

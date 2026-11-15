@@ -8,9 +8,9 @@ wireframe on:
   3. a REAL drag on "Vein Height %", a REAL click on "Cicada Photo" (the user's photo) - the wing laid again
   4. a REAL drag on "Bend" (from the root), a REAL Enter - the wing kept
   5. Sketch mode on: two REAL lassos (nothing made yet), a REAL Enter - one wing from both
-  6. the Creature Cloth tool: a REAL click on "Taut Skin", a REAL lasso over a wing's bones - a membrane pinned on
-     them; a REAL Space - it falls
-  7. a REAL click on "Bat"; a REAL Enter - kept: a plain mesh, Thickness, on the bones
+  6. the Creature Cloth tool over three bone meshes (not joined): a REAL click on "Taut Skin", Sketch mode on - two
+     REAL lassos (nothing made yet), a REAL Enter: a membrane from both, pinned on all three; a REAL Space - it falls
+  7. a REAL click on "Bat"; a REAL Enter - kept: a plain mesh, Thickness, on the arm, hooked to the fingers
 """
 import math
 import os
@@ -255,18 +255,22 @@ def flow():
         body = C.active_object
         body.name = 'Insect Body'
         body.scale = (0.6, 0.6, 1.6)
-        bm = bmesh.new()
-        for a_, b_, rr in (((0, 0, -1.0), (1.4, 0, -0.85), 0.06), ((1.4, 0, -0.85), (2.4, 0, -1.8), 0.04),
-                           ((1.4, 0, -0.85), (1.6, 0, -2.3), 0.04)):
+        bone_obs = []                               # (three meshes, not joined: user "여러 개 안 합쳐진 메쉬로도")
+        for name, a_, b_, rr in (('Arm Bone', (0, 0, -1.0), (1.4, 0, -0.85), 0.06),
+                                 ('Finger Bone A', (1.4, 0, -0.85), (2.4, 0, -1.8), 0.04),
+                                 ('Finger Bone B', (1.4, 0, -0.85), (1.6, 0, -2.3), 0.04)):
+            bm = bmesh.new()
             A, B = Vector(a_), Vector(b_)
             m = bmesh.ops.create_cone(bm, cap_ends=True, segments=12, radius1=rr, radius2=rr * 0.6, depth=(B - A).length)
             bmesh.ops.rotate(bm, verts=m['verts'], cent=(0, 0, 0), matrix=(B - A).to_track_quat('Z', 'Y').to_matrix())
             bmesh.ops.translate(bm, verts=m['verts'], vec=(A + B) / 2)
-        me = bpy.data.meshes.new('Wing Bones')
-        bm.to_mesh(me)
-        bm.free()
-        bones = bpy.data.objects.new('Wing Bones', me)
-        S.collection.objects.link(bones)
+            me = bpy.data.meshes.new(name)
+            bm.to_mesh(me)
+            bm.free()
+            ob_ = bpy.data.objects.new(name, me)
+            S.collection.objects.link(ob_)
+            bone_obs.append(ob_)
+        bones = bone_obs[0]
         for o in C.selected_objects:
             o.select_set(False)
         C.view_layer.objects.active = None
@@ -384,17 +388,31 @@ def flow():
     if it_t is not None:
         yield from press(it_t)
     style = S.mch_membrane.style
-    mp = [(0.05, -1.0), (0.7, -0.93), (1.4, -0.85), (1.9, -1.32), (2.38, -1.78), (2.0, -1.9), (1.6, -2.28),
-          (1.0, -2.1), (0.4, -1.7), (0.05, -1.4)]
-    ring3 = []
-    for i in range(len(mp)):
-        x0, z0 = mp[i]
-        x1, z1 = mp[(i + 1) % len(mp)]
-        for k in range(6):
-            ring3.append((x0 + (x1 - x0) * k / 6, 0.0, z0 + (z1 - z0) * k / 6))
-    yield from real_outline(outline_xy(ring3))
+    def ring_of(mp):
+        out = []
+        for i in range(len(mp)):
+            x0, z0 = mp[i]
+            x1, z1 = mp[(i + 1) % len(mp)]
+            for k in range(6):
+                out.append((x0 + (x1 - x0) * k / 6, 0.0, z0 + (z1 - z0) * k / 6))
+        return out
+    from mecha_lab import lasso_sketch
+    S.mch_brush.sketch_first = True                 # (user: "피막에도 스케치 넣어 줘")
+    yield 1.0
+    sk_ok = 'MEMBRANE' in lasso_sketch.MODES
+    yield from real_outline(outline_xy(ring_of([(0.05, -1.0), (0.7, -0.93), (1.45, -0.85), (1.5, -2.25), (1.0, -2.1),
+                                                (0.4, -1.7), (0.05, -1.4)])))
+    yield from real_outline(outline_xy(ring_of([(1.35, -0.85), (1.9, -1.32), (2.38, -1.78), (2.0, -1.9),
+                                                (1.6, -2.28), (1.35, -2.0)])))
+    nothing_yet = not any(cm.is_membrane(o) for o in S.objects) and lasso_sketch.data(S) is not None
+    shot('5_membrane_sketch.png')
+    yield from key_over_view('Return')
     yield 2.0
+    S.mch_brush.sketch_first = False
     mem = next((o for o in S.objects if cm.is_membrane(o)), None)
+    groups = sorted(g.name for g in mem.vertex_groups if g.name.startswith(cm.HOST_PREFIX)) if mem else []
+    log('6 sketch: in the modes', sk_ok, '- nothing made after two lassos', nothing_yet, '- after Enter', mem and mem.name,
+        'held by', groups)
     npin = 0
     if mem is not None:
         g = mem.vertex_groups[cm.PIN].index
@@ -409,9 +427,10 @@ def flow():
         yield 0.5
     fr = (cd.SIM.get('sess') or {}).get('frame', 0)
     log('6 Taut Skin cell', it_t is not None, 'style', style, '- after Space: frame', fr, 'done', cd.SIM.get('done'))
-    res['6 the Creature Cloth tool: a REAL click on "Taut Skin", a REAL lasso over the bones: a membrane pinned on '
-        'them; a REAL Space: it falls'] = (it_t is not None and style == 'TAUT' and mem is not None and npin > 30
-                                           and fr >= 40)
+    res['6 the Creature Cloth tool: a REAL click on "Taut Skin", Sketch: two REAL lassos, a REAL Enter: a membrane '
+        'pinned on the three bone meshes; a REAL Space: it falls'] = (
+        it_t is not None and style == 'TAUT' and sk_ok and nothing_yet and mem is not None and npin > 30
+        and len(groups) == 3 and fr >= 40)
     shot('6_membrane_fallen.png')
     it = yield from scrolled_item('Bat')
     if it is not None:
@@ -420,9 +439,12 @@ def flow():
     sol = mem.modifiers.get(cm.THICK_MOD) if mem else None
     log('7 Bat cell', it is not None, 'preset', S.mch_membrane.preset, '- after Enter: session', cd.sim_active(),
         'modifiers', mem and [m.type for m in mem.modifiers], 'parent', mem and mem.parent and mem.parent.name)
-    res['7 a REAL click on "Bat"; a REAL Enter: kept - a plain mesh, Thickness, on the bones'] = (
+    hooks = [md.object.name for md in mem.modifiers if md.type == 'HOOK'] if mem else []
+    log('7 hooks', hooks)
+    res['7 a REAL click on "Bat"; a REAL Enter: kept - a plain mesh, Thickness, on the arm, hooked to the fingers'] = (
         it is not None and S.mch_membrane.preset == 'BAT' and not cd.sim_active() and mem is not None
-        and mem.modifiers.get(cm.CLOTH_MOD) is None and sol is not None and mem.parent == bones)
+        and mem.modifiers.get(cm.CLOTH_MOD) is None and sol is not None and mem.parent in bone_obs
+        and len(hooks) == 2)
     yield from wait_draws(2)
     shot('7_all.png')
     bpy.types.SpaceView3D.draw_handler_remove(handle, 'WINDOW')

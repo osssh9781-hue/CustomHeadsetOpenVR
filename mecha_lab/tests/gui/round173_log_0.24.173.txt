@@ -1,0 +1,26 @@
+1 Kestrel Tail cell True picked ['Feather Kestrel Tail']
+2 Dragonfly cell True - wing Insect Wing 52735 faces, thick 0.0124 preset DRAGONFLY
+shot 1_wing.png True
+3 Vein Height cell True 0.6 -> 1.29 - Cicada Photo cell True preset P_CICADA
+shot 2_wing_photo.png True
+shot 3_wing_bend.png True
+4 Bend cell True bend 86.5 out of the plane 0.702 - after Enter: still live False - faces 52735
+shot 4_wing_sketch.png True
+5 sketch: wings before 1 after two lassos 1 sketch kept True - after Enter 2 new live wing Insect Wing.001
+shot 5_membrane_sketch.png True
+6 sketch: in the modes True - nothing made after two lassos True - after Enter Creature Cloth held by ['MCH Pin: Arm Bone', 'MCH Pin: Finger Bone A', 'MCH Pin: Finger Bone B']
+6 membrane Creature Cloth 1252 points 170 pinned; session MEMBRANE
+shot 5_membrane_drawn.png True
+6 Taut Skin cell True style TAUT - after Space: frame 50 done True
+shot 6_membrane_fallen.png True
+7 Bat cell True preset BAT - after Enter: session False modifiers ['HOOK', 'HOOK', 'SOLIDIFY'] parent Arm Bone
+7 hooks ['Finger Bone B', 'Finger Bone A']
+shot 7_all.png True
+PASS 1 the Feather Line tool: a REAL click on the new "Kestrel Tail" - that feather picked
+PASS 2 the Insect Wing tool: a REAL click on "Dragonfly", a REAL lasso: a wing, its veins raised
+PASS 3 a REAL drag on "Vein Height %", a REAL click on "Cicada Photo": the wing laid again with the photo's veins
+PASS 4 a REAL drag on "Bend": the wing bent from its root; a REAL Enter: kept (a plain mesh)
+PASS 5 Sketch mode: two REAL lassos (nothing made yet), a REAL Enter: one wing from both
+PASS 6 the Creature Cloth tool: a REAL click on "Taut Skin", Sketch: two REAL lassos, a REAL Enter: a membrane pinned on the three bone meshes; a REAL Space: it falls
+PASS 7 a REAL click on "Bat"; a REAL Enter: kept - a plain mesh, Thickness, on the arm, hooked to the fingers
+7/7 passed

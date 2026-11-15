@@ -25,6 +25,7 @@ from mathutils import Matrix, Vector
 from . import outline_mesh as om
 
 KEY = 'mch_membrane'              # on a membrane (1)
+HOST_PREFIX = 'MCH Pin: '         # + a mesh's name: the points it holds (0.24.173 meshes not joined)
 DONE_KEY = 'mch_membrane_done'    # on a kept one: never what a new membrane hangs from
 PIN = 'MCH Pin'
 CLOTH_MOD = 'MCH Membrane Cloth'
@@ -156,7 +157,11 @@ def sheet(context, loops, projector, detail, wobble=0.0002):
     body = max(set(held), key=held.count) if held else None
     lo = outer.min(0)
     uv = (pts - lo) / max(size_px, 1e-9)
-    return P, tris, on, uv, body, nb
+    hosts = {}                                      # (0.24.173 meshes not joined: which of them holds each point)
+    for i in np.nonzero(on)[0]:
+        if owner[i] is not None:
+            hosts.setdefault(owner[i].name, []).append(int(i))
+    return P, tris, on, uv, body, nb, hosts
 
 
 def membrane_material(ob, preset):
@@ -254,7 +259,8 @@ def perform(context, loops, projector):
     if cd.sim_active():
         raise cg.CutError('Cloth Drape: keep (Enter) or drop (Esc) the cloth you have first')
     mp = context.scene.mch_membrane
-    P, tris, pinned, uv, body, nb = sheet(context, loops, projector, mp.detail, 0.0006 if mp.style == 'TAUT' else 0.0002)
+    P, tris, pinned, uv, body, nb, hosts = sheet(context, loops, projector, mp.detail,
+                                                  0.0006 if mp.style == 'TAUT' else 0.0002)
     if not np.any(pinned):
         raise cg.CutError('Draw the membrane over your mesh: the parts over it hold it')
     if pinned.all():
@@ -284,6 +290,8 @@ def perform(context, loops, projector):
         p.use_smooth = True
     vg = ob.vertex_groups.new(name=PIN)
     vg.add([int(i) for i in np.nonzero(pinned)[0]], 1.0, 'REPLACE')
+    for name, idx in hosts.items():                 # (the points each mesh holds: kept, they follow that mesh)
+        ob.vertex_groups.new(name=HOST_PREFIX + name).add(idx, 1.0, 'REPLACE')
     ob[KEY] = 1
     size = float(np.linalg.norm(np.ptp(P, axis=0)))
     membrane_material(ob, mp.preset)
@@ -322,6 +330,28 @@ def sim_step(context):
     return True
 
 
+def hook_hosts(context, ob):
+    """0.24.173 (user: "피막은 여러 개 안 합쳐진 메쉬로도 작동 가능하지?"): the points held by meshes other than the one it is
+    parented to follow those meshes too - a Hook to each (its own points only), as it is now (no jump).  Returns
+    their names."""
+    context.view_layer.update()
+    out = []
+    for vg in list(ob.vertex_groups):
+        if not vg.name.startswith(HOST_PREFIX):
+            continue
+        host = bpy.data.objects.get(vg.name[len(HOST_PREFIX):])
+        if host is None or host == ob.parent:
+            continue
+        md = ob.modifiers.new(f'MCH Hook {host.name}', 'HOOK')
+        md.object = host
+        md.vertex_group = vg.name
+        md.falloff_type = 'NONE'
+        md.strength = 1.0
+        md.matrix_inverse = (ob.matrix_world.inverted() @ host.matrix_world).inverted()
+        out.append(host.name)
+    return out
+
+
 def sim_keep(context):
     """The membrane kept as it hangs now: a plain mesh (still on the mesh it hangs from) + Thickness."""
     SIM = _sim()
@@ -344,6 +374,7 @@ def sim_keep(context):
     if 'frame0' in SIM:
         context.scene.frame_set(SIM['frame0'])
     mp = context.scene.mch_membrane
+    hooks = hook_hosts(context, ob)
     thick = False
     if mp.thickness > 0:
         md = ob.modifiers.new(THICK_MOD, 'SOLIDIFY')
@@ -358,6 +389,7 @@ def sim_keep(context):
     ob[DONE_KEY] = 1
     SIM.clear()
     return (f'{ob.name}: kept at frame {frame} ({len(me.vertices):,} points)' +
+            (f', also held by {", ".join(hooks)} (hooks)' if hooks else '') +
             (f' + Thickness {mp.thickness:.2f} % (its Solidify)' if thick else ''))
 
 
