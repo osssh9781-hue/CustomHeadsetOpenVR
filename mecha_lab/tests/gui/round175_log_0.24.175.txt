@@ -1,0 +1,6 @@
+shot 1_tilt_minus180.png True
+shot 2_tilt_plus180.png True
+tool mecha.feather_line Tilt cell True tilt -180.0 180.0 up 1.0 -1.0 -1.0
+PASS 1 a Feather Line selected, the window's "Tilt" REALLY dragged all the way left: -180, the feathers upside down
+PASS 2 dragged all the way right: 180, upside down the other way round
+2/2 passed

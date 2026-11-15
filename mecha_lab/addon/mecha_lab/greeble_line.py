@@ -86,9 +86,10 @@ def _props(update):
         'turn': FloatProperty(name='Turn', default=0.0, min=-math.pi, max=math.pi, subtype='ANGLE', update=update,
                               description='Every part turned on the surface (about the surface normal): 90 = '
                                           'across the line'),
-        'tilt': FloatProperty(name='Tilt', default=0.0, min=-math.radians(85), max=math.radians(85), subtype='ANGLE',
+        # 0.24.175 (user: "이거 -180 까지 틸트 되게 해 줘"): the whole way round, -180 .. 180 (was -85 .. 85)
+        'tilt': FloatProperty(name='Tilt', default=0.0, min=-math.pi, max=math.pi, subtype='ANGLE',
                               update=update, description='Every part leaning forward / back along the line (about '
-                                                         'its bottom edge across the line)'),
+                                                         'its bottom edge across the line), all the way round'),
         'scale': FloatProperty(name='Part Size', default=1.0, min=0.01, max=100.0, soft_max=4.0, update=update,
                                description='The parts\' size, x the size you made them'),
         'scale_random': FloatProperty(name='Size Random', default=0.0, min=0.0, max=0.9, update=update,
