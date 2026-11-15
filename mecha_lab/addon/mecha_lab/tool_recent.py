@@ -20,7 +20,7 @@ SETS = (('MECHA', 'Mecha', 'Favorites for hard-surface / mecha work'),
         ('CLOTH', 'Cloth', 'Favorites for cloth / costume work'))
 DEFAULT_FAVS = {
     'MECHA': ['CUT', 'SPLIT', 'BASE', 'PLATE', 'DETAIL3', 'SCREW'],
-    'CREATURE': ['CBASE', 'CPLATE', 'SCALES', 'SPIKE', 'HAIR', 'FUR', 'WING', 'CMOVE'],
+    'CREATURE': ['CBASE', 'CPLATE', 'SCALES', 'SPIKE', 'HAIR', 'FUR', 'WING', 'MEMBRANE', 'CMOVE'],
     'CLOTH': ['WRINKLE', 'CAPE', 'SCAPE', 'BELT', 'SDRAW', 'CMOVE'],
 }
 

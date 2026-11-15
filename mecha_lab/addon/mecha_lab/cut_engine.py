@@ -1413,6 +1413,7 @@ _COLORS = {
     'SCAPE': (0.8, 0.55, 0.35, 1.0),
     'HAIR': (0.75, 0.7, 0.45, 1.0),
     'FUR': (0.85, 0.65, 0.4, 1.0),
+    'MEMBRANE': (0.75, 0.4, 0.4, 1.0),
     'WING': (0.55, 0.8, 0.9, 1.0),
     'GARMENT': (0.55, 0.7, 0.85, 1.0),
     'HOOD': (0.6, 0.5, 0.85, 1.0),
@@ -1767,7 +1768,7 @@ class StrokeLogic:
     def _needs_target(self):
         return self.mode not in {'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'ZONE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE',
                                  'FLOWER', 'SCURVE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'SDRAW', 'PRESS',
-                                 'GREEBLE', 'CGREEBLE', 'FUR', 'WING'}
+                                 'GREEBLE', 'CGREEBLE', 'FUR', 'WING', 'MEMBRANE'}
 
     def _tangents(self, pts=None):
         pts = self.pts if pts is None else pts
@@ -1898,7 +1899,7 @@ class StrokeLogic:
                 self.report({'WARNING'}, str(ex))
             return {'CANCELLED'}
         if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'FLOWER',
-                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'FUR', 'WING'} and self.shape == 'LASSO' and self.brush.line_open:
+                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'FUR', 'WING', 'MEMBRANE'} and self.shape == 'LASSO' and self.brush.line_open:
             self.brush.line_open = False
         self.ui = ui_scale(context)
         self.target_names = []
@@ -2284,6 +2285,9 @@ class StrokeLogic:
             elif self.mode == 'FUR':                # 0.24.157 Fur: the area (Alt: taken away)
                 from . import creature_fur
                 msg = creature_fur.perform(context, loops, self.projector, erase=self.inverted())
+            elif self.mode == 'MEMBRANE':                # 0.24.173
+                from . import creature_membrane
+                msg = creature_membrane.perform(context, loops, self.projector)
             elif self.mode == 'WING':                # 0.24.173
                 from . import insect_wing
                 msg = insect_wing.perform(context, loops, self.projector)
@@ -2431,7 +2435,7 @@ class StrokeLogic:
             self._clean_points()
             if self.shape == 'LASSO' and len(self.pts) >= 2 and (self.line_open or len(self.pts) == 2):
                 if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'FLOWER',
-                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'FUR', 'WING'}:
+                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'FUR', 'WING', 'MEMBRANE'}:
                     self.report({'WARNING'}, 'This tool needs a closed outline (3+ points)')
                     return {'RUNNING_MODAL'}
                 if self.mode == 'SPLIT':
@@ -2605,7 +2609,7 @@ class StrokeLogic:
             self.region.tag_redraw()
             return {'RUNNING_MODAL'}
         if et == 'F' and ev == 'PRESS' and self.shape == 'LASSO' and self.mode not in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'FLOWER',
-                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'FUR', 'WING'}:
+                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'FUR', 'WING', 'MEMBRANE'}:
             self.line_open = not self.line_open
             self.brush.line_open = self.line_open
             self.region.tag_redraw()
@@ -2827,6 +2831,7 @@ class MCH_OT_cut_stroke(StrokeLogic, bpy.types.Operator):
         ('SCAPE', 'Scarf Cape', 'A live cape with folds across (like a draped scarf)'),
         ('HAIR', 'Creature Hair', 'Live dreadlocks / tentacles / quills growing from the drawn area'),
         ('FUR', 'Fur', 'Live fur growing in the drawn area (Alt: the area taken away)'),
+        ('MEMBRANE', 'Creature Cloth', 'A membrane: pinned where it is over the mesh, the rest a falling cloth (Space)'),
         ('WING', 'Insect Wing', 'An insect wing in the drawn outline, its veins raised'),
         ('GARMENT', 'Clothing', 'A live top / pants made from the body inside the drawn outline'),
         ('HOOD', 'Hood', 'A live hood over the head drawn round'),

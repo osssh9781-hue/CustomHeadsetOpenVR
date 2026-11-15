@@ -1134,6 +1134,11 @@ def draw_wing(layout, context):
     insect_wing.draw(layout, context)
 
 
+def draw_membrane(layout, context):
+    from . import creature_membrane
+    creature_membrane.draw(layout, context)
+
+
 def _print_drawer(name):
     def draw_it(layout, context):
         from . import print3d
@@ -1159,6 +1164,7 @@ DRAWERS = {
     'CGREEBLE': draw_scale_line,
     'FGREEBLE': draw_feather_line,
     'FUR': draw_fur,
+    'MEMBRANE': draw_membrane,
     'WING': draw_wing,
     'WDIRT': _weather_drawer('DIRT'), 'WDUST': _weather_drawer('DUST'), 'WLEAF': _weather_drawer('LEAVES'),
     'WSNOW': _weather_drawer('SNOW'),

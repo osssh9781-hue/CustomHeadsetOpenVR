@@ -649,7 +649,7 @@ def grab_start_event(context, event):
     ob = _ob()
     sess = SIM.get('sess')
     region, rv3d = context.region, context.region_data
-    if ob is None or sess is None or region is None or rv3d is None or SIM.get('mode') == 'VACUUM':
+    if ob is None or sess is None or region is None or rv3d is None or SIM.get('mode') in NATIVE:
         return False
     cloth = sess['cloth']
     xy = _screen_xy(region, rv3d, ob.matrix_world, cloth.co)
@@ -710,6 +710,14 @@ def drape(context, target, me, nb, size, st, frames=None, sew=None, pin_idx=None
 # -----------------------------------------------------------------------------
 
 SIM = {}
+# 0.24.171 / 0.24.173 sessions run by Blender's own cloth (their module does each step): mode -> module
+NATIVE = {'VACUUM': 'vacuum_pack', 'MEMBRANE': 'creature_membrane'}
+
+
+def _native():
+    import importlib
+    name = NATIVE.get(SIM.get('mode'))
+    return importlib.import_module(f'.{name}', __package__) if name else None
 SRC_KEY = 'mch_cdrape_src'
 
 
@@ -1904,9 +1912,8 @@ def _snapshot(st):
 
 def restart(context):
     """The cloth back to the laid patch, the session rebuilt with the current sliders (Cloth Detail needs a new lasso)."""
-    if SIM.get('mode') == 'VACUUM':
-        from . import vacuum_pack
-        return vacuum_pack.sim_restart(context)
+    if _native() is not None:                        # (Vacuum Pack, Creature Cloth: Blender's own cloth)
+        return _native().sim_restart(context)
     grab_end_event()
     rebuild_hang(context)                         # 0.24.95 a cape / neck cloth: Length / Flare / Detail rebuild it
     rebuild_mask(context)                         # 0.24.95 a Drape Mask cloth: Points / Detail rebuild it
@@ -1936,9 +1943,8 @@ def restart(context):
 
 
 def step(context):
-    if SIM.get('mode') == 'VACUUM':                  # 0.24.171 Vacuum Pack: Blender's own cloth, a frame at a time
-        from . import vacuum_pack
-        return vacuum_pack.sim_step(context)
+    if _native() is not None:                        # 0.24.171 Vacuum Pack (0.24.173 + Creature Cloth): Blender's
+        return _native().sim_step(context)           # own cloth, a frame at a time
     ob = _ob()
     sess = SIM.get('sess')
     if ob is None or sess is None:
@@ -1994,9 +2000,8 @@ def weld_seams(me, sew):
 
 
 def confirm(context):
-    if SIM.get('mode') == 'VACUUM':
-        from . import vacuum_pack
-        return vacuum_pack.sim_keep(context)
+    if _native() is not None:
+        return _native().sim_keep(context)
     ob = _ob()
     if ob is None:
         _drop_backup()
@@ -2102,9 +2107,8 @@ def add_trim(context, ob, size, st):
 
 
 def cancel(context):
-    if SIM.get('mode') == 'VACUUM':
-        from . import vacuum_pack
-        return vacuum_pack.sim_drop(context)
+    if _native() is not None:
+        return _native().sim_drop(context)
     ob = _ob()
     if ob is not None and SIM.get('mode') == 'MESH':         # the mesh itself: put the saved copy back
         backup = bpy.data.meshes.get(SIM.get('backup', ''))
@@ -2129,9 +2133,8 @@ def cancel(context):
 def status():
     if not sim_active():
         return ''
-    if SIM.get('mode') == 'VACUUM':
-        from . import vacuum_pack
-        return vacuum_pack.sim_status()
+    if _native() is not None:
+        return _native().sim_status()
     sess = SIM['sess']
     esc = 'put back' if SIM.get('mode') == 'MESH' else 'drop'
     grab = SIM.get('grab')
@@ -2228,7 +2231,7 @@ class MCH_OT_cdrape_sim(bpy.types.Operator):
         return {'PASS_THROUGH'}
 
     def _toggle(self, context):
-        if SIM.get('mode') == 'VACUUM':                  # (its sliders restart it themselves)
+        if SIM.get('mode') in NATIVE:                    # (its sliders restart it themselves)
             if SIM.get('done'):
                 restart(context)
             SIM['running'] = not SIM.get('running')

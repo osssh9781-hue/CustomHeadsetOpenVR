@@ -98,3 +98,41 @@ def even_mesh(loop, spacing, max_points=60000):
         flip = ar < 0
         tris[flip] = tris[flip][:, [0, 2, 1]]
     return allp, tris, nb
+
+
+def raster_lines(lo, hi, px, vlist):
+    """Lines drawn into a height field over [lo, hi] (``px`` units a pixel): ``vlist`` = [(polyline N x 2, half-width
+    per point N, closed)]; each line round in section, the thicker ones higher (0..1).  Returns H x W float32."""
+    W = int(math.ceil((hi[0] - lo[0]) / px)) + 1
+    H = int(math.ceil((hi[1] - lo[1]) / px)) + 1
+    R = np.zeros((H, W), np.float32)
+    if not vlist:
+        return R
+    rmax = max(float(max(np.max(r) for _p, r, _c in vlist)), 1e-12)
+    for P, r, closed in vlist:
+        P = np.asarray(P, float)
+        r = np.asarray(r, float)
+        if closed:
+            P = np.r_[P, P[:1]]
+            r = np.r_[r, r[:1]]
+        for i in range(len(P) - 1):
+            a, b = P[i], P[i + 1]
+            ra = max(float(r[i]), float(r[i + 1]))
+            x0 = max(int((min(a[0], b[0]) - ra - lo[0]) / px), 0)
+            x1 = min(int((max(a[0], b[0]) + ra - lo[0]) / px) + 2, W)
+            y0 = max(int((min(a[1], b[1]) - ra - lo[1]) / px), 0)
+            y1 = min(int((max(a[1], b[1]) + ra - lo[1]) / px) + 2, H)
+            if x1 <= x0 or y1 <= y0:
+                continue
+            gx = lo[0] + np.arange(x0, x1) * px
+            gy = lo[1] + np.arange(y0, y1) * px
+            X, Y = np.meshgrid(gx, gy)
+            ab = b - a
+            L2 = max(float(ab @ ab), 1e-18)
+            t = np.clip(((X - a[0]) * ab[0] + (Y - a[1]) * ab[1]) / L2, 0.0, 1.0)
+            rr = r[i] + (r[i + 1] - r[i]) * t
+            dx, dy = X - (a[0] + t * ab[0]), Y - (a[1] + t * ab[1])
+            q = 1.0 - (dx * dx + dy * dy) / np.maximum(rr * rr, 1e-18)
+            prof = np.sqrt(np.clip(q, 0.0, 1.0)) * (rr / rmax)
+            R[y0:y1, x0:x1] = np.maximum(R[y0:y1, x0:x1], prof.astype(np.float32))
+    return R

@@ -1010,6 +1010,22 @@ class MCH_TOOL_insect_wing(bpy.types.WorkSpaceTool):
         _draw_tool_settings(context, layout, tool)
 
 
+class MCH_TOOL_creature_membrane(bpy.types.WorkSpaceTool):
+    """0.24.173 Creature Cloth"""
+    bl_space_type = 'VIEW_3D'
+    bl_context_mode = 'OBJECT'
+    bl_idname = 'mecha.creature_membrane'
+    bl_label = 'Mecha Creature Cloth'
+    bl_description = ('Draw over your mesh: a membrane pinned where it is over the mesh, the rest a cloth.\n'
+                      'Space: let it fall,  Enter: keep (+ Thickness),  Esc: drop.  RMB: shapes, Esc: exit')
+    bl_icon = 'ops.mesh.extrude_region_move'
+    bl_widget = None
+    bl_keymap = _tool_keymap('MEMBRANE') + (('mch.cdrape_sim', {'type': 'SPACE', 'value': 'PRESS'}, None),)
+
+    def draw_settings(context, layout, tool):
+        _draw_tool_settings(context, layout, tool)
+
+
 class MCH_TOOL_creature_hair(bpy.types.WorkSpaceTool):
     bl_space_type = 'VIEW_3D'
     bl_context_mode = 'OBJECT'
@@ -1151,7 +1167,7 @@ NATIVE_TOOLS = (MCH_TOOL_cut, MCH_TOOL_split, MCH_TOOL_press_cut, MCH_TOOL_base_
                 MCH_TOOL_cloth_wrinkle, MCH_TOOL_box_hide, MCH_TOOL_plate_detail, MCH_TOOL_plate_detail2, MCH_TOOL_plate_detail3, MCH_TOOL_plate_detail4,
                 MCH_TOOL_screw_stamp, MCH_TOOL_cloth_drape, MCH_TOOL_lasso_zone, MCH_TOOL_wrinkle_lines, MCH_TOOL_creature_base, MCH_TOOL_creature_plate,
                 MCH_TOOL_belt_maker, MCH_TOOL_creature_spike, MCH_TOOL_creature_scales,
-                MCH_TOOL_scale_brush, MCH_TOOL_bridge_patch, MCH_TOOL_flower_plate, MCH_TOOL_surface_curve, MCH_TOOL_cape, MCH_TOOL_scarf_cape, MCH_TOOL_creature_hair, MCH_TOOL_creature_fur, MCH_TOOL_insect_wing, MCH_TOOL_surface_draw, MCH_TOOL_clothing, MCH_TOOL_hood, MCH_TOOL_scarf)   # MCH_TOOL_mask kept, not registered (Mask hidden)
+                MCH_TOOL_scale_brush, MCH_TOOL_bridge_patch, MCH_TOOL_flower_plate, MCH_TOOL_surface_curve, MCH_TOOL_cape, MCH_TOOL_scarf_cape, MCH_TOOL_creature_hair, MCH_TOOL_creature_fur, MCH_TOOL_insect_wing, MCH_TOOL_creature_membrane, MCH_TOOL_surface_draw, MCH_TOOL_clothing, MCH_TOOL_hood, MCH_TOOL_scarf)   # MCH_TOOL_mask kept, not registered (Mask hidden)
 
 
 STALE_KEYMAP_IDS = {'mch.stamp_scale'}     # 0.24.5 wheel = stamp size (removed in 0.24.6)
@@ -1217,6 +1233,7 @@ def register_native_tools():
     bpy.utils.register_tool(MCH_TOOL_creature_hair, after={MCH_TOOL_scarf_cape.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_creature_fur, after={MCH_TOOL_creature_hair.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_insect_wing, after={MCH_TOOL_creature_fur.bl_idname}, group=False)
+    bpy.utils.register_tool(MCH_TOOL_creature_membrane, after={MCH_TOOL_insect_wing.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_surface_draw, after={MCH_TOOL_creature_hair.bl_idname}, group=False)
     if ts.EXPERIMENTAL_CLOTH:          # 0.24.31: Clothing / Hood / Scarf hidden until they are ready
         bpy.utils.register_tool(MCH_TOOL_clothing, after={MCH_TOOL_creature_hair.bl_idname}, group=False)
@@ -2639,6 +2656,7 @@ ENTER_APPLY = (
     ('cover_apply', 'Feathers / Scales'),                 # 0.24.172 the Fur tool's other tabs
     ('fur_apply', 'Fur'),
     ('wing_apply', 'Insect Wing'),             # 0.24.173
+    ('membrane_keep', 'Creature Cloth'),       # 0.24.173 (the session not running: Enter keeps it too)
     ('clothing_apply', 'Clothing'),
     ('hood_apply', 'Hood'),
     ('scarf_apply', 'Scarf'),
