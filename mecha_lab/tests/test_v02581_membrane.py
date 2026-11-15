@@ -92,6 +92,13 @@ check('pins only - no collision (light): its cloth pinned by the pin group, coll
       and not mod.collision_settings.use_collision and not mod.collision_settings.use_self_collision
       and len(bpy.data.objects) == n_obs + 1 and cd.sim_active() and cd.SIM.get('mode') == 'MEMBRANE'
       and not any(m.type == 'COLLISION' for o in bpy.data.objects for m in o.modifiers))
+cs_ = mod.settings
+check(f'a plain cloth, not the Vacuum Pack\'s film (user: "진공팩보단 좀 더 그냥 클로스에 가까워야"; "중력 값도 좀 더"): '
+      f'Gravity {S.mch_membrane.gravity:.0f} % ({cs_.effector_weights.gravity:.1f} x), weight {cs_.mass}, stretch '
+      f'{cs_.tension_stiffness:.0f} (cotton 15), soft folds (bending {cs_.bending_stiffness:.2f}), no pressure, no shrink',
+      S.mch_membrane.gravity >= 200 and abs(cs_.effector_weights.gravity - S.mch_membrane.gravity / 100) < 1e-4
+      and cs_.mass >= 0.3 and cs_.tension_stiffness < 20 and cs_.bending_stiffness > 0.5 and not cs_.use_pressure
+      and cs_.shrink_min <= 0)
 mat = next(s for s in mem.data.materials if s is not None)
 im = next(n.image for n in mat.node_tree.nodes if n.bl_idname == 'ShaderNodeTexImage')
 px = np.empty(im.size[0] * im.size[1] * 4, np.float32)

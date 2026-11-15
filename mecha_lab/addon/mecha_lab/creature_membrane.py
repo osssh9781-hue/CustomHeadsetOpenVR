@@ -143,7 +143,7 @@ def sheet(context, loops, projector, detail):
     t = _laplace(n, E, t, fixed)
     P = O + D * t[:, None]
     rng = np.random.default_rng(7)                  # (a hair off flat where it is free: it can fold either way)
-    P[~fixed] += D[~fixed] * rng.uniform(-1.0, 1.0, (int((~fixed).sum()), 1)) * size * 0.0006
+    P[~fixed] += D[~fixed] * rng.uniform(-1.0, 1.0, (int((~fixed).sum()), 1)) * size * 0.0002
     held = [owner[i] for i in np.nonzero(on)[0] if owner[i] is not None]
     body = max(set(held), key=held.count) if held else None
     lo = outer.min(0)
@@ -302,18 +302,22 @@ def membrane_material(ob, image, preset):
 # ---- the session (in Cloth Drape's: Space / Enter / Esc) ----------------------------------------------------------
 
 def cloth_settings(ob, mp, size):
+    """The window's values on its cloth - 0.24.173 (user: "중력 값도 좀 더 해 봐", "진공팩보단 좀 더 그냥 클로스에 가까워야
+    되는 거 아니야?"): a plain cloth (cotton-like weight and stretch, soft wide folds), not the Vacuum Pack's tight
+    film - it hangs and flows down from where it is pinned."""
     cm = ob.modifiers.get(CLOTH_MOD)
     if cm is None:
         return
     cs = cm.settings
-    cs.quality = 6
-    cs.mass = 0.15
-    cs.air_damping = 1.5
-    cs.tension_stiffness = 2.0 + mp.stiffness * 0.8
-    cs.compression_stiffness = 2.0 + mp.stiffness * 0.8
-    cs.shear_stiffness = 2.0 + mp.stiffness * 0.3
-    cs.bending_stiffness = 0.5 * (0.02 ** (mp.folds / 100.0))
-    cs.shrink_min = -mp.slack / 100.0               # (looser: more to sag)
+    cs.quality = 7
+    cs.mass = 0.3
+    cs.air_damping = 1.0
+    k = 2.0 + mp.stiffness * 0.6                    # (Blender's cotton: 15)
+    cs.tension_stiffness = k
+    cs.compression_stiffness = k
+    cs.shear_stiffness = k
+    cs.bending_stiffness = 5.0 * (0.01 ** (mp.folds / 100.0))      # (0: wide soft folds .. 100: fine ones)
+    cs.shrink_min = -mp.slack / 100.0               # (looser: more to hang)
     cs.effector_weights.gravity = mp.gravity / 100.0
     cs.vertex_group_mass = PIN
     cs.pin_stiffness = 1.0
@@ -504,14 +508,15 @@ def _look(self, context):
 
 class MCH_PG_Membrane(bpy.types.PropertyGroup):
     preset: EnumProperty(name='Skin', items=PRESET_ITEMS, default='DRAGON', update=_look)
-    slack: FloatProperty(name='Slack', default=15.0, min=0.0, max=60.0, update=_restart,
+    slack: FloatProperty(name='Slack', default=10.0, min=0.0, max=60.0, update=_restart,
                          description='How loose the membrane is (% larger than it was drawn): more to sag and fold')
-    gravity: FloatProperty(name='Gravity', default=100.0, min=0.0, max=300.0, update=_restart)
-    stiffness: FloatProperty(name='Stiffness', default=25.0, min=0.0, max=100.0, update=_restart,
+    gravity: FloatProperty(name='Gravity', default=250.0, min=0.0, max=1000.0, soft_max=600.0, update=_restart,
+                           description='How hard it is pulled down (% of the scene\'s gravity)')
+    stiffness: FloatProperty(name='Stiffness', default=20.0, min=0.0, max=100.0, update=_restart,
                              description='How hard it is to stretch')
     folds: FloatProperty(name='Folds', default=35.0, min=0.0, max=100.0, update=_restart,
                          description='0: soft wide folds .. 100: fine sharp folds')
-    frames: IntProperty(name='Frames', default=50, min=10, max=400, update=_restart)
+    frames: IntProperty(name='Frames', default=80, min=10, max=400, update=_restart)
     thickness: FloatProperty(name='Thickness %', default=0.6, min=0.0, max=10.0, soft_max=3.0,
                              description='Added when it is kept (Enter): a Solidify, % of the membrane\'s size')
     detail: IntProperty(name='Detail', default=50, min=10, max=150,

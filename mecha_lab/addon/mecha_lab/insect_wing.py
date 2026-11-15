@@ -53,8 +53,11 @@ PRESETS = (
                               cells=0.0, stigma=None, inner=0.06, width=0.0055, tint=(0.6, 0.52, 0.36),
                               vein=(0.08, 0.1, 0.03), alpha=0.22, film=520.0)),
 )
-PRESET_ITEMS = [(p[0], p[1], '') for p in PRESETS]
 SPEC = {p[0]: p[2] for p in PRESETS}
+# 0.24.173 + the user's black-and-white photos (wing_photo): their veins laid on the drawn wing, coloured like a preset
+from . import wing_photo as wp  # noqa: E402
+PRESET_ITEMS = [(p[0], p[1], '') for p in PRESETS] + [(p[0], p[1], 'Veins from a photo') for p in wp.PHOTOS]
+PHOTO_LOOK = {p[0]: p[3] for p in wp.PHOTOS}
 
 
 def is_wing(ob):
@@ -275,6 +278,26 @@ def raster(fr, vlist, stigma, px):
     return np.stack([R, G], axis=-1), lo
 
 
+def photo_field(fr, pid, px, vein_width, spec):
+    """A photo's veins (white) laid on the drawn wing: each texel's place along / across the wing found in the photo's
+    wing.  Returns (img H x W x 2, lo) as ``raster``."""
+    pfr, pfield = wp.load(pid)
+    lo = fr.P.min(0) - px * 4
+    hi = fr.P.max(0) + px * 4
+    W = int(math.ceil((hi[0] - lo[0]) / px)) + 1
+    H = int(math.ceil((hi[1] - lo[1]) / px)) + 1
+    gx = lo[0] + np.arange(W) * px
+    gy = lo[1] + np.arange(H) * px
+    X, Y = np.meshgrid(gx, gy)
+    sf = fr.sf(np.c_[X.ravel(), Y.ravel()])
+    v = wp.sample(pfield, pfr.point(sf[:, 0], sf[:, 1])).reshape(H, W)
+    t0 = min(max(0.25 / max(vein_width, 0.05), 0.02), 0.8)      # (Vein Width: more of the grey counts as vein)
+    R = np.clip((v - t0) / (1.0 - t0), 0.0, 1.0).astype(np.float32)
+    rim = om.raster_lines(lo, hi, px, [(fr.P, np.full(len(fr.P), spec['width'] * fr.L * 0.4 * vein_width), True)])
+    R = np.maximum(R, rim[:H, :W] * 0.8)
+    return np.stack([R, np.zeros_like(R)], axis=-1), lo
+
+
 def sample(img, lo, px, Q):
     """Bilinear: the field at the plane points ``Q``."""
     H, W = img.shape[:2]
@@ -348,7 +371,7 @@ def wing_material(ob, image, spec):
         m.surface_render_method = 'DITHERED'
     except (AttributeError, TypeError):
         pass
-    m.diffuse_color = (*spec['tint'], max(spec['alpha'], 0.35))
+    m.diffuse_color = (*[min(1.0, 0.25 + c) for c in spec['tint']], 1.0)     # (the Solid view: a light tint)
     return m
 
 
@@ -367,14 +390,18 @@ def build(ob, context=None):
     if d is None:
         return 0
     p = ob.mch_wing
-    spec = SPEC.get(p.preset, SPEC['DRAGONFLY'])
+    photo = p.preset in PHOTO_LOOK
+    spec = SPEC.get(PHOTO_LOOK.get(p.preset, p.preset), SPEC['DRAGONFLY'])
     P = np.array(d['outline'], float)
     fr = Frame(P, int(d['root']) % len(P), p.flip)
-    vl, stigma = veins(fr, spec, p.density, p.seed)
-    if abs(p.vein_width - 1.0) > 1e-6:
-        vl = [(q, r * p.vein_width, c) for q, r, c in vl]
     px = fr.L / 1400.0
-    img, lo = raster(fr, vl, stigma, px)
+    if photo:
+        img, lo = photo_field(fr, p.preset, px, p.vein_width, spec)
+    else:
+        vl, stigma = veins(fr, spec, p.density, p.seed)
+        if abs(p.vein_width - 1.0) > 1e-6:
+            vl = [(q, r * p.vein_width, c) for q, r, c in vl]
+        img, lo = raster(fr, vl, stigma, px)
     spacing = fr.L / max(p.detail, 20)
     pts, tris, nb = om.even_mesh(P, spacing)
     hv = sample(img, lo, px, pts)[:, 0]
@@ -607,6 +634,10 @@ def draw(layout, context):
     g = layout.grid_flow(row_major=True, columns=3, even_columns=True, align=True)
     for pid, label, _s in PRESETS:
         g.operator('mch.wing_preset', text=label, depress=pg.preset == pid).preset = pid
+    layout.label(text='From photos (white = raised vein)')
+    g = layout.grid_flow(row_major=True, columns=2, even_columns=True, align=True)
+    for pid, label, *_r in wp.PHOTOS:
+        g.operator('mch.wing_preset', text=label.replace(' (Photo)', ''), depress=pg.preset == pid).preset = pid
     col = layout.column(align=True)
     for k in ('vein_height', 'vein_width', 'density', 'thickness', 'detail', 'seed'):
         col.prop(pg, k)

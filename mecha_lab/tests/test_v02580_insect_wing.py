@@ -100,6 +100,31 @@ check(f'six presets, each its own veins (image covered: {", ".join(f"{k} {v:.3f}
       f'dragonfly\'s net of cells the most, a fly\'s few veins the least',
       len(cov) == 6 and cov['DRAGONFLY'] > cov['BEE'] and cov['DRAGONFLY'] > 1.5 * cov['FLY']
       and cov['LACEWING'] > cov['FLY'] and len({round(v, 4) for v in cov.values()}) == 6)
+from mecha_lab import wing_photo as wp  # noqa: E402
+pinfo = {}
+for pid, label, fname, look, given in wp.PHOTOS:
+    pfr, pfield = wp.load(pid)
+    end_w = []
+    for s_ in (0.04, 0.96):                           # (the root end narrower than the tip end)
+        end_w.append(float(np.interp(s_, pfr.S, pfr.lead_w) - np.interp(s_, pfr.S, pfr.trail_w)))
+    wing.mch_wing.preset = pid
+    pinfo[pid] = (round(pfr.L), round(end_w[0], 3), round(end_w[1], 3), round(coverage(wing), 3))
+check(f'four photo patterns (the user\'s black-and-white wings: white = vein): each photo\'s wing found (length in '
+      f'pixels, width at the root / near the tip, the drawn wing\'s veins covered: {pinfo})',
+      len(pinfo) == 4 and all(v[0] > 300 and v[1] < v[2] + 0.2 and 0.03 < v[3] < 0.6 for v in pinfo.values())
+      and all(os.path.isfile(os.path.join(wp.DIR, f[2])) for f in wp.PHOTOS))
+wing.mch_wing.preset = 'P_CICADA'
+cp1 = coverage(wing)
+wing.mch_wing.vein_width = 2.0
+cp2 = coverage(wing)
+wing.mch_wing.vein_width = 1.0
+wing.mch_wing.flip = True
+cp3 = coverage(wing)
+wing.mch_wing.flip = False
+Wp = mesh_data(wing)
+check(f'a photo pattern on the drawn wing: Vein Width widens its veins ({cp1:.3f} -> {cp2:.3f}), Flip lays it the other '
+      f'way ({cp3:.3f}), raised as the others ({np.ptp(Wp[:, 1]):.4f} thick at most)', cp2 > cp1 * 1.2
+      and abs(cp3 - cp1) > 1e-4 and np.ptp(Wp[:, 1]) > 0.004)
 wing.mch_wing.preset = 'DRAGONFLY'
 c1 = coverage(wing)
 wing.mch_wing.density = 2.0
