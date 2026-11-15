@@ -110,6 +110,9 @@ TOOLS = (
     ('FUR', 'Fur', 'Draw an area on a body: fur grows there - live hair (Geometry Nodes): Density, Length, Lie Down / '
      'Flow, Gravity, Curl, Frizz, Clump, Root / Tip Thickness, colour from the polypaint; draw again: more area, Alt: '
      'take it away', 'fur', 'CURVES', 'mecha.creature_fur', 'OK'),
+    ('WING', 'Insect Wing', 'Draw a wing\'s outline: a thin insect wing in that shape, its veins raised inside it '
+     '(Dragonfly, Damselfly, Bee / Wasp, Fly, Lacewing, Cicada) - Vein Height / Width / Density, '
+     'Thickness; no simulation; select a wing to change it, Enter / Apply to keep', 'wing', 'MOD_PARTICLE_INSTANCE', 'mecha.insect_wing', 'OK'),   # 0.24.173
     ('WDIRT', 'Dirt', 'Click a mesh (a Base Mesh, a plate, a Surface Draw band ...): it becomes dirt - lumpy, clods and '
      'crumbs over it, brown; live (its values in the window), Alt + click: back to the shape', 'wdirt', 'MOD_DISPLACE',
      'mecha.weather_dirt', 'OK'),
@@ -217,7 +220,7 @@ QUICK_TOOLS = ('CUT', 'BOOLEAN', 'BASE', 'SUBD', 'SPLIT', 'RADIAL', 'PLATE')   #
 NATIVE_TO_TOOL = {t[5]: t[0] for t in TOOLS if t[5]}
 SHAPE_TOOLS = {'CUT', 'SPLIT', 'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'HIDE', 'DETAIL', 'DETAIL2',
                'DETAIL3', 'DETAIL4', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER', 'SCURVE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'SDRAW',
-               'FUR'}
+               'FUR', 'WING'}
 
 DRAW_TOOLS = SHAPE_TOOLS | {'PRESS'}      # 0.24.95 + Press Cut (Shift + draw its stamp): the lasso settings it keeps
 DRAW_TOOLS |= {'GREEBLE', 'CGREEBLE'}   # 0.24.154 + Greeble / Scale Line (Shift + draw a part)
@@ -230,7 +233,7 @@ TOOL_GROUPS = (
     ('Move', ('CMOVE', 'CPATH', 'SMOVE', 'SMART', 'POSE', 'REMESH')),
     ('Symmetry & repeat', ('MIRROR', 'RSYM', 'RADIAL', 'ARRAY')),
     ('Curves', ('TUBE', 'TUBE_SAME', 'SCURVE', 'CABLE', 'ALONG', 'LOFT')),
-    ('Creature', ('CPLATE', 'CGREEBLE', 'FGREEBLE', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER', 'HAIR', 'FUR')),
+    ('Creature', ('CPLATE', 'CGREEBLE', 'FGREEBLE', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER', 'HAIR', 'FUR', 'WING')),
     ('Weathering', ('WDIRT', 'WDUST', 'WLEAF', 'WSNOW')),                  # 0.24.158 click a shape: dirt / dust / ...
     ('3D Print', ('PMEASURE', 'PCUT')),                                    # 0.24.164 measure; cut with connection pins
     ('Cloth', ('WRINKLE', 'CDRAPE', 'WLINES', 'CAPE', 'SCAPE', 'GARMENT', 'HOOD', 'SCARF')),
@@ -260,7 +263,7 @@ _ENUM_NUMBERS = {'CUT': 1, 'BOOLEAN': 2, 'FUSE': 3, 'MIRROR': 4, 'MASK': 5, 'DRA
                  'EXTRACT': 20, 'MOLDING': 21, 'HOLLOW': 22, 'ALONG': 23, 'CABLE': 24, 'PLATE': 25, 'WRINKLE': 26, 'TUBE': 27,
                  'HIDE': 28, 'DETAIL': 29, 'DETAIL2': 30, 'SCREW': 31, 'DETAIL3': 32, 'TUBE_SAME': 33,
                  'CBASE': 34, 'CPLATE': 35, 'BELT': 36, 'SPIKE': 37, 'SCALES': 38, 'FLOWER': 39, 'SCURVE': 40, 'SBRUSH': 41, 'BRIDGE': 42, 'CAPE': 43, 'HAIR': 44, 'GARMENT': 45, 'HOOD': 46, 'SCARF': 47, 'CMOVE': 48, 'CPATH': 50, 'PERF': 51, 'SDRAW': 52, 'SCAPE': 53, 'RSYM': 55, 'SMOVE': 56, 'WLINES': 57, 'CDRAPE': 58, 'ZONE': 59, 'PRESS': 60, 'SMART': 61, 'GSCULPT': 62, 'GREEBLE': 63, 'CGREEBLE': 64, 'FUR': 65, 'WDIRT': 66,
-                 'WDUST': 67, 'WLEAF': 68, 'WSNOW': 69, 'DETAIL4': 70, 'PMEASURE': 71, 'PCUT': 72, 'FGREEBLE': 73}   # 54: the removed Cloth Wrap (kept free)   # 49: the removed Jungle Gym prototype (0.24.31), kept free
+                 'WDUST': 67, 'WLEAF': 68, 'WSNOW': 69, 'DETAIL4': 70, 'PMEASURE': 71, 'PCUT': 72, 'FGREEBLE': 73, 'WING': 74}   # 54: the removed Cloth Wrap (kept free)   # 49: the removed Jungle Gym prototype (0.24.31), kept free
 TOOL_ENUM_ITEMS = [(t[0], t[1], t[2], t[4], _ENUM_NUMBERS[t[0]]) for t in TOOLS]
 
 SHAPES = (
