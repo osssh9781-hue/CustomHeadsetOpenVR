@@ -1,0 +1,13 @@
+1 wing Insect Wing parent Thorax over 2400 on err 0.0016 root x 0.049
+shot 1_wing_on_thorax.png True
+shot 3_stick_off.png True
+3 Stick cell True off False flat y spread 0.0161 - on again True err 0.0016
+2 wing Insect Wing root x 1.549
+shot 2_root_at_far_end.png True
+4 groups ['MCH Pin: Arm', 'MCH Pin: Thorax'] hooks ['Arm'] kept True moved 0.3 still 0.0
+shot 4_kept_hook.png True
+PASS 1 a REAL lasso started over the thorax: the part over it on it, the wing its child, the root where it started
+PASS 3 a REAL click on "Stick to Mesh": off - flat in its plane; a REAL click again: on the thorax again
+PASS 2 a REAL lasso started at the far end: its root there
+PASS 4 over the thorax and an arm: a REAL Enter - kept, a child of the thorax + a Hook to the arm (its points follow it)
+4/4 passed
