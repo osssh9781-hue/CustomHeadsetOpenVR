@@ -1,5 +1,13 @@
 # KNOWN LIMITATIONS — Mecha Lab 0.18.0
 
+## 0.24.174
+- **Blender 5.3.0 이 Asset Browser 를 펼칠 때 꺼짐(블렌더 자체 버그)**: 접혀 있던(헤더만 보이던) Asset Browser 를 처음 끌어올릴 때,
+  라이브러리가 All(온라인 에셋 포함)이고 온라인 접근을 아직 정하지 않았으면 블렌더가 꺼집니다(`file_banners_update`). 메카 랩 없이
+  공장 설정 5.3.0 에서도 똑같이 재현됩니다. 렌더 모드와는 상관없습니다. 피하는 법: 그 영역의 Library 를 Current File 로 바꾸기,
+  또는 배너의 Continue Offline / Allow Online Access 를 한 번 누르기(Preferences > System > Network), 또는 그 영역을 다른 에디터로.
+  메카 랩은 사용자 설정이라 이것을 스스로 바꾸지 않습니다.
+- Insect Wing · Weathering 그리기 · Surface 피막은 진짜 창 테스트를 5.2.3 에서 했습니다.
+
 ## 0.24.140
 - **DLSS 의 실제 속도 · 화질은 재지 못했습니다** — 이 서버에는 NVIDIA GPU 가 없어 Blender 가 DLSS 를 받아들이는 부분은 테스트에서
   흉내만 냈습니다. 5090 · 3090 에서 직접 확인해 주세요(드라이버 620 이상, Preferences > System 의 Cycles 장치가 OptiX / CUDA 로
