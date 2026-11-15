@@ -45,6 +45,7 @@ KIND_OF_TOOL = {v: k for k, v in TOOL_OF.items()}
 HOW = (('DRAW', 'Draw', 'Draw the area (as Armor Plate): a plate there, made dirt / dust / leaves / snow'),
        ('CLICK', 'Click a Mesh', 'Click a mesh you made: it becomes dirt / dust / leaves / snow'))
 KIND_OF = {v: k for k, v in TOOL_OF.items()}
+FACE_PX = 24          # 0.24.174 a drawn area's plate: faces this big on screen at most (it follows a curved body)
 LABEL = {'DIRT': 'Dirt', 'DUST': 'Dust', 'LEAVES': 'Leaves', 'SNOW': 'Snow'}
 
 # (prop, socket, kind, default, min, max, soft_max, description) per weathering
@@ -780,7 +781,9 @@ def perform(context, loops, projector, kind):
     from . import armor_plate as ap
     st = context.scene.mch_plate
     preset = st.preset if st.preset != 'MRIDGE' else ap.PRESETS[0][0]
-    msg = ap.perform_plate(context, loops, projector, preset)
+    # (its own finer faces: the window's 120 px laid a few big flat faces - on a curved body they cut into it and
+    #  the dirt / snow sank in its middle)
+    msg = ap.perform_plate(context, loops, projector, preset, spacing=min(int(st.spacing), FACE_PX))
     part = context.view_layer.objects.active
     apply(context, part, kind)
     try:

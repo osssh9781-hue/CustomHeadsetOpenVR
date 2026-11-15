@@ -55,6 +55,23 @@ def select(*obs):
     C.view_layer.objects.active = obs[0] if obs else None
 
 
+LABEL = mat('Label', (0.04, 0.04, 0.04), 0.6)
+
+
+def label(text, loc, size=0.22):
+    """A text facing the front camera (looking +Y)."""
+    cu = bpy.data.curves.new(text, 'FONT')
+    cu.body = text
+    cu.size = size
+    cu.align_x = 'CENTER'
+    ob = bpy.data.objects.new('Label ' + text, cu)
+    S.collection.objects.link(ob)
+    ob.location = loc
+    ob.rotation_euler = (math.pi / 2, 0.0, 0.0)
+    ob.data.materials.append(LABEL)
+    return ob
+
+
 def tag(group):
     for o in S.objects:
         if 'demo' not in o.keys():
@@ -176,12 +193,14 @@ def lobed(x0, z0, s=1.0):
 if ONLY in ('', 'wing'):
     W0 = Vector((0.0, 0.0, -20.0))
     HF = iw.HFrame
-    for row, (zrow, frame) in enumerate(((1.2, iw.Frame), (-1.6, HF))):
+    label('before (0.24.173): a straight root - tip frame', W0 + Vector((-0.4, -0.5, 2.4)))
+    label('now (0.24.174): the veins follow the drawn shape', W0 + Vector((-0.4, -0.5, -1.2)))
+    for row, (zrow, frame) in enumerate(((0.9, iw.Frame), (-2.9, HF))):
         iw.HFrame = frame                        # (top row: the straight frame of 0.24.173, bottom: now)
-        for col, (shape, preset, xc) in enumerate(((banana, 'DRAGONFLY', -3.2), (fan, 'P_LACEWING', -0.6),
-                                                   (lobed, 'P_BROAD', 1.9))):
+        for col, (shape, preset, xc) in enumerate(((banana, 'DRAGONFLY', -4.3), (fan, 'P_LACEWING', -1.3),
+                                                   (lobed, 'P_BROAD', 1.4))):
             S.mch_wing.preset = preset
-            outline = shape(xc, W0.z + zrow)
+            outline = shape(xc, W0.z + zrow, 1.55)
             select()
             print(iw.perform(C, [[FRONT.to_screen(Vector((x, -5.0, z))) for x, z in outline]], FRONT))
             w = C.active_object
@@ -210,7 +229,7 @@ if ONLY in ('', 'weather'):
     rock.data.materials.append(mat('Rock', (0.35, 0.35, 0.36), 0.8))
     C.view_layer.update()
     for kind, (cx, cy, rx, ry) in (('DIRT', (-2.6, -0.4, 1.0, 0.7)), ('DUST', (-0.6, 0.6, 0.8, 0.6)),
-                                   ('LEAVES', (0.0, -1.0, 0.9, 0.55)), ('SNOW', (1.9, 0.5, 1.2, 0.9))):
+                                   ('LEAVES', (0.0, -1.0, 0.9, 0.55)), ('SNOW', (1.9, 0.6, 0.62, 0.46))):
         loop = [TOP.to_screen(Vector((G0.x + cx + rx * math.cos(t) * (1 + 0.12 * math.sin(3 * t)),
                                       G0.y + cy + ry * math.sin(t), G0.z + 3.0)))
                 for t in np.linspace(0, 2 * math.pi, 64, endpoint=False)]
@@ -286,7 +305,8 @@ if ONLY in ('', 'membrane'):
     tag('membrane')
 
 for c_ in bpy.data.collections:
-    if c_.name.startswith('MCH Cover') or c_.name.endswith('Parts'):
+    if c_.name.startswith('MCH Cover') or (c_.name.endswith('Parts') and c_.name != 'Mechanical Parts'):
+        # (the parts' sources beside the model - not Mechanical Parts: the drawn plates are in it)
         c_.hide_render = True
 for o in list(S.objects):
     if o.type == 'MESH' and gl.STAMP_TAG in o.keys():
@@ -315,7 +335,7 @@ S.render.image_settings.file_format = 'PNG'
 wmat = mat('Wire', (1.0, 0.45, 0.05))
 wmat.node_tree.nodes['Principled BSDF'].inputs['Emission Color'].default_value = (1.0, 0.45, 0.05, 1)
 wmat.node_tree.nodes['Principled BSDF'].inputs['Emission Strength'].default_value = 1.5
-SOURCES = [o for o in S.objects if o.type == 'MESH' and o.visible_get() and not o.hide_render
+SOURCES = [o for o in S.objects if o.type in {'MESH', 'FONT'} and o.visible_get() and not o.hide_render
            and not any(c.hide_render for c in o.users_collection)]
 
 
@@ -324,7 +344,7 @@ def make_wires(group):
     dg = C.evaluated_depsgraph_get()
     out = []
     for src in SOURCES:
-        if src.get('demo') != group:
+        if src.get('demo') != group or src.type != 'MESH':
             continue
         me = bpy.data.meshes.new_from_object(src.evaluated_get(dg), depsgraph=dg)
         wo = bpy.data.objects.new(src.name + ' wire', me)
@@ -376,8 +396,8 @@ if ONLY in ('', 'scale'):
     render('scale_line_taper', 0.0012, 'scale')
 if ONLY in ('', 'wing'):
     S.render.resolution_x, S.render.resolution_y = 1500, 1000
-    aim((-0.3, -8.0, -20.0), (-0.3, 0.0, -20.0), 50, ortho=8.4)
-    render('wing_follows_shape', 0.0012, 'wing')
+    aim((-0.4, -8.0, -20.55), (-0.4, 0.0, -20.55), 50, ortho=9.6)
+    render('wing_follows_shape', 0.0006, 'wing')
 if ONLY in ('', 'weather'):
     S.render.resolution_x, S.render.resolution_y = 1500, 850
     aim((20.0, -6.8, -25.6), (19.8, 0.0, -30.0), 40)

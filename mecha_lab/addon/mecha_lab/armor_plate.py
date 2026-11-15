@@ -472,15 +472,18 @@ def through_plate_meshes(context, target, groups, projector, spacing, crease):
         out.append((region, surround, local_size))
     return out
 
-def perform_plate(context, loops, projector, preset=None):
+def perform_plate(context, loops, projector, preset=None, spacing=None):
     """Lasso -> new armour plate object (a live Face Extract part).  Returns
     a report; raises cg.CutError with the scene unchanged.
 
     0.19: the outline and the view are kept on the plate (``SRC_KEY``) until
-    Apply, so Face Size / height / chamfer / profile change it live (HUD)."""
+    Apply, so Face Size / height / chamfer / profile change it live (HUD).
+    ``spacing``: its own Face Size (px) instead of the window's (0.24.174 Weathering: finer, so it follows a
+    curved body - the window's value untouched: setting it would lay the selected plate again)."""
     scene = context.scene
     st = scene.mch_plate
     preset = preset or st.preset
+    face_px = int(spacing) if spacing else int(st.spacing)
     if preset == 'MRIDGE':
         from . import mech_ridge
         return mech_ridge.perform(context, loops, projector)
@@ -491,13 +494,13 @@ def perform_plate(context, loops, projector, preset=None):
     brush = getattr(scene, 'mch_brush', None)
     if getattr(brush, 'through_mode', False):
         return _perform_through(context, loops, projector, preset, target, groups, st, brush)
-    region, surround, local_size, missing = plate_meshes(context, target, groups, projector, st.spacing)
+    region, surround, local_size, missing = plate_meshes(context, target, groups, projector, face_px)
     part = create_plate(context, target, region, surround, preset, local_size, st.auto_size)
     frozen = freeze_projector(projector)
     recalled = False
     if frozen is not None:
         part[SRC_KEY] = json.dumps({'loops': [[[float(x), float(y)] for x, y in lp] for lp in loops],
-                                    'proj': frozen, 'spacing': int(st.spacing), 'size': local_size})
+                                    'proj': frozen, 'spacing': face_px, 'size': local_size})
         recalled = recall_plate(part, local_size, preset)      # 0.20.2 last used profile / lines / rims
     scene.mch_extract_last = part
     if getattr(st, 'creature', False):

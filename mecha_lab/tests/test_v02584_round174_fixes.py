@@ -3,7 +3,10 @@
   internal data for finding nearest point": a cover is points only, no surface to find the wing's root on);
 - Dirt / Dust / Leaves / Snow in "Click a Mesh": the click never reached it - Blender runs an add-on tool's keys
   last-first, so the tool's lasso (later in its list) was asked first and took the click.  Now the lasso passes it on
-  in Click a Mesh."""
+  in Click a Mesh.
+- Weathering drawn on a curved body sank into it in its middle (the render: snow drawn on a rock - a white rim round a
+  bare grey top): its plate took Armor Plate's Face Size (120 px), a few big flat faces cutting through the curve.
+  Now a drawn area's plate has its own finer faces (24 px at most); the window's Face Size is left as it is."""
 import math
 import types
 
@@ -69,4 +72,45 @@ S.mch_weather_how = 'DRAW'
 check(f'Snow in "Click a Mesh": the lasso passes the click on ({r_click}); in Draw it draws ({r_draw}); other tools '
       f'are not touched by it ({r_plate})', r_click == {'PASS_THROUGH'} and r_draw != {'PASS_THROUGH'}
       and r_plate != {'PASS_THROUGH'})
+# snow drawn on top of a ball (seen from above, 200 px = 1): it lies on the ball, its middle not sunk into it
+from mecha_lab import weathering as wt  # noqa: E402
+TOP = cg.OrthoProjector(Euler((0, 0, 0)).to_quaternion(), pixels_per_unit=200.0)
+bpy.ops.mesh.primitive_uv_sphere_add(radius=0.6, segments=64, ring_count=32, location=(6.0, 0.0, 0.0))
+ball = C.active_object
+for o in C.selected_objects:
+    o.select_set(False)
+face_px = S.mch_plate.spacing
+ring_top = [[TOP.to_screen(Vector((6.0 + 0.36 * math.cos(a), 0.36 * math.sin(a), 2.0)))
+             for a in np.linspace(0, 2 * math.pi, 48, endpoint=False)]]
+
+
+def snow_on_ball(face_cap):
+    old_cap = wt.FACE_PX
+    wt.FACE_PX = face_cap
+    try:
+        wt.perform(C, ring_top, TOP, 'SNOW')
+    finally:
+        wt.FACE_PX = old_cap
+    ob = C.active_object
+    dg = C.evaluated_depsgraph_get()
+    ev = ob.evaluated_get(dg)
+    me = ev.to_mesh()
+    P_ = np.array([tuple(ev.matrix_world @ v.co) for v in me.vertices])
+    ev.to_mesh_clear()
+    d_ = np.linalg.norm(P_ - np.array([6.0, 0.0, 0.0]), axis=1)
+    mid_ = np.hypot(P_[:, 0] - 6.0, P_[:, 1]) < 0.12
+    top_ = float(P_[mid_, 2].max()) if mid_.any() else 0.0
+    for o in C.selected_objects:
+        o.select_set(False)
+    return ob, top_, float((d_ < 0.57).mean()), len(P_)
+
+
+old, top_old, deep_old, _n = snow_on_ball(120)              # (as before: the window's Face Size)
+bpy.data.objects.remove(old)
+snow, top_mid, deep, n = snow_on_ball(wt.FACE_PX)
+check(f'snow drawn on a ball: its middle on top of the ball (highest there {top_mid:.3f}, the ball\'s top 0.600; with '
+      f'the 120 px faces before: {top_old:.3f}), little of it deep in the ball ({deep * 100:.1f} % of {n:,} '
+      f'points over 3 cm in; before {deep_old * 100:.1f} %); the window\'s Face Size left at {S.mch_plate.spacing} px',
+      wt.kind_of(snow) == 'SNOW' and top_mid > 0.6 and deep < 0.02 and deep_old > 0.08
+      and S.mch_plate.spacing == face_px)
 summary()
