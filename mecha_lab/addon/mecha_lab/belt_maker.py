@@ -317,10 +317,17 @@ class _Target:
         nw = (self.nrm_m @ n).normalized() if n is not None else None
         return w, nw, i, (Vector(q) - w).length
 
-    def ray_cast(self, o, d):
+    def ray_cast(self, o, d, distance=None):
+        """As BVHTree.ray_cast, in world terms; ``distance`` (world) as far as it looks - 0.24.177: Armor Plate's
+        surface projection passes it (a short second cast): without it Belt Maker Follow and Creature Spike along a
+        line stopped with a TypeError since 0.24.89."""
         lo = self.inv @ Vector(o)
         ld = (self.inv.to_3x3() @ Vector(d))
-        loc, n, i, dist = self.bvh.ray_cast(lo, ld)
+        if distance is None:
+            loc, n, i, dist = self.bvh.ray_cast(lo, ld)
+        else:
+            dn = Vector(d).normalized()
+            loc, n, i, dist = self.bvh.ray_cast(lo, ld, float(distance) * (self.inv.to_3x3() @ dn).length)
         if loc is None:
             return None, None, -1, None
         w = self.mw @ loc

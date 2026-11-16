@@ -6,6 +6,7 @@ the surface, its up along the surface normal, leaning along the drawn line.
 
     Presets     tick the ones to use (one, two or all four); with more than one they are mixed at random
     Size        height of a spike, Size Random varies it per spike
+    Length      0.24.177 how long a spike is (x its height; the base as wide as before), Length Random per spike
     Lean        tilt forward / back along the line, Lean Random varies it
     Turn Random spikes turned around their up axis a little
     Spacing     distance between spikes (x Size), Thickness (x width), Sink (into the surface), Seed, Flip
@@ -41,7 +42,7 @@ SKETCH = {
 }
 PRESETS = (('FIN', 'Short Fin'), ('HORN', 'Long Horn'), ('HOOK', 'Hook'), ('NOTCH', 'Notched Fin'))
 LIVE_KEYS = ('use_fin', 'use_horn', 'use_hook', 'use_notch', 'size', 'size_random', 'lean', 'lean_random',
-             'turn_random', 'spacing', 'thickness', 'sink', 'seed', 'flip', 'smooth')
+             'turn_random', 'spacing', 'thickness', 'sink', 'seed', 'flip', 'smooth', 'length', 'length_random')
 _CACHE = {}          # object name -> (key, path)
 _UNIT = {}           # (preset, thickness) -> (verts, faces) of one spike, height scale 1
 
@@ -130,6 +131,11 @@ class MCH_PG_Spike(bpy.types.PropertyGroup):
     use_notch: _p(BoolProperty, name='Notched Fin', default=True)
     size: _p(FloatProperty, name='Size', default=0.3, min=0.001, soft_max=5.0, precision=3, unit='LENGTH')
     size_random: _p(FloatProperty, name='Size Random', default=0.3, min=0.0, max=0.95, subtype='FACTOR')
+    # 0.24.177 (user: "크리쳐 스파이크는 길이 조절 좀 넣어 줘"): longer / shorter spikes, their base as it was
+    length: _p(FloatProperty, name='Length', default=1.0, min=0.1, max=20.0, soft_max=5.0,
+               description='How long the spikes are (x their height; the base stays as wide and as thick)')
+    length_random: _p(FloatProperty, name='Length Random', default=0.0, min=0.0, max=0.95, subtype='FACTOR',
+                      description='Each spike a little longer or shorter')
     lean: _p(FloatProperty, name='Lean', default=0.0, min=-math.radians(80), max=math.radians(80), subtype='ANGLE',
              description='Tilt every spike forward / back along the line')
     lean_random: _p(FloatProperty, name='Lean Random', default=math.radians(8), min=0.0, max=math.radians(60),
@@ -304,6 +310,7 @@ def build(context, ob):
     if not presets:
         raise cg.CutError('Tick at least one spike preset.')
     rnd = random.Random(p.seed)
+    rnd_len = random.Random(p.seed * 7919 + 13)        # (its own draws: the rest of the mix as it was)
     verts, faces = [], []
     for pos, N, T in spots(context, ob, src, p):
         kind = presets[rnd.randrange(len(presets))]
@@ -316,8 +323,10 @@ def build(context, ob):
         Sd = T.cross(N).normalized()
         cl, sl = math.cos(-lean), math.sin(-lean)
         uv, uf = unit_spike(kind, p.thickness)
+        stretch = max(p.length * (1.0 + p.length_random * (rnd_len.random() * 2.0 - 1.0)), 0.05)
         off = len(verts)
         for x, y, z in uv:
+            y = y * stretch                                    # (longer / shorter: up the spike only)
             xx, yy = x * cl - y * sl, x * sl + y * cl          # lean in the silhouette plane
             verts.append(pos + (T * xx + N * (yy - p.sink) + Sd * z) * size)
         faces += [tuple(i + off for i in f) for f in uf]
@@ -436,6 +445,9 @@ def draw(layout_, context):
     col = target.column(align=True)
     col.prop(p, 'size')
     col.prop(p, 'size_random', slider=True)
+    col = target.column(align=True)
+    col.prop(p, 'length')
+    col.prop(p, 'length_random', slider=True)
     col = target.column(align=True)
     col.prop(p, 'lean')
     col.prop(p, 'lean_random')
