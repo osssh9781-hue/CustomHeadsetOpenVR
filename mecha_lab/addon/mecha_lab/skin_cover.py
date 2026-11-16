@@ -548,9 +548,13 @@ def draw(layout, context):
         col.label(text=f'The next {"feathers" if st.grow == "FEATHERS" else "scales"}: draw an area on the body')
     chosen = json.loads(pg.shapes_json or '[]')
     items = cs.FEATHERS if (pg.grow if ob is not None else st.grow) == 'FEATHERS' else cs.SCALES
-    g = layout.grid_flow(row_major=True, columns=3, even_columns=True, align=True)
+    from . import panel_capture as pc                # 0.24.181 pictures of each shape
+    kind = 'feather' if items is cs.FEATHERS else 'scale'
+    entries = []
     for sid, label, _spec in items:
-        g.operator('mch.cover_shape', text=label, depress=sid in chosen).shape = sid
+        path, icon = pc.thumb(kind, sid)
+        entries.append((label, path, icon, sid in chosen, 'mch.cover_shape', {'shape': sid}))
+    pc.tiles(layout, entries, columns=4, scale=3.0)
     layout.prop(st, 'mix')
     col = layout.column(align=True)
     col.prop(pg, 'edge_thin', toggle=True)           # 0.24.174 the button

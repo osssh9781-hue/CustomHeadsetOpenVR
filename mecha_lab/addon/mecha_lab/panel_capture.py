@@ -153,6 +153,21 @@ class Recorder:
         self._child('tiles', tiles=list(tiles), columns=columns)
 
 
+def thumb(kind, sid):
+    """0.24.181 a picker's thumbnail (``icons/thumbs/<kind>_<id>.png`` - rough presets, feathers, scales): (path,
+    icon_value) - ('', 0) when there is none."""
+    import os
+    from . import workspace_ui
+    stem = f'thumbs/{kind}_{sid}'
+    path = os.path.join(workspace_ui.ICON_DIR, stem + '.png')
+    if not os.path.isfile(path):
+        return '', 0
+    try:
+        return path, workspace_ui.icon_id(stem)
+    except (KeyError, RuntimeError, AttributeError):
+        return path, 0
+
+
 def tiles(layout, entries, columns=4, scale=3.4):
     """0.24.177 picture tiles (user: "프레스 컷에서 스탬프 썸넬 보기가 쉽지가 않삼"; "썸네일도 좀 만들어 줘"):
     ``entries`` = [(label, png path or '', icon_value or 0, on, operator idname, {props})].  The Mecha window draws them

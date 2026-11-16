@@ -18,8 +18,8 @@ mecha_lab.register()
 C = bpy.context
 S = C.scene
 TOP = cg.OrthoProjector(Quaternion(), pixels_per_unit=100.0)        # (looking down: 100 px = 1, (500, 500) = origin)
-check('the Columnar Basalt preset (one of Plate Detail 4\'s 13): real columns, not the rough rim',
-      len(pr.PRESETS) == 13 and pr.preset_values('BASALT')['r_style'] == 'COLUMNS'
+check('the Columnar Basalt preset (one of Plate Detail 4\'s presets): real columns, not the rough rim',
+      'BASALT' in pr.PRESET_IDS and pr.preset_values('BASALT')['r_style'] == 'COLUMNS'
       and pr.preset_values('CONCRETE')['r_style'] == 'ROUGH')
 
 

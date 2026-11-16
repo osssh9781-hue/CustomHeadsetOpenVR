@@ -1757,17 +1757,17 @@ def draw(layout, context, kind='MECH'):
         from . import creature_shapes as cs          # 0.24.174 the Fur tool's eight scales: a click = that one
         cur_s = scale_in_use(context)
         col.label(text='Scale (a click: this one - the selected line too)')
-        g = col.grid_flow(row_major=True, columns=3, even_columns=True, align=True)
-        for sid, label, _spec in cs.SCALES:
-            g.operator('mch.scale_pick', text=label, depress=sid == cur_s).scale = sid
+        from . import panel_capture as pc            # 0.24.181 pictures of each
+        pc.tiles(col, [(label,) + pc.thumb('scale', sid) + (sid == cur_s, 'mch.scale_pick', {'scale': sid})
+                       for sid, label, _spec in cs.SCALES], columns=4, scale=3.0)
         row = col.row(align=True)
     elif kind == 'FEATHER':                          # 0.24.172 the 16 feathers: a click = that one (the selected line too)
         from . import creature_shapes as cs
         cur = feather_in_use(context)
         col.label(text='Feather (a click: this one - the selected line too)')
-        g = col.grid_flow(row_major=True, columns=3, even_columns=True, align=True)
-        for fid, label, _spec in cs.FEATHERS:
-            g.operator('mch.feather_pick', text=label, depress=fid == cur).feather = fid
+        from . import panel_capture as pc            # 0.24.181 pictures of each
+        pc.tiles(col, [(label,) + pc.thumb('feather', fid) + (fid == cur, 'mch.feather_pick', {'feather': fid})
+                       for fid, label, _spec in cs.FEATHERS], columns=4, scale=3.0)
         row = col.row(align=True)
     else:
         op(row, 'mch.greeble_parts', 'Starter Parts', action='STARTER')

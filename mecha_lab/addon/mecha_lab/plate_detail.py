@@ -1131,9 +1131,12 @@ def draw(layout, context, tool='DETAIL'):
 
 def _draw_rough_presets(col, current):
     """0.24.161 the ten Rough Rim presets, two per row; 0.24.180 My Presets under them."""
-    grid = col.grid_flow(row_major=True, columns=2, even_columns=True, align=True)
+    from . import panel_capture as pc                # 0.24.181 pictures of each (user: "썸네일도 좀 만들어 줘")
+    entries = []
     for pid, label, _d, _v in _pr.PRESETS:
-        grid.operator('mch.pdetail_rough_preset', text=label, depress=(pid == current)).preset = pid
+        path, icon = pc.thumb('rough', pid)
+        entries.append((label, path, icon, pid == current, 'mch.pdetail_rough_preset', {'preset': pid}))
+    pc.tiles(col, entries, columns=3, scale=3.2)
     from . import my_presets as mp
     mine = mp.names(MY_KIND)
     col.label(text='My Presets' + ('' if mine else ' (none saved yet)'))
