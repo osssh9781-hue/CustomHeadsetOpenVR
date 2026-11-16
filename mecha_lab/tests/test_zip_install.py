@@ -39,7 +39,9 @@ if zips:
     check('addon preferences registered (hotkey switches)', prefs is not None and hasattr(prefs, 'space_menu'))
     import zipfile
     with zipfile.ZipFile(zips[-1]) as z:
-        stamp = z.read('build_stamp.txt').decode().strip() if 'build_stamp.txt' in z.namelist() else ''
+        # (the add-on sits in its own folder in the zip: mecha_lab/build_stamp.txt)
+        where = next((n for n in z.namelist() if n == 'build_stamp.txt' or n.endswith('/build_stamp.txt')), None)
+        stamp = z.read(where).decode().strip() if where else ''
     label = sys.modules[mod].workspace_ui.build_label() if mod in sys.modules else ''
     check('0.24.82 the zip carries its build stamp (version + build time, also in the file name) and Preferences shows it',
           stamp.startswith('0.24.') and ' build ' in stamp
@@ -63,9 +65,15 @@ if zips:
             print(ex)
         check(f'cycle {cycle}: re-enable works (no "already registered")', ok and 'MCH_OT_cut_stroke' in dir(bpy.types))
         # 0.24.17 the per-tool keys share one (unassigned) key but pick different tools
+        def what(ki):        # 0.24.179 an item's set properties count (Press / Line: three LMB lassos, by mode)
+            p = ki.properties
+            if p is None:
+                return ()
+            return tuple((k, repr(getattr(p, k))) for k in p.bl_rna.properties.keys()
+                         if k != 'rna_type' and p.is_property_set(k))
         items = [(km.name, ki.idname, ki.type, ki.value, ki.shift, ki.alt, ki.ctrl,
-                  getattr(ki.properties, 'action', ''), getattr(ki.properties, 'tool', '')) for km in kc.keymaps
-                 for ki in km.keymap_items if ki.idname.startswith('mch.')] if kc else []
+                  getattr(ki.properties, 'action', ''), getattr(ki.properties, 'tool', ''), what(ki))
+                 for km in kc.keymaps for ki in km.keymap_items if ki.idname.startswith('mch.')] if kc else []
         check(f'cycle {cycle}: keymap items not duplicated', len(items) == len(set(items)), len(items))
     check('Mirror panel available after cycles', hasattr(bpy.types, 'MCH_PT_mirror'))
 sys.exit(1 if summary() else 0)
