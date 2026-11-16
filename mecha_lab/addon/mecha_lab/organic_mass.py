@@ -903,6 +903,31 @@ def _rough(b, I, pos, rd, rim):
     return tex, chips
 
 
+def stick(context, ob, V, d):
+    """0.24.183 (user: "크리쳐 요철도 크리쳐 플레이트처럼 표면에 붙는 버튼도 하나 - 누르면 플레이트처럼, 안 누르면 베이스
+    메쉬처럼") Stick to Surface: each point onto the part under it (straight down its own Z, the way it was drawn
+    facing) - its bottom on the surface, its height off it along the surface's normal there."""
+    from .mecha_holes import target_bvh
+    tgt = bpy.data.objects.get(d.get('target', ''))
+    if tgt is None or 'frame' not in d or not len(V):
+        return V
+    rel = Matrix(d['frame'])
+    bvh = target_bvh(context, tgt, rel.inverted())
+    size = float(np.ptp(V[:, :2], axis=0).max()) or 1.0
+    out = V.copy()
+    for i, (x, y, z) in enumerate(V):
+        loc, nrm, _i, _dd = bvh.ray_cast(Vector((x, y, size * 2.0)), Vector((0.0, 0.0, -1.0)), size * 6.0)
+        if loc is None:
+            loc, nrm, _i, _dd = bvh.find_nearest(Vector((x, y, 0.0)))
+        if loc is None:
+            continue
+        if nrm.z < 0:
+            nrm = -nrm
+        h = z if z > 0 else z * 0.25 - size * 0.002     # (the bottom a little into the part: no gap)
+        out[i] = np.array(loc + nrm * h)
+    return out
+
+
 def material(ob):
     """The lump's own material (two colours by the big noise, the pattern darker - or glowing: Lava; spots: the
     Mushroom's; see-through: Ice / Crystal)."""
@@ -1004,6 +1029,7 @@ def build(ob, context=None):
             V, F, RD = form_mesh(P2, holes, pg)
         else:
             V, F, RD = lump(P2, holes, pg)
+        V = stick(context, ob, np.asarray(V, float), d) if pg.stick else V
         me.clear_geometry()
         me.from_pydata([tuple(v) for v in V], [], [list(map(int, f)) for f in F])
         me.validate(clean_customdata=False)
@@ -1104,7 +1130,7 @@ def _upd_kind(self, context):
     _upd(self, context)
 
 
-LIVE = ('kind', 'depth', 'back', 'lumps', 'detail', 'pattern', 'pattern_scale', 'pattern_width', 'count', 'resolution',
+LIVE = ('kind', 'stick', 'depth', 'back', 'lumps', 'detail', 'pattern', 'pattern_scale', 'pattern_width', 'count', 'resolution',
         'smooth', 'seed', 'color_a', 'color_b', 'glow', 'edge_steps', 'edge_width', 'jag', 'slope', 'turn', 'surface',
         'r_rim', 'r_center', 'r_strength', 'r_feature', 'r_chips', 'r_bumps', 'r_cells', 'r_cracks', 'r_wrinkles',
         'r_pits', 'r_grain')
@@ -1181,6 +1207,9 @@ class MCH_PG_OrganicMass(bpy.types.PropertyGroup):
     r_wrinkles: FloatProperty(name='Wrinkles', default=0.0, min=-1.0, max=1.0, update=_upd)
     r_pits: FloatProperty(name='Pits', default=0.0, min=-1.0, max=1.0, update=_upd)
     r_grain: FloatProperty(name='Grain', default=0.0, min=-1.0, max=1.0, update=_upd)
+    stick: bpy.props.BoolProperty(name='Stick to Surface', default=False, update=_upd,
+                                  description='On: it lies on the part under the outline and follows its curve (as '
+                                              'Creature Plate); off: a base mesh of its own (flat bottom)')
     remesh: bpy.props.BoolProperty(name='Remesh', default=False, update=_upd,
                                    description='A converted mesh: remeshed evenly first (off: its own points, a '
                                                'dense sculpt kept as it is)')
@@ -1237,7 +1266,18 @@ def perform(context, loops, projector):
     for r in range(3):
         M[r][0], M[r][1], M[r][2], M[r][3] = X[r], Y[r], N[r], org[r]
     ob.matrix_world = M
-    ob[KEY] = json.dumps(dict(outline=P2.round(7).tolist(), holes=H))
+    rec = dict(outline=P2.round(7).tolist(), holes=H)
+    try:                                              # 0.24.183 the part under it (Stick to Surface lies on it)
+        _q, found = base_mesh.anchor_hit(context, projector, outer)
+    except (AttributeError, RuntimeError, TypeError):
+        found = None
+    if found is not None and found[2] is not None and found[2].type == 'MESH':
+        tgt = bpy.data.objects.get(found[2].name) or found[2]
+        rec.update(target=tgt.name, frame=[list(r) for r in (tgt.matrix_world.inverted() @ M)])
+        if context.scene.mch_omass.stick:
+            ob.parent = tgt
+            ob.matrix_parent_inverse = tgt.matrix_world.inverted()
+    ob[KEY] = json.dumps(rec)
     _BUSY[0] = True
     try:
         for k in LIVE:
@@ -1472,6 +1512,7 @@ def draw(layout, context):
     layout.row(align=True).prop(context.scene, 'mch_omass_how', expand=True)
     col = layout.column(align=True)
     conv = ob is not None and data(ob).get('converted')
+    layout.prop(pg, 'stick', toggle=True, icon='SNAP_FACE')          # 0.24.183 plate-like / base mesh
     col.label(text=(f'{ob.name}: {KIND[pg.kind][1]} (live{", converted" if conv else ""})' if ob is not None else
                     'The next lump: pick its matter'))
     form = KIND[pg.kind][3] == 'FORM'

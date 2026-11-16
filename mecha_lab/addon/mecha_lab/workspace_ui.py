@@ -862,6 +862,22 @@ class MCH_TOOL_organic_mass(bpy.types.WorkSpaceTool):
         _draw_tool_settings(context, layout, tool)
 
 
+class MCH_TOOL_mecha_holes(bpy.types.WorkSpaceTool):
+    """0.24.183 Mecha Holes"""
+    bl_space_type = 'VIEW_3D'
+    bl_context_mode = 'OBJECT'
+    bl_idname = 'mecha.mecha_holes'
+    bl_label = 'Mecha Holes'
+    bl_description = ('Draw an outline on a part: a panel of holes on it, a frame round it.\nSelect a panel: its '
+                      'sliders lay it again, Enter keeps it.  RMB: shapes, Esc: exit')
+    bl_icon = 'ops.mesh.primitive_grid_add_gizmo'
+    bl_widget = None
+    bl_keymap = _tool_keymap('MHOLE')
+
+    def draw_settings(context, layout, tool):
+        _draw_tool_settings(context, layout, tool)
+
+
 class MCH_TOOL_creature_plate(bpy.types.WorkSpaceTool):
     bl_space_type = 'VIEW_3D'
     bl_context_mode = 'OBJECT'
@@ -1184,7 +1200,7 @@ class MCH_TOOL_primitive(bpy.types.WorkSpaceTool):
 
 NATIVE_TOOLS = (MCH_TOOL_cut, MCH_TOOL_split, MCH_TOOL_press_cut, MCH_TOOL_base_mesh, MCH_TOOL_primitive, MCH_TOOL_armor_plate,
                 MCH_TOOL_cloth_wrinkle, MCH_TOOL_box_hide, MCH_TOOL_plate_detail, MCH_TOOL_plate_detail2, MCH_TOOL_plate_detail3, MCH_TOOL_plate_detail4,
-                MCH_TOOL_screw_stamp, MCH_TOOL_cloth_drape, MCH_TOOL_lasso_zone, MCH_TOOL_wrinkle_lines, MCH_TOOL_creature_base, MCH_TOOL_organic_mass, MCH_TOOL_creature_plate,
+                MCH_TOOL_screw_stamp, MCH_TOOL_cloth_drape, MCH_TOOL_lasso_zone, MCH_TOOL_wrinkle_lines, MCH_TOOL_creature_base, MCH_TOOL_organic_mass, MCH_TOOL_mecha_holes, MCH_TOOL_creature_plate,
                 MCH_TOOL_belt_maker, MCH_TOOL_creature_spike, MCH_TOOL_creature_scales,
                 MCH_TOOL_scale_brush, MCH_TOOL_bridge_patch, MCH_TOOL_flower_plate, MCH_TOOL_surface_curve, MCH_TOOL_cape, MCH_TOOL_scarf_cape, MCH_TOOL_creature_hair, MCH_TOOL_creature_fur, MCH_TOOL_insect_wing, MCH_TOOL_creature_membrane, MCH_TOOL_surface_draw, MCH_TOOL_clothing, MCH_TOOL_hood, MCH_TOOL_scarf)   # MCH_TOOL_mask kept, not registered (Mask hidden)
 
@@ -1240,6 +1256,7 @@ def register_native_tools():
     bpy.utils.register_tool(MCH_TOOL_lasso_zone, after={MCH_TOOL_wrinkle_lines.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_creature_base, after={MCH_TOOL_base_mesh.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_organic_mass, after={MCH_TOOL_creature_base.bl_idname}, group=False)
+    bpy.utils.register_tool(MCH_TOOL_mecha_holes, after={MCH_TOOL_organic_mass.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_creature_plate, after={MCH_TOOL_screw_stamp.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_belt_maker, after={MCH_TOOL_creature_plate.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_creature_spike, after={MCH_TOOL_belt_maker.bl_idname}, group=False)
@@ -2678,6 +2695,7 @@ ENTER_APPLY = (
     ('wing_apply', 'Insect Wing'),             # 0.24.173
     ('omass_apply', 'Creature Base Mesh 2'),   # 0.24.183
     ('muscle_apply', 'Muscle'),                # 0.24.183
+    ('mholes_apply', 'Mecha Holes'),           # 0.24.183
     ('membrane_keep', 'Creature Cloth'),       # 0.24.173 (the session not running: Enter keeps it too)
     ('clothing_apply', 'Clothing'),
     ('hood_apply', 'Hood'),

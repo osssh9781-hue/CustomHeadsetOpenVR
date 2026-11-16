@@ -1145,6 +1145,13 @@ def draw_wing(layout, context):
     insect_wing.draw(layout, context)
 
 
+def _module_drawer(name):
+    def draw_it(layout, context):
+        import importlib
+        importlib.import_module('.' + name, __package__).draw(layout, context)
+    return draw_it
+
+
 def _muscle_drawer(tool):
     def draw_it(layout, context):
         from . import muscle_gen
@@ -1190,6 +1197,7 @@ DRAWERS = {
     'MEMBRANE': draw_membrane,
     'WING': draw_wing,
     'OMASS': draw_omass,
+    'MHOLE': _module_drawer('mecha_holes'),
     'MUSCLE': _muscle_drawer('MUSCLE'),
     'MMUSCLE': _muscle_drawer('MMUSCLE'),
     'WDIRT': _weather_drawer('DIRT'), 'WDUST': _weather_drawer('DUST'), 'WLEAF': _weather_drawer('LEAVES'),
