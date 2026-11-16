@@ -5,7 +5,11 @@
            "그래비티나 그런 게 왜 메쉬 머리카락에는 안 되는겨", "원래 기존에 있던 헤어 세팅 다 쓸 수 있으면")
   loops  - Edge Loop for the bevels (user: "엣지 루프 기능도 만들어 주라 - 베벨 말이지"), one click each: a box's top loop
            (Boolean Bevel chamfer), a cylinder's cap (round), a plate's hole rim (chamfer), an L step's low top (round,
-           the inside corner left), a box's top loop with Geo Sculpt Chamfer
+           its inside corner filled: a round joined on), a box's top loop with Geo Sculpt Chamfer
+  pop    - Face Pop (user: "그냥 페이스 팝도 유지하고 스플릿 버전도"): left a rock with faces popped In the Part; right
+           Split - the faces a part of their own (another colour, lifted a little to show it is separate)
+  bend   - Bend any part later (user: "내가 만든 오브젝트를 나중에 벤드로 휠 수 있는 거"): a bar (Band, up), a plate
+           (Angle, a fold), a part with an Array (Band, sideways) - the Array still live
 
     <blender python> round180_demo.py <out dir>
 """
@@ -23,11 +27,11 @@ sys.path.insert(0, os.path.join(HERE, '..', 'addon'))
 import mecha_lab  # noqa: E402
 
 OUT = sys.argv[-1]
-ONLY = set(os.environ.get('ONLY', 'fill,groom,loops').split(','))
+ONLY = set(os.environ.get('ONLY', 'fill,groom,loops,pop,bend').split(','))
 os.makedirs(OUT, exist_ok=True)
 mecha_lab.register()
 from mecha_lab import core_geometry as cg, creature_light as cl, creature_spike as cs  # noqa: E402
-from mecha_lab import bool_bevel as bb, edge_runs, geo_sculpt as gs, hair_shape as hs  # noqa: E402
+from mecha_lab import bend_any, bool_bevel as bb, edge_runs, face_pop as fp, geo_sculpt as gs, hair_shape as hs  # noqa: E402,E501
 import bmesh  # noqa: E402
 
 C = bpy.context
@@ -304,7 +308,67 @@ def scene_loops():
     shoot('bevel_edge_loop', thick=0.0012)
 
 
-for _nm in ('fill', 'groom', 'loops'):
+def scene_pop():
+    clear()
+    rockm = mat('Rock', (0.36, 0.34, 0.31), 0.85)
+    for x, mode in ((-1.6, 'PART'), (1.6, 'SPLIT')):
+        bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=1.0, location=(x, 0.0, 0.0))
+        rock = C.active_object
+        rock.scale = (1.3, 1.0, 0.8)
+        rock.data.materials.append(rockm)
+        S.mch_pop.mode = mode
+        S.mch_pop.height, S.mch_pop.taper, S.mch_pop.each = 0.18, 0.25, False
+        faces = [q.index for q in rock.data.polygons if q.normal.y < -0.45 and q.normal.z > -0.3]
+        if mode == 'PART':
+            fp.set_faces(rock, faces, True, S.mch_pop)
+        else:
+            pc = fp.add_faces(C, rock, faces)
+            pc.data.materials.clear()
+            pc.data.materials.append(mat('Piece', (0.75, 0.42, 0.12), 0.5, 0.2))
+            pc.location = (0.0, -0.12, 0.0)               # (lifted off a little: it is a part of its own)
+    stage((0.0, -6.5, 2.6), (0.0, 0.0, 0.0), lens=42)
+    shoot('face_pop_split', thick=0.0015)
+
+
+def scene_bend():
+    clear()
+    steel = mat('Steel', (0.32, 0.35, 0.38), 0.4, 0.6)
+    bpy.ops.mesh.primitive_grid_add(x_subdivisions=64, y_subdivisions=4, size=1.0, location=(-3.2, 0.0, 0.0))
+    b1 = C.active_object
+    b1.scale = (3.0, 0.5, 1.0)
+    bpy.ops.object.transform_apply(scale=True)
+    sm = b1.modifiers.new('S', 'SOLIDIFY')
+    sm.thickness = 0.12
+    bpy.ops.object.modifier_apply(modifier='S')
+    b1.data.materials.append(steel)
+    bend_any.add(C, b1)
+    b1.mch_bend.up = math.radians(150)
+    bpy.ops.mesh.primitive_grid_add(x_subdivisions=48, y_subdivisions=24, size=1.0, location=(0.3, 0.0, 0.0))
+    b2 = C.active_object
+    b2.scale = (2.4, 1.4, 1.0)
+    bpy.ops.object.transform_apply(scale=True)
+    sm = b2.modifiers.new('S', 'SOLIDIFY')
+    sm.thickness = 0.08
+    bpy.ops.object.modifier_apply(modifier='S')
+    b2.data.materials.append(steel)
+    bend_any.add(C, b2)
+    b2.mch_bend.style, b2.mch_bend.up, b2.mch_bend.pos, b2.mch_bend.fold = 'ANGLE', math.radians(80), 0.3, 0.08
+    bpy.ops.mesh.primitive_cube_add(size=0.4, location=(3.0, 0.0, 0.0))
+    b3 = C.active_object
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.subdivide(number_cuts=6)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    b3.data.materials.append(mat('Links', (0.55, 0.42, 0.2), 0.35, 0.8))
+    ar = b3.modifiers.new('Array', 'ARRAY')
+    ar.count = 7
+    ar.relative_offset_displace = (1.15, 0.0, 0.0)
+    bend_any.add(C, b3)
+    b3.mch_bend.side = math.radians(140)
+    stage((0.0, -8.5, 6.0), (0.3, 0.6, 0.0), lens=38)
+    shoot('bend_any', thick=0.0012)
+
+
+for _nm in ('fill', 'groom', 'loops', 'pop', 'bend'):
     if _nm in ONLY:
         globals()['scene_' + _nm]()
 print('done')
