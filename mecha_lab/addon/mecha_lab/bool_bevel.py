@@ -162,6 +162,102 @@ def _inside_test(ob_mesh):
     return inside
 
 
+def concave(runs, rid):
+    """0.24.180 is the run an inside (concave) edge - face B rising above face A's plane?"""
+    e = runs.edge_ids[rid][0]
+    (nA, _iA, _fA), (_nB, iB, _fB) = runs.faces[e]
+    return float(np.dot(iB, nA)) > 1e-6
+
+
+def filler_mesh(runs, rid, s0, s1, w, profile='CHAMFER', segments=8, name='MCH_BoolBevel_Fill'):
+    """0.24.180 (user: "베벨은 왜 안으로 들어간 건 안 돼?") an inside edge's fillet (the part's local space) between arc
+    lengths ``s0`` .. ``s1``: the room in the corner between the two faces and a chamfer (flat) / a round (an arc
+    touching both faces ``w`` from the edge) - joined on to the part.  A little into the part (a clean join); its
+    ends square, flush with where the edge ends."""
+    P = runs.polyline(rid)
+    closed = runs.closed[rid]
+    L = np.linalg.norm(P[1:] - P[:-1], axis=1)
+    acc = np.concatenate([[0.0], np.cumsum(L)])
+    total = float(acc[-1])
+    sides = _sides(runs, rid)
+    nseg = len(L)
+    whole_loop = closed and s1 - s0 >= total - 1e-9
+
+    def at(s):
+        if closed:
+            s = s % total if total > 0 else 0.0
+        s = min(max(s, 0.0), total)
+        k = int(np.searchsorted(acc, s, side='right') - 1)
+        k = min(max(k, 0), nseg - 1)
+        t = (s - acc[k]) / max(L[k], 1e-12)
+        p = P[k] + (P[k + 1] - P[k]) * t
+        ks = [k]
+        if t < 1e-6 and (k > 0 or closed):
+            ks.append((k - 1) % nseg)
+        elif t > 1 - 1e-6 and (k < nseg - 1 or closed):
+            ks.append((k + 1) % nseg)
+        T = _unit(np.sum([_unit(P[j + 1] - P[j]) for j in ks], axis=0))
+        nA = _unit(np.sum([sides[j][0] for j in ks], axis=0))
+        nB = _unit(np.sum([sides[j][2] for j in ks], axis=0))
+        return p, T, nA, sides[k][1], nB, sides[k][3]
+
+    if whole_loop:
+        params = list(acc[:-1])
+    else:
+        inner = [float(a) for a in acc if s0 + 1e-9 < a < s1 - 1e-9]
+        if closed:
+            inner = sorted({float(a + total * m) for a in acc[:-1] for m in (0, 1) if s0 + 1e-9 < a + total * m < s1 - 1e-9})
+        params = [s0] + inner + [s1]
+    eps = w * 0.06
+    rings = []
+    for s in params:
+        p, T, nA, cA, nB, cB = at(s)
+        dA = _unit(np.cross(nA, T))
+        if float(np.dot(cA, dA)) < 0:
+            dA = -dA
+        dB = _unit(np.cross(nB, T))
+        if float(np.dot(cB, dB)) < 0:
+            dB = -dB
+        A, B = p + dA * w, p + dB * w
+        if profile == 'ROUND':
+            alpha = math.acos(max(-1.0, min(1.0, float(np.dot(dA, dB)))))
+            bis = _unit(dA + dB)
+            C = p + bis * (w / max(math.cos(alpha / 2), 1e-3))
+            r = w * math.tan(alpha / 2)
+            u = _unit(A - C)
+            v = B - C
+            v = _unit(v - u * float(np.dot(v, u)))
+            phi = math.acos(max(-1.0, min(1.0, float(np.dot(_unit(A - C), _unit(B - C))))))
+            surf = [C + r * (math.cos(phi * k / segments) * u + math.sin(phi * k / segments) * v)
+                    for k in range(segments + 1)]
+        else:
+            surf = [A, B]
+        ring = [p - _unit(nA + nB) * eps, A - nA * eps] + surf + [B - nB * eps]
+        rings.append(ring)
+    bm = bmesh.new()
+    vr = [[bm.verts.new(Vector(q)) for q in ring] for ring in rings]
+    m = len(vr[0])
+    count = len(vr) if whole_loop else len(vr) - 1
+    for i in range(count):
+        a, b = vr[i], vr[(i + 1) % len(vr)]
+        for j in range(m):
+            try:
+                bm.faces.new((a[j], a[(j + 1) % m], b[(j + 1) % m], b[j]))
+            except ValueError:
+                pass
+    if not whole_loop:
+        for ring in (vr[0], vr[-1]):
+            try:
+                bm.faces.new(ring)
+            except ValueError:
+                pass
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    return me
+
+
 def cutter_mesh(runs, rid, s0, s1, w, profile='CHAMFER', segments=8, name='MCH_BoolBevel_Cutter', inside=None):
     """The cutter (the part's local space) for run ``rid`` between arc lengths ``s0`` .. ``s1`` (a loop: ``s1`` may run
     past its length).  ``inside``: a test for points in the part (an end of the edge runs on past it only where there
@@ -254,15 +350,16 @@ def _solvers():
     return [i.identifier for i in bpy.types.BooleanModifier.bl_rna.properties['solver'].enum_items]
 
 
-def cut(context, ob, cutter_me):
+def cut(context, ob, cutter_me, op='DIFFERENCE'):
     """``cutter_me`` (the part's local space) taken out of ``ob``'s own mesh (its other modifiers left alone, not
-    baked): Manifold first, Exact when it refuses (an open part).  Returns the faces before / after."""
+    baked): Manifold first, Exact when it refuses (an open part).  0.24.180 ``op`` 'UNION': an inside edge's fillet
+    joined on.  Returns the faces before / after."""
     from . import core_geometry as cg, light_copies as lc
     cutter = cg.link_temp_object(context, cutter_me, 'MCH_BoolBevel_TEMP')
     cutter.matrix_world = ob.matrix_world.copy()
     saved = [(m, m.show_viewport) for m in ob.modifiers]
     mod = ob.modifiers.new('MCH_BoolBevel', 'BOOLEAN')
-    mod.operation = 'DIFFERENCE'
+    mod.operation = op
     mod.object = cutter
     before = len(ob.data.polygons)
     new = None
@@ -370,15 +467,15 @@ def portion(runs, pts, reach, whole=False):
 
 
 def loop_edges(runs, e, p, view=None):
-    """0.24.180 the edge loop through ``e`` (``p``: the side) - its outside edges (a Boolean Bevel cuts those; an
-    inside corner on the loop, as where a step meets its wall, is left): (edges, how many inside ones left)."""
+    """0.24.180 the edge loop through ``e`` (``p``: the side): (its edges, how many of them inside corners - filled,
+    the rest cut)."""
     edges = runs.loop(e, p, view)
-    out = []
+    inside = 0
     for i in edges:
         (nA, _iA, _fA), (_nB, iB, _fB) = runs.faces[i]
-        if float(np.dot(iB, nA)) < 1e-6:             # (face B goes down from face A's plane: an outside edge)
-            out.append(i)
-    return out, len(edges) - len(out)
+        if float(np.dot(iB, nA)) > 1e-6:
+            inside += 1
+    return edges, inside
 
 
 def _mean_scale(ob):
@@ -435,12 +532,15 @@ def _rebuild(context, ob, base, cuts):
     runs = edge_runs.get_mesh(base)
     inside = _inside_test(base)
     cutters = []
-    for c in cuts:
+    for c in sorted(cuts, key=lambda c_: not c_.get('fill')):     # (0.24.180 inside fillets joined on first)
         rid = c['rid'] if c['rid'] < len(runs.paths) else None
         if rid is None or float(np.linalg.norm(runs.co[runs.paths[rid][0]] - np.array(c['p0']))) > 1e-6:
             continue                                  # (the base's runs read the same way every time; a stale one: off)
-        cutters.append((c, cutter_mesh(runs, rid, c['s0'], c['s1'], c['w'], c['profile'], c['segments'],
-                                       inside=inside)))
+        if c.get('fill'):
+            cutters.append((c, filler_mesh(runs, rid, c['s0'], c['s1'], c['w'], c['profile'], c['segments'])))
+        else:
+            cutters.append((c, cutter_mesh(runs, rid, c['s0'], c['s1'], c['w'], c['profile'], c['segments'],
+                                           inside=inside)))
     work = base.copy()
     work.name = (ob.data.name if ob.data is not None else base.name) + ' bevelled'
     old = ob.data
@@ -451,7 +551,7 @@ def _rebuild(context, ob, base, cuts):
     try:
         for c, me in cutters:
             try:
-                cut(context, ob, me)
+                cut(context, ob, me, 'UNION' if c.get('fill') else 'DIFFERENCE')
                 done += 1
             except BevelError:
                 pass
@@ -490,8 +590,7 @@ def perform(context, ob, pts_local, whole=False, reach=None, remove=False, loop=
         hit = runs.nearest(pts_local[0], r_)
         edges, skipped = loop_edges(runs, hit[1], pts_local[0], view) if hit is not None else ([], 0)
         parts = runs.loop_parts(edges) if edges else []
-        if hit is not None and not edges:
-            raise BevelError('That loop is all inside corners - Boolean Bevel cuts outside edges')
+
     else:
         parts = portions(runs, pts_local, r_, whole)
     if not parts:
@@ -507,7 +606,8 @@ def perform(context, ob, pts_local, whole=False, reach=None, remove=False, loop=
     else:
         for rid, s0, s1 in parts:
             cuts.append({'rid': int(rid), 'p0': [float(x) for x in runs.co[runs.paths[rid][0]]], 's0': float(s0),
-                         's1': float(s1), 'w': float(w), 'profile': st.profile, 'segments': int(st.segments)})
+                         's1': float(s1), 'w': float(w), 'profile': st.profile, 'segments': int(st.segments),
+                         'fill': bool(concave(runs, rid))})       # (0.24.180 an inside edge: a fillet joined on)
     done = _rebuild(context, ob, base, cuts)
     if cuts and not done:
         raise BevelError('The cut took nothing off (is the edge inside the part, or the part not closed?)')
@@ -519,7 +619,7 @@ def perform(context, ob, pts_local, whole=False, reach=None, remove=False, loop=
     length = sum(s1 - s0 for _r, s0, s1 in parts) * _mean_scale(ob)
     note = ''
     if loop:
-        note = ' (the edge loop' + (f' - {skipped} inside corner edge(s) left as they are' if skipped else '') + ')'
+        note = ' (the edge loop' + (f' - {skipped} inside corner edge(s) filled' if skipped else '') + ')'
     return (f'Boolean Bevel ({st.profile.title()}, {st.width:.3g} wide) on "{ob.name}": {length:.3g} along '
             f'{len(parts)} edge{"s" if len(parts) != 1 else ""}{note}; {len(cuts)} cut{"s" if len(cuts) != 1 else ""} '
             f'on it, read from the part as it was - corners meet ({before:,} -> {len(ob.data.polygons):,} faces)')
@@ -771,6 +871,7 @@ def draw(layout, context):
                  ('Click an edge: its whole loop round the face' if st.edge_loop else 'Click an edge: all of it')
                  + '.  Alt + click: its cut off',
                  'Edges cut one after another meet at their corners',
+                 'Inside (concave) edges: a fillet is joined on',
                  'Target (top bar, T): Auto / Selected / Active'):
         col.label(text=line)
 

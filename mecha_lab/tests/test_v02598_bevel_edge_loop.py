@@ -1,7 +1,7 @@
 """0.24.180 (user: "엣지 루프 기능도 만들어 주라" - "베벨 말이지"): Edge Loop for the bevels - a click takes the whole
 loop round the face area on the mouse's side of the edge (a box's top: its four edges; a cylinder's cap: its rim; a
 plate with a hole: the hole's rim or the outline, whichever was clicked): Boolean Bevel cuts it all (corners meet,
-closed), Alt takes it all off; an L-step's loop leaves its inside corner; Geo Sculpt Chamfer / Round marks it all."""
+closed), Alt takes it all off; an L-step's loop fills its inside corner (0.24.180); Geo Sculpt Chamfer / Round marks it all."""
 import math
 
 import numpy as np
@@ -96,7 +96,7 @@ check(f'... the corners meet (the box\'s top corner {corner:.3f} off the new sur
 msg2 = bb.perform(C, box, [(0.0, -0.95, 1.0)], whole=True, reach=0.08, remove=True, loop=True)
 back = max(dist(box, p) for p in ((0, -1, 1), (0, 1, 1), (-1, 0, 1), (1, 0, 1)))
 check(f'Alt + click, Edge Loop: the whole loop off ({back:.5f} - the edges there again) - {msg2}', back < 1e-5)
-# an L step: its low top's loop has an inside corner (where it meets the wall) - left as it is
+# an L step: its low top's loop has an inside corner (where it meets the wall) - 0.24.180 filled
 bpy.ops.mesh.primitive_cube_add(size=2.0, location=(10.0, 0.0, 0.0))
 lo = C.active_object
 bpy.ops.mesh.primitive_cube_add(size=2.0, location=(10.0, 1.0, 1.0))
@@ -113,9 +113,11 @@ f_edge = dist(lo, (0.0, -1.0, 1.0)) * math.sqrt(2)
 side = dist(lo, (1.0, -0.25, 1.0)) * math.sqrt(2)
 inner = dist(lo, (0.0, 0.5, 1.0))                         # (the inside corner: the low top meets the wall)
 bad3, _v = closed_ok(lo)
-check(f'an L step, the low top\'s loop: its outside edges cut (the front {f_edge:.3f}, a side {side:.3f}), the inside '
-      f'corner where it meets the wall left ({inner:.4f}), closed ({bad3}) - {msg3}',
-      abs(f_edge - 0.2) < 3e-3 and abs(side - 0.2) < 3e-3 and inner < 1e-6 and bad3 == 0 and 'inside corner' in msg3)
+check(f'an L step, the low top\'s loop: its outside edges chamfered (the front {f_edge:.3f}, a side {side:.3f} = '
+      f'Width 0.2), the inside corner where it meets the wall filled - a chamfer joined on ({inner:.4f} of the corner '
+      f'under the new face = 0.2 / sqrt 2 = 0.1414), closed ({bad3}) - {msg3}',
+      abs(f_edge - 0.2) < 3e-3 and abs(side - 0.2) < 3e-3 and abs(inner - 0.2 / math.sqrt(2)) < 3e-3 and bad3 == 0
+      and 'filled' in msg3)
 # a shown edge picked off the part (on the edge itself): the side facing the view
 rb = edge_runs.get(box)
 e0 = rb.nearest((0.0, -1.0, 1.0), 0.05)[1]

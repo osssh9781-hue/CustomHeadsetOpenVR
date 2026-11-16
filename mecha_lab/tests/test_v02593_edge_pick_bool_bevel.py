@@ -6,7 +6,7 @@
 - Geo Sculpt Chamfer / Round: the run under the brush taken whole, the brush's width; Alt: off;
 - Boolean Bevel (its own tool): drag along an edge - that much of it cut off (Chamfer: flat at 45 degrees, Round: an
   arc), a click: all of it (through the corners); the part's own mesh cut, its other modifiers left alone; a loop's
-  rim; an inside corner: told."""
+  rim; an inside corner: (0.24.180) a fillet joined on."""
 import math
 
 import numpy as np
@@ -242,10 +242,26 @@ m.object, m.solver = notch, 'EXACT'
 C.view_layer.objects.active = L_
 bpy.ops.object.modifier_apply(modifier='B')
 bpy.data.objects.remove(notch)
-try:
-    bb.perform(C, L_, [(0.0, y, 0.0) for y in np.linspace(-0.5, 0.5, 8)])
-    err = None
-except bb.BevelError as ex:
-    err = str(ex)
-check(f'an inside corner: told ({err})', err is not None and 'inside' in err)
+# 0.24.180 (user: "베벨은 왜 안으로 들어간 건 안 돼?"): an inside edge - a fillet joined on
+_b0, vol0 = closed_ok(L_)
+msg_in = bb.perform(C, L_, [(0.0, y, 0.0) for y in np.linspace(-0.5, 0.5, 8)])
+bad9, vol9 = closed_ok(L_)
+d_mid = dist_to_surface(L_, (0.0, 0.0, 0.0))
+d_out = dist_to_surface(L_, (0.0, 0.9, 0.0))
+check(f'an inside corner (an L block\'s inner edge) drawn along: a chamfer joined on there (the corner {d_mid:.4f} under '
+      f'the new face = 0.1 / sqrt 2 = 0.0707), past it as it was ({d_out:.4f}); closed ({bad9}), volume {vol0:.4f} -> '
+      f'{vol9:.4f} (+ 0.1 x 0.1 / 2 x 1 = 0.005) - {msg_in}', abs(d_mid - 0.1 / math.sqrt(2)) < 3e-3 and d_out < 1e-6
+      and bad9 == 0 and abs(vol9 - vol0 - 0.005) < 6e-4)
+bb.perform(C, L_, [(0.0, 0.0, 0.0)], whole=True, reach=0.05, remove=True)
+_b, vol_back = closed_ok(L_)
+st.profile, st.width, st.segments = 'ROUND', 0.2, 16
+bb.perform(C, L_, [(0.0, 0.0, 0.0)], whole=True, reach=0.05)
+bad10, vol10 = closed_ok(L_)
+d_r = dist_to_surface(L_, (0.0, 0.0, 0.0))
+want_v = 0.2 * 0.2 * (1 - math.pi / 4) * 2.0          # (the room between a quarter round and the corner, all along)
+check(f'Alt: the fillet off (volume {vol_back:.4f}); Round 0.2 on the whole inside edge: a quarter round joined on (the '
+      f'corner {d_r:.4f} under it = 0.2 x (sqrt 2 - 1) = 0.0828; volume + {vol10 - vol_back:.4f}, the room between a '
+      f'quarter round and the corner: {want_v:.4f}), closed ({bad10})',
+      abs(vol_back - vol0) < 1e-6 and abs(d_r - 0.2 * (math.sqrt(2) - 1)) < 4e-3
+      and abs((vol10 - vol_back) - want_v) < 2e-3 and bad10 == 0)
 summary()
