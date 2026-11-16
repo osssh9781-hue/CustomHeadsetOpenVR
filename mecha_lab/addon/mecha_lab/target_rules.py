@@ -31,7 +31,7 @@ PICKING = {'PRESS', 'SDRAW', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'BELT', 'SPIKE'
 
 # 0.24.179 (user: "베벨 불린은 항상 말했듯이 셀렉트랑 오토 이거 다 만들어 줘, 버벅이니까"): picking tools with no lasso -
 # the Target row (and T) without the lasso's Slow Line
-TARGET_ONLY = {'BBEVEL', 'GSCULPT'}
+TARGET_ONLY = {'BBEVEL', 'GSCULPT', 'FPOP'}
 
 
 def mode(context):

@@ -51,6 +51,8 @@ EXTRA = {
     'PMEASURE': ['Drag on the model   length, horizontal, vertical', 'Shift   straight horizontal / vertical',
                  'X / Y / Z   along that axis', 'Alt + click   the nearest measure gone'],
     'PCUT': ['Drag a line across a part   cut, pins across the cut', 'Shift   the line straight'],
+    'FPOP': ['Click a face of a part   it stands out (Height, Taper);  drag   each face passed',
+             'Alt + click / drag   off;  the window   Each Face, From Edit Mode Selection, Apply'],
     'BBEVEL': ['Drag along an edge (shown blue)   that much of it cut off - Chamfer / Round, Width wide',
                'Click an edge   all of it;  Ctrl+Z   back'],
     'MOLDING': ['Drag along a mesh   a molding along the line, on its surface (back to the start: a ring)',

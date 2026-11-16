@@ -12,7 +12,7 @@ import bpy
 from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform, radial_array,
                mirror_tools, cut_presets, mask_tools, workspace_ui, ui_tool_settings,
                base_mesh, loft_surface, zbrush_bridge, subd_plane, deform_tools, primitive_tools,
-               addon_safety, self_test, face_extract, edge_molding, bool_bevel, hair_shape, hollow_shell, along_curve, cable, bottom_bar, station_primitive, station_gizmos,
+               addon_safety, self_test, face_extract, edge_molding, bool_bevel, hair_shape, face_pop, hollow_shell, along_curve, cable, bottom_bar, station_primitive, station_gizmos,
                primitive_place, primitive_hud, line_hud, armor_plate, random_panels, mirror_hud, highpoly, mesh_tools, live_queue, lasso_sketch,
                cloth_wrinkle, last_used, last_op, live_stack, keymap_check, robot_base, detail_stamp, surface_lasso,
                curve_tube, creature_shell, cloth_sim, box_hide, plate_detail, screw_stamp, wrinkle_lines, cloth_drape, vacuum_pack, lowpoly, fold_patch,
@@ -2068,6 +2068,7 @@ def _register():
     edge_molding.register()
     bool_bevel.register()                         # 0.24.178 Boolean Bevel
     hair_shape.register()                         # 0.24.179 hair in a sculpted shape
+    face_pop.register()                           # 0.24.179 Face Pop
     hollow_shell.register()
     along_curve.register()
     cable.register()
@@ -2324,6 +2325,7 @@ def _unregister_steps():
         ('cable', cable.unregister),
         ('along_curve', along_curve.unregister),
         ('hollow_shell', hollow_shell.unregister),
+        ('face_pop', face_pop.unregister),
         ('hair_shape', hair_shape.unregister),
         ('bool_bevel', bool_bevel.unregister),
         ('edge_molding', edge_molding.unregister),
