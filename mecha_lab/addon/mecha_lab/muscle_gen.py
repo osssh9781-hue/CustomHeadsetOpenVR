@@ -1905,24 +1905,28 @@ def make_skin(context, look='CREATURE'):
             bodies.append(o)
     if not bodies and coll is None:
         raise RuntimeError('Make some muscles first (or select the bodies)')
+    # 0.24.185 a kit body: all its parts, not only the ones with muscles on them
+    try:
+        from . import body_kit as bk
+        for o in list(bodies):
+            if bk.is_part(o):
+                for q in bk.parts_of(bk.root_of(o)):
+                    if q not in bodies:
+                        bodies.append(q)
+    except ImportError:
+        pass
     me = bpy.data.meshes.new('Skin')
     ob = bpy.data.objects.new('Skin' if look == 'CREATURE' else 'Mecha Skin', me)
     context.scene.collection.objects.link(ob)
     ob[SKIN_KEY] = json.dumps({'bodies': [o.name for o in bodies], 'look': look})
-    size = 1.0
-    for o in bodies:
-        size = max(size if bodies.index(o) else 0.0, max(o.dimensions))
     ob.mch_mskin.look = look
-    mod = ob.modifiers.new(SKIN_MOD, 'NODES')
-    mod.node_group = skin_tree('MCH Skin ' + ob.name, bodies, coll or _collection(context))
     mat = bpy.data.materials.new('MCH Skin' if look == 'CREATURE' else 'MCH Mecha Skin')
     mat.use_nodes = True
     _principled(mat, (0.55, 0.4, 0.33) if look == 'CREATURE' else (0.12, 0.13, 0.14),
                 0.5 if look == 'CREATURE' else 0.35, 0.0 if look == 'CREATURE' else 0.3,
                 sss=0.2 if look == 'CREATURE' else 0.0)
     me.materials.append(mat)
-    ob['mch_mskin_size'] = float(size)
-    push_skin(ob)
+    refresh_skin(context, ob)
     for o in context.selected_objects:
         o.select_set(False)
     ob.select_set(True)
@@ -1930,20 +1934,61 @@ def make_skin(context, look='CREATURE'):
     return ob
 
 
+def refresh_skin(context, ob):
+    """The skin's own mesh again from the bodies and the muscles as they are now (all joined, in the world); its
+    modifiers - a voxel remesh (one closed surface over them all, open meshes too), a smooth (Tension), a push out
+    (Fat) - stay live."""
+    d = json.loads(ob[SKIN_KEY])
+    coll = bpy.data.collections.get(COLLECTION)
+    src = [bpy.data.objects.get(n) for n in d.get('bodies', [])]
+    src = [o for o in src if o is not None]
+    if coll is not None:
+        src += [o for o in coll.objects if is_muscle(o)]
+    dg = context.evaluated_depsgraph_get()
+    bm = bmesh.new()
+    lo, hi = None, None
+    for o in src:
+        m2 = bpy.data.meshes.new_from_object(o.evaluated_get(dg), depsgraph=dg)
+        m2.transform(o.matrix_world)
+        bm.from_mesh(m2)
+        bpy.data.meshes.remove(m2)
+    if bm.verts:
+        co = np.array([v.co[:] for v in bm.verts])
+        lo, hi = co.min(0), co.max(0)
+    me = ob.data
+    bm.to_mesh(me)
+    bm.free()
+    ob.matrix_world = Matrix.Identity(4)
+    ob['mch_mskin_size'] = float((hi - lo).max()) if lo is not None else 1.0
+    for name, kind in ((SKIN_MOD, 'REMESH'), (SKIN_MOD + ' Smooth', 'SMOOTH'), (SKIN_MOD + ' Fat', 'DISPLACE')):
+        m = ob.modifiers.get(name)
+        if m is not None and m.type != kind:
+            ob.modifiers.remove(m)
+            m = None
+        if m is None:
+            ob.modifiers.new(name, kind)
+    push_skin(ob)
+
+
 def push_skin(ob):
-    from . import geo_sculpt as gs
-    mod = ob.modifiers.get(SKIN_MOD)
-    if mod is None:
-        return
     p = ob.mch_mskin
     size = float(ob.get('mch_mskin_size', 1.0) or 1.0)
-    vals = {'Voxel': size / max(int(p.detail), 16), 'Adaptivity': float(p.adaptivity), 'Tension': int(p.tension),
-            'Fat': float(p.fat) * size, 'Material': ob.data.materials[0] if ob.data.materials else None}
-    for k, v in vals.items():
-        try:
-            gs.set_input(mod, k, v)
-        except (KeyError, AttributeError, TypeError):
-            pass
+    rm = ob.modifiers.get(SKIN_MOD)
+    if rm is None or rm.type != 'REMESH':
+        return
+    rm.mode = 'VOXEL'
+    rm.voxel_size = size / max(int(p.detail), 16)
+    rm.adaptivity = float(p.adaptivity) * rm.voxel_size * 2.0
+    rm.use_smooth_shade = True
+    sm = ob.modifiers.get(SKIN_MOD + ' Smooth')
+    if sm is not None:
+        sm.factor = 0.5
+        sm.iterations = int(p.tension) * 2
+    fat = ob.modifiers.get(SKIN_MOD + ' Fat')
+    if fat is not None:
+        fat.direction = 'NORMAL'
+        fat.mid_level = 0.0
+        fat.strength = float(p.fat) * size
     ob.update_tag()
 
 
@@ -1955,7 +2000,7 @@ def _upd_skin(self, context):
 
 class MCH_PG_MuscleSkin(bpy.types.PropertyGroup):
     look: EnumProperty(name='Look', items=(('CREATURE', 'Creature', ''), ('MECHA', 'Mecha', '')), default='CREATURE')
-    detail: IntProperty(name='Detail', default=140, min=24, soft_max=400, max=1000, update=_upd_skin,
+    detail: IntProperty(name='Detail', default=220, min=24, soft_max=400, max=1000, update=_upd_skin,
                         description='Points across the whole body (more: finer, heavier)')
     adaptivity: FloatProperty(name='Lightness', default=0.2, min=0.0, max=1.0, update=_upd_skin,
                               description='Fewer faces where it is flat (0: even everywhere)')
@@ -2067,11 +2112,11 @@ class MCH_PG_Muscle(bpy.types.PropertyGroup):
                                    update=_upd)
     cable_radius: FloatProperty(name='Cable Thickness', default=0.2, min=0.05, max=1.0, update=_upd)
     band_surface: EnumProperty(name='Surface', items=SURFACES, default='SCALES', update=_upd_surface)
-    band_rim: FloatProperty(name='Outline Lip', default=0.5, min=0.0, max=2.0, update=_upd,
+    band_rim: FloatProperty(name='Outline Lip', default=0.0, min=0.0, max=2.0, update=_upd,
                             description='A raised line along the pod\'s outline (both sides) and along its top, in its own '
                                         'colour (0: none)')
     band_rim_width: FloatProperty(name='Lip Width', default=0.3, min=0.0, max=1.0, update=_upd)
-    band_parts: IntProperty(name='Plain Parts', default=2, min=0, max=8, update=_upd,
+    band_parts: IntProperty(name='Plain Parts', default=0, min=0, max=8, update=_upd,
                             description='Parts without the pattern on the pod (0: none) - Tongues / Zigzags: that many '
                                         'from each end; Bands: that many across')
     band_part: EnumProperty(name='Plain Part', items=PART_DESIGNS, default='TONGUE', update=_upd)
@@ -2509,6 +2554,21 @@ class MCH_OT_muscle_apply(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_muscle_skin_refresh(bpy.types.Operator):
+    bl_idname = 'mch.muscle_skin_refresh'
+    bl_label = 'Refresh Skin'
+    bl_description = 'The skin again over the bodies and the muscles as they are now (after you moved or changed them)'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return is_skin(context.active_object)
+
+    def execute(self, context):
+        refresh_skin(context, context.active_object)
+        return {'FINISHED'}
+
+
 class MCH_OT_muscle_skin(bpy.types.Operator):
     """A skin over the bones and every muscle - a mesh of its own (the muscles stay as they are under it)"""
     bl_idname = 'mch.muscle_skin'
@@ -2590,21 +2650,9 @@ def draw(layout, context, tool='MUSCLE'):
         col = layout.column(align=True)
         col.label(text='Surface')
         col.row(align=True).prop(pg, 'band_surface', expand=True)
-        for k in ('band_weave', 'band_weave_scale', 'band_rim', 'band_rim_width', 'band_teeth'):
+        for k in ('band_weave', 'band_weave_scale', 'band_teeth'):
             col.prop(pg, k)
         col.prop(pg, 'band_color')
-        col = layout.column(align=True)
-        col.label(text='Plain Parts (no pattern)')
-        col.prop(pg, 'band_parts')
-        col.row(align=True).prop(pg, 'band_part', expand=True)
-        for k in ('band_part_len', 'band_part_width', 'band_part_height', 'sleeve_color'):
-            col.prop(pg, k)
-        for nm in sorted(my_parts()):
-            r = col.row(align=True)
-            o = r.operator('mch.muscle_set', text='My: ' + nm, depress=pg.my_part == nm)
-            o.tool, o.prop, o.value = tool, 'my_part', ('' if pg.my_part == nm else nm)
-            r.operator('mch.muscle_part_delete', text='', icon='X').name = nm
-        col.operator('mch.muscle_part_save', icon='ADD').tool = tool
         _draw_caps(layout, pg, tool)
     elif style == 'CABLE':
         col = layout.column(align=True)
@@ -2638,6 +2686,7 @@ def draw(layout, context, tool='MUSCLE'):
         sb.label(text=f'{skin.name} (live skin)')
         for k in ('detail', 'adaptivity', 'tension', 'fat'):
             sb.prop(skin.mch_mskin, k)
+        sb.operator('mch.muscle_skin_refresh', icon='FILE_REFRESH')
     col = layout.column(align=True)
     for line in HELP:
         col.label(text=line)
@@ -2739,7 +2788,7 @@ class MCH_TOOL_mecha_muscle(bpy.types.WorkSpaceTool):
 CLASSES = (MCH_PG_Muscle, MCH_PG_MuscleSkin, MCH_OT_muscle_click, MCH_OT_muscle_back, MCH_OT_muscle_finish,
            MCH_OT_muscle_esc, MCH_OT_muscle_my_save, MCH_OT_muscle_my_apply, MCH_OT_muscle_my_delete,
            MCH_OT_muscle_shape_save, MCH_OT_muscle_shape_delete, MCH_OT_muscle_part_save, MCH_OT_muscle_part_delete,
-           MCH_OT_muscle_set, MCH_OT_muscle_apply, MCH_OT_muscle_skin)
+           MCH_OT_muscle_set, MCH_OT_muscle_apply, MCH_OT_muscle_skin_refresh, MCH_OT_muscle_skin)
 _HANDLE = [None]
 
 

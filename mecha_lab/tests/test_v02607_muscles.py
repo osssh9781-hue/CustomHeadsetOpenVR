@@ -174,8 +174,19 @@ body.select_set(True)
 C.view_layer.objects.active = body
 r = bpy.ops.mch.muscle_skin(look='CREATURE')
 skin = C.active_object
-check('Skin Over All: one skin, its own mesh (the muscles and the body untouched)', r == {'FINISHED'} and
-      mg.is_skin(skin) and skin is not body and not mg.is_muscle(skin))
+dg = C.evaluated_depsgraph_get()
+sv = np.array([skin.matrix_world @ v.co for v in skin.evaluated_get(dg).data.vertices])
+bv = np.array([body.matrix_world @ v.co for v in body.data.vertices])
+check(f'Skin Over All: one skin, its own mesh (the muscles and the body untouched), all over the body '
+      f'(z {sv[:, 2].min():.2f} .. {sv[:, 2].max():.2f}; the body {bv[:, 2].min():.2f} .. {bv[:, 2].max():.2f}) and '
+      'out over the muscles', r == {'FINISHED'} and mg.is_skin(skin) and skin is not body and not mg.is_muscle(skin)
+      and abs(sv[:, 2].min() - bv[:, 2].min()) < 0.08 and abs(sv[:, 2].max() - bv[:, 2].max()) < 0.08 and
+      np.abs(sv[:, 1]).max() > np.abs(bv[:, 1]).max() + 0.01)
+n0 = len(skin.evaluated_get(dg).data.polygons)
+skin.mch_mskin.detail = 120
+n1 = len(skin.evaluated_get(C.evaluated_depsgraph_get()).data.polygons)
+check(f'... Detail live ({n0} -> {n1} faces); Refresh Skin lays it again', n1 < n0 and
+      bpy.ops.mch.muscle_skin_refresh() == {'FINISHED'})
 
 mecha_lab.unregister()
 sys.exit(1 if summary() else 0)
