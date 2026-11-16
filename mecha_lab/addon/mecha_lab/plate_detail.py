@@ -1130,10 +1130,21 @@ def draw(layout, context, tool='DETAIL'):
 
 
 def _draw_rough_presets(col, current):
-    """0.24.161 the ten Rough Rim presets, two per row."""
+    """0.24.161 the ten Rough Rim presets, two per row; 0.24.180 My Presets under them."""
     grid = col.grid_flow(row_major=True, columns=2, even_columns=True, align=True)
     for pid, label, _d, _v in _pr.PRESETS:
         grid.operator('mch.pdetail_rough_preset', text=label, depress=(pid == current)).preset = pid
+    from . import my_presets as mp
+    mine = mp.names(MY_KIND)
+    col.label(text='My Presets' + ('' if mine else ' (none saved yet)'))
+    if mine:
+        g = col.grid_flow(row_major=True, columns=2, even_columns=True, align=True)
+        for name in mine:
+            g.operator('mch.pdetail_my_apply', text=name).name = name
+    row = col.row(align=True)
+    row.operator('mch.pdetail_my_save', text='Save Preset', icon='ADD')
+    if mine:
+        row.operator('mch.pdetail_my_delete', text='Delete', icon='TRASH')
 
 
 def _draw_compass(box, p):
@@ -1265,24 +1276,126 @@ class MCH_OT_pdetail_rough_preset(bpy.types.Operator):
         return dict((r[0], r[2]) for r in _pr.PRESETS).get(properties.preset, '')
 
     def execute(self, context):
-        import json
-        vals = _pr.preset_values(self.preset)
-        ob = active_detail(context)
-        if ob is not None and ob.mch_pdetail.kind == 'ROUGH':
-            p = ob.mch_pdetail
-            _SYNC[0] = True
-            try:
-                for k, v in vals.items():
+        apply_rough(context, _pr.preset_values(self.preset))
+        return {'FINISHED'}
+
+
+def apply_rough(context, vals):
+    """Rough Rim values (lengths as shares of the plate's size) onto the selected rough plate, else the next one's."""
+    import json
+    ob = active_detail(context)
+    if ob is not None and ob.mch_pdetail.kind == 'ROUGH':
+        p = ob.mch_pdetail
+        _SYNC[0] = True
+        try:
+            for k, v in vals.items():
+                if not hasattr(p, k):
+                    continue                  # (a value an older / newer version has not: skipped)
+                try:
                     setattr(p, k, v * p.size if k in _pr.LENGTHS else v)
-            finally:
-                _SYNC[0] = False
-            remember(ob)
-            rebuild(ob)                       # (0.24.163 the style may change: columns <-> the rough plate's shell)
-        else:
-            st = context.scene.mch_pdetail
-            f = _fractions(context.scene)
-            f.update(vals)
-            st.fractions = json.dumps(f)
+                except (TypeError, ValueError):
+                    pass
+        finally:
+            _SYNC[0] = False
+        remember(ob)
+        rebuild(ob)                           # (0.24.163 the style may change: columns <-> the rough plate's shell)
+        return ob
+    st = context.scene.mch_pdetail
+    f = _fractions(context.scene)
+    f.update(vals)
+    st.fractions = json.dumps(f)
+    return None
+
+
+# 0.24.180 (user: "디테일 플레이트 4에 프리셋 저장도 만들어 줘"): the selected rough plate's values (else the next one's)
+# saved under a name in My Presets (one file in Blender's user config folder, written only when Save / Delete is
+# pressed - there in every .blend); the lengths as shares of the plate's size, so a preset fits a plate of any size
+MY_KIND = 'plate_detail4'
+
+
+def rough_values(context):
+    ob = active_detail(context)
+    if ob is not None and ob.mch_pdetail.kind == 'ROUGH':
+        p = ob.mch_pdetail
+        size = max(p.size, 1e-9)
+        vals = {k: getattr(p, k) / size for k in _pr.LENGTHS}
+        vals.update({k: getattr(p, k) for k in _pr.PLAIN})
+        return vals
+    f = _fractions(context.scene)
+    vals = dict(_pr.preset_values(f.get('r_preset', 'CONCRETE')))
+    vals.update({k: f[k] for k in _pr.LENGTHS + _pr.PLAIN if k in f})
+    return vals
+
+
+class MCH_OT_pdetail_my_save(bpy.types.Operator):
+    """Save the selected rough plate's values (else the next one's) as one of My Presets - there in every .blend"""
+    bl_idname = 'mch.pdetail_my_save'
+    bl_label = 'Save Plate Detail 4 Preset'
+    bl_options = {'REGISTER', 'INTERNAL'}
+    name: bpy.props.StringProperty(name='Name', default='My Rough Plate')
+
+    def invoke(self, context, event):
+        from . import my_presets as mp
+        base = _preset_label(rough_values(context).get('r_preset', 'CONCRETE'))
+        taken = set(mp.names(MY_KIND))
+        n = 1
+        while f'{base} {n}' in taken:
+            n += 1
+        self.name = f'{base} {n}'
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        from . import my_presets as mp
+        name = self.name.strip()
+        if not name:
+            return {'CANCELLED'}
+        vals = rough_values(context)
+        data = mp.load_all()
+        data.setdefault(MY_KIND, {})[name] = vals
+        mp._write(data)
+        self.report({'INFO'}, f'Plate Detail 4: "{name}" saved in My Presets ({len(vals)} values)')
+        return {'FINISHED'}
+
+
+class MCH_OT_pdetail_my_apply(bpy.types.Operator):
+    """Put this saved preset on the selected rough plate (else the next one)"""
+    bl_idname = 'mch.pdetail_my_apply'
+    bl_label = 'My Plate Detail 4 Preset'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    name: bpy.props.StringProperty()
+
+    def execute(self, context):
+        from . import my_presets as mp
+        vals = mp.load_all().get(MY_KIND, {}).get(self.name)
+        if vals is None:
+            self.report({'WARNING'}, f'My Presets: "{self.name}" not found')
+            return {'CANCELLED'}
+        apply_rough(context, vals)
+        return {'FINISHED'}
+
+
+def _my_delete_items(self, context):
+    from . import my_presets as mp
+    items = [(n, n, '') for n in mp.names(MY_KIND)]
+    _my_delete_items.keep = items                 # (Blender keeps only references to the strings)
+    return items or [('', '(none)', '')]
+
+
+class MCH_OT_pdetail_my_delete(bpy.types.Operator):
+    """Delete one of your saved Plate Detail 4 presets"""
+    bl_idname = 'mch.pdetail_my_delete'
+    bl_label = 'Delete Plate Detail 4 Preset'
+    bl_options = {'REGISTER', 'INTERNAL'}
+    name: EnumProperty(name='Preset', items=_my_delete_items)
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        from . import my_presets as mp
+        if not self.name or not mp.delete(MY_KIND, self.name):
+            return {'CANCELLED'}
+        self.report({'INFO'}, f'My Presets: "{self.name}" deleted')
         return {'FINISHED'}
 
 
@@ -1363,6 +1476,7 @@ class MCH_OT_pdetail_rise_preset(bpy.types.Operator):
 
 
 CLASSES = (MCH_PG_PlateDetail, MCH_PG_PlateDetailScene, MCH_OT_pdetail_rise_preset, MCH_OT_pdetail_rough_preset,
+           MCH_OT_pdetail_my_save, MCH_OT_pdetail_my_apply, MCH_OT_pdetail_my_delete,
            MCH_OT_pdetail_compass,
            MCH_OT_pdetail_layers, MCH_OT_pdetail_apply,
            MCH_OT_pdetail_remove, MCH_PT_plate_detail)
