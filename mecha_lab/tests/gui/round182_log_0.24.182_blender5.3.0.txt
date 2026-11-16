@@ -1,0 +1,14 @@
+shot 1_plate4_tiles.png True
+1 tiles in sight 9 with pictures 9 picked CROC plate CROC
+shot 1_croc_plate.png True
+2 feathers tiles 16 with pictures 16 chosen ['KESTREL']
+shot 2_feather_tiles.png True
+3 scales tiles 8 chosen ['PANGOLIN']
+shot 3_scale_tiles.png True
+4 feather line tiles 16 in use PEACOCK
+shot 4_feather_line_tiles.png True
+PASS 1 Plate Detail 4: the presets as picture tiles; a REAL click on "Croc Osteoderm", a REAL outline - a croc plate
+PASS 2 the Fur window's Feathers: picture tiles; a REAL click on "Kestrel Tail" picks it
+PASS 3 ... its Scales: picture tiles; a REAL click on "Pangolin" picks it
+PASS 4 Feather Line: picture tiles; a REAL click on "Peacock Eye" - that feather
+4/4 passed

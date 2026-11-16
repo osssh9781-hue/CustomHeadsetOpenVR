@@ -1,5 +1,35 @@
 # CHANGELOG
 
+## 0.24.182 — 플레이트 디테일 4 크리쳐 프리셋 15 개 추가(28 개) · 프리셋 / 깃털 / 스케일 고르는 곳이 전부 그림 타일 (2026-11-16)
+
+- **크리쳐 프리셋 15 개 추가**(사용자: "플레이트 디테일 되게 맘에 들어서 다른 프리셋도 좀 많이 만들어 주라" — "크리쳐 작업할 때
+  디테일 넣으려구 좋더라고 쓰니까" — "오마카세로"): Croc Osteoderm(악어 등 골판), Turtle Shell(거북 등껍질 — 테두리 립 · 큰 판 ·
+  성장선), Rhino Hide(두꺼운 주름 · 마른 균열), Elephant Skin(잔 균열 그물), Lizard Belly(작은 평평한 비늘), Snake Scales(올라온
+  비늘), Insect Chitin(날카로운 립 · 가운데 용골 · 잔 구멍), Shark Skin(사포 같은 잔 비늘), Bone Plate(구멍 많은 뼈), Barnacle Crust
+  (따개비 원뿔 · 깨진 테두리), Dragon Hide(볼록한 큰 비늘 + 주름), Frog Skin(매끈한 피부 + 둥근 사마귀), Scar Tissue(흉터 능선),
+  Armadillo Bands(외곽을 따라 띠 + 작은 타일), Coral Polyps(산호 구멍 · 덩어리) — 기존 13 개와 합쳐 28 개. 전부 그린 크기에 맞춰
+  들어가고(길이는 크기 비율), 값은 그 뒤 다 바꿀 수 있음, 내 프리셋(Save Preset)으로 저장도 됨.
+- **썸네일 — 고르는 곳이 전부 그림 타일**(사용자: "거기에 썸네일도 좀 만들어 줘, 그 다른 스케일 관련이나 깃털 같은 것도"):
+  - 플레이트 디테일 4 프리셋 28 개: 각 프리셋을 실제로 판에 적용해 렌더한 그림(Cycles), 한 줄에 3 개, 지금 쓰는 것 파랗게.
+  - Fur 창 **Feathers** 16 개 · **Scales** 8 개 탭, **Scale Line** · **Feather Line** 도구의 고르기: 각 모양을 렌더한 그림 타일(4 개씩).
+  - 그림은 128 px, 52 장 합쳐 486 KB(`icons/thumbs/`, 다시 만들기: `tools_dev/make_thumbs181.py`). 패널 아이콘 크기 설정을 따름.
+- 확인(단위 테스트, 5.2): 새 test_v02602 6/6(프리셋 28 · 새 15 개 다 있음; 그림 52 장 전부 128 px · 486 KB; 플레이트 디테일 4 창 —
+  타일 28 개 전부 그림 · 쓰는 것만 켜짐; Fur 창 깃털 16 / 스케일 8 타일; Scale Line 8 / Feather Line 16 타일; 타일 클릭 = 그 프리셋),
+  test_v02563 24/24(28 개 프리셋이 각자 다른 판 — 높이 · 질감 값이 모두 다름), test_v02564 21/21. 관련 기존 테스트 58 파일(플레이트
+  디테일 · 깃털 / 스케일 · 그리블 라인 · 창 그리기) — 0.24.176 부터 똑같이 실패하던 것만(test_ui_draw 2, test_v02489 1, test_v02490 2,
+  test_v02495_mech_shader 1). 이번엔 전체 182 파일 회귀는 안 돌림.
+- 확인(실제 창, 진짜 마우스): `round182_real_window.py` 4/4(`tests/gui/round182_log_0.24.182.txt`, 5.2.3) — 플레이트 디테일 4 창에 그림
+  타일(보이는 9 개 모두 그림) · "Croc Osteoderm" 진짜 클릭 → 진짜 올가미로 악어 판; Fur 창 Feathers 그림 타일 16 · "Kestrel Tail" 진짜
+  클릭; Scales 8 · "Pangolin" 진짜 클릭; Feather Line 그림 타일 16 · "Peacock Eye" 진짜 클릭. **Blender 5.3.0** 도 4/4
+  (`tests/gui/round182_log_0.24.182_blender5.3.0.txt`).
+- 확인(압축 파일에서 꺼낸 애드온) 8/8: 버전 · 매니페스트 · 빌드 스탬프 0.24.182, 프리셋 28, 그림 52 장 다 있음, 창 그림 타일 28, Dragon Hide 판; zip 설치 테스트 20/20. zip 98.6 MB.
+- 렌더(셰이딩 위 / 와이어 아래): `dist/creature_presets_0.24.182.jpg`(크리쳐 등에 9 개 — 악어 · 드래곤 · 거북 · 코뿔소 · 따개비 · 키틴 ·
+  코끼리 · 아르마딜로 · 뱀; 와이어가 메모리에 들어가게 Detail 4 로 그림, 기본은 6), `dist/picker_thumbs_0.24.182.jpg`(그림 52 장 전부),
+  실제 창: `dist/plate4_tiles_real_window_0.24.182.jpg`, `dist/feather_tiles_real_window_0.24.182.jpg`.
+- 한계: 썸네일은 평평한 판에 기본 크기로 그린 모습 — 굽은 몸이나 아주 크거나 작게 그리면 질감 크기 느낌이 다를 수 있음. 오마카세
+  프리셋은 기존 질감 재료(Bumps · Cells · Cracks · Wrinkles · Pits · Grain · Chips)의 새 조합이라, 비늘이 실제처럼 겹쳐 올라오는
+  모양까지는 아님(그건 Scale Line). Shark Skin · Lizard Belly 처럼 아주 잔 질감은 썸네일에선 잘 안 보임.
+
 ## 0.24.181 — 스컬핑한 모양으로 만든 머리카락도 머리의 미러를 따라감 (2026-11-16)
 
 - **머리카락 미러**(사용자: "근데 머리카락 미러는 왜 아직 안 되지?"): 원인 두 가지 —
