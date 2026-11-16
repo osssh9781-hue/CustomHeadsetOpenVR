@@ -1145,6 +1145,13 @@ def draw_wing(layout, context):
     insect_wing.draw(layout, context)
 
 
+def _muscle_drawer(tool):
+    def draw_it(layout, context):
+        from . import muscle_gen
+        muscle_gen.draw(layout, context, tool)
+    return draw_it
+
+
 def draw_omass(layout, context):
     from . import organic_mass
     organic_mass.draw(layout, context)
@@ -1183,6 +1190,8 @@ DRAWERS = {
     'MEMBRANE': draw_membrane,
     'WING': draw_wing,
     'OMASS': draw_omass,
+    'MUSCLE': _muscle_drawer('MUSCLE'),
+    'MMUSCLE': _muscle_drawer('MMUSCLE'),
     'WDIRT': _weather_drawer('DIRT'), 'WDUST': _weather_drawer('DUST'), 'WLEAF': _weather_drawer('LEAVES'),
     'WSNOW': _weather_drawer('SNOW'),
     'PMEASURE': _print_drawer('draw_measure'), 'PCUT': _print_drawer('draw_cut'),        # 0.24.164 3D Print

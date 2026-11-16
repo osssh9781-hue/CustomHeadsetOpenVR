@@ -28,7 +28,7 @@ from mathutils.bvhtree import BVHTree
 from . import target_rules
 from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
-MODES = {'CUT', 'SPLIT', 'PLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'MEMBRANE'}   # 0.24.173 + Creature Cloth
+MODES = {'CUT', 'SPLIT', 'PLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'MEMBRANE', 'PCUT'}   # 0.24.173 + Creature Cloth; 0.24.183 Print Cut
 PATCH_MODES = {'PLATE', 'WRINKLE', 'CDRAPE', 'ZONE'}        # 0.22.2: Armor Plate / Cloth Plate from a surface outline; 0.24.95 Cloth Drape
 HIT_PX = 12.0
 _draw_ops = []
@@ -597,6 +597,9 @@ class SurfaceLogic:
         parts = split_along_loop(context, ob, loop, nrms, gap=gap)
         if len(parts) < 2:
             return parts, 'Surface Lasso: the loop does not go all the way around the part (nothing came off)'
+        if self.mode == 'PCUT':                       # 0.24.183 Print Cut drawn on the part: keys across the cut
+            from . import print3d
+            return parts, print3d.keys_for_parts(context, parts, ob.name)
         return parts, f'Surface Lasso: {len(parts)} parts'
 
 

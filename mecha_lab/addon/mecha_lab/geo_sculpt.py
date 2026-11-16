@@ -41,7 +41,7 @@ from mathutils.bvhtree import BVHTree
 
 MOD = 'MCH Geo Sculpt'
 GROUP = 'MCH Geo Sculpt'
-GROUP_VERSION = 21
+GROUP_VERSION = 22
 PART_KEY = 'mch_geo_part'           # on the stroke object: the part it belongs to
 CHAMFER_MOD, ROUND_MOD = 'MCH Geo Chamfer', 'MCH Geo Round'
 BEVEL_MODS = {'CHAMFER': CHAMFER_MOD, 'ROUND': ROUND_MOD}
@@ -52,8 +52,8 @@ FACE_BUDGET = 400000                # the refined region stops splitting near th
 CELL = 0.2                          # a stroke's faces: about this share of its radius (x 1 / Resolution)
 SMOOTH_LEVEL = 1                    # the region's one smoothing subdivision (Catmull-Clark inside)
 REGION_ATTR = 'mch_geo_region'      # (on the layer's faces: Apply merges the flat ones back)
-KIND = {'STANDARD': 0, 'CLAY': 1, 'MOVE': 2, 'BUILDUP': 3, 'SMOOTH': 4, 'FLAT': 5, 'EDGE': 6, 'PANEL': 7}
-LINE_KINDS = ('EDGE', 'PANEL')
+KIND = {'STANDARD': 0, 'CLAY': 1, 'MOVE': 2, 'BUILDUP': 3, 'SMOOTH': 4, 'FLAT': 5, 'EDGE': 6, 'PANEL': 7, 'DAM': 8}
+LINE_KINDS = ('EDGE', 'PANEL', 'DAM')
 PANEL_FLOOR = 0.35                  # a Panel Line's flat floor: this share of the band's half width
 EDGE_FULL = 0.55                    # an Edge Line is fully flat inside this share of its band, then blends back
 BRUSHES = (
@@ -68,15 +68,18 @@ BRUSHES = (
                           '- in a band as wide as the brush both sides go flat (Alt: an inward edge)'),
     ('PANEL', 'Panel Line', 'Draw a line: a panel line along it - a groove with a flat floor and straight walls, as wide '
                             'as the brush, only as far as you drew it (Alt: a raised rib)'),
+    # 0.24.183 (user: "댐 스탠다드처럼 이렇게 내가 그리면 안쪽으로 파지는 것도 만들어 줘, 근데 가볍게")
+    ('DAM', 'Dam Standard', 'Draw a line: a sharp crease carved in along it (V-shaped, its ends tapering, its sides a '
+                            'little raised), the surface round it as it was - only where you drew (Alt: a sharp ridge)'),
     ('CHAMFER', 'Chamfer', 'Click one of the shown edges of the part: it is chamfered, as wide as the brush (drag: '
                            'every edge the brush passes; Alt: taken off)'),
     ('ROUND', 'Round', 'Click one of the shown edges of the part: it is rounded, as wide as the brush (drag: every edge '
                        'the brush passes; Alt: taken off)'),
 )
-BRUSH_ROWS = (('STANDARD', 'CLAY', 'BUILDUP'), ('FLAT', 'MOVE', 'SMOOTH'), ('EDGE', 'PANEL'), ('CHAMFER', 'ROUND'))
+BRUSH_ROWS = (('STANDARD', 'CLAY', 'BUILDUP'), ('FLAT', 'MOVE', 'SMOOTH'), ('EDGE', 'PANEL', 'DAM'), ('CHAMFER', 'ROUND'))
 BRUSH_COLOUR = {'STANDARD': (1.0, 0.62, 0.15, 0.95), 'CLAY': (1.0, 0.62, 0.15, 0.95), 'BUILDUP': (1.0, 0.62, 0.15, 0.95),
                 'FLAT': (0.35, 0.8, 1.0, 0.95), 'MOVE': (0.6, 1.0, 0.45, 0.95), 'SMOOTH': (0.85, 0.85, 0.9, 0.9),
-                'EDGE': (1.0, 0.35, 0.35, 0.95), 'PANEL': (1.0, 0.35, 0.35, 0.95), 'CHAMFER': (0.95, 0.4, 1.0, 0.95), 'ROUND': (0.95, 0.4, 1.0, 0.95)}
+                'EDGE': (1.0, 0.35, 0.35, 0.95), 'PANEL': (1.0, 0.35, 0.35, 0.95), 'DAM': (1.0, 0.35, 0.35, 0.95), 'CHAMFER': (0.95, 0.4, 1.0, 0.95), 'ROUND': (0.95, 0.4, 1.0, 0.95)}
 POINT_ATTRS = (('stroke', 'INT'), ('radius', 'FLOAT'), ('strength', 'FLOAT'), ('kind', 'INT'),
                ('move', 'FLOAT_VECTOR'), ('normal', 'FLOAT_VECTOR'), ('fade', 'FLOAT'))
 _CURSOR = [None]
@@ -629,14 +632,23 @@ def _build():
     blend_out.inputs['From Max'].default_value = EDGE_FULL
     w_in = switch('FLOAT', is_panel, blend_out.outputs['Result'], 1.0)
     h_here = math_('ADD', h, math_('MULTIPLY', slope, math_('SUBTRACT', s_new, s_len)))
+    # 0.24.183 Dam Standard: no flattening - the surface's own height where the point now is, a V crease carved in
+    # (sharp at the line: the points crowd on it), the sides lifted a little; Alt: a sharp ridge
+    is_dam = math_('COMPARE', k, float(KIND['DAM']), 0.1)
+    vee = math_('POWER', math_('MAXIMUM', math_('SUBTRACT', 1.0, un), 0.0), 1.6)
+    lip = math_('SINE', math_('MULTIPLY', math_('MINIMUM', un, 1.0), math.pi))
+    dam = math_('MULTIPLY', math_('MULTIPLY', sgn, k_abs2),
+                math_('ADD', math_('MULTIPLY', vee, math_('MULTIPLY', r, -0.45)), math_('MULTIPLY', lip, math_('MULTIPLY', r, 0.05))))
+    h_new = switch('FLOAT', is_dam, h_new, math_('ADD', h_here, dam))
     h_fin = math_('ADD', h_here, math_('MULTIPLY', math_('SUBTRACT', h_new, h_here), math_('MULTIPLY', fade, w_in)))
     target = vmath('ADD', vmath('ADD', near, vmath('SCALE', nl, scale=h_fin)), vmath('SCALE', sdir, scale=s_new))
     edge_off = vmath('SCALE', vmath('SUBTRACT', target, pos()), scale=inband)
     pick = node('GeometryNodeIndexSwitch', data_type='VECTOR')
-    while len(pick.index_switch_items) < 8:
+    while len(pick.index_switch_items) < 9:
         pick.index_switch_items.new()
     link(math_('ROUND', k), pick.inputs['Index'])
-    for i, off in ((0, std_off), (1, clay_off), (2, mv_off), (3, bld_off), (5, flat_off), (6, edge_off), (7, edge_off)):
+    for i, off in ((0, std_off), (1, clay_off), (2, mv_off), (3, bld_off), (5, flat_off), (6, edge_off), (7, edge_off),
+                   (8, edge_off)):
         link(off, pick.inputs[i + 1])
     # a Flat cut (or pad top) is a plane: the points put on it are flagged and faces all on it are shaded flat, so the
     # facet reads crisp; a later stroke that moves a point (any other brush) clears its flag
@@ -1579,7 +1591,7 @@ def _draw_stroke(op, context):
         x, y = op.mouse
         col = BRUSH_COLOUR.get(op.brush, (1, 1, 1, 0.9))
         _circle(x, y, op.r_px, col, 2.0, dashed=op.invert)
-        if op.brush in ('EDGE', 'PANEL') and len(op.screen) > 1:
+        if op.brush in LINE_KINDS and len(op.screen) > 1:
             from . import ui_gpu as ug
             ug.polyline(op.screen, col, 2.0)
         del st

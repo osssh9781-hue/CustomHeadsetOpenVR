@@ -923,6 +923,15 @@ def cut_ramp(context, targets, loops, projector, edge=None, live=True):
 
 
 @_with_finish_notes
+def _print_cut(fn):
+    """0.24.183 a Print Cut run: its own error as the engine's."""
+    from . import print3d
+    try:
+        return fn()
+    except print3d.PrintError as ex:
+        raise cg.CutError(str(ex))
+
+
 def perform_closed(context, mode, targets, loops, projector, invert=False):
     """Cut / Split all targets with closed screen loops. Returns a report string.  0.24.95 From Surface, Floor Follow:
     the pocket follows the surface under the shape; Floor Level: flat at the point drawn round, everything higher
@@ -1423,6 +1432,7 @@ _COLORS = {
     'PLATE': (0.30, 0.78, 1.0, 1.0),
     'CBASE': (1.0, 0.62, 0.45, 1.0),
     'OMASS': (0.85, 0.7, 0.45, 1.0),
+    'PCUT': (0.45, 1.0, 0.75, 1.0),
     'CPLATE': (0.55, 0.9, 0.6, 1.0),
     'BELT': (0.95, 0.75, 0.3, 1.0),
     'SPIKE': (0.6, 0.85, 0.4, 1.0),
@@ -1937,7 +1947,7 @@ class StrokeLogic:
         cut_props = getattr(context.scene, 'mch_cut', None)
         # 0.12 Auto Target: the finished shape decides what is cut, so a stroke may
         # start anywhere and the tool stays on for the next part.
-        self.auto_target = (self.mode in {'CUT', 'SPLIT', 'HIDE'} and cut_props is not None and
+        self.auto_target = (self.mode in {'CUT', 'SPLIT', 'HIDE', 'PCUT'} and cut_props is not None and
                             getattr(cut_props, 'targets', '') == 'AUTO')
         self._auto_cache = None
         from . import lasso_sketch
@@ -2236,6 +2246,10 @@ class StrokeLogic:
         if self.mode == 'BELT':
             from . import belt_maker
             return belt_maker.perform(context, self._line_path(), self.projector)
+        if self.mode == 'PCUT':                  # 0.24.183 Print Cut with the shapes: split along it, keys across
+            from . import print3d
+            loops = self._current_loops(self.ctrl_held, self.shift_held)
+            return _print_cut(lambda: print3d.cut_shape(context, targets, loops, self.projector))
         if self.mode == 'SDRAW':                 # 0.24.33 Surface Draw
             from . import surface_draw
             if self.inverted():
@@ -2478,6 +2492,10 @@ class StrokeLogic:
                 if self.mode == 'SPLIT':
                     return self._run(context, lambda c: perform_line(
                         c, 'SPLIT', self._targets(), self.pts, self.projector, self.pts[0]))
+                if self.mode == 'PCUT':          # 0.24.183 Print Cut: a two-point lasso = its line
+                    from . import print3d
+                    return self._run(context, lambda c: _print_cut(lambda: print3d.cut_line_for(
+                        c, self._targets(), self.pts, self.projector)))
                 self.stage = 'SIDE'
                 self._update_side_preview()
                 self._hint(context)
@@ -2855,6 +2873,7 @@ class MCH_OT_cut_stroke(StrokeLogic, bpy.types.Operator):
         ('CDRAPE', 'Cloth Drape', 'A loose cloth laid over the region under the outline'),
         ('ZONE', 'Lasso Zone', 'A Paint / Split Zone on the Mech / Creature part under the outline'),
         ('CBASE', 'Creature Base Mesh', 'New rounded solid (Puff / Ridge / Pillow) from the drawn outline'),
+        ('PCUT', 'Print Cut', 'Cut a part along the drawn shape, connection pins across the cut'),
         ('OMASS', 'Creature Base Mesh 2', 'A big organic lump in the drawn outline: rock, scale, mushroom, crystal...'),
         ('CPLATE', 'Creature Plate', 'New rounded plate (Puff / Ridge / Pillow) on the mesh under the outline'),
         ('BELT', 'Belt Maker', 'A strap around the mesh where the line crosses it, or along the line'),

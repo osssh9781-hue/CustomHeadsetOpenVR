@@ -118,6 +118,14 @@ TOOLS = (
     ('MEMBRANE', 'Creature Cloth', 'Draw a membrane over your mesh (a dragon / bat wing between its bones): the parts over the '
      'mesh are pinned to it, the rest a cloth that falls (Space), no collision; Enter keeps it '
      '(+ Thickness), skin and vein presets', 'membrane', 'MOD_CLOTH', 'mecha.creature_membrane', 'OK'),   # 0.24.173
+    # 0.24.183 (user: "근육 제네레이터 만들자 ... 끝과 끝 점을 이으면 거기에 근육이 생기는 거구"; "메카 근육 메뉴도")
+    ('MUSCLE', 'Muscle', 'Click the points of a muscle on your mesh (the bones): it lies on it between them - two for a '
+     'long one (thigh, triceps), three for a fan (shoulder, chest: the bands twisting into the arm); Strands, '
+     'Thickness, Volume, Length live; Membrane: click points, Enter; Skin Over All: one mesh over the bones and the '
+     'muscles', 'muscle', 'OUTLINER_OB_FORCE_FIELD', 'mecha.muscle', 'OK'),
+    ('MMUSCLE', 'Mecha Muscle', 'The same points and presets as Muscle, made as an artificial muscle - a core (Fibre '
+     'Bundle, Smooth, Ribbed, Piston), a sleeve with holes, end caps - or as Cables; your own core / cap / muscle '
+     'presets; Skin Over All', 'mmuscle', 'MOD_SCREW', 'mecha.mecha_muscle', 'OK'),
     ('WING', 'Insect Wing', 'Draw a wing\'s outline: a thin insect wing in that shape, its veins raised inside it '
      '(Dragonfly, Damselfly, Bee / Wasp, Fly, Lacewing, Cicada) - Vein Height / Width / Density, '
      'Thickness; no simulation; select a wing to change it, Enter / Apply to keep', 'wing', 'MOD_PARTICLE_INSTANCE', 'mecha.insect_wing', 'OK'),   # 0.24.173
@@ -234,7 +242,7 @@ QUICK_TOOLS = ('CUT', 'BOOLEAN', 'BASE', 'SUBD', 'SPLIT', 'RADIAL', 'PLATE')   #
 NATIVE_TO_TOOL = {t[5]: t[0] for t in TOOLS if t[5]}
 SHAPE_TOOLS = {'CUT', 'SPLIT', 'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'HIDE', 'DETAIL', 'DETAIL2',
                'DETAIL3', 'DETAIL4', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER', 'SCURVE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'SDRAW',
-               'FUR', 'WING', 'OMASS', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW'}
+               'FUR', 'WING', 'OMASS', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW', 'PCUT'}
 
 DRAW_TOOLS = SHAPE_TOOLS | {'PRESS'}      # 0.24.95 + Press Cut (Shift + draw its stamp): the lasso settings it keeps
 DRAW_TOOLS |= {'GREEBLE', 'CGREEBLE'}   # 0.24.154 + Greeble / Scale Line (Shift + draw a part)
@@ -246,8 +254,8 @@ TOOL_GROUPS = (
     ('Surface detail', ('GSCULPT', 'GREEBLE', 'PLATE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'SDRAW', 'SCREW', 'EXTRACT', 'FPOP', 'MOLDING', 'BELT')),
     ('Move', ('CMOVE', 'CPATH', 'SMOVE', 'SMART', 'POSE', 'REMESH')),
     ('Symmetry & repeat', ('MIRROR', 'RSYM', 'RADIAL', 'ARRAY')),
-    ('Curves', ('TUBE', 'TUBE_SAME', 'SCURVE', 'CABLE', 'ALONG', 'LOFT')),
-    ('Creature', ('CPLATE', 'CGREEBLE', 'FGREEBLE', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER', 'HAIR', 'FUR', 'WING', 'MEMBRANE')),
+    ('Curves', ('TUBE', 'TUBE_SAME', 'SCURVE', 'CABLE', 'MMUSCLE', 'ALONG', 'LOFT')),
+    ('Creature', ('CPLATE', 'CGREEBLE', 'FGREEBLE', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER', 'HAIR', 'FUR', 'WING', 'MEMBRANE', 'MUSCLE')),
     ('Weathering', ('WDIRT', 'WDUST', 'WLEAF', 'WSNOW')),                  # 0.24.158 click a shape: dirt / dust / ...
     ('3D Print', ('PMEASURE', 'PCUT')),                                    # 0.24.164 measure; cut with connection pins
     ('Cloth', ('WRINKLE', 'CDRAPE', 'MEMBRANE', 'WLINES', 'CAPE', 'SCAPE', 'GARMENT', 'HOOD', 'SCARF')),
@@ -277,7 +285,7 @@ _ENUM_NUMBERS = {'CUT': 1, 'BOOLEAN': 2, 'FUSE': 3, 'MIRROR': 4, 'MASK': 5, 'DRA
                  'EXTRACT': 20, 'MOLDING': 21, 'HOLLOW': 22, 'ALONG': 23, 'CABLE': 24, 'PLATE': 25, 'WRINKLE': 26, 'TUBE': 27,
                  'HIDE': 28, 'DETAIL': 29, 'DETAIL2': 30, 'SCREW': 31, 'DETAIL3': 32, 'TUBE_SAME': 33,
                  'CBASE': 34, 'CPLATE': 35, 'BELT': 36, 'SPIKE': 37, 'SCALES': 38, 'FLOWER': 39, 'SCURVE': 40, 'SBRUSH': 41, 'BRIDGE': 42, 'CAPE': 43, 'HAIR': 44, 'GARMENT': 45, 'HOOD': 46, 'SCARF': 47, 'CMOVE': 48, 'CPATH': 50, 'PERF': 51, 'SDRAW': 52, 'SCAPE': 53, 'RSYM': 55, 'SMOVE': 56, 'WLINES': 57, 'CDRAPE': 58, 'ZONE': 59, 'PRESS': 60, 'SMART': 61, 'GSCULPT': 62, 'GREEBLE': 63, 'CGREEBLE': 64, 'FUR': 65, 'WDIRT': 66,
-                 'WDUST': 67, 'WLEAF': 68, 'WSNOW': 69, 'DETAIL4': 70, 'PMEASURE': 71, 'PCUT': 72, 'FGREEBLE': 73, 'WING': 74, 'MEMBRANE': 75, 'BBEVEL': 76, 'FPOP': 77, 'OMASS': 78}   # 54: the removed Cloth Wrap (kept free)   # 49: the removed Jungle Gym prototype (0.24.31), kept free
+                 'WDUST': 67, 'WLEAF': 68, 'WSNOW': 69, 'DETAIL4': 70, 'PMEASURE': 71, 'PCUT': 72, 'FGREEBLE': 73, 'WING': 74, 'MEMBRANE': 75, 'BBEVEL': 76, 'FPOP': 77, 'OMASS': 78, 'MUSCLE': 79, 'MMUSCLE': 80}   # 54: the removed Cloth Wrap (kept free)   # 49: the removed Jungle Gym prototype (0.24.31), kept free
 TOOL_ENUM_ITEMS = [(t[0], t[1], t[2], t[4], _ENUM_NUMBERS[t[0]]) for t in TOOLS]
 
 SHAPES = (

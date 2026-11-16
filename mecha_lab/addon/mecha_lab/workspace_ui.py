@@ -1480,9 +1480,9 @@ def draw_shape_palette(self, context):
     lb.prop(brush, 'line_mode', text='Line', icon='IPO_LINEAR', toggle=True)
     if tool == 'CPLATE':                         # 0.24.20 Creature Plate: through front and back
         sk.prop(brush, 'through_mode', text='Through', icon='XRAY', toggle=True)
-    if tool in {'CUT', 'SPLIT', 'PLATE', 'WRINKLE', 'CDRAPE', 'ZONE'}:
+    if tool in {'CUT', 'SPLIT', 'PLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'PCUT'}:
         sk.prop(brush, 'surface_mode', text='Surface', icon='SNAP_FACE', toggle=True)
-        if brush.surface_mode and tool in {'CUT', 'SPLIT'}:
+        if brush.surface_mode and tool in {'CUT', 'SPLIT', 'PCUT'}:
             sk.prop(brush, 'surface_gap', text='Gap')
         if tool == 'ZONE':                       # 0.24.95 Lasso Zone: the back faces too
             sk.prop(brush, 'through_mode', text='Through', icon='XRAY', toggle=True)
@@ -2677,6 +2677,7 @@ ENTER_APPLY = (
     ('fur_apply', 'Fur'),
     ('wing_apply', 'Insect Wing'),             # 0.24.173
     ('omass_apply', 'Creature Base Mesh 2'),   # 0.24.183
+    ('muscle_apply', 'Muscle'),                # 0.24.183
     ('membrane_keep', 'Creature Cloth'),       # 0.24.173 (the session not running: Enter keeps it too)
     ('clothing_apply', 'Clothing'),
     ('hood_apply', 'Hood'),

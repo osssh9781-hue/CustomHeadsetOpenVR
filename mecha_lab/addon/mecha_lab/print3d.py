@@ -1066,6 +1066,194 @@ def cut_along_line(context, ob, path, projector, pg=None):
     return a, b, pins, f'Split "{ob.name}" along the line: ' + msg
 
 
+def keys_for_parts(context, parts, name):
+    """0.24.183 keys / pins across the cut the two biggest of ``parts`` share (the smaller carries them)."""
+    pg = context.scene.mch_print
+    parts = [p for p in parts if p is not None and p.name in bpy.data.objects and p.type == 'MESH']
+    if len(parts) < 2:
+        return f'"{name}": nothing came off'
+    parts = sorted(parts, key=_volume, reverse=True)
+    carrier, other = key_carrier(parts[0], parts[1])
+    try:
+        _pins, msg = keys_between(context, carrier, other, pg, name)
+    except PrintError as ex:
+        msg = f'"{name}" split - no keys: {ex}'
+    return msg
+
+
+def cut_shape(context, targets, loops, projector):
+    """0.24.183 (user: "프린트 컷에는 왜 라쏘랑 그런 게 없어, 내가 고를 수 있게 해 주고"): a shape drawn over parts (Lasso,
+    Rectangle, Circle, Free Draw ... - the header's) cuts each through along it (Split's cut, the parts touching) and
+    keys / pins go across the cut.  The originals are kept, hidden."""
+    from . import core_geometry as cg, cut_engine as ce
+    cut = context.scene.mch_cut
+    st = getattr(context.scene, 'mch_settings', None)
+    saved = {k: getattr(cut, k) for k in SPLIT_FORCE if hasattr(cut, k)}
+    saved_apply = getattr(st, 'auto_apply', True) if st is not None else True
+    msgs = []
+    try:
+        for k, v in SPLIT_FORCE.items():
+            if k in saved:
+                setattr(cut, k, v)
+        if st is not None:
+            st.auto_apply = True
+        for ob in targets:
+            if ob is None or ob.type != 'MESH':
+                continue
+            dup = ob.copy()
+            dup.data = ob.data.copy()
+            _no_light_copy(dup)
+            for coll in ob.users_collection or (context.scene.collection,):
+                coll.objects.link(dup)
+            dup.name = ob.name + '.A'
+            before = set(bpy.data.objects)
+            try:
+                ce.perform_closed(context, 'SPLIT', [dup], loops, projector)
+            except cg.CutError as ex:
+                bpy.data.objects.remove(dup)
+                msgs.append(f'"{ob.name}": {ex}')
+                continue
+            made = [o for o in bpy.data.objects if o not in before and o.type == 'MESH' and o.name in bpy.data.objects]
+            if not made:
+                bpy.data.objects.remove(dup)
+                msgs.append(f'"{ob.name}": the shape does not cut it')
+                continue
+            for i, o in enumerate(made):
+                o.name = ob.name + ('.B' if i == 0 else f'.B{i + 1}')
+            for o in [dup] + made:
+                o[FROM_KEY] = ob.name
+            ob.hide_set(True)
+            ob.hide_render = True
+            msgs.append(keys_for_parts(context, [dup] + made, ob.name))
+    finally:
+        for k, v in saved.items():
+            setattr(cut, k, v)
+        if st is not None:
+            st.auto_apply = saved_apply
+    if not msgs:
+        raise PrintError('The shape is not over a part')
+    return 'Print Cut: ' + '; '.join(msgs)
+
+
+def cut_line_for(context, targets, path, projector):
+    """The Print Cut line drawn with the shapes (a two-point Lasso): the first part under it, as the drag does."""
+    obs = [o for o in targets if o is not None and o.type == 'MESH']
+    if not obs:
+        raise PrintError('Draw the line across a part')
+    *_r, msg = cut_along_line(context, obs[0], [tuple(p) for p in path], projector)
+    return msg
+
+
+# 0.24.183 (user: "프린트 컷에서도 내가 브러쉬 크기 조정하듯이 직관적으로 핀 크기 조정하게 해 줘") S: the pin's size at the
+# cursor - move the mouse left / right, a circle that size on the part
+_PIN = {'op': None}
+
+
+def _draw_pin():
+    op = _PIN['op']
+    if op is None:
+        return
+    try:
+        from . import ui_gpu as ug
+        r = op.radius_px()
+        x, y = op.center
+        ug.polyline(ug.circle_pts(x, y, r, n=48), (1.0, 0.8, 0.25, 1.0), 2.5, closed=True)
+        ug.polyline(ug.circle_pts(x, y, 2.5, n=12), (1.0, 0.8, 0.25, 1.0), 2.0, closed=True)
+        ug.text(x + r + 10, y, f'Pin {op.value:.2f} mm', 14, (1.0, 0.9, 0.6, 1.0))
+    except (ReferenceError, AttributeError, RuntimeError, ImportError):
+        pass
+
+
+class MCH_OT_print_pin_size(bpy.types.Operator):
+    """S: the pin's size at the cursor - move the mouse left / right (a circle that size on the part), click / S /
+    Enter keep it, right click / Esc back"""
+    bl_idname = 'mch.print_pin_size'
+    bl_label = 'Pin Size'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.area is not None and context.area.type == 'VIEW_3D'
+
+    def invoke(self, context, event):
+        pg = context.scene.mch_print
+        self.start = float(pg.pin_diameter)
+        self.was_auto = bool(pg.pin_auto)
+        self.value = self.start
+        self.x0 = event.mouse_region_x
+        self.center = (event.mouse_region_x, event.mouse_region_y)
+        self.px_per_mm = self._scale(context, self.center)
+        _PIN['op'] = self
+        self._h = bpy.types.SpaceView3D.draw_handler_add(_draw_pin, (), 'WINDOW', 'POST_PIXEL')
+        context.window_manager.modal_handler_add(self)
+        self._status(context)
+        return {'RUNNING_MODAL'}
+
+    def _scale(self, context, xy):
+        """screen pixels per mm on the part under ``xy`` (else at the view's middle depth)"""
+        from bpy_extras import view3d_utils
+        region, rv3d = context.region, context.region_data
+        o = view3d_utils.region_2d_to_origin_3d(region, rv3d, xy)
+        d = view3d_utils.region_2d_to_vector_3d(region, rv3d, xy)
+        try:
+            hit, loc, _n, _i, _ob, _m = context.scene.ray_cast(context.evaluated_depsgraph_get(), o, d)
+        except (RuntimeError, TypeError):
+            hit = False
+        p = loc if hit else view3d_utils.region_2d_to_location_3d(region, rv3d, xy, rv3d.view_location)
+        right = rv3d.view_rotation @ Vector((1.0, 0.0, 0.0))
+        q = p + right * blender_units(context, 0.001)
+        a = view3d_utils.location_3d_to_region_2d(region, rv3d, p)
+        b = view3d_utils.location_3d_to_region_2d(region, rv3d, q)
+        if a is None or b is None:
+            return 4.0
+        return max((b - a).length, 1e-4)
+
+    def radius_px(self):
+        return self.value * self.px_per_mm * 0.5
+
+    def _status(self, context):
+        try:
+            context.area.header_text_set(f'Pin size: {self.value:.2f} mm (move left / right) | click / S / Enter: '
+                                         f'keep | right click / Esc: back')
+        except (AttributeError, ReferenceError):
+            pass
+
+    def _end(self, context):
+        _PIN['op'] = None
+        try:
+            bpy.types.SpaceView3D.draw_handler_remove(self._h, 'WINDOW')
+        except (ValueError, RuntimeError):
+            pass
+        try:
+            context.area.header_text_set(None)
+            context.area.tag_redraw()
+        except (AttributeError, ReferenceError):
+            pass
+
+    def modal(self, context, event):
+        pg = context.scene.mch_print
+        if event.type in {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE'}:
+            dx = event.mouse_region_x - self.x0
+            self.value = max(0.1, round(self.start * math.exp(dx / 160.0), 2))
+            pg.pin_diameter = self.value
+            pg.pin_auto = False
+            self._status(context)
+            context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+        if event.value == 'PRESS' and event.type in {'LEFTMOUSE', 'RET', 'NUMPAD_ENTER', 'S', 'SPACE'}:
+            self._end(context)
+            self.report({'INFO'}, f'Pins: {pg.pin_diameter:.2f} mm (Auto Size off)')
+            return {'FINISHED'}
+        if event.value == 'PRESS' and event.type in {'RIGHTMOUSE', 'ESC'}:
+            pg.pin_diameter = self.start
+            pg.pin_auto = self.was_auto
+            self._end(context)
+            return {'CANCELLED'}
+        if event.type in {'MIDDLEMOUSE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
+            return {'PASS_THROUGH'}
+        return {'RUNNING_MODAL'}
+
+
 class MCH_OT_print_keys(bpy.types.Operator):
     """Keys (or pins) across the cut two selected parts share - parts from any Split (a lasso, a line), touching
     along the cut: the smaller part gets the keys, the bigger the sockets (a fit gap all round)"""
@@ -1273,6 +1461,8 @@ class MCH_OT_print_cut(bpy.types.Operator):
         return context.area is not None and context.area.type == 'VIEW_3D' and context.mode == 'OBJECT'
 
     def invoke(self, context, event):
+        if getattr(context.scene.mch_print, 'draw', 'LINE') == 'SHAPE':
+            return {'PASS_THROUGH'}                   # (0.24.183 the header's shapes draw: the cut engine has it)
         self.p0 = (event.mouse_region_x, event.mouse_region_y)
         self.path = [self.p0]
         self.straight = bool(event.shift)
@@ -1410,6 +1600,12 @@ def _redraw(self, context):
 
 
 class MCH_PG_Print(bpy.types.PropertyGroup):
+    # 0.24.183 (user: "프린트 컷에는 왜 라쏘랑 그런 게 없어 내가 고를 수 있게 해 주고 클로스 플레이트처럼 표면 위에 따라서
+    # 그릴 수 있게") how the cut is drawn
+    draw: EnumProperty(name='Draw', items=(
+        ('SHAPE', 'Shape', 'With the shape picked in the header - Lasso, Rectangle, Circle, Free Draw ... (a two-point '
+                           'Lasso: a line); Surface: click the outline on the part (it follows it), Enter'),
+        ('LINE', 'Drag a Line', 'Drag a line across a part (Shift: straight)')), default='SHAPE')
     sketch: BoolProperty(name='Sketch', default=False,         # 0.24.177 the cut line in pieces (its own: the top
                          description='Draw the cut line in pieces: each drag adds one, Enter cuts along them all, '
                                      'Backspace takes the last off, Esc clears')    # bar's Sketch is not shown here)
@@ -1487,6 +1683,15 @@ def draw_measure(layout, context):
 def draw_cut(layout, context):
     pg = context.scene.mch_print
     col = layout.column(align=True)
+    col.row(align=True).prop(pg, 'draw', expand=True)                       # 0.24.183 the header's shapes / a line
+    if pg.draw == 'SHAPE':
+        brush = getattr(context.scene, 'mch_brush', None)
+        if brush is not None:
+            r = col.row(align=True)
+            r.prop(brush, 'shape', text='')
+            r.prop(brush, 'surface_mode', text='Surface', icon='SNAP_FACE', toggle=True)
+    col = layout.column(align=True)
+    col.operator('mch.print_pin_size', text=f'Pin Size {pg.pin_diameter:.2f} mm (S)', icon='MESH_CIRCLE')
     col.row(align=True).prop(pg, 'pin_style', expand=True)
     col.row(align=True).prop(pg, 'pin_count', expand=True)
     col.prop(pg, 'pin_auto')
@@ -1525,6 +1730,12 @@ def draw_cut(layout, context):
 # Tools
 # -----------------------------------------------------------------------------
 
+def _shape_keys():
+    """0.24.183 the shape tools' keys (the cut engine's stroke, the header's shapes) after Print Cut's own."""
+    from .workspace_ui import _tool_keymap
+    return tuple(k for k in _tool_keymap('PCUT') if k[0] != 'mch.exit_tool')
+
+
 def _tool(key, idname, label, desc, keymap, drawer):
     def draw_settings(context, layout, tool):
         region = getattr(context, 'region', None)
@@ -1546,17 +1757,20 @@ TOOLS = (
            ('mch.print_measure', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'alt': True}, {'properties': [('remove', True)]}),
            ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None)), draw_measure),
     _tool('PCUT', 'mecha.print_cut', 'Mecha Print Cut',
-          'Drag a line across a part: cut into two closed parts with connection pins across the cut (Shift: straight)',
+          'Draw a shape over a part (the header\'s: Lasso, Rectangle, Circle ...; Surface: on the part) or drag a line: '
+          'cut into closed parts with connection pins across the cut.  S: the pin size at the cursor',
           (('mch.print_cut', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, None),
            ('mch.print_cut', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'shift': True}, None),
+           ('mch.print_pin_size', {'type': 'S', 'value': 'PRESS'}, None),
            # 0.24.177 the sketch's keys (no sketch: Enter / Backspace pass on, Esc leaves the tool as before)
            ('mch.print_cut_sketch', {'type': 'RET', 'value': 'PRESS'}, {'properties': [('action', 'CUT')]}),
            ('mch.print_cut_sketch', {'type': 'NUMPAD_ENTER', 'value': 'PRESS'}, {'properties': [('action', 'CUT')]}),
            ('mch.print_cut_sketch', {'type': 'BACK_SPACE', 'value': 'PRESS'}, {'properties': [('action', 'LAST')]}),
-           ('mch.print_cut_sketch', {'type': 'ESC', 'value': 'PRESS'}, {'properties': [('action', 'CLEAR_OR_EXIT')]})),
-          draw_cut),
+           ('mch.print_cut_sketch', {'type': 'ESC', 'value': 'PRESS'}, {'properties': [('action', 'CLEAR_OR_EXIT')]}))
+          + _shape_keys(), draw_cut),
 )
 CLASSES = (MCH_PG_Print, MCH_OT_print_measure, MCH_OT_print_clear_measures, MCH_OT_print_scale_height, MCH_OT_print_cut,
+           MCH_OT_print_pin_size,
            MCH_OT_print_cut_sketch, MCH_OT_print_cut_axis, MCH_OT_print_keys)
 _HANDLE = [None]
 

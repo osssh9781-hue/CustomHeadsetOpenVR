@@ -94,9 +94,9 @@ def groups(context, tool):
                 line.append(_cell('drop', '', action=('menu_enum',), data=bd, prop='attach_curve', width=104))
         out.append(('Line', line))
     extra = []
-    if tool in {'CUT', 'SPLIT', 'PLATE', 'WRINKLE', 'CDRAPE', 'ZONE'}:
+    if tool in {'CUT', 'SPLIT', 'PLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'PCUT'}:
         extra.append(_seg('Surface', brush, 'surface_mode'))
-        if brush.surface_mode and tool in {'CUT', 'SPLIT'}:
+        if brush.surface_mode and tool in {'CUT', 'SPLIT', 'PCUT'}:
             extra.append(_cell('mini', 'Gap', action=('number',), data=brush, prop='surface_gap', width=110))
     if tool in {'PLATE', 'WRINKLE', 'CPLATE', 'ZONE'}:       # (0.24.95 Lasso Zone: the back faces too)
         extra.append(_seg('Through', brush, 'through_mode'))
