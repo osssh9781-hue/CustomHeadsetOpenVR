@@ -35,7 +35,7 @@ from mathutils import Matrix, Vector
 from . import core_geometry as cg
 
 TREE = 'MCH Fur'
-TREE_VERSION = 12                  # 0.24.171 Bend
+TREE_VERSION = 13                  # 0.24.171 Bend; 0.24.183 Edge Short
 MOD = 'MCH Fur'
 MAT = 'MCH Fur'
 AREA_KEY = 'mch_fur_area'          # on a fur object: the body attribute that holds its area
@@ -67,6 +67,9 @@ LIVE = (
     ('tip_thick', 'Tip Thickness', 'FLOAT', 0.00015, 0.0, 0.05),
     ('segments', 'Segments', 'INT', 8, 2, 64),
     ('edge_soft', 'Edge Soft', 'INT', 3, 0, 60),
+    # 0.24.183 (user: "가생이로 갈수록 짧아지는 것도 만들어 줘") the strands shorter toward the area's border
+    ('edge_short', 'Edge Short', 'FLOAT', 0.0, 0.0, 1.0),
+    ('edge_width', 'Edge Width', 'FLOAT', 0.4, 0.02, 1.0),
     ('part_soft', 'Part Soft', 'INT', 3, 0, 60),
     ('use_polypaint', 'Use Polypaint', 'BOOL', True, None, None),
     ('root_color', 'Root Color', 'COLOR', (0.32, 0.22, 0.14, 1.0), None, None),
@@ -100,6 +103,10 @@ DESCS = {
     'tip_thick': 'A strand\'s thickness at its tip',
     'segments': 'Points along a strand (more: smoother curls)',
     'edge_soft': 'The area\'s border thinned out softly (0: a hard edge)',
+    'edge_short': 'The strands shorter toward the area\'s border (0: all as long; 1: the ones at the very edge '
+                  'almost none) - a soft edge to the fur',
+    'edge_width': 'How far in from the border they get shorter: a share of the way to the middle of the area '
+                  '(1: shorter all the way from the middle)',
     'use_polypaint': 'The colour at each root from the body\'s polypaint (its colour attribute); off: Root Color',
     'root_color': 'The colour at the root (when not from the polypaint)',
     'tip_color': 'The colour the strands go to at their tips (by Tip Blend)',
@@ -214,6 +221,58 @@ def _socket(ng, name, kind, default=None, lo=None, hi=None):
     return s
 
 
+EDGE_ATTR = 'mch_fur_ef'           # 0.24.183 on each root: its length share from Edge Short (1: as long)
+
+
+def edge_factor(dist, far, short, width):
+    """0.24.183 Edge Short: a root's length share from its distance to the area's border (``far``: the farthest
+    root's) - the graph below does the same.  1 at ``width`` of the way in, rounded off (eased) to the border."""
+    f = min(max(dist / max(width * far, 1e-9), 0.0), 1.0)
+    return max(1.0 - short * (1.0 - f * (2.0 - f)), 0.02)
+
+
+def _edge_short(b, I, body, w0, pts):
+    """0.24.183 (user: "우리 헤어 기능에 가생이로 갈수록 짧아지는 것도 만들었나? 없으면 만들어 줘"): each root's
+    distance to the area's border - the area's points with a point outside it next to them - as a share of the
+    farthest root's: the strands shorter toward the border (Edge Short; how far in: Edge Width).  Worked out only
+    when Edge Short is on (else every root 1: as long as before)."""
+    ring = b.node('GeometryNodeBlurAttribute', data_type='FLOAT')
+    b.feed(ring.inputs['Value'], w0)
+    ring.inputs['Iterations'].default_value = 1
+    edge = b.node('FunctionNodeBooleanMath', operation='AND')
+    b.feed(edge.inputs[0], b.math('GREATER_THAN', w0, 0.5))
+    b.feed(edge.inputs[1], b.math('LESS_THAN', ring.outputs['Value'], 0.999))
+    border = b.node('GeometryNodeSeparateGeometry', domain='POINT')
+    b.feed(border.inputs['Geometry'], body)
+    b.feed(border.inputs['Selection'], edge.outputs[0])
+    prox = b.node('GeometryNodeProximity', target_element='POINTS')
+    b.feed(prox.inputs['Geometry'], border.outputs['Selection'])
+    dist = prox.outputs['Distance']
+    valid = prox.outputs.get('Is Valid')
+    if valid is not None:                             # (no border - the area all round the body: as long)
+        sw = b.node('GeometryNodeSwitch', input_type='FLOAT')
+        b.feed(sw.inputs['Switch'], valid)
+        sw.inputs['False'].default_value = 1e6
+        b.feed(sw.inputs['True'], dist)
+        dist = sw.outputs['Output']
+    on_e = b.store(pts, 'mch_fur_ed', dist)
+    stat = b.node('GeometryNodeAttributeStatistic', data_type='FLOAT', domain='POINT')
+    b.feed(stat.inputs['Geometry'], on_e)
+    d_ = b.attr('mch_fur_ed').outputs['Attribute']
+    b.feed(stat.inputs['Attribute'], d_)
+    far = b.math('MINIMUM', stat.outputs['Max'], 1e5)
+    f = b.math('DIVIDE', d_, b.math('MAXIMUM', b.math('MULTIPLY', I['Edge Width'], far), 1e-9))
+    f = b.math('MINIMUM', b.math('MAXIMUM', f, 0.0), 1.0)
+    eased = b.math('MULTIPLY', f, b.math('SUBTRACT', 2.0, f))
+    share = b.math('MAXIMUM', b.math('SUBTRACT', 1.0, b.math('MULTIPLY', I['Edge Short'],
+                                                            b.math('SUBTRACT', 1.0, eased))), 0.02)
+    gs = b.node('GeometryNodeSwitch', input_type='GEOMETRY')
+    b.feed(gs.inputs['Switch'], b.math('GREATER_THAN', I['Edge Short'], 0.0))
+    b.feed(gs.inputs['False'], b.store(pts, EDGE_ATTR, 1.0))
+    b.feed(gs.inputs['True'], b.store(on_e, EDGE_ATTR, share))
+    return gs.outputs['Output']
+
+
 def fur_tree():
     """The shared node group (made once, rebuilt when TREE_VERSION changes)."""
     ng = bpy.data.node_groups.get(TREE)
@@ -270,6 +329,7 @@ def fur_tree():
     pos = b.node('GeometryNodeInputPosition').outputs['Position']
     pts = b.store(pts, 'mch_p0', pos, 'FLOAT_VECTOR')
     pts = b.store(pts, 'mch_i', idx, 'INT')
+    pts = _edge_short(b, I, oi.outputs['Geometry'], w0, pts)
     # 0.24.159 each area's own tilt (Lie Down, Flow Angle) a point of the body: the area cut out of the body, blended
     # there between areas (Part Soft), each root taking the nearest area point's - points outside the area never
     # count (on a face across the area's border they would tilt the roots there); a fur with none stored (before
@@ -435,6 +495,7 @@ def fur_tree():
     dirn = brot.outputs['Vector']
     ln = b.math('MULTIPLY', I['Length'], b.math('SUBTRACT', 1.0, b.math(
         'MULTIPLY', I['Length Random'], b.attr('mch_lr').outputs['Attribute'])))
+    ln = b.math('MULTIPLY', ln, b.attr(EDGE_ATTR).outputs['Attribute'])          # (0.24.183 Edge Short)
     seg = b.vec('SCALE', dirn, scale=b.math('DIVIDE', ln, b.math('MAXIMUM', I['Segments'], 1.0)))
     acc = b.node('GeometryNodeAccumulateField', data_type='FLOAT_VECTOR', domain='POINT')
     b.feed(acc.inputs['Value'], seg)
@@ -1355,7 +1416,8 @@ def draw(layout, context):
     for k_ in ('lie', 'flow', 'curl', 'clump', 'gather'):          # (0.24.160 Curl, Clump, Tip Gather the area's too)
         col.prop(tilt, k_)
     col.prop(pg, 'part_soft')
-    for group, props in (('Strands', ('density', 'length', 'length_random', 'segments', 'display')),
+    for group, props in (('Strands', ('density', 'length', 'length_random', 'edge_short', 'edge_width', 'segments',
+                                      'display')),
                          ('Shape', ('volume', 'spread', 'gravity', 'curl_turns', 'frizz', 'clump_size')),
                          ('Bend', ()),
                          ('Thickness', ('root_thick', 'tip_thick')),

@@ -63,7 +63,8 @@ for _st in ('DREADS', 'TENTACLE', 'QUILLS', 'STRANDS'):          # (0.24.169 the
 LIVE_KEYS = ('count', 'length', 'length_random', 'radius', 'radius_random', 'taper', 'lift', 'gravity', 'wave',
              'straight', 'rope',
              'rope_twist', 'rings', 'ring_size', 'seed', 'gap', 'sides', 'segments', 'curl', 'curl_turns',
-             'bend', 'bend_at', 'bend_soft', 'bend_screen', 'bend_dir', 'bend_side')
+             'bend', 'bend_at', 'bend_soft', 'bend_screen', 'bend_dir', 'bend_side',
+             'edge_short', 'edge_width')        # (0.24.183)
 COLOUR_KEYS = ('colour_mode', 'root_colour', 'tip_colour', 'tip_start', 'colour_random', 'shine', 'ring_colour')
 # 0.24.169 (user: "머리카락 색 바뀌게 해 줘") (preset, label, root colour, tip colour) - scene-linear
 COLOUR_PRESETS = (
@@ -117,6 +118,25 @@ def root_points(poly, count, seed):
             x += step
         y += step * 0.866
         row += 1
+    return out
+
+
+def outline_distance(pts, poly):
+    """0.24.183 Each point's distance to the outline ``poly`` (screen pixels; its segments)."""
+    import numpy as np
+    if not pts or len(poly) < 2:
+        return np.zeros(len(pts))
+    P = np.asarray(pts, float)
+    A = np.asarray(poly, float)
+    B = np.roll(A, -1, axis=0)
+    AB = B - A
+    L2 = np.maximum((AB * AB).sum(1), 1e-12)
+    out = np.full(len(P), np.inf)
+    for i in range(0, len(P), 2048):
+        q = P[i:i + 2048, None, :]
+        t = np.clip(((q - A[None]) * AB[None]).sum(2) / L2[None], 0.0, 1.0)
+        d = np.linalg.norm(q - (A[None] + t[..., None] * AB[None]), axis=2)
+        out[i:i + 2048] = d.min(1)
     return out
 
 
@@ -340,6 +360,10 @@ def build(context, src, p, target):
     if not roots2d:
         raise cg.CutError('Draw a bigger area for the hair.')
     cos, nrms, missing = ap.project_patch(roots2d, projector, bvh)
+    share = None
+    if p.edge_short > 0:                    # 0.24.183 Edge Short: shorter toward the outline you drew
+        from . import hair_shape
+        share = hair_shape.edge_share(outline_distance(roots2d, outer), p.edge_short, p.edge_width)
     size = (hi - lo).length
     miss = set(missing)
     gap = p.gap if p.gap > 0 else size * 0.004
@@ -359,6 +383,8 @@ def build(context, src, p, target):
         r0 = p.radius * size * (1.0 + p.radius_random * rng.uniform(-1, 1))
         if L <= r0 or r0 <= 0:
             continue
+        if share is not None:                # (kept a short stub: the others' randomness stays as it was)
+            L = max(L * float(share[i]), r0 * 1.5)
         keep = r0 * (max(1.0, p.ring_size) if p.rings else 1.0) + gap     # the rings are fatter than the strand
 
         def push(q, keep=keep):
@@ -735,6 +761,13 @@ class MCH_PG_Hair(bpy.types.PropertyGroup):
     length: FloatProperty(name='Length', default=0.55, min=0.01, max=2.0, update=_update,
                           description='Strand length (part of the body size)')
     length_random: FloatProperty(name='Length Random', default=0.3, min=0.0, max=0.95, update=_update)
+    # 0.24.183 (user: "우리 헤어 기능에 가생이로 갈수록 짧아지는 것도 만들었나? 없으면 만들어 줘")
+    edge_short: FloatProperty(name='Edge Short', default=0.0, min=0.0, max=1.0, update=_update,
+                              description='The strands shorter toward the outline you drew: 0 all as long, 1 the '
+                                          'ones at the very edge almost none')
+    edge_width: FloatProperty(name='Edge Width', default=0.4, min=0.02, max=1.0, update=_update,
+                              description='How far in from the outline they get shorter: a share of the way to the '
+                                          'middle (1: shorter all the way from the middle)')
     radius: FloatProperty(name='Thickness', default=0.022, min=0.001, max=0.2, precision=4, update=_update,
                           description='Strand thickness (part of the body size)')
     radius_random: FloatProperty(name='Thickness Random', default=0.2, min=0.0, max=0.9, update=_update)
@@ -969,6 +1002,9 @@ def draw(layout, context):
     col.prop(p, 'count')
     col.prop(p, 'length', slider=True)
     col.prop(p, 'length_random', slider=True)
+    col.prop(p, 'edge_short', slider=True)               # 0.24.183
+    if p.edge_short > 0:
+        col.prop(p, 'edge_width', slider=True)
     col.prop(p, 'radius', slider=True)
     col.prop(p, 'radius_random', slider=True)
     col.prop(p, 'taper', slider=True)

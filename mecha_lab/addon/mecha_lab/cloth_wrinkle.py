@@ -1736,9 +1736,12 @@ def capture(ob):
     return {k: (float(v) if isinstance(v, float) else v) for k, v in vals.items()}
 
 
+PRESETS_KEY = 'cloth_presets'
+
+
 def user_presets():
     from . import last_used
-    return last_used.data().setdefault('cloth_presets', {})
+    return last_used.data().get(PRESETS_KEY) or {}
 
 
 def apply_values(ob, vals):
@@ -1771,8 +1774,7 @@ class MCH_OT_wrinkle_preset_save(bpy.types.Operator):
     def execute(self, context):
         from . import last_used
         name = self.name.strip() or 'My Cloth'
-        user_presets()[name] = capture(active_wrinkle(context))
-        last_used.save()
+        last_used.set_item(PRESETS_KEY, name, capture(active_wrinkle(context)))   # (0.24.183 the others as on disk)
         self.report({'INFO'}, f'Cloth preset "{name}" saved')
         return {'FINISHED'}
 
@@ -1800,23 +1802,74 @@ class MCH_OT_wrinkle_preset_load(bpy.types.Operator):
         sec.clear()
         # the next Cloth Plate starts with it too (lengths follow its size, see recalled)
         sec.update(with_sizes(vals, float(ob.get('mch_wrinkle_size', 0.0) or 0.0) if ob is not None else 0.0))
+        last_used.touch('wrinkle')
         last_used.save()
         self.report({'INFO'}, f'Cloth preset "{self.name}"')
         return {'FINISHED'}
 
 
 class MCH_OT_wrinkle_preset_delete(bpy.types.Operator):
-    """Delete a saved Cloth preset"""
+    """Delete a saved Cloth preset (asks first)"""
     bl_idname = 'mch.wrinkle_preset_delete'
     bl_label = 'Delete Cloth Preset'
     bl_options = {'REGISTER'}
     name: bpy.props.StringProperty(default='')
 
+    def invoke(self, context, event):
+        # 0.24.183 (user: "내가 만든 클로스 프리셋 다 지웠어?"): the Delete items sit right under the presets in the
+        # same menu - a click there no longer deletes one straight away
+        return context.window_manager.invoke_confirm(self, event, title=f'Delete the Cloth preset "{self.name}"?',
+                                                     confirm_text='Delete')
+
     def execute(self, context):
         from . import last_used
-        user_presets().pop(self.name, None)
-        last_used.save()
+        if self.name not in user_presets():
+            return {'CANCELLED'}
+        last_used.set_item(PRESETS_KEY, self.name, None)
+        self.report({'INFO'}, f'Cloth preset "{self.name}" deleted')
         return {'FINISHED'}
+
+
+class MCH_OT_wrinkle_presets_import(bpy.types.Operator):
+    """Bring the Cloth presets you saved in another Blender version here (each version keeps its own settings
+    folder); one with a name already here comes in as "name (version)" """
+    bl_idname = 'mch.wrinkle_presets_import'
+    bl_label = 'Bring Cloth Presets Here'
+    bl_options = {'REGISTER'}
+    version: bpy.props.StringProperty(default='')
+
+    def execute(self, context):
+        from . import last_used
+        got = last_used.other_versions(PRESETS_KEY).get(self.version)
+        if not got:
+            self.report({'WARNING'}, f'No Cloth presets in Blender {self.version}')
+            return {'CANCELLED'}
+        mine = user_presets()
+        n = 0
+        for name, vals in got.items():
+            if mine.get(name) == vals:
+                continue
+            new = name if name not in mine else f'{name} ({self.version})'
+            if mine.get(new) == vals:
+                continue
+            last_used.set_item(PRESETS_KEY, new, vals)
+            mine = user_presets()
+            n += 1
+        self.report({'INFO'}, f'{n} Cloth preset{"s" if n != 1 else ""} brought from Blender {self.version}'
+                    if n else f'The Cloth presets of Blender {self.version} are all here already')
+        return {'FINISHED'}
+
+
+def presets_elsewhere():
+    """0.24.183 [(version, how many of its Cloth presets are not here)] - newest first."""
+    from . import last_used
+    mine = user_presets()
+    out = []
+    for v, sec in last_used.other_versions(PRESETS_KEY).items():
+        n = sum(1 for k, vals in sec.items() if mine.get(k) != vals and mine.get(f'{k} ({v})') != vals)
+        if n:
+            out.append((v, n))
+    return out[::-1]
 
 
 class MCH_MT_wrinkle_presets(bpy.types.Menu):
@@ -1832,7 +1885,11 @@ class MCH_MT_wrinkle_presets(bpy.types.Menu):
             layout.operator('mch.wrinkle_preset_load', text=n, icon='PRESET').name = n
         layout.separator()
         layout.operator('mch.wrinkle_preset_save', text='Save Preset...', icon='ADD')
+        for v, n in presets_elsewhere():               # 0.24.183 saved in another Blender version
+            layout.operator('mch.wrinkle_presets_import', text=f'Bring {n} from Blender {v}',
+                            icon='IMPORT').version = v
         if names:
+            layout.separator()
             sub = layout.column()
             for n in names:
                 sub.operator('mch.wrinkle_preset_delete', text='Delete ' + n, icon='TRASH').name = n
@@ -2465,6 +2522,7 @@ def draw(layout, context):
 
 
 CLASSES = (MCH_PG_Wrinkle, MCH_PG_ClothLive, MCH_OT_wrinkle_preset_save, MCH_OT_wrinkle_preset_load, MCH_OT_wrinkle_preset_delete,
+           MCH_OT_wrinkle_presets_import,
            MCH_MT_wrinkle_presets, MCH_OT_wrinkle_presets_menu, MCH_OT_wrinkle_type, MCH_OT_wrinkle_trim, MCH_OT_wrinkle_seam, MCH_OT_wrinkle_reset, MCH_OT_wrinkle_reroll, MCH_OT_wrinkle_apply, MCH_OT_wrinkle_remove,
            MCH_GT_wrinkle_slider, MCH_GGT_wrinkle_hud, MCH_OT_wrinkle_skin, MCH_OT_wrinkle_skin_edge,
            MCH_OT_creature_brush)
