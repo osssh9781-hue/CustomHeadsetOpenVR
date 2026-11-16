@@ -28,6 +28,13 @@ def _scene(name):
     return lambda context: getattr(context.scene, name, None)
 
 
+def _omass(context):
+    """0.24.183 the selected Creature Base Mesh 2 lump's values (live), else the next one's"""
+    from . import organic_mass
+    ob = organic_mass.active_mass(context)
+    return ob.mch_omass if ob is not None else getattr(context.scene, 'mch_omass', None)
+
+
 def _fur(context):
     """0.24.157 the selected fur's values (live), else the next fur's"""
     from . import creature_fur
@@ -99,6 +106,7 @@ SPEC = {
               (_scene('mch_concept'), 'path_taper')],
     'CGREEBLE': [(_scene('mch_cgreeble'), 'scale'), (_scene('mch_cgreeble'), 'gap'), (_scene('mch_cgreeble'), 'rows')],
     'FGREEBLE': [(_scene('mch_fgreeble'), 'length'), (_scene('mch_fgreeble'), 'width'), (_scene('mch_fgreeble'), 'gap')],
+    'OMASS': [(_omass, 'depth'), (_omass, 'lumps'), (_omass, 'pattern')],
     'WING': [(_scene('mch_wing'), 'vein_height'), (_scene('mch_wing'), 'density'), (_scene('mch_wing'), 'thickness')],
     'MEMBRANE': [(_scene('mch_membrane'), 'slack'), (_scene('mch_membrane'), 'gravity'), (_scene('mch_membrane'), 'thickness')],
     'FUR': [(_fur, 'length'), (_fur, 'density'), (_fur_area, 'lie'), (_fur_area, 'curl'), (_fur_area, 'gather')],

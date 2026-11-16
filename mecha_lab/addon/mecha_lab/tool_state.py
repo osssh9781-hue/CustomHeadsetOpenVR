@@ -69,6 +69,11 @@ TOOLS = (
     ('CBASE', 'Creature Base Mesh', 'Draw an outline to create a NEW rounded solid: Puff (round, thin parts thin), '
      'Ridge (diamond cross-section) or Pillow (flat, round edge); Height slider; RMB = profiles',
      'cbase', 'META_BALL', 'mecha.creature_base', 'OK'),
+    # 0.24.183 (user: "크리쳐 베이스 메쉬 2 ... 라쏘로 그리면 그 형태에 따라서 바위나 비늘, 버섯, 수정 그런 큰 덩어리의 오가닉한
+    # 물질 프리셋으로")
+    ('OMASS', 'Creature Base Mesh 2', 'Draw an outline: a big organic lump in that shape, of the matter you pick - Rock, '
+     'Big Scale, Mushroom, Crystal, Coral, Bone, Shell, Lava Rock, Flesh, Ice, Sponge, Bark; live (Thickness, Back, '
+     'Lumps, Detail, its Pattern, colours), Enter keeps it', 'omass', 'OUTLINER_OB_META', 'mecha.organic_mass', 'OK'),
     ('SUBD', 'SubD Plane', 'Plane with live Simple + Catmull-Clark subdivision and Solidify; extrude edges '
      'in Edit Mode to build armour panels', 'subd', 'MOD_SUBSURF', None, 'OK'),
     ('PLATE', 'Armor Plate', 'Draw a lasso on a mesh: a separate armour plate made of new clean faces '
@@ -229,14 +234,14 @@ QUICK_TOOLS = ('CUT', 'BOOLEAN', 'BASE', 'SUBD', 'SPLIT', 'RADIAL', 'PLATE')   #
 NATIVE_TO_TOOL = {t[5]: t[0] for t in TOOLS if t[5]}
 SHAPE_TOOLS = {'CUT', 'SPLIT', 'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'HIDE', 'DETAIL', 'DETAIL2',
                'DETAIL3', 'DETAIL4', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER', 'SCURVE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'SDRAW',
-               'FUR', 'WING', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW'}
+               'FUR', 'WING', 'OMASS', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW'}
 
 DRAW_TOOLS = SHAPE_TOOLS | {'PRESS'}      # 0.24.95 + Press Cut (Shift + draw its stamp): the lasso settings it keeps
 DRAW_TOOLS |= {'GREEBLE', 'CGREEBLE'}   # 0.24.154 + Greeble / Scale Line (Shift + draw a part)
 
 # 0.24.55 the tool list by job (about 10 groups instead of one long list); a tool not listed goes to Other
 TOOL_GROUPS = (
-    ('Block-out', ('BASE', 'CBASE', 'SUBD', 'PRIMITIVE')),
+    ('Block-out', ('BASE', 'CBASE', 'OMASS', 'SUBD', 'PRIMITIVE')),
     ('Cut', ('CUT', 'SPLIT', 'PRESS', 'HIDE', 'BOOLEAN', 'BBEVEL', 'FUSE', 'PERF')),
     ('Surface detail', ('GSCULPT', 'GREEBLE', 'PLATE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'SDRAW', 'SCREW', 'EXTRACT', 'FPOP', 'MOLDING', 'BELT')),
     ('Move', ('CMOVE', 'CPATH', 'SMOVE', 'SMART', 'POSE', 'REMESH')),
@@ -272,7 +277,7 @@ _ENUM_NUMBERS = {'CUT': 1, 'BOOLEAN': 2, 'FUSE': 3, 'MIRROR': 4, 'MASK': 5, 'DRA
                  'EXTRACT': 20, 'MOLDING': 21, 'HOLLOW': 22, 'ALONG': 23, 'CABLE': 24, 'PLATE': 25, 'WRINKLE': 26, 'TUBE': 27,
                  'HIDE': 28, 'DETAIL': 29, 'DETAIL2': 30, 'SCREW': 31, 'DETAIL3': 32, 'TUBE_SAME': 33,
                  'CBASE': 34, 'CPLATE': 35, 'BELT': 36, 'SPIKE': 37, 'SCALES': 38, 'FLOWER': 39, 'SCURVE': 40, 'SBRUSH': 41, 'BRIDGE': 42, 'CAPE': 43, 'HAIR': 44, 'GARMENT': 45, 'HOOD': 46, 'SCARF': 47, 'CMOVE': 48, 'CPATH': 50, 'PERF': 51, 'SDRAW': 52, 'SCAPE': 53, 'RSYM': 55, 'SMOVE': 56, 'WLINES': 57, 'CDRAPE': 58, 'ZONE': 59, 'PRESS': 60, 'SMART': 61, 'GSCULPT': 62, 'GREEBLE': 63, 'CGREEBLE': 64, 'FUR': 65, 'WDIRT': 66,
-                 'WDUST': 67, 'WLEAF': 68, 'WSNOW': 69, 'DETAIL4': 70, 'PMEASURE': 71, 'PCUT': 72, 'FGREEBLE': 73, 'WING': 74, 'MEMBRANE': 75, 'BBEVEL': 76, 'FPOP': 77}   # 54: the removed Cloth Wrap (kept free)   # 49: the removed Jungle Gym prototype (0.24.31), kept free
+                 'WDUST': 67, 'WLEAF': 68, 'WSNOW': 69, 'DETAIL4': 70, 'PMEASURE': 71, 'PCUT': 72, 'FGREEBLE': 73, 'WING': 74, 'MEMBRANE': 75, 'BBEVEL': 76, 'FPOP': 77, 'OMASS': 78}   # 54: the removed Cloth Wrap (kept free)   # 49: the removed Jungle Gym prototype (0.24.31), kept free
 TOOL_ENUM_ITEMS = [(t[0], t[1], t[2], t[4], _ENUM_NUMBERS[t[0]]) for t in TOOLS]
 
 SHAPES = (

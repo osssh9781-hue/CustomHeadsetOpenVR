@@ -26,7 +26,7 @@ from . import tool_state as ts
 
 KEY = 'mch_lasso_sketch'          # Scene ID prop (JSON) - Ctrl+Z steps back through it
 MODES = {'CUT', 'SPLIT', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'HIDE',
-         'PRESS', 'WING', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW'}   # 0.24.1 + Plate Detail 1 / 2, Box Hide; 0.24.95 Cloth Drape, Press Cut (the
+         'PRESS', 'WING', 'OMASS', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW'}   # 0.24.1 + Plate Detail 1 / 2, Box Hide; 0.24.95 Cloth Drape, Press Cut (the
 #                                               sketch = the stamp); 0.24.173 Insect Wing, Creature Cloth
 
 
@@ -190,6 +190,9 @@ def commit(context, alt=False):
         st_ = d.get('start')               # 0.24.176 its root where the first shape was started
         start = proj.to_screen(_frame(d) @ Vector((st_[0], st_[1], 0.0))) if st_ else None
         msg = insect_wing.perform(context, loops, proj, start=tuple(start) if start is not None else None)
+    elif mode == 'OMASS':
+        from . import organic_mass         # 0.24.183 Creature Base Mesh 2 sketch: the combined outline is the lump
+        msg = organic_mass.perform(context, loops, proj)
     elif mode == 'MEMBRANE':
         from . import creature_membrane    # 0.24.173 Creature Cloth sketch: the combined outline is the membrane
         msg = creature_membrane.perform(context, loops, proj)

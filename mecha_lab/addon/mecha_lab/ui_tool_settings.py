@@ -1145,6 +1145,11 @@ def draw_wing(layout, context):
     insect_wing.draw(layout, context)
 
 
+def draw_omass(layout, context):
+    from . import organic_mass
+    organic_mass.draw(layout, context)
+
+
 def draw_membrane(layout, context):
     from . import creature_membrane
     creature_membrane.draw(layout, context)
@@ -1177,6 +1182,7 @@ DRAWERS = {
     'FUR': draw_fur,
     'MEMBRANE': draw_membrane,
     'WING': draw_wing,
+    'OMASS': draw_omass,
     'WDIRT': _weather_drawer('DIRT'), 'WDUST': _weather_drawer('DUST'), 'WLEAF': _weather_drawer('LEAVES'),
     'WSNOW': _weather_drawer('SNOW'),
     'PMEASURE': _print_drawer('draw_measure'), 'PCUT': _print_drawer('draw_cut'),        # 0.24.164 3D Print

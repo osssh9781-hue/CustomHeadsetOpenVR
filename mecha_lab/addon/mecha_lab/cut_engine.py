@@ -1422,6 +1422,7 @@ _COLORS = {
     'BASE': (1.0, 0.55, 0.12, 1.0),
     'PLATE': (0.30, 0.78, 1.0, 1.0),
     'CBASE': (1.0, 0.62, 0.45, 1.0),
+    'OMASS': (0.85, 0.7, 0.45, 1.0),
     'CPLATE': (0.55, 0.9, 0.6, 1.0),
     'BELT': (0.95, 0.75, 0.3, 1.0),
     'SPIKE': (0.6, 0.85, 0.4, 1.0),
@@ -1794,7 +1795,7 @@ class StrokeLogic:
     def _needs_target(self):
         return self.mode not in {'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'ZONE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE',
                                  'FLOWER', 'SCURVE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'SDRAW', 'PRESS',
-                                 'GREEBLE', 'CGREEBLE', 'FUR', 'WING', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW'}
+                                 'GREEBLE', 'CGREEBLE', 'FUR', 'WING', 'OMASS', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW'}
 
     def _tangents(self, pts=None):
         pts = self.pts if pts is None else pts
@@ -1929,7 +1930,7 @@ class StrokeLogic:
                 self.report({'WARNING'}, str(ex))
             return {'CANCELLED'}
         if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'FLOWER',
-                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'FUR', 'WING', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW'} and self.shape == 'LASSO' and self.brush.line_open:
+                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'FUR', 'WING', 'OMASS', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW'} and self.shape == 'LASSO' and self.brush.line_open:
             self.brush.line_open = False
         self.ui = ui_scale(context)
         self.target_names = []
@@ -2324,6 +2325,9 @@ class StrokeLogic:
             elif self.mode == 'WING':                # 0.24.173
                 from . import insect_wing
                 msg = insect_wing.perform(context, loops, self.projector)
+            elif self.mode == 'OMASS':               # 0.24.183 Creature Base Mesh 2
+                from . import organic_mass
+                msg = organic_mass.perform(context, loops, self.projector)
             elif self.mode == 'GARMENT':
                 from . import clothing_gen
                 msg = clothing_gen.perform(context, loops, self.projector)
@@ -2468,7 +2472,7 @@ class StrokeLogic:
             self._clean_points()
             if self.shape == 'LASSO' and len(self.pts) >= 2 and (self.line_open or len(self.pts) == 2):
                 if self.mode in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'FLOWER',
-                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'FUR', 'WING', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW'}:
+                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'FUR', 'WING', 'OMASS', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW'}:
                     self.report({'WARNING'}, 'This tool needs a closed outline (3+ points)')
                     return {'RUNNING_MODAL'}
                 if self.mode == 'SPLIT':
@@ -2642,7 +2646,7 @@ class StrokeLogic:
             self.region.tag_redraw()
             return {'RUNNING_MODAL'}
         if et == 'F' and ev == 'PRESS' and self.shape == 'LASSO' and self.mode not in {'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'HIDE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'FLOWER',
-                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'FUR', 'WING', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW'}:
+                     'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'CAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'FUR', 'WING', 'OMASS', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW'}:
             self.line_open = not self.line_open
             self.brush.line_open = self.line_open
             self.region.tag_redraw()
@@ -2851,6 +2855,7 @@ class MCH_OT_cut_stroke(StrokeLogic, bpy.types.Operator):
         ('CDRAPE', 'Cloth Drape', 'A loose cloth laid over the region under the outline'),
         ('ZONE', 'Lasso Zone', 'A Paint / Split Zone on the Mech / Creature part under the outline'),
         ('CBASE', 'Creature Base Mesh', 'New rounded solid (Puff / Ridge / Pillow) from the drawn outline'),
+        ('OMASS', 'Creature Base Mesh 2', 'A big organic lump in the drawn outline: rock, scale, mushroom, crystal...'),
         ('CPLATE', 'Creature Plate', 'New rounded plate (Puff / Ridge / Pillow) on the mesh under the outline'),
         ('BELT', 'Belt Maker', 'A strap around the mesh where the line crosses it, or along the line'),
         ('SPIKE', 'Creature Spike', 'Spikes standing along the drawn line'),
