@@ -31,10 +31,16 @@ def keymap_items():
     if kc is None:
         return []
     # 0.24.17 what the item does counts too: the per-tool keys share one (unassigned) key but pick different tools
+    # 0.24.179 any operator's set properties count (the Press / Line tool's three LMB lasso items - 0.24.124 - differ
+    # only by their mode: Base Mesh / Armor Plate / Creature Plate)
     def what(ki):
-        if ki.idname != 'mch.hotkey':
+        if ki.idname == 'mch.hotkey':
+            return (getattr(ki.properties, 'action', ''), getattr(ki.properties, 'tool', ''))
+        p = ki.properties
+        if p is None:
             return ''
-        return (getattr(ki.properties, 'action', ''), getattr(ki.properties, 'tool', ''))
+        return tuple((k, repr(getattr(p, k))) for k in p.bl_rna.properties.keys()
+                     if k != 'rna_type' and p.is_property_set(k))
     return [(km.name, ki.idname, ki.type, ki.value, ki.shift, ki.alt, ki.ctrl, what(ki)) for km in kc.keymaps
             for ki in km.keymap_items if ki.idname.startswith('mch.')]
 
