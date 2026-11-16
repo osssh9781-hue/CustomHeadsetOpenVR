@@ -274,11 +274,67 @@ def effective(ob, d, kp):
     elif slot == 'Pelvis':
         w0 *= kp.hips
         w1 *= kp.hips
-    size = pp.size * (getattr(kp, SIZE_OF[slot]) if slot in SIZE_OF else 1.0)
+    size = pp.size
     tip = kp.head if (slot == 'Torso' and not d.get('has_head')) else 1.0
     return {'length': length, 'w0': w0, 'w1': w1, 'd0': d0, 'd1': d1, 'tip': tip, 'size': size,
             'muscle': pp.muscle + (kp.muscle if slot in GIRTH else 0.0), 'definition': pp.definition + kp.definition,
             'bend': pp.bend, 'bend_at': pp.bend_at}
+
+
+REGION_SIZE = {'UpperArm': 'arm_size', 'Arm': 'arm_size', 'Thigh': 'leg_size', 'Head': 'head', 'Hand': 'hands',
+               'Foot': 'feet'}
+
+
+def obj_scale(ob, d, kp):
+    """0.24.184 (user: "부피가 늘어난다기보단 스케일을 늘리거나 줄이는 게") a part's own size - the parts after it scale with it
+    (an arm's size: the hand too)."""
+    k = REGION_SIZE.get(d['slot'])
+    return ob.mch_bodypart.scale * (getattr(kp, k) if k else 1.0)
+
+
+def pose_rotation(d, bend, twist, side):
+    """0.24.184 a joint's turn from its sliders: Bend (toward the front), Side (sideways), Twist (round itself) - in the
+    part's own frame, the right side mirrored (the same values: a mirrored pose)."""
+    X, S, F, K, _rl = _frame_of(d)
+    m = -1.0 if d['side'] == 'R' else 1.0
+    q = Quaternion(K, bend) @ Quaternion(F, side * m) @ Quaternion(X, twist * m)
+    return q.to_euler('XYZ')
+
+
+def apply_pose(ob):
+    pp = ob.mch_bodypart
+    ob.rotation_mode = 'XYZ'
+    ob.rotation_euler = pose_rotation(info(ob), pp.p_bend, pp.p_twist, pp.p_side)
+
+
+# 0.24.184 poses (degrees: Bend, Twist, Side) - the left side's; the right the same, mirrored
+POSES = (
+    ('STAND', 'Stand', {}),
+    ('CROUCH', 'Crouch', {'Torso': (25, 0, 0), 'Thigh': (75, 0, 6), 'Knee': (-115, 0, 0), 'Foot': (40, 0, 0),
+                          'UpperArm': (20, 0, 8), 'Arm': (25, 0, 8), 'Forearm': (35, 0, 0), 'Head': (-20, 0, 0)}),
+    ('HUNCH', 'Creature Hunch', {'Torso': (35, 0, 0), 'Head': (-35, 0, 0), 'UpperArm': (30, 15, 12),
+                                 'Arm': (35, 15, 12), 'Forearm': (45, 0, 0), 'Thigh': (30, 0, 8), 'Knee': (-50, 0, 0),
+                                 'Foot': (20, 0, 0)}),
+    ('POUNCE', 'Pounce', {'Torso': (50, 0, 0), 'Head': (-45, 0, 0), 'UpperArm': (75, 0, 15), 'Arm': (80, 0, 15),
+                          'Forearm': (20, 0, 0), 'Thigh': (70, 0, 12), 'Knee': (-105, 0, 0), 'Foot': (45, 0, 0)}),
+    ('REACH', 'Reach', {'UpperArm': (85, 0, 0), 'Arm': (85, 0, 0), 'Forearm': (10, 0, 0), 'Torso': (8, 0, 0)}),
+    ('ARMS_OUT', 'Arms Out', {'UpperArm': (0, 0, 75), 'Arm': (0, 0, 75)}),
+)
+POSE = {p[0]: p for p in POSES}
+
+
+def set_pose(root, pid):
+    vals = POSE[pid][2]
+    _BUSY[0] = True
+    try:
+        for ob in parts_of(root):
+            b, t, s_ = vals.get(info(ob)['slot'], (0, 0, 0))
+            pp = ob.mch_bodypart
+            pp.p_bend, pp.p_twist, pp.p_side = math.radians(b), math.radians(t), math.radians(s_)
+            apply_pose(ob)
+    finally:
+        _BUSY[0] = False
+    refresh(root)
 
 
 def _frame_of(d):
@@ -326,9 +382,10 @@ def refresh(root):
                 rot = Quaternion(fr[3], ang).to_euler() if ang else (0.0, 0.0, 0.0)
                 if (Vector(c.delta_rotation_euler) - Vector(rot)).length > 1e-7:
                     c.delta_rotation_euler = rot
-        h = kp.height
-        if (Vector(root.scale) - Vector((h, h, h))).length > 1e-7:
-            root.scale = (h, h, h)
+        for ob in parts_of(root):                       # 0.24.184 sizes: the part and all after it (Daz-like)
+            sc = obj_scale(ob, info(ob), kp) * (kp.height if ob is root else 1.0)
+            if (Vector(ob.scale) - Vector((sc, sc, sc))).length > 1e-7:
+                ob.scale = (sc, sc, sc)
         if kp.ground:
             ground(root)
     finally:
@@ -816,7 +873,27 @@ def _upd_kit(self, context):
     refresh(root_of(self.id_data))
 
 
-SYM_KEYS = ('length', 'width', 'depth', 'taper', 'size', 'muscle', 'definition', 'bend', 'bend_at')
+SYM_KEYS = ('length', 'width', 'depth', 'taper', 'size', 'scale', 'muscle', 'definition', 'bend', 'bend_at')
+POSE_KEYS = ('p_bend', 'p_twist', 'p_side')
+
+
+def _upd_pose(self, context):
+    if _BUSY[0]:
+        return
+    ob = self.id_data
+    root = root_of(ob)
+    apply_pose(ob)
+    if root is not None and root.mch_bodykit.symmetry:
+        tw = twin(ob)
+        if tw is not None:
+            _BUSY[0] = True
+            try:
+                for k in POSE_KEYS:
+                    setattr(tw.mch_bodypart, k, getattr(self, k))
+            finally:
+                _BUSY[0] = False
+            apply_pose(tw)
+    refresh(root)
 
 
 def _upd_part(self, context):
@@ -857,6 +934,10 @@ class MCH_PG_BodyKit(bpy.types.PropertyGroup):
     muscle: _f('Muscle', 0.0, -2.0, 4.0, 'The bellies of the torso and the limbs fuller', soft=(-1.0, 2.0))
     definition: _f('Definition', 0.0, -1.0, 3.0, 'The sculpted muscles sharper (minus: softer)', soft=(-0.5, 1.5))
     head: _f('Head', 1.0, 0.3, 3.0, 'Head size', soft=(0.6, 1.6))
+    arm_size: _f('Arms Size', 1.0, 0.2, 4.0, 'The arms (and hands) bigger or smaller - scaled, not fattened',
+                 soft=(0.5, 2.0))
+    leg_size: _f('Legs Size', 1.0, 0.2, 4.0, 'The legs (and feet) bigger or smaller - scaled, not fattened',
+                 soft=(0.5, 2.0))
     hands: _f('Hands', 1.0, 0.3, 3.0, 'Hand size', soft=(0.6, 1.6))
     feet: _f('Feet', 1.0, 0.3, 3.0, 'Foot size', soft=(0.6, 1.6))
     symmetry: BoolProperty(name='Symmetry', default=True,
@@ -874,7 +955,15 @@ class MCH_PG_BodyPart(bpy.types.PropertyGroup):
     width: _f('Width', 1.0, 0.2, 4.0, 'Side to side', update=_upd_part, soft=(0.4, 2.0))
     depth: _f('Depth', 1.0, 0.2, 4.0, 'Front to back', update=_upd_part, soft=(0.4, 2.0))
     taper: _f('Taper', 1.0, 0.2, 4.0, 'Its end thicker or thinner than its start', update=_upd_part, soft=(0.4, 2.0))
-    size: _f('Size', 1.0, 0.2, 4.0, 'The whole part bigger or smaller', update=_upd_part, soft=(0.4, 2.0))
+    size: _f('Size', 1.0, 0.2, 4.0, 'The whole part bigger or smaller (alone)', update=_upd_part, soft=(0.4, 2.0))
+    scale: _f('Scale', 1.0, 0.1, 6.0, 'The part bigger or smaller - and every part after it (an arm: its hand too)',
+              update=_upd_part, soft=(0.3, 2.5))
+    p_bend: FloatProperty(name='Bend', default=0.0, min=-math.pi, max=math.pi, subtype='ANGLE', update=_upd_pose,
+                          description='Turn at its joint toward the front (minus: back)')
+    p_twist: FloatProperty(name='Twist', default=0.0, min=-math.pi, max=math.pi, subtype='ANGLE', update=_upd_pose,
+                           description='Turn round itself')
+    p_side: FloatProperty(name='Side', default=0.0, min=-math.pi, max=math.pi, subtype='ANGLE', update=_upd_pose,
+                          description='Turn at its joint to the side (out / in)')
     muscle: _f('Muscle', 0.0, -2.0, 4.0, 'Its belly fuller', update=_upd_part, soft=(-1.0, 2.0))
     definition: _f('Definition', 0.0, -1.0, 3.0, 'Its sculpted muscles sharper', update=_upd_part, soft=(-0.5, 1.5))
     bend: FloatProperty(name='Bend', default=0.0, min=-math.pi, max=math.pi, subtype='ANGLE', update=_upd_part,
@@ -942,19 +1031,21 @@ class MCH_OT_bodykit_reset(bpy.types.Operator):
         try:
             if self.what == 'SHAPE':
                 kp = root.mch_bodykit
-                for k in ('legs', 'arms', 'torso', 'shoulders', 'hips', 'build', 'head', 'hands', 'feet'):
+                for k in ('legs', 'arms', 'torso', 'shoulders', 'hips', 'build', 'head', 'hands', 'feet', 'arm_size',
+                          'leg_size'):
                     setattr(kp, k, 1.0)
                 kp.muscle = kp.definition = 0.0
             elif self.what == 'PART':
                 for o in [ob] + ([twin(ob)] if root.mch_bodykit.symmetry and twin(ob) else []):
                     pp = o.mch_bodypart
-                    for k in ('length', 'width', 'depth', 'taper', 'size'):
+                    for k in ('length', 'width', 'depth', 'taper', 'size', 'scale'):
                         setattr(pp, k, 1.0)
                     pp.muscle = pp.definition = pp.bend = 0.0
                     pp.bend_at = 0.5
             else:
                 for o in parts_of(root):
                     o.rotation_euler = (0.0, 0.0, 0.0)
+                    o.mch_bodypart.p_bend = o.mch_bodypart.p_twist = o.mch_bodypart.p_side = 0.0
         finally:
             _BUSY[0] = False
         refresh(root)
@@ -987,6 +1078,12 @@ class MCH_OT_bodykit_mirror_pose(bpy.types.Operator):
             e = o.rotation_euler
             tw.rotation_mode = o.rotation_mode
             tw.rotation_euler = (e.x, -e.y, -e.z)
+            _BUSY[0] = True
+            try:
+                for k in POSE_KEYS:
+                    setattr(tw.mch_bodypart, k, getattr(o.mch_bodypart, k))
+            finally:
+                _BUSY[0] = False
             n += 1
         refresh(root)
         self.report({'INFO'}, f'Mirror Pose: {n} parts, {"left" if side == "L" else "right"} onto '
@@ -1077,6 +1174,84 @@ class MCH_OT_bodykit_use_mesh(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_bodykit_pose(bpy.types.Operator):
+    bl_idname = 'mch.bodykit_pose'
+    bl_label = 'Pose'
+    bl_description = 'The body in this pose (its joints\' Bend / Twist / Side sliders set; change them after)'
+    bl_options = {'REGISTER', 'UNDO'}
+    pose: StringProperty(default='STAND')
+
+    @classmethod
+    def poll(cls, context):
+        return active_part(context) is not None
+
+    def execute(self, context):
+        root = root_of(active_part(context))
+        if self.pose in POSE:
+            set_pose(root, self.pose)
+        else:
+            from . import my_presets
+            vals = my_presets.load_all().get(MY_POSE, {}).get(self.pose)
+            if vals is None:
+                return {'CANCELLED'}
+            _BUSY[0] = True
+            try:
+                for ob in parts_of(root):
+                    b, t, s_ = vals.get(info(ob)['name'], (0.0, 0.0, 0.0))
+                    pp = ob.mch_bodypart
+                    pp.p_bend, pp.p_twist, pp.p_side = b, t, s_
+                    apply_pose(ob)
+            finally:
+                _BUSY[0] = False
+            refresh(root)
+        return {'FINISHED'}
+
+
+MY_POSE = 'body_pose'
+
+
+class MCH_OT_bodykit_pose_save(bpy.types.Operator):
+    bl_idname = 'mch.bodykit_pose_save'
+    bl_label = 'Save Pose'
+    bl_description = 'This body\'s pose (every joint\'s sliders) kept under a name - there in every file'
+    bl_options = {'REGISTER'}
+    name: StringProperty(name='Name', default='My Pose')
+
+    @classmethod
+    def poll(cls, context):
+        return active_part(context) is not None
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        from . import my_presets
+        root = root_of(active_part(context))
+        vals = {info(o)['name']: [o.mch_bodypart.p_bend, o.mch_bodypart.p_twist, o.mch_bodypart.p_side]
+                for o in parts_of(root)}
+        data = my_presets.load_all()                  # (stored flat: part -> its Bend / Twist / Side)
+        data.setdefault(MY_POSE, {})[self.name] = vals
+        my_presets._write(data)
+        self.report({'INFO'}, f'Pose "{self.name}" saved')
+        return {'FINISHED'}
+
+
+class MCH_OT_bodykit_pose_delete(bpy.types.Operator):
+    bl_idname = 'mch.bodykit_pose_delete'
+    bl_label = 'Delete Pose'
+    bl_description = 'Take this saved pose away'
+    bl_options = {'REGISTER'}
+    name: StringProperty(default='')
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_confirm(self, event)
+
+    def execute(self, context):
+        from . import my_presets
+        my_presets.delete(MY_POSE, self.name)
+        return {'FINISHED'}
+
+
 class MCH_OT_bodykit_muscles(bpy.types.Operator):
     bl_idname = 'mch.bodykit_muscles'
     bl_label = 'Muscles on This Part'
@@ -1146,9 +1321,17 @@ def draw(layout, context):
     kp = root.mch_bodykit
     d = info(ob)
     col = layout.column(align=True)
-    col.label(text=f'Body Shape ({KIT_LABEL.get(d["kit"], d["kit"])})')
+    col.label(text=f'Body Size ({KIT_LABEL.get(d["kit"], d["kit"])}) - scaled, not fattened')
     col.prop(kp, 'height')
-    for k in ('legs', 'arms', 'torso', 'shoulders', 'hips', 'build', 'muscle', 'definition', 'head', 'hands', 'feet'):
+    for k in ('head', 'arm_size', 'hands', 'leg_size', 'feet'):
+        col.prop(kp, k, slider=True)
+    col = layout.column(align=True)
+    col.label(text='Proportions')
+    for k in ('legs', 'arms', 'torso', 'shoulders', 'hips', 'build'):
+        col.prop(kp, k, slider=True)
+    col = layout.column(align=True)
+    col.label(text='Surface')
+    for k in ('muscle', 'definition'):
         col.prop(kp, k, slider=True)
     row = layout.row(align=True)
     row.prop(kp, 'symmetry', toggle=True, icon='MOD_MIRROR')
@@ -1158,15 +1341,33 @@ def draw(layout, context):
     side = {'L': ' (left)', 'R': ' (right)'}.get(d['side'], '')
     col = layout.column(align=True)
     col.label(text=f'Part: {SLOT_LABEL[d["slot"]]}{side}')
-    for k in ('length', 'width', 'depth', 'taper', 'size', 'muscle', 'definition'):
+    col.prop(pp, 'scale', slider=True)
+    col.label(text='Joint (R turns it too)')
+    for k in POSE_KEYS:
+        col.prop(pp, k, slider=True)
+    col.label(text='Shape')
+    for k in ('length', 'width', 'depth', 'taper', 'muscle', 'definition'):
         col.prop(pp, k, slider=True)
     row = col.row(align=True)
-    row.prop(pp, 'bend')
+    row.prop(pp, 'bend', text='Mid Bend')
     row.prop(pp, 'bend_at', slider=True)
     layout.operator('mch.bodykit_reset', text='Reset Part').what = 'PART'
     col = layout.column(align=True)
-    col.label(text='Pose: R turns the part at its joint')
+    col.label(text='Poses')
+    g = col.grid_flow(row_major=True, columns=3, even_columns=True, align=True)
+    for pid, label, _v in POSES:
+        g.operator('mch.bodykit_pose', text=label).pose = pid
+    try:
+        from . import my_presets
+        mine = sorted(my_presets.load_all().get(MY_POSE, {}))
+    except (ImportError, AttributeError):
+        mine = []
+    for n in mine:
+        r_ = col.row(align=True)
+        r_.operator('mch.bodykit_pose', text=n).pose = n
+        r_.operator('mch.bodykit_pose_delete', text='', icon='X').name = n
     row = col.row(align=True)
+    row.operator('mch.bodykit_pose_save', icon='ADD')
     row.operator('mch.bodykit_mirror_pose', icon='MOD_MIRROR')
     row.operator('mch.bodykit_reset', text='Reset Pose').what = 'POSE'
     col = layout.column(align=True)
@@ -1212,7 +1413,8 @@ class MCH_TOOL_body_kit(bpy.types.WorkSpaceTool):
 
 CLASSES = (MCH_PG_BodyKit, MCH_PG_BodyPart, MCH_PG_BodyKitNew, MCH_OT_bodykit_add, MCH_OT_bodykit_pick,
            MCH_OT_bodykit_reset, MCH_OT_bodykit_mirror_pose, MCH_OT_bodykit_swap, MCH_OT_bodykit_use_mesh,
-           MCH_OT_bodykit_muscles, MCH_OT_bodykit_join)
+           MCH_OT_bodykit_pose, MCH_OT_bodykit_pose_save, MCH_OT_bodykit_pose_delete, MCH_OT_bodykit_muscles,
+           MCH_OT_bodykit_join)
 
 
 def register():

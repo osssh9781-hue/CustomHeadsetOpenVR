@@ -108,6 +108,42 @@ h1 = Vector(part(H, 'Hand.L').matrix_world.translation)
 check(f'Bend 60 on the upper arm: the parts after it follow (the hand moved {(h1 - h0).length:.3f}, forward)',
       (h1 - h0).length > 0.05 and h1.y < h0.y)
 fa.mch_bodypart.bend = 0.0
+# 0.24.184 Daz-like: sizes (scaled, the parts after it too), joints by sliders, poses
+ua = part(H, 'UpperArm.L')
+hs0 = part(H, 'Hand.L').matrix_world.to_scale().x
+ua.mch_bodypart.scale = 1.3
+hs1 = part(H, 'Hand.L').matrix_world.to_scale().x
+check(f'Scale 1.3 on the upper arm: the part and the ones after it bigger (the hand {hs0:.3f} -> {hs1:.3f}), the other '
+      f'side too', abs(hs1 / hs0 - 1.3) < 1e-3 and abs(part(H, 'UpperArm.R').mch_bodypart.scale - 1.3) < 1e-6)
+ua.mch_bodypart.scale = 1.0
+kp.leg_size = 1.2
+V3 = ev_verts(bk.parts_of(H))
+check(f'Legs Size 1.2: the legs scaled up (taller {V3[:, 2].max():.3f}), feet on the floor', V3[:, 2].max() > 1.9 and
+      abs(V3[:, 2].min()) < 2e-3)
+kp.leg_size = 1.0
+hl = part(H, 'Hand.L').matrix_world.translation.copy()
+ua.mch_bodypart.p_side = math.radians(70)
+hl2 = part(H, 'Hand.L').matrix_world.translation.copy()
+hr2 = part(H, 'Hand.R').matrix_world.translation.copy()
+check(f'Side 70 on the upper arm (a slider at its joint): the hand out and up ({hl.x:.3f} -> {hl2.x:.3f}), the right '
+      'mirrored (Symmetry)', hl2.x > hl.x + 0.2 and hl2.z > hl.z + 0.2 and abs(hr2.x + hl2.x) < 1e-3 and
+      abs(hr2.z - hl2.z) < 1e-3)
+ua.mch_bodypart.p_side = 0.0
+z0 = H.matrix_world.translation.z
+C.view_layer.objects.active = H
+r = bpy.ops.mch.bodykit_pose(pose='CROUCH')
+V4 = ev_verts(bk.parts_of(H))
+check(f'Pose Crouch: the hips down ({z0:.3f} -> {H.matrix_world.translation.z:.3f}), the feet on the floor',
+      r == {'FINISHED'} and H.matrix_world.translation.z < z0 - 0.2 and abs(V4[:, 2].min()) < 2e-3)
+from mecha_lab import my_presets  # noqa: E402
+my_presets.PATH[0] = os.path.join(MY, 'my_presets.json')
+r1 = bpy.ops.mch.bodykit_pose_save(name='Low')
+bpy.ops.mch.bodykit_pose(pose='STAND')
+z1 = H.matrix_world.translation.z
+r2 = bpy.ops.mch.bodykit_pose(pose='Low')
+check('Save Pose / its button: the crouch back (a scratch file)', r1 == r2 == {'FINISHED'} and abs(z1 - z0) < 1e-3 and
+      part(H, 'Thigh.L').mch_bodypart.p_bend > 1.0 and H.matrix_world.translation.z < z0 - 0.2)
+bpy.ops.mch.bodykit_reset(what='POSE')
 part(H, 'Forearm.L').rotation_euler = (math.radians(-50), 0.2, 0.1)
 C.view_layer.objects.active = part(H, 'Forearm.L')
 bpy.ops.mch.bodykit_mirror_pose()
