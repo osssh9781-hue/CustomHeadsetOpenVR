@@ -1143,7 +1143,12 @@ def pick_run(ob, p_local, reach):
     """0.24.178 the run of hard edges (edge_runs) nearest ``p_local`` within ``reach``: (run id, its edges) or None."""
     from . import edge_runs
     runs = edge_runs.get(ob)
-    hit = runs.nearest(p_local, reach)
+    slack = {}
+    for kd in BEVEL_MODS:                     # (an edge already bevelled: the mouse is on its bevel)
+        w = _raw_widths(ob.data, kd)
+        for i in np.nonzero(w > 0)[0]:
+            slack[int(i)] = max(slack.get(int(i), 0.0), float(w[i]))
+    hit = runs.nearest(p_local, reach, slack or None)
     if hit is None:
         return None
     return hit[0], list(runs.edge_ids[hit[0]])

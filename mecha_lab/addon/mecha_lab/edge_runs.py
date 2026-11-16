@@ -50,12 +50,19 @@ class Runs:
         hard = {i for i in hard if len(bm.edges[i].link_faces) == 2}
         self.edges = {i: (bm.edges[i].verts[0].index, bm.edges[i].verts[1].index) for i in hard}
         self.normal = {}                       # edge -> the mean of its two faces' normals (off the surface)
-        self.faces = {}                        # edge -> its two faces' (normal, centre)
-        for i in hard:
-            fs = bm.edges[i].link_faces
+        self.faces = {}                        # edge -> its two faces' (normal, way into the face from the edge,
+        for i in hard:                         #  face index) - the way in from the face's winding, not its centre
+            e = bm.edges[i]                    #  (a face round a hole has its centre in the hole)
+            fs = e.link_faces
             n = (fs[0].normal + fs[1].normal)
             self.normal[i] = np.array(n.normalized() if n.length > 1e-9 else fs[0].normal, float)
-            self.faces[i] = [(np.array(f.normal, float), np.array(f.calc_center_median(), float)) for f in fs]
+            sides = []
+            for lp in e.link_loops:
+                d = lp.link_loop_next.vert.co - lp.vert.co
+                inward = lp.face.normal.cross(d)
+                sides.append((np.array(lp.face.normal, float),
+                              np.array(inward.normalized() if inward.length > 1e-12 else inward, float), lp.face.index))
+            self.faces[i] = sides
         # at each point: hard edges that go on nearly straight are joined (each edge to its straightest partner)
         at = {}
         for i, (a, b) in self.edges.items():
@@ -145,19 +152,22 @@ class Runs:
         o = b if a == v else a
         return self.co[o] - self.co[v]
 
-    def nearest(self, p, reach):
-        """(run, edge, distance) of the hard edge nearest ``p`` (local) within ``reach``, or None."""
+    def nearest(self, p, reach, slack=None):
+        """(run, edge, distance) of the hard edge nearest ``p`` (local) within ``reach``, or None.  ``slack``: {edge:
+        width} - a bevelled edge counts that much nearer (its corner is cut away: the mouse is on its bevel, which
+        can lie nearer another edge)."""
         if self.kd is None:
             return None
         p = np.asarray(p, float)
         best = None
-        for _c, k, _d in self.kd.find_range(Vector(p), reach + self._half):
+        extra = max(slack.values()) if slack else 0.0
+        for _c, k, _d in self.kd.find_range(Vector(p), reach + extra + self._half):
             a, b = self._a[k], self._b[k]
             d = b - a
             t = float(np.clip(np.dot(p - a, d) / max(np.dot(d, d), 1e-18), 0.0, 1.0))
-            dist = float(np.linalg.norm(a + t * d - p))
+            e = int(self._ids[k])
+            dist = float(np.linalg.norm(a + t * d - p)) - (slack.get(e, 0.0) if slack else 0.0)
             if dist <= reach and (best is None or dist < best[2]):
-                e = int(self._ids[k])
                 best = (self.run_of[e], e, dist)
         return best
 

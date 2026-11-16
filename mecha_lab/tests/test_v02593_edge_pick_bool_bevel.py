@@ -69,6 +69,17 @@ check(f'Round on another side; Alt on the first: off (chamfered edges left {int(
       f'{int((w_r > 0).sum())}, the chamfer modifier gone {box.modifiers.get(gs.CHAMFER_MOD) is None})',
       not (w_c > 0).any() and (w_r > 0).sum() == 4 and box.modifiers.get(gs.CHAMFER_MOD) is None)
 check('nothing near: nothing picked', gs.pick_run(box, (0.0, 0.0, 1.0), 0.1) is None)
+# a thin plate (0.12) with a wide chamfer (0.108) on its top front edge: the mouse on the chamfer, near the back edge
+bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0.0, 0.0, 6.0))
+thin = C.active_object
+thin.scale = (2.0, 0.12, 1.4)
+bpy.ops.object.transform_apply(location=False, scale=True)
+g0 = gs.pick_run(thin, (-0.5, -0.06, 0.7), 0.1)
+gs.mark_edges(thin, 'CHAMFER', g0[1], 0.108)
+g1 = gs.pick_run(thin, (-0.5, 0.03, 0.68), 0.1)       # (on the chamfer's upper part: nearer the back edge's line)
+check(f'Alt + click on a wide chamfer near another edge: the chamfered edge picked (run {g1 and g1[0]}, the chamfered '
+      f'one {g0[0]}) - before: the edge behind it, so nothing came off', g1 is not None and g1[0] == g0[0])
+bpy.data.objects.remove(thin)
 bpy.data.objects.remove(box)
 bpy.data.objects.remove(cyl)
 # --- Boolean Bevel
@@ -98,6 +109,47 @@ check(f'Round, a click on the top right edge: all of it, an arc (the corner {d_c
       f'{vol - vol2:.4f}; the arc takes {removed:.4f})', abs(d_c - 0.2 * (math.sqrt(2) - 1)) < 4e-3 and bad2 == 0
       and abs((vol - vol2) - removed) < 4e-3)
 bpy.data.objects.remove(blk)
+# drawn along the top front edge and on round the corner down the right front edge: both snapped onto, both cut
+bpy.ops.mesh.primitive_cube_add(size=2.0)
+blk2 = C.active_object
+st.profile, st.width = 'CHAMFER', 0.15
+path = [(x, -1.02, 1.03) for x in np.linspace(0.2, 0.98, 10)] + [(1.03, -1.02, z) for z in np.linspace(0.95, 0.2, 10)]
+parts = bb.portions(er.get(blk2), path, 0.1)
+msg2 = bb.perform(C, blk2, path, reach=0.1)
+bad4, _v4 = closed_ok(blk2)
+d_top = dist_to_surface(blk2, (0.6, -1.0, 1.0)) * math.sqrt(2)
+d_side = dist_to_surface(blk2, (1.0, -1.0, 0.5)) * math.sqrt(2)
+d_far = dist_to_surface(blk2, (-0.6, -1.0, 1.0))
+check(f'drawn along an edge and on round the corner: it snaps onto both ({len(parts)} edges) - both cut (top '
+      f'{d_top:.3f}, side {d_side:.3f}), not past where it was drawn ({d_far:.4f}); closed ({bad4} open) - {msg2}',
+      len(parts) == 2 and abs(d_top - 0.15) < 3e-3 and abs(d_side - 0.15) < 3e-3 and d_far < 1e-6 and bad4 == 0)
+bpy.data.objects.remove(blk2)
+# a rectangular hole's top rim, clicked: the cut stops at the hole's corners (no notch into the face beyond them);
+# its two sides too: they meet mitred at the corners
+bpy.ops.mesh.primitive_cube_add(size=2.0)
+pl = C.active_object
+pl.scale = (1.0, 0.1, 1.0)
+bpy.ops.object.transform_apply(scale=True)
+bpy.ops.mesh.primitive_cube_add(size=1.0)
+hole = C.active_object
+hole.scale = (0.8, 1.0, 0.6)
+m = pl.modifiers.new('B', 'BOOLEAN')
+m.object, m.solver = hole, 'EXACT'
+C.view_layer.objects.active = pl
+bpy.ops.object.modifier_apply(modifier='B')
+bpy.data.objects.remove(hole)
+st.profile, st.width = 'CHAMFER', 0.08
+bb.perform(C, pl, [(0.0, -0.1, 0.3)], whole=True, reach=0.05)              # (the hole's top front rim)
+beyond = dist_to_surface(pl, (-0.46, -0.1, 0.34))                        # (on the face, left of the hole's corner)
+mid = dist_to_surface(pl, (0.0, -0.1, 0.3)) * math.sqrt(2)
+bad5, _v5 = closed_ok(pl)
+bb.perform(C, pl, [(-0.4, -0.1, 0.0)], whole=True, reach=0.05)            # (its left front rim)
+corner = dist_to_surface(pl, (-0.4, -0.1, 0.3))
+bad6, _v6 = closed_ok(pl)
+check(f'a hole\'s top rim clicked: chamfered ({mid:.3f}), not past the hole\'s corner into the face ({beyond:.4f} off it); '
+      f'its left rim too: they meet at the corner (the corner {corner * math.sqrt(2):.3f} in), closed ({bad5}, {bad6})',
+      abs(mid - 0.08) < 3e-3 and beyond < 1e-6 and abs(corner * math.sqrt(2) - 0.08) < 0.02 and bad5 == 0 and bad6 == 0)
+bpy.data.objects.remove(pl)
 # a loop: the top rim of a cylinder, half of it
 bpy.ops.mesh.primitive_cylinder_add(vertices=48, radius=1.0, depth=1.0)
 cy = C.active_object

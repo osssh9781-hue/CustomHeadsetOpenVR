@@ -53,29 +53,29 @@ def _unit(v):
 
 
 def _sides(runs, rid):
-    """Per run segment: (normal A, centre A, normal B, centre B) - the two faces kept on the same sides along it."""
+    """Per run segment: (normal A, way into A, normal B, way into B) - the two faces kept on the same sides along it."""
     out = []
     prev = None
     for e in runs.edge_ids[rid]:
-        (n0, c0), (n1, c1) = runs.faces[e]
+        (n0, i0, _f0), (n1, i1, _f1) = runs.faces[e][:2]
         if prev is not None and float(np.dot(n1, prev)) > float(np.dot(n0, prev)):
-            (n0, c0), (n1, c1) = (n1, c1), (n0, c0)
-        out.append((n0, c0, n1, c1))
+            n0, i0, n1, i1 = n1, i1, n0, i0
+        out.append((n0, i0, n1, i1))
         prev = n0
     return out
 
 
-def _frame(P, T, nA, cA, nB, cB):
+def _frame(P, T, nA, inA, nB, inB):
     """The section's directions at an edge point: (dA, dB) in each face going away from the edge; None for an inside
     (concave) edge."""
     dA = _unit(np.cross(nA, T))
-    if float(np.dot(cA - P, dA)) < 0:
+    if float(np.dot(inA, dA)) < 0:
         dA = -dA
     dB = _unit(np.cross(nB, T))
-    if float(np.dot(cB - P, dB)) < 0:
+    if float(np.dot(inB, dB)) < 0:
         dB = -dB
-    if float(np.dot(cB - P, nA)) > 1e-9 * (1.0 + float(np.linalg.norm(cB - P))):
-        return None                                   # (face B above face A's plane: an inside corner)
+    if float(np.dot(dB, nA)) > 1e-6:
+        return None                                   # (face B rises above face A's plane: an inside corner)
     return dA, dB
 
 
@@ -100,9 +100,67 @@ def section(P, T, nA, nB, dA, dB, w, profile, segments):
     return pts + [B + nB * h, P + out_n * h * 1.6, A + nA * h]
 
 
-def cutter_mesh(runs, rid, s0, s1, w, profile='CHAMFER', segments=8, name='MCH_BoolBevel_Cutter'):
+def _end(runs, rid, k, sec, sign, ext, inside=None):
+    """A section at an end of the edge: (point, tangent, points, the section past the end or None).  The next hard edge
+    there sharing a face with it decides: that face's corner convex (a box's corner - nothing past the end): the
+    cutter runs on past it (the cut goes through); reflex (the corner of a hole, a step - the face goes on past the
+    end): it would cut a notch into the face, so the end is mitred against that next edge (two cuts meet on the line
+    between them).  No next edge: square."""
+    p, T, pts = sec
+    dirn = T * sign                                   # (out of the edge, past its end)
+    path = runs.paths[rid]
+    v = path[0] if k == 0 else path[-1]
+    mine = set(runs.edge_ids[rid])
+    end_edge = runs.edge_ids[rid][0 if k == 0 else -1]
+    # each of the edge's two faces: its next hard edge at that point, and whether the face's corner there is convex
+    corners = {}
+    for _n, inward, f in runs.faces[end_edge]:
+        best = None
+        for e, (a, b) in runs.edges.items():
+            if e in mine or v not in (a, b) or not any(ff == f for _nn, _ii, ff in runs.faces[e]):
+                continue
+            o = b if a == v else a
+            d = _unit(runs.co[o] - runs.co[v])
+            key = abs(float(np.dot(d, dirn)))
+            if best is None or key < best[0]:
+                best = (key, d)
+        corners[f] = None if best is None else (best[1], float(np.dot(best[1], inward)) > 1e-6)
+    if corners and all(c is not None and c[1] for c in corners.values()):
+        return (p, T, pts, (p + dirn * ext, T, [q + dirn * ext for q in pts]))   # (a box's corner: on through it)
+    reflex = [c for c in corners.values() if c is not None and not c[1]]
+    if not reflex:
+        return (p, T, pts, None)                      # (a face going on smoothly: square)
+    nxt = reflex[0][0]
+    m = _unit(dirn + nxt)                             # (reflex: the mitre between the way on and the next edge)
+    if np.linalg.norm(m) < 1e-9 or abs(float(np.dot(m, dirn))) < 1e-6:
+        return (p, T, pts, None)
+    out = []
+    for q in pts:
+        t = -float(np.dot(m, q - p)) / float(np.dot(m, dirn))
+        out.append(q + dirn * t)
+    return (p, T, out, None)
+
+
+def _inside_test(ob_mesh):
+    """A function: is a local point inside the part (its own mesh)?  (The nearest face's side.)"""
+    from mathutils.bvhtree import BVHTree
+    try:
+        bvh = BVHTree.FromPolygons([tuple(v.co) for v in ob_mesh.vertices], [tuple(f.vertices) for f in ob_mesh.polygons])
+    except (ValueError, RuntimeError):
+        return None
+
+    def inside(q):
+        loc, nrm, _i, d = bvh.find_nearest(Vector(q))
+        if loc is None:
+            return False
+        return float(np.dot(np.asarray(q) - np.asarray(loc), np.asarray(nrm))) < 0 and d > 1e-9
+    return inside
+
+
+def cutter_mesh(runs, rid, s0, s1, w, profile='CHAMFER', segments=8, name='MCH_BoolBevel_Cutter', inside=None):
     """The cutter (the part's local space) for run ``rid`` between arc lengths ``s0`` .. ``s1`` (a loop: ``s1`` may run
-    past its length).  Raises BevelError for an inside edge."""
+    past its length).  ``inside``: a test for points in the part (an end of the edge runs on past it only where there
+    is nothing).  Raises BevelError for an inside edge."""
     P = runs.polyline(rid)
     closed = runs.closed[rid]
     L = np.linalg.norm(P[1:] - P[:-1], axis=1)
@@ -146,14 +204,18 @@ def cutter_mesh(runs, rid, s0, s1, w, profile='CHAMFER', segments=8, name='MCH_B
         if fr is None:
             raise BevelError('That edge is an inside corner - Boolean Bevel cuts outside edges')
         secs.append((p, T, section(p, T, nA, nB, fr[0], fr[1], w, profile, segments)))
-    if not whole_loop:                               # (past the end of the edge where the drawn part reaches it)
+    if not whole_loop and not closed:                # the drawn part reaching an end of the edge:
         ext = w * 1.2
-        if not closed and s0 <= 1e-6 * max(total, 1.0) + 1e-9:
-            p, T, pts = secs[0]
-            secs.insert(0, (p - T * ext, T, [q - T * ext for q in pts]))
-        if not closed and s1 >= total - 1e-6 * max(total, 1.0) - 1e-9:
-            p, T, pts = secs[-1]
-            secs.append((p + T * ext, T, [q + T * ext for q in pts]))
+        if s0 <= 1e-6 * max(total, 1.0) + 1e-9:
+            p, T, pts, past = _end(runs, rid, 0, secs[0], -1, ext, inside)
+            secs[0] = (p, T, pts)
+            if past is not None:
+                secs.insert(0, past)
+        if s1 >= total - 1e-6 * max(total, 1.0) - 1e-9:
+            p, T, pts, past = _end(runs, rid, -1, secs[-1], 1, ext, inside)
+            secs[-1] = (p, T, pts)
+            if past is not None:
+                secs.append(past)
     bm = bmesh.new()
     rings = [[bm.verts.new(Vector(q)) for q in pts] for _p, _T, pts in secs]
     m = len(rings[0])
@@ -249,6 +311,32 @@ def _changed(a, b):
     return float(np.abs(np.sort(ca) - np.sort(cb)).max()) > 1e-6
 
 
+def portions(runs, pts, reach, whole=False):
+    """0.24.178 (user: "불린 베벨은 어느 정도 기존 메쉬 엣지들에 살짝 붙으면서 내가 그리면 좋을 듯"): the drawing snaps to
+    the edges it passes - round a corner onto the next edge too: [(run, s0, s1)] in the order drawn (each run its
+    drawn stretch); a click: the whole edge nearest."""
+    if whole:
+        got = portion(runs, pts[:1], reach, whole=True)
+        return [got] if got is not None else []
+    order, groups = [], {}
+    for p in pts:
+        hit = runs.nearest(p, reach)
+        if hit is None:
+            continue
+        if hit[0] not in groups:
+            groups[hit[0]] = []
+            order.append(hit[0])
+        groups[hit[0]].append(p)
+    out = []
+    for rid in order:
+        if len(groups[rid]) < 2:              # (a passing touch is not drawn along)
+            continue
+        got = portion(runs, groups[rid], reach * 1e6)
+        if got is not None and got[2] - got[1] > 1e-9:
+            out.append(got)
+    return out
+
+
 def portion(runs, pts, reach, whole=False):
     """(run, s0, s1) the drawn points ``pts`` (local) run along: the run most of them are near, from the first to
     the last of them along it (a loop: the short way round); ``whole`` (a click): all of it.  None: no edge there."""
@@ -287,22 +375,32 @@ def perform(context, ob, pts_local, whole=False, reach=None):
     st = context.scene.mch_bool_bevel
     w = st.width / _mean_scale(ob)
     runs = edge_runs.get(ob)
-    got = portion(runs, pts_local, reach if reach is not None else max(w * 1.5, 1e-6), whole)
-    if got is None:
+    parts = portions(runs, pts_local, reach if reach is not None else max(w * 1.5, 1e-6), whole)
+    if not parts:
         raise BevelError('No edge there - drag along one of the shown edges of the part')
-    rid, s0, s1 = got
-    me = cutter_mesh(runs, rid, s0, s1, w, st.profile, st.segments)
+    inside = _inside_test(ob.data)
+    cutters = [cutter_mesh(runs, rid, s0, s1, w, st.profile, st.segments, inside=inside) for rid, s0, s1 in parts]
+    before = len(ob.data.polygons)
+    done, length = 0, 0.0
     try:
-        before, after = cut(context, ob, me)
+        for (rid, s0, s1), me in zip(parts, cutters):     # (one cut per edge: corners where two cutters overlap)
+            try:
+                cut(context, ob, me)
+                done += 1
+                length += (s1 - s0) * _mean_scale(ob)
+            except BevelError:
+                pass
     finally:
-        try:                                          # (cut() removes it with its temporary object)
-            if me.users == 0:
-                bpy.data.meshes.remove(me)
-        except ReferenceError:
-            pass
-    length = (s1 - s0) * _mean_scale(ob)
-    return (f'Boolean Bevel ({st.profile.title()}, {st.width:.3g} wide) on "{ob.name}": {length:.3g} of the edge '
-            f'({before:,} -> {after:,} faces)')
+        for me in cutters:
+            try:                                          # (cut() removes each with its temporary object)
+                if me.users == 0:
+                    bpy.data.meshes.remove(me)
+            except ReferenceError:
+                pass
+    if not done:
+        raise BevelError('The cut took nothing off (is the edge inside the part, or the part not closed?)')
+    return (f'Boolean Bevel ({st.profile.title()}, {st.width:.3g} wide) on "{ob.name}": {length:.3g} along '
+            f'{done} edge{"s" if done != 1 else ""} ({before:,} -> {len(ob.data.polygons):,} faces)')
 
 
 # -----------------------------------------------------------------------------
@@ -343,9 +441,9 @@ def draw_edges():
             return
         runs = edge_runs.get(ob)
         edge_runs.draw_lines(edge_runs.world_segs(ob, runs), (0.35, 0.85, 1.0, 0.55), 1.5)
-        if op is not None and op.portion is not None:
-            rid, s0, s1 = op.portion
-            edge_runs.draw_lines(edge_runs.portion_segs(ob, runs, rid, s0, s1), (1.0, 0.5, 0.1, 1.0), 5.0)
+        if op is not None and op.portion:
+            for rid, s0, s1 in op.portion:            # (what will be cut, snapped onto the edges)
+                edge_runs.draw_lines(edge_runs.portion_segs(ob, runs, rid, s0, s1), (1.0, 0.5, 0.1, 1.0), 5.0)
         elif HOVER['run'] is not None and HOVER['run'] < len(runs.edge_ids):
             edge_runs.draw_lines(edge_runs.world_segs(ob, runs, runs.edge_ids[HOVER['run']]), (1.0, 0.92, 0.2, 1.0),
                                  4.0)
@@ -408,9 +506,9 @@ class MCH_OT_bool_bevel_draw(bpy.types.Operator):
         self.moved = 0.0
         self.pts = [tuple(first[0])]
         st = context.scene.mch_bool_bevel
-        self.reach = max(st.width * 1.5 / _mean_scale(self.ob), _reach_px(context, self.ob, loc))
+        self.reach = max(st.width * 1.5 / _mean_scale(self.ob), _reach_px(context, self.ob, loc, 24.0))
         self.runs = edge_runs.get(self.ob)
-        self.portion = None
+        self.portion = []
         self._update()
         _LIVE['op'] = self
         context.window_manager.modal_handler_add(self)
@@ -418,7 +516,7 @@ class MCH_OT_bool_bevel_draw(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
     def _update(self):
-        self.portion = portion(self.runs, self.pts, self.reach, whole=self.moved < 6.0)
+        self.portion = portions(self.runs, self.pts, self.reach, whole=self.moved < 6.0)
 
     def _end(self, context):
         _LIVE['op'] = None
@@ -463,9 +561,9 @@ def draw(layout, context):
     if st.profile == 'ROUND':
         col.prop(st, 'segments')
     col = layout.column(align=True)
-    for line in ('Drag along a shown edge: that much of it is cut off',
-                 'Click an edge: all of it.  Ctrl+Z: back',
-                 'Blue: edges you can use; yellow: under the mouse'):
+    for line in ('Drag along the edges: it snaps onto them (round corners',
+                 'too) - that much is cut off (orange while you draw)',
+                 'Click an edge: all of it.  Ctrl+Z: back'):
         col.label(text=line)
 
 

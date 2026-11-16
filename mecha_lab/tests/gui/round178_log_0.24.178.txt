@@ -1,0 +1,17 @@
+shot 1_hover.png True
+1 hover run 32 chamfer 0.108 mod 0.108
+shot 1_chamfer.png True
+2 first chamfer 0.108 -> 0.108 widths [0.014999999664723873, 0.1080000028014183]
+shot 2_second.png True
+3 alt click: the first edge 0.0
+shot 3_alt_off.png True
+4 tool True faces 6 -> 13 cut along the top 0.15 down the side 0.15 before where it was drawn 0.0
+shot 4_bool_bevel.png True
+5 round: the corner 0.0621 in (a quarter circle of 0.15: 0.0621 )
+shot 5_round.png True
+PASS 1 Chamfer: the edge under the brush shown lit; a REAL click - that edge chamfered whole
+PASS 2 a REAL click on an edge between two holes: the first chamfer stays as it was
+PASS 3 Alt + a REAL click on the first edge: off
+PASS 4 Boolean Bevel: its tile; a REAL drag along an edge and on round the corner - it snaps onto both, only that much cut off
+PASS 5 Round: a REAL click on another edge - all of it rounded
+5/5 passed
