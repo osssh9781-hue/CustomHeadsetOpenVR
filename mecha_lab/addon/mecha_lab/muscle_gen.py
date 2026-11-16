@@ -86,7 +86,9 @@ PRESET_ITEMS = [(p[0], p[1], ('Click: ' + ', '.join(p[2]) if p[2] else 'Click po
                 for p in PRESETS]
 STYLES = (('CREATURE', 'Muscle', 'A muscle: smooth, fibres, tendons'),
           ('ARTIFICIAL', 'Artificial Muscle', 'A core in a holed sleeve, end caps'),
-          ('CABLE', 'Cables', 'Cables between the points, end caps'))
+          ('CABLE', 'Cables', 'Cables between the points, end caps'),
+          ('BAND', 'Woven Bands', 'Flat woven bands lying over each other, toothed tabs where they start, a clamp '
+           'where they end (a synthetic chest / arm)'))
 CORES = (('BUNDLE', 'Fibre Bundle', 'Thin fibres twisting round each other'),
          ('SMOOTH', 'Smooth', 'One smooth spindle'),
          ('RIBBED', 'Ribbed', 'Rings along it (bellows)'),
@@ -770,6 +772,48 @@ def sculpt_mesh(context, ob, sid):
     return mesh, (lens[0] if lens else 1.0)
 
 
+def band(mesh, C, A1, A2, ra, rb, mat=0, sides=16):
+    """A flat band through centres ``C``: at each a rounded slab ``ra`` wide (half), ``rb`` thick (half)."""
+    ang = np.linspace(0, 2 * math.pi, sides, endpoint=False)
+    rings = []
+    for i in range(len(C)):
+        ring = []
+        for a in ang:
+            c_, s_ = math.cos(a), math.sin(a)
+            x = math.copysign(abs(c_) ** 0.25, c_)
+            y = math.copysign(abs(s_) ** 0.6, s_)
+            ring.append(mesh.add_v(C[i] + A1[i] * x * ra[i] + A2[i] * y * rb[i], 0.0, a))
+        rings.append(ring)
+    for i in range(len(C) - 1):
+        for k in range(sides):
+            k2 = (k + 1) % sides
+            mesh.add_f((rings[i][k], rings[i][k2], rings[i + 1][k2], rings[i + 1][k]), mat)
+    mesh.add_f(tuple(reversed(rings[0])), mat)
+    mesh.add_f(tuple(rings[-1]), mat)
+
+
+def _weave(m, amount, scale):
+    """A woven cloth look on a band: a fine checker as a bump (in the material - no points)."""
+    nt = m.node_tree
+    bs = next((n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED'), None)
+    bump = nt.nodes.get('MCH Weave')
+    if bump is None and bs is not None and amount > 0:
+        tc = nt.nodes.new('ShaderNodeTexCoord')
+        ch = nt.nodes.new('ShaderNodeTexChecker')
+        ch.name = 'MCH Weave Tex'
+        ch.inputs['Color1'].default_value = (1, 1, 1, 1)
+        ch.inputs['Color2'].default_value = (0, 0, 0, 1)
+        nt.links.new(tc.outputs['Object'], ch.inputs['Vector'])
+        bump = nt.nodes.new('ShaderNodeBump')
+        bump.name = 'MCH Weave'
+        nt.links.new(ch.outputs['Fac'], bump.inputs['Height'])
+        nt.links.new(bump.outputs['Normal'], bs.inputs['Normal'])
+    if bump is not None:
+        bump.inputs['Strength'].default_value = min(max(amount, 0.0), 1.0)
+        bump.inputs['Distance'].default_value = 0.002
+        nt.nodes['MCH Weave Tex'].inputs['Scale'].default_value = scale
+
+
 def cable_layout(n, r):
     """Where the ``n`` cables (radius ``r``) of a bundle sit round its middle [(x, y)]: touching, as tight as they go
     (one; a ring up to six; then one in the middle and rings round it)."""
@@ -837,6 +881,27 @@ def build_mesh(context, ob):
             ctr = C + nrm * (H2 * (1.0 - float(pg.sink)))[:, None]
             tend = np.clip(1.0 - (r2 - 0.16) / 0.5, 0.0, 1.0)
             tube(mesh, ctr, side, nrm, W2, H2, 0, tend=tend, flat=0.55, sides=18)
+        elif style == 'BAND':
+            # 0.24.185 (user's reference - a synthetic musculature of flat woven sheets): each strand a thin wide band,
+            # the next lying over it; toothed tabs on a bar where it starts, a clamp bar where it ends
+            wprof = (1.0 - 0.6 * t ** 1.3) if fan else (0.8 + 0.2 * np.sin(math.pi * t))
+            Wb = base_w * float(pg.width) * vol * wprof * (1.25 if fan else 1.6)
+            Hb = np.full(K, base_w * 0.07 * float(pg.thickness) * vol)
+            lift = Hb[0] * (1.0 + 1.6 * si)                       # (shingled: each over the one before)
+            ctr = C + nrm * lift
+            band(mesh, ctr, side, nrm, Wb * 0.5, Hb * 0.5, 0)
+            nt_ = int(pg.band_teeth)
+            tl = L * 0.07
+            if nt_ > 0:
+                w0 = Wb[0]
+                step = w0 / (2 * nt_ - 1)
+                for j in range(nt_):
+                    off = -w0 * 0.5 + step * (2 * j + 0.5)
+                    box(mesh, ctr[0] + side[0] * off - T[0] * tl * 0.5, side[0], T[0], nrm[0], step * 0.5, tl * 0.5,
+                        Hb[0] * 0.5, 0)
+                box(mesh, ctr[0] - T[0] * tl * 0.75 - nrm[0] * Hb[0] * 0.8, side[0], T[0], nrm[0], w0 * 0.54,
+                    tl * 0.32, Hb[0] * 1.1, 2)
+            box(mesh, ctr[-1], side[-1], T[-1], nrm[-1], Wb[-1] * 0.56, L * 0.02, Hb[-1] * 1.5, 2)
         elif style == 'CABLE':
             # 0.24.185 (user: "케이블은 다발로 묶여야지, 다발 개수도 내가 정할 수 있고"): a bundle of cables side by
             # side round its middle, tied with bands
@@ -920,6 +985,11 @@ def materials(ob):
                 sss=0.25 if creature else 0.0, tendon=pg.tendon_color if creature else None)
     if creature:
         _fibres(core, float(pg.fibers), float(pg.fiber_scale))
+    if pg.style == 'BAND':
+        _principled(core, pg.band_color, 0.7, 0.0)
+        _weave(core, float(pg.band_weave), float(pg.band_weave_scale))
+    else:
+        _weave(core, 0.0, float(pg.band_weave_scale))
     _principled(slv, pg.sleeve_color, 0.35, 0.6)
     _principled(cp, pg.cap_color, 0.3, 1.0)
     return mats
@@ -1153,7 +1223,8 @@ def _collection(context):
 LIVE = ('preset', 'shape', 'sculpt', 'style', 'strands', 'twist', 'spread', 'thickness', 'width', 'volume', 'length', 'belly', 'tendon',
         'segments', 'sink', 'fibers', 'fiber_scale', 'smooth', 'resolution', 'remesh', 'color', 'tendon_color', 'core',
         'core_count', 'core_size', 'core_color', 'holes', 'hole_size', 'hole_cells', 'sleeve_thick', 'sleeve_color',
-        'cap', 'cap_size', 'cap_length', 'cap_color', 'cable_radius', 'cable_count', 'cable_ties', 'cable_twist')
+        'cap', 'cap_size', 'cap_length', 'cap_color', 'cable_radius', 'cable_count', 'cable_ties', 'cable_twist',
+        'band_teeth', 'band_weave', 'band_weave_scale', 'band_color')
 
 
 def make(context, tool, pts):
@@ -1436,6 +1507,14 @@ class MCH_PG_Muscle(bpy.types.PropertyGroup):
     cap_color: FloatVectorProperty(name='Caps', subtype='COLOR', size=3, min=0.0, max=1.0, default=(0.6, 0.58, 0.52),
                                    update=_upd)
     cable_radius: FloatProperty(name='Cable Thickness', default=0.2, min=0.05, max=1.0, update=_upd)
+    band_teeth: IntProperty(name='Tabs', default=4, min=0, max=12, update=_upd,
+                            description='Toothed tabs where each band starts (0: none)')
+    band_weave: FloatProperty(name='Weave', default=0.6, min=0.0, max=1.0, update=_upd,
+                              description='The woven cloth look (in its material)')
+    band_weave_scale: FloatProperty(name='Weave Size', default=260.0, min=20.0, max=2000.0, update=_upd,
+                                    description='Finer weave (higher)')
+    band_color: FloatVectorProperty(name='Bands', subtype='COLOR', size=3, min=0.0, max=1.0,
+                                    default=(0.5, 0.5, 0.52), update=_upd)
     cable_count: IntProperty(name='Cables in a Bundle', default=5, min=1, max=37, update=_upd,
                              description='How many cables each bundle is made of')
     cable_ties: IntProperty(name='Ties', default=3, min=0, max=12, update=_upd,
@@ -1812,6 +1891,14 @@ def draw(layout, context, tool='MUSCLE'):
         r = col.row(align=True)
         r.prop(pg, 'color', text='')
         r.prop(pg, 'tendon_color', text='')
+    elif style == 'BAND':
+        col = layout.column(align=True)
+        col.label(text='Woven Bands')
+        for k in ('band_teeth', 'band_weave', 'band_weave_scale'):
+            col.prop(pg, k)
+        r = col.row(align=True)
+        r.prop(pg, 'band_color', text='')
+        r.prop(pg, 'cap_color', text='')
     elif style == 'CABLE':
         col = layout.column(align=True)
         col.label(text='Cable Bundle')
