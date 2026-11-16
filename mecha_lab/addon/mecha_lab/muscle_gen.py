@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 
 import bmesh
 import bpy
@@ -545,13 +546,15 @@ def sleeve(mesh, C, n_, s_, ra, rb, t0, t1, holes, cells_u, hole_size, thick, ma
 
 # ---- a muscle from its settings ---------------------------------------------------------------------------------------
 
-def paths_of(context, ob, force=False):
+def paths_of(context, ob, force=False, strands=None):
     """The strands' paths (in the body's space): kept on the muscle, worked out again when its points or strands
-    changed."""
+    changed (``strands``: that many instead of its slider's - a sculpted shape on one path)."""
     d = data(ob)
     pg = ob.mch_muscle
     kind = PRESET[pg.preset][3]
-    key = [pg.preset, int(pg.strands), round(float(pg.twist), 4), round(float(pg.spread), 4)]
+    n_ = int(pg.strands) if strands is None else int(strands)
+    key = [pg.preset, n_, round(float(pg.twist), 4), round(float(pg.spread), 4), [round(x, 5) for p in d['pts']
+                                                                                   for x in p]]
     if not force and d.get('paths') and d.get('pkey') == key:
         return [(np.array(p['P']), np.array(p['N']), p['w']) for p in d['paths']]
     body = bpy.data.objects.get(d.get('body', ''))
@@ -559,7 +562,7 @@ def paths_of(context, ob, force=False):
         raise RuntimeError('The mesh the muscle was made on is gone')
     others = [bpy.data.objects.get(n) for n in d.get('others', [])]
     bvh, _size = body_bvh(context, body, others)
-    ends = strand_ends(kind, d['pts'], d['nrm'], pg.strands, pg.twist, pg.spread, bvh)
+    ends = strand_ends(kind, d['pts'], d['nrm'], n_, pg.twist, pg.spread, bvh)
     paths = []
     for a, b, an, bn, w in ends:
         P, N = surface_path(bvh, a, b, an, bn)
@@ -570,10 +573,210 @@ def paths_of(context, ob, force=False):
     return paths
 
 
+# ---- the user's sculpted shapes (0.24.183) -------------------------------------------------------------------------------
+# (user: "내가 하나짜리 근육이랑 두 개짜리 어깨 가슴 삼두 보내니까 사용해서 만들어 줘": tools_dev/muscle_templates_build.py)
+SHAPE_FILE = os.path.join(os.path.dirname(__file__), 'body_kits', 'muscles.npz')
+SHAPES = (('SCULPT', 'Your Sculpts', 'Your sculpted muscles laid between the points (one / two bellies, triceps, '
+           'chest, shoulder)'),
+          ('STRANDS', 'Strands', 'Built from strands (any count, twist, belly and tendon sliders)'))
+SCULPTS = (('AUTO', 'As the Preset', 'The sculpted shape that suits the muscle picked (Strands 2: two bellies)'),
+           ('SINGLE', 'One Belly', 'Your muscle: one belly (Strands 3 or more: that many side by side)'),
+           ('DOUBLE', 'Two Bellies', 'Your muscle: two bellies side by side'),
+           ('TRICEPS', 'Heads into a Tendon', 'Your triceps: two heads that join into one tendon'),
+           ('PEC', 'Chest Fan', 'Your chest: a fan of bands into the arm (three points)'),
+           ('DELTOID', 'Shoulder Cap', 'Your shoulder: the cap that wraps it (three points)'))
+TEMPLATE_OF = {'SPINDLE': 'SINGLE', 'DOUBLE': 'DOUBLE', 'BICEPS': 'DOUBLE', 'TRICEPS': 'TRICEPS', 'QUAD': 'TRICEPS',
+               'HAMSTRING': 'DOUBLE', 'CALF': 'DOUBLE', 'FOREARM': 'DOUBLE', 'NECK': 'SINGLE', 'DELTOID': 'DELTOID',
+               'PEC': 'PEC', 'LAT': 'PEC', 'TRAP': 'PEC', 'GLUTE': 'PEC'}
+_TPL = {}
+
+
+def templates():
+    """{id: {kind, length, A (points' places), N, L (faces), lo (the underside), ...}} - {} without the file."""
+    if not _TPL:
+        try:
+            with np.load(SHAPE_FILE, allow_pickle=False) as z:
+                meta = json.loads(str(z['meta']))
+                for sid, inf in meta['shapes'].items():
+                    _TPL[sid] = dict(inf, A=z[sid + '_A'].astype(np.float64), N=np.array(z[sid + '_N']),
+                                     L=np.array(z[sid + '_L']), lo=z[sid + '_lo'].astype(np.float64))
+        except (OSError, KeyError, ValueError):
+            _TPL['_none'] = {}
+    return {k: v for k, v in _TPL.items() if k != '_none'}
+
+
+def sculpt_of(pg, kind):
+    """The sculpted shape a muscle is laid with - None: strands (another look, no shape for it, the file gone)."""
+    if pg.style != 'CREATURE' or pg.shape != 'SCULPT' or kind == 'SHEET':
+        return None
+    tp = templates()
+    auto = pg.sculpt == 'AUTO'
+    sid = TEMPLATE_OF.get(pg.preset) if auto else pg.sculpt
+    want = 'FAN' if kind == 'FAN' else 'LINE'
+    if sid is None:
+        return None
+    if sid not in tp or tp[sid]['kind'] != want:
+        sid = TEMPLATE_OF.get(pg.preset)
+        if sid not in tp or tp[sid]['kind'] != want:
+            return None
+    if auto and sid in ('SINGLE', 'DOUBLE'):
+        sid = 'DOUBLE' if int(pg.strands) == 2 else 'SINGLE'
+    return sid
+
+
+def _bilerp(G, u, t, ur, tr):
+    """``G`` (nu, nt, ...) over ``ur`` x ``tr`` at (u, t) - clamped to the grid."""
+    nu, nt = G.shape[0], G.shape[1]
+    fu = np.clip((np.asarray(u) - ur[0]) / (ur[1] - ur[0]) * (nu - 1), 0.0, nu - 1 - 1e-9)
+    ft = np.clip((np.asarray(t) - tr[0]) / (tr[1] - tr[0]) * (nt - 1), 0.0, nt - 1 - 1e-9)
+    i, j = fu.astype(int), ft.astype(int)
+    a, b = fu - i, ft - j
+    if G.ndim == 3:
+        a, b = a[:, None], b[:, None]
+    return (G[i, j] * (1 - a) * (1 - b) + G[i + 1, j] * a * (1 - b) + G[i, j + 1] * (1 - a) * b
+            + G[i + 1, j + 1] * a * b)
+
+
+def _put(mesh, tp, pos, tend, ang):
+    """A laid shape into ``mesh``: its faces outside out (a mirror - a left and a right - turns them)."""
+    base = len(mesh.V)
+    for i in range(len(pos)):
+        mesh.add_v(pos[i], tend[i], ang[i])
+    N, L = tp['N'], tp['L']
+    vol = 0.0
+    k = 0
+    faces = []
+    for n in N:
+        f = L[k:k + n]
+        faces.append(f)
+        p0 = pos[f[0]]
+        for m in range(1, n - 1):
+            vol += float(np.dot(p0, np.cross(pos[f[m]], pos[f[m + 1]])))
+        k += n
+    flip = vol < 0
+    for f in faces:
+        idx = [int(x) + base for x in (f[::-1] if flip else f)]
+        mesh.add_f(idx, 0)
+
+
+def lay_line(mesh, tp, P, N, pg, ext, share=1.0):
+    """A LINE shape along a strand's path (its length between the points, Length round its middle): along t, across
+    s, up v (both over its length); its underside on the surface (Sink: that much of it into it)."""
+    seg = np.linalg.norm(np.diff(P, axis=0), axis=1)
+    L0 = float(seg.sum()) / (1.0 + 2 * ext)
+    half = 0.5 * float(pg.length)
+    s0, s1 = 0.5 - half / (1.0 + 2 * ext), 0.5 + half / (1.0 + 2 * ext)
+    K = 64
+    C, Nn = _resample(P, N, s0, s1, K)
+    T, nrm, side = _frames(C, Nn)
+    tk = np.linspace(0.0, 1.0, K)
+    A = tp['A']
+    t, s, v = A[:, 0], A[:, 1], A[:, 2]
+    Lm = L0 * float(pg.length)
+    vol = float(pg.volume)
+    wk = float(pg.width) * vol * share
+    hk = float(pg.thickness) * vol * share
+    lo = np.interp(t, np.linspace(0.0, 1.0, len(tp['lo'])), tp['lo'])
+    depth = np.maximum(-lo, 1e-6) * 2.0
+    h = (v - lo) * Lm * hk - float(pg.sink) * 0.5 * depth * Lm * hk
+
+    def at(X):
+        return np.stack([np.interp(t, tk, X[:, c]) for c in range(3)], 1)
+    Ci, Si, Ni = at(C), at(side), at(nrm)
+    Si /= np.maximum(np.linalg.norm(Si, axis=1, keepdims=True), 1e-12)
+    Ni /= np.maximum(np.linalg.norm(Ni, axis=1, keepdims=True), 1e-12)
+    pos = Ci + Si * (s * Lm * wk)[:, None] + Ni * h[:, None]
+    full = np.interp(t, np.linspace(0.0, 1.0, len(tp['lo'])), -tp['lo'] / max(-tp['lo'].min(), 1e-9))
+    tend = np.clip(1.0 - (full - 0.12) / 0.3, 0.0, 1.0)
+    ang = np.arctan2(v - (lo + depth * 0.5), s)
+    _put(mesh, tp, pos, tend, ang)
+    return Lm
+
+
+def lay_fan(context, mesh, tp, ob, pg):
+    """A FAN shape over the surface between the three points: the line it starts on (first -> second point), its
+    end at the third; each of its places (u across, t along) found on a sheet of paths over the body."""
+    d = data(ob)
+    body = bpy.data.objects.get(d.get('body', ''))
+    if body is None:
+        raise RuntimeError('The mesh the muscle was made on is gone')
+    others = [bpy.data.objects.get(n) for n in d.get('others', [])]
+    bvh, _size = body_bvh(context, body, others)
+    A, B, Cc = (np.asarray(p, float) for p in d['pts'][:3])
+    nA, nB, nC = (np.asarray(p, float) for p in d['nrm'][:3])
+    ur, tr = tp['u_range'], tp['t_range']
+    key = [round(x, 5) for p in d['pts'][:3] for x in p] + [list(ur), list(tr), 'sheet1']
+    sheet = d.get('sheet')
+    if sheet and sheet.get('key') == key:
+        G, GN, Lb = np.array(sheet['G']), np.array(sheet['GN']), sheet['Lb']
+    else:
+        eu = max(-ur[0], ur[1] - 1.0)
+        nO = 49
+        Op, On = surface_path(bvh, A, B, nA, nB, n=nO, ext=eu)
+        pu = np.linspace(-eu, 1.0 + eu, nO)
+        nu, nt = 17, 31
+        ug = np.linspace(ur[0], ur[1], nu)
+        tg = np.linspace(tr[0], tr[1], nt)
+        et = max(-tr[0], tr[1] - 1.0)
+        pt = np.linspace(-et, 1.0 + et, 41)
+        span = float(np.linalg.norm(B - A))
+        sc = (B - A) - nC * float(np.dot(B - A, nC))
+        sc /= max(np.linalg.norm(sc), 1e-9)
+        G = np.zeros((nu, nt, 3))
+        GN = np.zeros((nu, nt, 3))
+        for i, u in enumerate(ug):
+            o = np.array([np.interp(u, pu, Op[:, c]) for c in range(3)])
+            on = np.array([np.interp(u, pu, On[:, c]) for c in range(3)])
+            e, en = _onto(bvh, Cc + sc * (u - 0.5) * float(tp['spread']) * span)
+            P, Nn = surface_path(bvh, o, e, on, en, n=41, ext=et)
+            G[i] = np.stack([np.interp(tg, pt, P[:, c]) for c in range(3)], 1)
+            GN[i] = np.stack([np.interp(tg, pt, Nn[:, c]) for c in range(3)], 1)
+        GN /= np.maximum(np.linalg.norm(GN, axis=2, keepdims=True), 1e-12)
+        mid = _bilerp(G, np.full(21, 0.5), np.linspace(0.0, 1.0, 21), ur, tr)
+        Lb = float(np.linalg.norm(np.diff(mid, axis=0), axis=1).sum())
+        d['sheet'] = {'key': key, 'G': G.round(6).tolist(), 'GN': GN.round(5).tolist(), 'Lb': Lb}
+        ob[KEY] = json.dumps(d)
+    At = tp['A']
+    u, t, v = At[:, 0], At[:, 1], At[:, 2]
+    u2 = 0.5 + (u - 0.5) * float(pg.width)
+    t2 = t * float(pg.length)
+    P = _bilerp(G, u2, t2, ur, tr)
+    Nv = _bilerp(GN, u2, t2, ur, tr)
+    Nv /= np.maximum(np.linalg.norm(Nv, axis=1, keepdims=True), 1e-12)
+    lo = _bilerp(tp['lo'], u, t, ur, tr)
+    hk = float(pg.thickness) * float(pg.volume)
+    depth = np.maximum(-lo, 1e-6) * 2.0
+    h = (v - lo) * Lb * hk - float(pg.sink) * 0.5 * depth * Lb * hk
+    pos = P + Nv * h[:, None]
+    tend = np.clip((t - 0.8) / 0.2, 0.0, 1.0)
+    tend = tend * tend * (3 - 2 * tend)
+    ang = u * math.pi * 2.0 * 3.0
+    _put(mesh, tp, pos, tend, ang)
+    return Lb
+
+
+def sculpt_mesh(context, ob, sid):
+    """(``Mesh``, length) of a muscle laid with a sculpted shape."""
+    pg = ob.mch_muscle
+    tp = templates()[sid]
+    mesh = Mesh()
+    if tp['kind'] == 'FAN':
+        return mesh, lay_fan(context, mesh, tp, ob, pg)
+    n = int(pg.strands)
+    many = sid == 'SINGLE' and n >= 3
+    paths = paths_of(context, ob, strands=None if many else 1)
+    lens = [lay_line(mesh, tp, P, N, pg, 0.3, share=(1.0 / math.sqrt(len(paths)) if many else 1.0))
+            for P, N, _w in paths]
+    return mesh, (lens[0] if lens else 1.0)
+
+
 def build_mesh(context, ob):
     """The muscle's mesh from its paths and sliders (``Mesh``), and the length of its first strand."""
     pg = ob.mch_muscle
     kind = PRESET[pg.preset][3]
+    sid = sculpt_of(pg, kind)
+    if sid is not None:
+        return sculpt_mesh(context, ob, sid)
     paths = paths_of(context, ob)
     mesh = Mesh()
     ext = 0.3                                         # (the paths go on this share past each end, see surface_path)
@@ -824,9 +1027,15 @@ def build(ob, context=None):
     pg = ob.mch_muscle
     mesh, L = build_mesh(context, ob)
     me = ob.data
+    mats = materials(ob)                              # (the slots before the faces' indices: clearing them zeroes those)
+    if len(me.materials) != 3 or any(a is not b for a, b in zip(me.materials, mats)):
+        me.materials.clear()
+        for m in mats:
+            me.materials.append(m)
     me.clear_geometry()
     me.from_pydata(mesh.V, [], mesh.F)
-    me.validate(clean_customdata=False)
+    # (materials and attributes first, while the faces / points are as built - validate may drop a degenerate face
+    # and carries them along)
     if len(me.polygons) == len(mesh.M):
         me.polygons.foreach_set('material_index', np.array(mesh.M, np.int32))
     at = me.attributes.get(TEND) or me.attributes.new(TEND, 'FLOAT', 'POINT')
@@ -837,11 +1046,7 @@ def build(ob, context=None):
         a2 = me.attributes.get(nm) or me.attributes.new(nm, 'FLOAT', 'POINT')
         if len(a2.data) == len(arr):
             a2.data.foreach_set('value', arr.astype(np.float32))
-    mats = materials(ob)
-    if len(me.materials) != 3:
-        me.materials.clear()
-        for m in mats:
-            me.materials.append(m)
+    me.validate(clean_customdata=False)
     mod = ob.modifiers.get(MOD)
     creature = pg.style == 'CREATURE'
     if creature and pg.remesh:
@@ -908,7 +1113,7 @@ def _collection(context):
     return coll
 
 
-LIVE = ('preset', 'style', 'strands', 'twist', 'spread', 'thickness', 'width', 'volume', 'length', 'belly', 'tendon',
+LIVE = ('preset', 'shape', 'sculpt', 'style', 'strands', 'twist', 'spread', 'thickness', 'width', 'volume', 'length', 'belly', 'tendon',
         'segments', 'sink', 'fibers', 'fiber_scale', 'smooth', 'resolution', 'remesh', 'color', 'tendon_color', 'core',
         'core_count', 'core_size', 'core_color', 'holes', 'hole_size', 'hole_cells', 'sleeve_thick', 'sleeve_color',
         'cap', 'cap_size', 'cap_length', 'cap_color', 'cable_radius')
@@ -1135,6 +1340,10 @@ def _upd_preset(self, context):
 
 class MCH_PG_Muscle(bpy.types.PropertyGroup):
     preset: EnumProperty(name='Muscle', items=PRESET_ITEMS, default='SPINDLE', update=_upd_preset)
+    shape: EnumProperty(name='Shape', items=SHAPES, default='SCULPT', update=_upd,
+                        description='Your sculpted muscles or strands')
+    sculpt: EnumProperty(name='Sculpt', items=SCULPTS, default='AUTO', update=_upd,
+                         description='Which of your sculpted muscles')
     style: EnumProperty(name='Look', items=STYLES, default='CREATURE', update=_upd)
     strands: IntProperty(name='Strands', default=1, min=1, max=12, update=_upd,
                          description='How many bellies (2: a double muscle; the chest: the bands twisting into the arm)')
@@ -1539,12 +1748,19 @@ def draw(layout, context, tool='MUSCLE'):
             box.label(text=f'{k + 1}. {role}', icon='CHECKMARK' if k < n else ('MOUSE_LMB' if k == n else 'DOT'))
     if PRESET[pg.preset][3] == 'SHEET':
         return
+    style = pg.style if tool == 'MMUSCLE' or ob is not None else 'CREATURE'
+    sculpted = style == 'CREATURE' and pg.shape == 'SCULPT' and sculpt_of(pg, PRESET[pg.preset][3]) is not None
+    if style == 'CREATURE':                           # 0.24.183 your sculpted muscles / strands
+        layout.row(align=True).prop(pg, 'shape', expand=True)
+        if pg.shape == 'SCULPT':
+            layout.prop(pg, 'sculpt')
     col = layout.column(align=True)
     col.label(text='Shape')
-    for k in ('thickness', 'volume', 'width', 'length', 'strands', 'twist', 'spread', 'belly', 'tendon', 'segments',
-              'sink'):
+    keys = (('thickness', 'volume', 'width', 'length', 'strands', 'sink') if sculpted else
+            ('thickness', 'volume', 'width', 'length', 'strands', 'twist', 'spread', 'belly', 'tendon', 'segments',
+             'sink'))
+    for k in keys:
         col.prop(pg, k, slider=k in {'twist', 'belly', 'tendon', 'sink'})
-    style = pg.style if tool == 'MMUSCLE' or ob is not None else 'CREATURE'
     if style == 'CREATURE':
         col = layout.column(align=True)
         col.label(text='Surface')

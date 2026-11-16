@@ -922,7 +922,6 @@ def cut_ramp(context, targets, loops, projector, edge=None, live=True):
             '(deep side: < > / Pick Edge in GN Edge)' + (' | failed: ' + '; '.join(failed) if failed else ''))
 
 
-@_with_finish_notes
 def _print_cut(fn):
     """0.24.183 a Print Cut run: its own error as the engine's."""
     from . import print3d
@@ -932,6 +931,7 @@ def _print_cut(fn):
         raise cg.CutError(str(ex))
 
 
+@_with_finish_notes
 def perform_closed(context, mode, targets, loops, projector, invert=False):
     """Cut / Split all targets with closed screen loops. Returns a report string.  0.24.95 From Surface, Floor Follow:
     the pocket follows the surface under the shape; Floor Level: flat at the point drawn round, everything higher

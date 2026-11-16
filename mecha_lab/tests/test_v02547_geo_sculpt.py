@@ -35,9 +35,10 @@ check('the tool\'s keys: LMB / Alt+LMB / Shift+LMB = a stroke, S = Draw Size and
       == 'mch.geo_stroke' and keys[('S', False, False)] == ('mch.geo_size', {'target': 'SIZE'})
       and keys[('U', False, False)] == ('mch.geo_size', {'target': 'INTENSITY'})
       and keys[('F', False, False)][0] == 'mch.geo_size' and keys[('ESC', False, False)][0] == 'mch.exit_tool', keys)
-check('the brushes: Standard, Clay, Clay Buildup, Flat, Move, Smooth, Edge Line, Panel Line, Chamfer, Round - all in the '
-      'window\'s rows', [b[0] for b in gs.BRUSHES] == ['STANDARD', 'CLAY', 'BUILDUP', 'FLAT', 'MOVE', 'SMOOTH', 'EDGE',
-                                                       'PANEL', 'CHAMFER', 'ROUND']
+check('the brushes: Standard, Clay, Clay Buildup, Flat, Move, Smooth, Edge Line, Panel Line, Chamfer, Round (+ 0.24.183 '
+      'Dam Standard) - all in the window\'s rows', [b[0] for b in gs.BRUSHES] == ['STANDARD', 'CLAY', 'BUILDUP', 'FLAT',
+                                                                               'MOVE', 'SMOOTH', 'EDGE', 'PANEL', 'DAM',
+                                                                               'CHAMFER', 'ROUND']
       and sorted(sum(gs.BRUSH_ROWS, ())) == sorted(b[0] for b in gs.BRUSHES))
 
 
