@@ -13,6 +13,9 @@
   6. Geo Sculpt Chamfer: a REAL click on "Edge Loop" in the window, a REAL click by the edge - the top's four edges
   7. Plate Detail 4 (user: "디테일 플레이트 4에 프리셋 저장도 만들어 줘"): a REAL click on Save Preset, a REAL Enter -
      saved (a scratch config folder, not the user's); a value changed, a REAL click on the saved one - back
+  8. Face Pop Split (user: "페이스 팝은 별개의 메쉬로 분리되어야지" - "그냥 페이스 팝도 유지하고 스플릿 버전도"): a REAL
+     click on "Split", a REAL click on a rock's face - a piece of its own (the rock not touched); a REAL drag over two
+     more - into the same piece; Alt + a REAL click - one off
 """
 import math
 import os
@@ -573,6 +576,72 @@ def flow():
         ok7 = bool(new) and abs(back7 - 0.66) < 1e-4 and 'gui_clean' in conf
     res['7 Plate Detail 4: a REAL click on Save Preset, a REAL Enter - saved; a REAL click on it - its values back'] = ok7
     shot('7_preset.png')
+    # 8 Face Pop: a part of its own
+    from mecha_lab import face_pop as fp
+    with C.temp_override(window=w, area=a, region=r):
+        for o in list(S.objects):
+            bpy.data.objects.remove(o)
+        bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1, radius=1.0)
+        rock = C.active_object
+        rock.name = 'Rock'
+        for o in C.selected_objects:
+            o.select_set(False)
+        C.view_layer.objects.active = None
+        view((math.radians(70), 0.0, math.radians(20)), (0.0, 0.0, 0.0), 4.5)
+    n_rock = len(rock.data.polygons)
+    S.mch_pop.height, S.mch_pop.taper, S.mch_pop.each = 0.15, 0.3, True
+    set_tool('FPOP')
+    yield 1.0
+    it = yield from scrolled_item('Split')               # (the window's switch: In the Part / Split)
+    if it is not None:
+        yield from press(it)
+    log('8 mode', S.mch_pop.mode)
+    yield 2.0
+    rv = sp3.region_3d
+    facing = sorted([q.index for q in rock.data.polygons
+                     if (rv.view_rotation @ Vector((0, 0, 1))).dot(q.normal) > 0.75],
+                    key=lambda i: rock.data.polygons[i].center.z)
+    fxy = lambda f: screen_xy(tuple(rock.matrix_world @ rock.data.polygons[f].center))  # noqa: E731
+    f1 = facing[len(facing) // 2]
+    xdo('mousemove', *fxy(f1))
+    yield from wait_draws(2)
+    xdo('click', 1)
+    yield 2.0
+    pcs = fp.pieces_of(rock)
+    m1 = (len(pcs), len(fp.faces_of(pcs[0])) if pcs else 0)
+    others = [f for f in facing if f != f1][:2]
+    xy0 = fxy(others[0])
+    xdo('mousemove', *xy0)
+    yield from wait_draws(2)
+    xdo('mousedown', 1)
+    yield 0.3
+    xy1 = fxy(others[1])
+    for i in range(1, 13):
+        xdo('mousemove', int(xy0[0] + (xy1[0] - xy0[0]) * i / 12), int(xy0[1] + (xy1[1] - xy0[1]) * i / 12))
+        yield 0.06
+    yield 0.3
+    xdo('mouseup', 1)
+    yield 2.0
+    pcs = fp.pieces_of(rock)
+    m2 = (len(pcs), len(fp.faces_of(pcs[0])) if pcs else 0)
+    shot('8_face_pop_piece.png')
+    xdo('mousemove', *fxy(f1))                         # (on the piece now: the rock's face under it)
+    yield from wait_draws(2)
+    xdo('keydown', 'alt')
+    yield 0.2
+    xdo('click', 1)
+    yield 0.3
+    xdo('keyup', 'alt')
+    yield 2.0
+    pcs = fp.pieces_of(rock)
+    m3 = (len(pcs), len(fp.faces_of(pcs[0])) if pcs else 0)
+    same = len(rock.data.polygons) == n_rock and not len(rock.modifiers) and rock.data.attributes.get(fp.ATTR) is None
+    log('8 face pop pieces/faces: click', m1, 'drag', m2, 'alt', m3, 'rock untouched', same,
+        'piece', pcs[0].name if pcs else None, 'parent', pcs[0].parent.name if pcs and pcs[0].parent else None)
+    res['8 Face Pop Split: a REAL click on "Split", a REAL click - a piece of its own (the rock not touched); a REAL drag '
+        '- into the same piece; Alt + a REAL click on it - one off'] = (
+        S.mch_pop.mode == 'SPLIT' and m1 == (1, 1) and m2[0] == 1 and m2[1] >= 3 and m3 == (1, m2[1] - 1) and same)
+    shot('8_face_pop_alt.png')
     bpy.types.SpaceView3D.draw_handler_remove(handle, 'WINDOW')
     for k_, v in res.items():
         log(('PASS ' if v else 'FAIL ') + k_)
