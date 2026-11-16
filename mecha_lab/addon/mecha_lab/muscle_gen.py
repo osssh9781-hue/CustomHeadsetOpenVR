@@ -99,7 +99,8 @@ HOLES = (('NONE', 'No Sleeve', 'The core bare'),
          ('ROUND', 'Round', 'Round holes in rows'),
          ('HEX', 'Hex', 'Six-sided holes'),
          ('SLOT', 'Slots', 'Long slots along it'))
-CAPS = (('COLLAR', 'Collar', 'A thick ring'),
+CAPS = (('NONE', 'None', 'No end fitting'),
+        ('COLLAR', 'Collar', 'A thick ring'),
         ('CLAMP', 'Clamp', 'Two rings and bolts'),
         ('CONE', 'Cone', 'Tapering into a neck and a button'),
         ('NUT', 'Nut', 'A six-sided nut'),
@@ -398,6 +399,8 @@ def cap(mesh, design, c, axis, n, r, length, size, mat=2):
     n /= max(np.linalg.norm(n), 1e-12)
     s = np.cross(axis, n)
     R = r * size
+    if design == 'NONE':
+        return
     if design == 'COLLAR':
         cylinder(mesh, c, axis, R, length, mat, r_in=r * 0.7, side=n)
     elif design == 'CLAMP':
@@ -632,6 +635,8 @@ def my_shapes():
                 with np.load(os.path.join(d, f), allow_pickle=False) as z:
                     out[f[:-4]] = {'kind': 'LINE', 'length': float(z['length']), 'A': z['A'].astype(np.float64),
                                    'N': np.array(z['N']), 'L': np.array(z['L']), 'lo': z['lo'].astype(np.float64)}
+                    if 'M' in z:                      # (kept as made: a group's meshes, each face its material)
+                        out[f[:-4]].update(exact=True, M=np.array(z['M']), mats=json.loads(str(z['mats'])))
             except (OSError, KeyError, ValueError):
                 continue
         _MY['key'], _MY['data'] = key, out
@@ -676,38 +681,72 @@ def line_shape(V):
     return np.c_[t, sx / L, v / L], lo, float(L)
 
 
-def save_my_shape(context, src, name, faces=3000):
-    """The mesh ``src`` (as shown; made light if heavy) kept as your muscle shape ``name``."""
-    md = None
-    tris = sum(len(p.vertices) - 2 for p in src.data.polygons)
-    if tris > faces * 1.5:
-        md = src.modifiers.new('MCH tmp', 'DECIMATE')
-        md.ratio = faces / tris
-    try:
-        dg = context.evaluated_depsgraph_get()
-        ev = src.evaluated_get(dg)
-        me = ev.to_mesh()
-        V = np.empty(len(me.vertices) * 3)
-        me.vertices.foreach_get('co', V)
-        M = np.array(src.matrix_world)
-        V = V.reshape(-1, 3) @ M[:3, :3].T + M[:3, 3]
-        N = np.array([len(p.vertices) for p in me.polygons], np.int32)
-        Lp = np.empty(len(me.loops), np.int32)
-        me.loops.foreach_get('vertex_index', Lp)
-        ev.to_mesh_clear()
-    finally:
-        if md is not None:
-            src.modifiers.remove(md)
+def save_my_shape(context, srcs, name, exact=False, faces=3000):
+    """The meshes ``srcs`` (as shown) kept as your muscle shape ``name``.  ``exact``: as made - every mesh of the group,
+    each face its material (an artificial muscle you built: its pod, rings, cables); else one mesh, a reference a clean
+    muscle is built after (heavy ones made light)."""
+    srcs = [srcs] if isinstance(srcs, bpy.types.Object) else list(srcs)
+    Vs, Ns, Ls, Ms, mats, off = [], [], [], [], [], 0
+    for src in srcs:
+        md = None
+        tris = sum(len(p.vertices) - 2 for p in src.data.polygons)
+        if not exact and tris > faces * 1.5:
+            md = src.modifiers.new('MCH tmp', 'DECIMATE')
+            md.ratio = faces / tris
+        try:
+            dg = context.evaluated_depsgraph_get()
+            ev = src.evaluated_get(dg)
+            me = ev.to_mesh()
+            V = np.empty(len(me.vertices) * 3)
+            me.vertices.foreach_get('co', V)
+            M = np.array(src.matrix_world)
+            V = V.reshape(-1, 3) @ M[:3, :3].T + M[:3, 3]
+            N = np.array([len(p.vertices) for p in me.polygons], np.int32)
+            Lp = np.empty(len(me.loops), np.int32)
+            me.loops.foreach_get('vertex_index', Lp)
+            slot = []
+            for sl in (src.material_slots[:] or [None]):
+                m = sl.material if sl is not None else None
+                rec = [m.name if m else 'MCH Muscle Part', list(m.diffuse_color) if m else [0.5, 0.5, 0.5, 1.0]]
+                if rec[0] not in [x[0] for x in mats]:
+                    mats.append(rec)
+                slot.append([x[0] for x in mats].index(rec[0]))
+            mi = np.array([slot[min(p.material_index, len(slot) - 1)] for p in me.polygons], np.int32)
+            ev.to_mesh_clear()
+        finally:
+            if md is not None:
+                src.modifiers.remove(md)
+        Vs.append(V)
+        Ns.append(N)
+        Ls.append(Lp + off)
+        Ms.append(mi)
+        off += len(V)
+    V = np.concatenate(Vs) if Vs else np.zeros((0, 3))
+    N = np.concatenate(Ns) if Ns else np.zeros(0, np.int32)
     if len(V) < 8 or len(N) < 4:
         raise RuntimeError('Pick a mesh')
     A, lo, L = line_shape(V)
     d = my_shape_dir()
     os.makedirs(d, exist_ok=True)
     safe = ''.join(c for c in name if c.isalnum() or c in ' _-').strip() or 'Muscle'
-    np.savez_compressed(os.path.join(d, safe + '.npz'), A=A.astype(np.float32), N=N, L=Lp, lo=lo.astype(np.float32),
-                        length=np.array(L))
+    extra = dict(M=np.concatenate(Ms), mats=np.array(json.dumps(mats))) if exact else {}
+    np.savez_compressed(os.path.join(d, safe + '.npz'), A=A.astype(np.float32), N=N, L=np.concatenate(Ls),
+                        lo=lo.astype(np.float32), length=np.array(L), **extra)
     _MY.clear()
     return safe, len(N)
+
+
+def shape_materials(tp):
+    """The materials of a shape kept as made (the file's own by name, else made with the colour it had)."""
+    out = []
+    for name, col in tp['mats']:
+        m = bpy.data.materials.get(name)
+        if m is None:
+            m = bpy.data.materials.new(name)
+            m.use_nodes = True
+            _principled(m, col[:3], 0.4, 0.0)
+        out.append(m)
+    return out
 
 
 # 0.24.185 (user: "그대로 만들지 말고 그걸 참고해서 깔끔한 메쉬로 만들어"): a long shape is not laid as its own mesh - a
@@ -848,9 +887,10 @@ def _put(mesh, tp, pos, tend, ang):
             vol += float(np.dot(p0, np.cross(pos[f[m]], pos[f[m + 1]])))
         k += n
     flip = vol < 0
-    for f in faces:
+    M = tp.get('M')
+    for i, f in enumerate(faces):
         idx = [int(x) + base for x in (f[::-1] if flip else f)]
-        mesh.add_f(idx, 0)
+        mesh.add_f(idx, int(M[i]) if M is not None else 0)
 
 
 def lay_line(mesh, tp, P, N, pg, ext, share=1.0, along=False):
@@ -975,7 +1015,8 @@ def sculpt_mesh(context, ob, sid):
             axis = (Cc - mid) / max(np.linalg.norm(Cc - mid), 1e-9)
             cap(mesh, pg.cap, Cc + nC * Lb * 0.02, axis, nC, Lb * 0.03, Lb * 0.05, float(pg.cap_size), mat=2)
         return mesh, Lb
-    tp = clean_shape(sid, tp, pg)                     # (a clean mesh after the shape, not the shape's own)
+    if not tp.get('exact'):
+        tp = clean_shape(sid, tp, pg)                 # (a clean mesh after the shape, not the shape's own)
     n = int(pg.strands)
     many = sid == 'SINGLE' and n >= 3
     paths = paths_of(context, ob, strands=None if many else 1)
@@ -984,8 +1025,9 @@ def sculpt_mesh(context, ob, sid):
         Lm, e0, e1 = lay_line(mesh, tp, P, N, pg, 0.3, share=(1.0 / math.sqrt(len(paths)) if many else 1.0), along=mecha)
         lens.append(Lm)
         if mecha:
-            for (c_, t_, n_), sgn in ((e0, -1.0), (e1, 1.0)):
-                cap(mesh, pg.cap, c_ + n_ * Lm * 0.015, t_ * sgn, n_, Lm * 0.028, Lm * 0.05, float(pg.cap_size), mat=2)
+            for (c_, t_, n_), sgn in (() if tp.get('exact') else ((e0, -1.0), (e1, 1.0))):
+                cap(mesh, pg.cap, c_ + n_ * Lm * 0.008, t_ * sgn, n_, Lm * 0.012, Lm * 0.2 * float(pg.cap_length),
+                    float(pg.cap_size), mat=2)
     return mesh, (lens[0] if lens else 1.0)
 
 
@@ -1445,7 +1487,10 @@ def build(ob, context=None):
     mesh, L = build_mesh(context, ob)
     me = ob.data
     mats = materials(ob)                              # (the slots before the faces' indices: clearing them zeroes those)
-    if len(me.materials) != 3 or any(a is not b for a, b in zip(me.materials, mats)):
+    sid_ = sculpt_of(pg, PRESET[pg.preset][3])
+    if sid_ and sid_.startswith('my:') and shape_data(sid_).get('exact'):
+        mats = shape_materials(shape_data(sid_))      # (your group as made: its own materials)
+    if len(me.materials) != len(mats) or any(a is not b for a, b in zip(me.materials, mats)):
         me.materials.clear()
         for m in mats:
             me.materials.append(m)
@@ -1824,7 +1869,8 @@ class MCH_PG_Muscle(bpy.types.PropertyGroup):
     sleeve_color: FloatVectorProperty(name='Sleeve', subtype='COLOR', size=3, min=0.0, max=1.0,
                                       default=(0.55, 0.56, 0.5), update=_upd)
     cap: EnumProperty(name='End Cap', items=CAPS, default='COLLAR', update=_upd)
-    cap_size: FloatProperty(name='Cap Size', default=1.3, min=0.6, max=3.0, update=_upd)
+    cap_size: FloatProperty(name='Cap Size', default=1.3, min=0.1, max=4.0, update=_upd,
+                            description='The end fittings bigger or smaller')
     cap_length: FloatProperty(name='Cap Length', default=0.08, min=0.02, max=0.3, update=_upd,
                               description='The end caps (and the bare ends) - a share of its length')
     cap_color: FloatVectorProperty(name='Caps', subtype='COLOR', size=3, min=0.0, max=1.0, default=(0.6, 0.58, 0.52),
@@ -2099,17 +2145,23 @@ class MCH_OT_muscle_my_delete(bpy.types.Operator):
 
 class MCH_OT_muscle_shape_save(bpy.types.Operator):
     bl_idname = 'mch.muscle_shape_save'
-    bl_label = 'Save Selected Mesh as My Muscle'
-    bl_description = ('The selected mesh (a muscle you made - a long one) kept as your muscle shape: there in every '
-                      'file, laid between two clicked points like the built-in ones (heavy meshes made light)')
+    bl_label = 'Save Selected as My Muscle'
+    bl_description = ('The selected meshes (a muscle you made - a long one; a group: its pod, rings, cables ...) kept '
+                      'as your muscle preset: there in every file, laid between two clicked points.  Keep As Made: '
+                      'your meshes and materials as they are; off: a clean muscle built after it')
     bl_options = {'REGISTER', 'UNDO'}
     tool: StringProperty(default='MUSCLE')
     name: StringProperty(name='Name', default='My Muscle')
+    exact: BoolProperty(name='Keep As Made (all selected, their materials)', default=True)
 
     @classmethod
     def poll(cls, context):
         ob = context.active_object
         return ob is not None and ob.type == 'MESH' and not is_muscle(ob) and not is_skin(ob)
+
+    def draw(self, context):
+        self.layout.prop(self, 'name')
+        self.layout.prop(self, 'exact')
 
     def invoke(self, context, event):
         self.name = context.active_object.name
@@ -2117,7 +2169,11 @@ class MCH_OT_muscle_shape_save(bpy.types.Operator):
 
     def execute(self, context):
         try:
-            name, nf = save_my_shape(context, context.active_object, self.name)
+            act = context.active_object
+            group = [o for o in context.selected_objects if o.type == 'MESH' and not is_muscle(o) and not is_skin(o)]
+            if act not in group:
+                group.append(act)
+            name, nf = save_my_shape(context, group if self.exact else act, self.name, exact=self.exact)
         except RuntimeError as ex:
             self.report({'WARNING'}, str(ex))
             return {'CANCELLED'}
@@ -2254,7 +2310,7 @@ def draw(layout, context, tool='MUSCLE'):
         if pg.shape == 'SCULPT':
             layout.prop(pg, 'sculpt')
             col = layout.column(align=True)
-            col.label(text='My Muscle Shapes (long ones, two points)')
+            col.label(text='My Muscle Presets (long ones, two points)')
             for nm in sorted(my_shapes()):
                 r = col.row(align=True)
                 o = r.operator('mch.muscle_set', text=nm, depress=pg.my_shape == nm)
@@ -2282,9 +2338,8 @@ def draw(layout, context, tool='MUSCLE'):
         col.row(align=True).prop(pg, 'band_surface', expand=True)
         for k in ('band_weave', 'band_weave_scale', 'band_teeth'):
             col.prop(pg, k)
-        r = col.row(align=True)
-        r.prop(pg, 'band_color', text='')
-        r.prop(pg, 'cap_color', text='')
+        col.prop(pg, 'band_color')
+        _draw_caps(layout, pg, tool)
     elif style == 'CABLE':
         col = layout.column(align=True)
         col.label(text='Cable Bundle')

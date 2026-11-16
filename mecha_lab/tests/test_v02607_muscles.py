@@ -85,7 +85,7 @@ mg.MY_SHAPE_DIR[0] = os.path.join(TMP, 'shapes')
 bpy.ops.mesh.primitive_cone_add(vertices=12, radius1=0.2, radius2=0.05, depth=1.5, location=(5, 0, 0))
 mine = C.active_object
 nfm = len(mine.data.polygons)
-r = bpy.ops.mch.muscle_shape_save(name='Cone Muscle', tool='MUSCLE')
+r = bpy.ops.mch.muscle_shape_save(name='Cone Muscle', tool='MUSCLE', exact=False)
 check('Save Selected Mesh as My Muscle: kept (a scratch folder), picked', r == {'FINISHED'} and
       'Cone Muscle' in mg.my_shapes() and S.mch_muscle.my_shape == 'Cone Muscle')
 m3 = build_with('MUSCLE', [A, B], preset='SPINDLE', shape='SCULPT', style='CREATURE')
@@ -94,6 +94,23 @@ ends = [float(np.min(np.linalg.norm(V3 - np.array(q[1]), axis=1))) for q in (A, 
 check(f'... a muscle between two points after that mesh - a clean one ({len(m3.data.polygons)} faces, quads), from '
       f'point to point ({ends[0]:.3f}, {ends[1]:.3f})', len(m3.data.polygons) == mg.clean_count(m3.mch_muscle) and
       max(ends) < 0.15)
+# a group kept as made: two meshes, each its material -> one preset
+bpy.ops.mesh.primitive_cylinder_add(vertices=8, radius=0.08, depth=0.2, location=(5, 0, 0.8))
+ring = C.active_object
+ma, mb = bpy.data.materials.new('My Pod'), bpy.data.materials.new('My Ring')
+mine.data.materials.append(ma)
+ring.data.materials.append(mb)
+mine.select_set(True)
+ring.select_set(True)
+C.view_layer.objects.active = mine
+r = bpy.ops.mch.muscle_shape_save(name='My Group', tool='MUSCLE', exact=True)
+m4 = build_with('MUSCLE', [A, B], preset='SPINDLE', shape='SCULPT', style='CREATURE')
+check('Save Selected as My Muscle, Keep As Made: the group (both meshes, their own materials) one preset, laid between '
+      'two points as made', r == {'FINISHED'} and len(m4.data.polygons) == nfm + len(ring.data.polygons) and
+      [m.name for m in m4.data.materials] == ['My Pod', 'My Ring'] and
+      set(p_.material_index for p_ in m4.data.polygons) == {0, 1})
+check('End Caps: None in the list, Cap Size down to 0.1', 'NONE' in [c[0] for c in mg.CAPS] and
+      mg.MCH_PG_Muscle.bl_rna.properties['cap_size'].hard_min <= 0.1 + 1e-6)
 S.mch_muscle.my_shape = ''
 c1 = build_with('MMUSCLE', [A, B], preset='SPINDLE', style='CABLE', cable_count=7, cable_spread=0.0, cable_ties=0)
 c2 = build_with('MMUSCLE', [A, B], preset='SPINDLE', style='CABLE', cable_count=7, cable_spread=1.0, cable_ties=0)
