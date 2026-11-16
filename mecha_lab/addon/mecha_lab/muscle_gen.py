@@ -764,7 +764,7 @@ def clean_count(pg):
     return (clean_rings(pg) - 1) * CLEAN_SIDES + 2
 
 
-def clean_line(tp, K, S=CLEAN_SIDES):
+def clean_line(tp, K, S=CLEAN_SIDES, rim=0.0, rim_width=0.5):
     """A clean mesh after a LINE shape: ``K`` rings of ``S`` points - at each ring, how far the shape reaches from its
     middle there in each direction (smoothed round and along it); quads between the rings, a cap at each end."""
     A = tp['A']
@@ -807,32 +807,51 @@ def clean_line(tp, K, S=CLEAN_SIDES):
         Cn = (Pc[:-2] + Pc[1:-1] * 2 + Pc[2:]) / 4.0
     ease = np.minimum(1.0, (np.minimum(tk, 1.0 - tk) / 0.09) ** 0.6 * 0.85 + 0.15)   # (its ends drawn in to a tip)
     R = R * ease[:, None]
+    rim_cols = set()
+    if rim > 0:
+        # 0.24.185 (user: "각 외곽 라인에 디테일 플레이트 외곽에 라인 잡았던 것처럼 ... 라인 잘 보이게"): a lip along its outline
+        # (where it is widest, both sides): two extra columns either side of each, the strip between them standing out
+        dw = math.radians(4.0 + 10.0 * rim_width)
+        extra = [c + k_ for c in (0.0, math.pi) for k_ in (-dw * 1.25, -dw, dw, dw * 1.25)]
+        ang2 = np.sort(np.concatenate([ang[(np.abs(np.sin(ang)) > math.sin(dw * 1.6))],
+                                       [(a_ + math.pi) % (2 * math.pi) - math.pi for a_ in extra]]))
+        ext = np.concatenate([ang - 2 * math.pi, ang, ang + 2 * math.pi])
+        R = np.stack([np.interp(ang2, ext, np.tile(R[i], 3)) for i in range(K)])
+        near = np.minimum(np.abs(np.sin(ang2)), 1.0)
+        lip = np.abs(np.sin(ang2)) <= math.sin(dw) + 1e-9
+        grow = 1.0 + rim * 0.35 * np.sin(math.pi * tk) ** 0.5
+        R = np.where(lip[None, :], R * grow[:, None], R)
+        ang, S = ang2, len(ang2)
+        rim_cols = {j for j in range(S) if lip[j] and lip[(j + 1) % S]}
     pts = np.empty((K, S, 3))
     pts[:, :, 0] = tk[:, None]
     pts[:, :, 1] = Cn[:, 0:1] + R * np.cos(ang)[None, :]
     pts[:, :, 2] = Cn[:, 1:2] + R * np.sin(ang)[None, :]
-    N, L = [], []
+    N, L, Mf = [], [], []
     for i in range(K - 1):
         for j in range(S):
             j2 = (j + 1) % S
             N.append(4)
             L += [i * S + j, i * S + j2, (i + 1) * S + j2, (i + 1) * S + j]
+            Mf.append(2 if j in rim_cols else 0)
     N.append(S)
     L += list(range(S - 1, -1, -1))
     N.append(S)
     L += [(K - 1) * S + j for j in range(S)]
+    Mf += [0, 0]
     lo = (Cn[:, 1] - R[:, np.argmin(np.abs(ang + math.pi / 2))])
     lo = np.interp(np.linspace(0, 1, 41), tk, np.minimum(pts[:, :, 2].min(1), lo))
-    return dict(tp, A=pts.reshape(-1, 3), N=np.array(N), L=np.array(L), lo=lo)
+    return dict(tp, A=pts.reshape(-1, 3), N=np.array(N), L=np.array(L), lo=lo, **({'M': np.array(Mf)} if rim > 0 else {}))
 
 
 def clean_shape(sid, tp, pg):
     K = clean_rings(pg)
-    key = (sid, K, len(tp['A']), float(tp['A'][:, 1:].sum()))
+    rim = float(pg.band_rim) if pg.style == 'BAND' else 0.0
+    key = (sid, K, len(tp['A']), float(tp['A'][:, 1:].sum()), round(rim, 4), round(float(pg.band_rim_width), 4))
     if key not in _CLEAN:
         if len(_CLEAN) > 64:
             _CLEAN.clear()
-        _CLEAN[key] = clean_line(tp, K)
+        _CLEAN[key] = clean_line(tp, K, rim=rim, rim_width=float(pg.band_rim_width))
     return _CLEAN[key]
 
 
@@ -1579,7 +1598,7 @@ LIVE = ('preset', 'shape', 'sculpt', 'my_shape', 'style', 'strands', 'twist', 's
         'segments', 'sink', 'fibers', 'fiber_scale', 'smooth', 'resolution', 'remesh', 'color', 'tendon_color', 'core',
         'core_count', 'core_size', 'core_color', 'holes', 'hole_size', 'hole_cells', 'sleeve_thick', 'sleeve_color',
         'cap', 'cap_size', 'cap_length', 'cap_color', 'cable_radius', 'cable_count', 'cable_ties', 'cable_twist', 'cable_spread',
-        'band_surface', 'band_teeth', 'band_weave', 'band_weave_scale', 'band_color')
+        'band_surface', 'band_rim', 'band_rim_width', 'band_teeth', 'band_weave', 'band_weave_scale', 'band_color')
 
 
 def make(context, tool, pts):
@@ -1877,6 +1896,9 @@ class MCH_PG_Muscle(bpy.types.PropertyGroup):
                                    update=_upd)
     cable_radius: FloatProperty(name='Cable Thickness', default=0.2, min=0.05, max=1.0, update=_upd)
     band_surface: EnumProperty(name='Surface', items=SURFACES, default='SCALES', update=_upd_surface)
+    band_rim: FloatProperty(name='Outline Lip', default=0.5, min=0.0, max=2.0, update=_upd,
+                            description='A raised line along the pod\'s outline, in the fittings\' colour (0: none)')
+    band_rim_width: FloatProperty(name='Lip Width', default=0.3, min=0.0, max=1.0, update=_upd)
     band_teeth: IntProperty(name='Tabs', default=4, min=0, max=12, update=_upd,
                             description='Toothed tabs where each band starts (0: none)')
     band_weave: FloatProperty(name='Weave', default=0.6, min=0.0, max=1.0, update=_upd,
@@ -2336,7 +2358,7 @@ def draw(layout, context, tool='MUSCLE'):
         col = layout.column(align=True)
         col.label(text='Surface')
         col.row(align=True).prop(pg, 'band_surface', expand=True)
-        for k in ('band_weave', 'band_weave_scale', 'band_teeth'):
+        for k in ('band_weave', 'band_weave_scale', 'band_rim', 'band_rim_width', 'band_teeth'):
             col.prop(pg, k)
         col.prop(pg, 'band_color')
         _draw_caps(layout, pg, tool)

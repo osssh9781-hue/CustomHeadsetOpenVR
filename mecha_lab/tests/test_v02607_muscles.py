@@ -112,6 +112,14 @@ check('Save Selected as My Muscle, Keep As Made: the group (both meshes, their o
 check('End Caps: None in the list, Cap Size down to 0.1', 'NONE' in [c[0] for c in mg.CAPS] and
       mg.MCH_PG_Muscle.bl_rna.properties['cap_size'].hard_min <= 0.1 + 1e-6)
 S.mch_muscle.my_shape = ''
+S.mch_mmuscle.my_shape = ''
+pod0 = build_with('MMUSCLE', [A, B], preset='SPINDLE', style='BAND', shape='SCULPT', sculpt='SINGLE', strands=1, band_rim=0.0)
+pod1 = build_with('MMUSCLE', [A, B], preset='SPINDLE', style='BAND', shape='SCULPT', sculpt='SINGLE', strands=1, band_rim=0.8)
+lipf = sum(1 for p_ in pod1.data.polygons if p_.material_index == 2 and len(p_.vertices) == 4)
+capf = sum(1 for p_ in pod0.data.polygons if p_.material_index == 2)
+check(f'Pods, Outline Lip: a strip of faces along its outline, both sides, in the fittings\' material ({lipf - capf} '
+      f'faces; none at 0)', lipf - capf >= 2 * (mg.clean_rings(pod1.mch_muscle) - 1) and
+      len(pod1.data.polygons) > len(pod0.data.polygons))
 c1 = build_with('MMUSCLE', [A, B], preset='SPINDLE', style='CABLE', cable_count=7, cable_spread=0.0, cable_ties=0)
 c2 = build_with('MMUSCLE', [A, B], preset='SPINDLE', style='CABLE', cable_count=7, cable_spread=1.0, cable_ties=0)
 
