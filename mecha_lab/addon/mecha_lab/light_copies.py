@@ -523,7 +523,7 @@ def candidates(context):
         try:
             if ob is None or ob.type != 'MESH' or not ob.visible_get() or ob.display_type not in ('SOLID', 'TEXTURED'):
                 continue
-            if ob.library is not None or ob.get(TAG):
+            if ob.library is not None or ob.get(TAG) or ob.get('mch_mirror_preview'):   # (0.24.177 a lean's copy)
                 continue
             info_full = full_tris(ob)
             if info_full is not None:

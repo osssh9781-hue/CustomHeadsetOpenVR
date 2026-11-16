@@ -13,6 +13,9 @@
   6. Edge Molding (user: "엣지 몰딩은 작동이 되긴 하는 거야?" - before: its buttons only said "Tab into Edit Mode", and
      Tab goes to ZBrush in this tab): its tile, a REAL drag along a hull - a molding on it; a REAL drag on "Molding
      Width" - wider; a REAL click on a box - a molding along its edges
+  8. Mirror on a Plate Detail 4 (user: "플레이트 디테일4 할 때나 다른 것도 종종 미러가 개무거운데 좀 더 가볍고 빠르게"): a
+     REAL lasso - a rough detail; a REAL Alt+X, REAL leans, a REAL Enter - its mirror live, the same as before; each
+     lean change timed (to the next viewport draw), against the way it was (a REAL Alt+X, the same leans, a REAL Esc)
 """
 import math
 import os
@@ -490,6 +493,85 @@ def flow():
     log('7 box click', m2 and m2.name, 'pieces', n2)
     res['7 Edge Molding: a REAL click on a box - a molding along its 12 edges'] = m2 is not None and n2 == 12
     shot('7_molding_box_edges.png')
+    # 8 Mirror on a Plate Detail 4
+    from mecha_lab import mirror_tools as mt
+    with C.temp_override(window=w, area=a, region=r):
+        for o in list(S.objects):
+            bpy.data.objects.remove(o)
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, segments=64, ring_count=32, location=(0, 0, 0))
+        hull8 = C.active_object
+        hull8.name = 'Hull'
+        rv = sp3.region_3d
+        rv.view_perspective = 'ORTHO'
+        rv.view_rotation = Euler((math.radians(90), 0.0, 0.0)).to_quaternion()
+        rv.view_location = (0.0, 0.0, 0.0)
+        rv.view_distance = 5.0
+    S.mch_mirror.bisect = True
+    S.mch_brush.shape = 'STROKE'
+    set_tool('DETAIL4')
+    yield 2.0
+    yield from real_outline([screen_xy((0.45 + 0.35 * math.cos(t), -1.5, 0.1 + 0.3 * math.sin(t)))
+                             for t in np.linspace(0, 2 * math.pi, 40, endpoint=False)])
+    yield 3.0
+    det = next((o for o in S.objects if o.get('mch_pdetail') is not None or getattr(o, 'mch_pdetail', None)
+                and o.mch_pdetail.live), None)
+    n_det = len(det.evaluated_get(C.evaluated_depsgraph_get()).data.polygons) if det else 0
+    set_tool('CUT')
+    yield 1.0
+    with C.temp_override(window=w, area=a, region=r):
+        for o in C.selected_objects:
+            o.select_set(False)
+        if det is not None:
+            det.select_set(True)
+            C.view_layer.objects.active = det
+    yield 1.0
+    gx, gy = int(r.x + r.width / 2), int(w.height - (r.y + r.height * 0.18))     # (the lean's centre)
+
+    def lean_gesture(finish):
+        xdo('mousemove', gx + 5, gy - 5)
+        yield 0.5
+        t0 = time.perf_counter()
+        xdo('key', 'alt+x')
+        yield from wait_draws(2)
+        times = [time.perf_counter() - t0]
+        yield 0.5
+        t2 = time.perf_counter()
+        yield from wait_draws(2)                      # (two draws with nothing changed: what drawing alone costs)
+        idle.append(time.perf_counter() - t2)
+        for dx, dy in ((0, -160), (-160, 0), (0, -160), (-160, 0)):      # (empty view: up, left, up, left)
+            xdo('mousemove', gx + dx, gy + dy)
+            t1 = time.perf_counter()
+            yield from wait_draws(2)
+            times.append(time.perf_counter() - t1)
+            yield 0.3
+        mid = [o.name for o in S.objects if o.get(mt.PREVIEW_KEY)]
+        xdo('key', finish)
+        yield 2.0
+        return times, mid
+    idle = []
+    keep_faces = mt.PREVIEW_FACES
+    mt.PREVIEW_FACES = 10 ** 12                    # (the way it was)
+    t_old, _mid = yield from lean_gesture('Escape')
+    mt.PREVIEW_FACES = keep_faces
+    gone = det is not None and det.modifiers.get(mt.MOD_NAME) is None
+    t_new, mid = yield from lean_gesture('Return')
+    shot('8_mirror_detail4.png')
+    m8 = det.modifiers.get(mt.MOD_NAME) if det else None
+    dg = C.evaluated_depsgraph_get()
+    ev = det.evaluated_get(dg) if det else None
+    xs = [(det.matrix_world @ v.co).x for v in ev.data.vertices] if ev else [0.0]
+    over_old = [max(x - idle[0], 0.0) for x in t_old[1:]]
+    over_new = [max(x - idle[1], 0.0) for x in t_new[1:]]
+    log('8 detail', det and det.name, n_det, 'old lean', [round(x, 2) for x in t_old], 'idle', [round(x, 2) for x in idle],
+        'over the draws: old', [round(x, 2) for x in over_old], 'new', [round(x, 2) for x in over_new],
+        'esc gone', gone, 'new lean', [round(x, 2) for x in t_new], 'preview while leaning', mid, 'mirror', m8 and tuple(m8.use_axis),
+        m8 and tuple(m8.use_bisect_axis), 'x', round(min(xs), 2), round(max(xs), 2),
+        'hidden', det and det.hide_viewport, 'left', [o.name for o in S.objects if o.get(mt.PREVIEW_KEY)])
+    res['8 Mirror on a Plate Detail 4: a REAL Alt+X, REAL leans, a REAL Enter - its mirror live (both sides), each '
+        'change (over what drawing alone costs) under half the way it was'] = (
+        det is not None and n_det > 50_000 and gone and bool(mid) and m8 is not None and min(xs) < -0.2
+        and max(xs) > 0.2 and not det.hide_viewport and not [o for o in S.objects if o.get(mt.PREVIEW_KEY)]
+        and sum(over_new) < sum(over_old) * 0.5)
     bpy.types.SpaceView3D.draw_handler_remove(handle, 'WINDOW')
     for k_, v in res.items():
         log(('PASS ' if v else 'FAIL ') + k_)

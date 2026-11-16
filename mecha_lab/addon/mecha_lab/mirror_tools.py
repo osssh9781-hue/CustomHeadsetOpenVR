@@ -395,6 +395,177 @@ def _restore(obj, snap):
     mod.merge_threshold = snap['merge_threshold']
 
 
+# 0.24.177 (user: "플레이트 디테일4 할 때나 다른 것도 종종 미러가 개무거운데 좀 더 가볍고 빠르게 못 하나"): the live
+# mirror sits last on a part, so each lean change re-made the whole part (Plate Detail 4: its Rough Rim nodes, 196 k
+# faces, 0.15 s), cut it on the plane (Bisect, 0.25 s) and the viewport took in a new mesh of twice its size.  While
+# leaning, a big part is shown by a still copy of itself (made once, the part hidden); where the mirror cuts nothing
+# (the part all on the side kept - the usual case) its mirrored copies are that same mesh placed reflected, so a lean
+# change only moves them; where it does cut, the copy carries the mirror (a Bisect that cuts nothing left out).  The
+# part gets its real mirror once, when the lean ends.
+PREVIEW_KEY = 'mch_mirror_preview'
+PREVIEW_FACES = 20000          # a part's result at least this big: leaned on a still copy
+
+
+def _other_mods(ob, mod=None):
+    from . import light_copies as lc
+    return [m for m in ob.modifiers if m.show_viewport and m != mod and m.name != MOD_NAME and not lc.is_light_mod(m)]
+
+
+def wants_preview(context, ob):
+    """A part leaned on a still copy: a big result; not a radial symmetry's part (Kaleido: the mirror works before its
+    copies)."""
+    if ob.type != 'MESH' or ob.modifiers.get('MCH_RadialSym') is not None:
+        return False
+    try:
+        ev = ob.evaluated_get(context.evaluated_depsgraph_get())
+        return len(ev.data.polygons) >= PREVIEW_FACES
+    except (RuntimeError, ReferenceError, AttributeError):
+        return False
+
+
+def _preview_object(context, name, me, ob):
+    pr = bpy.data.objects.new(name, me)
+    pr[PREVIEW_KEY] = ob.name
+    context.scene.collection.objects.link(pr)
+    pr.hide_render = True
+    pr.hide_select = True
+    for i, slot in enumerate(ob.material_slots):
+        if i < len(pr.material_slots) and slot.link == 'OBJECT':
+            pr.material_slots[i].link = 'OBJECT'
+            pr.material_slots[i].material = slot.material
+    return pr
+
+
+def make_preview(context, ob):
+    """The lean preview of ``ob``: a still copy (its modifiers' result, without its mirror) in its place, ``ob``
+    hidden meanwhile.  {'base': copy, 'twins': [], 'pts': its points (world), 'size': its size}."""
+    import numpy as np
+    from . import light_copies as lc
+    mod = ob.modifiers.get(MOD_NAME)
+    off = mod is not None and mod.type == 'MIRROR' and mod.show_viewport
+    dg = context.evaluated_depsgraph_get()
+    if off:
+        mod.show_viewport = False
+        dg.update()
+    try:
+        me = bpy.data.meshes.new_from_object(lc.full(ob, dg), preserve_all_data_layers=False, depsgraph=dg)
+    finally:
+        if off:
+            mod.show_viewport = True
+    me.name = 'MCH Mirror Preview'
+    base = _preview_object(context, 'MCH Mirror Preview - ' + ob.name, me, ob)
+    base.matrix_world = ob.matrix_world.copy()
+    co = np.empty(len(me.vertices) * 3, np.float32)
+    me.vertices.foreach_get('co', co)
+    M = ob.matrix_world
+    P = co.reshape(-1, 3).astype(np.float64) @ np.array(M.to_3x3()).T + np.array(M.translation)
+    ob.hide_viewport = True
+    return {'base': base.name, 'twins': [], 'pts': P,
+            'size': float(np.ptp(P, axis=0).max()) if len(P) else 1.0}
+
+
+def preview_names(info):
+    return [info['base']] + list(info['twins'])
+
+
+def _drop_twins(info):
+    for n in info['twins']:
+        t = bpy.data.objects.get(n)
+        if t is not None:
+            bpy.data.objects.remove(t, do_unlink=True)
+    info['twins'] = []
+
+
+def drop_preview(info, target=None):
+    if info:
+        _drop_twins(info)
+        pr = bpy.data.objects.get(info['base'])
+        if pr is not None:
+            m = pr.modifiers.get(MOD_NAME)
+            pivot = m.mirror_object if m is not None and m.type == 'MIRROR' else None
+            me = pr.data
+            bpy.data.objects.remove(pr, do_unlink=True)
+            if me is not None and me.users == 0:
+                bpy.data.meshes.remove(me)
+            _remove_unused_pivot(pivot)
+    if target is not None:
+        target.hide_viewport = False
+
+
+def would_cut(P, origin, axes, enabled, flips, bisect, size=1.0):
+    """Does the mirror's Bisect cut anything of the points ``P`` (world)?  (Flip off: the + side is kept.)"""
+    import numpy as np
+    if not bisect or not len(P):
+        return False
+    eps = 1e-6 * max(size, 1e-6)
+    for i in range(3):
+        if not enabled[i]:
+            continue
+        side = (P - np.array(origin)) @ np.array(axes[i])
+        if flips[i]:
+            side = -side
+        if float(side.min()) < -eps:
+            return True
+    return False
+
+
+def show_preview(context, info, ob, p, scene, enabled, flips, center=None):
+    """The lean preview for these settings: reflected copies of the still mesh where nothing is cut (only placed -
+    a change moves them), else the mirror on the copy."""
+    base = bpy.data.objects.get(info['base'])
+    if base is None:
+        return
+    base.matrix_world = ob.matrix_world.copy()
+    if center is not None:
+        origin, axes = Vector(center), [Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))]
+    else:
+        origin, axes = mirror_frame(ob, p, scene)
+    if not would_cut(info['pts'], origin, axes, enabled, flips, p.bisect, info['size']):
+        m = base.modifiers.get(MOD_NAME)
+        if m is not None:
+            pivot = m.mirror_object if m.type == 'MIRROR' else None
+            base.modifiers.remove(m)
+            _remove_unused_pivot(pivot)
+        refl = plane_reflections(origin, axes, enabled)
+        twins = [t for t in (bpy.data.objects.get(n) for n in info['twins']) if t is not None]
+        while len(twins) < len(refl):
+            twins.append(_preview_object(context, base.name + ' (copy)', base.data, ob))
+        for t in twins[len(refl):]:
+            bpy.data.objects.remove(t, do_unlink=True)
+        twins = twins[:len(refl)]
+        for t, R in zip(twins, refl):
+            t.matrix_world = R @ base.matrix_world
+        info['twins'] = [t.name for t in twins]
+        return
+    _drop_twins(info)
+    mod = setup_mirror(base, p, scene, enabled, flips, center)
+    quick_bisect(base, mod)
+
+
+def quick_bisect(obj, mod):
+    """A Bisect left out on an axis where it would cut nothing (all of the mesh on the kept side): the same result,
+    about twice as fast.  Only for a still mesh (a preview copy)."""
+    if mod is None or mod.type != 'MIRROR' or _other_mods(obj, mod) or not any(mod.use_bisect_axis):
+        return
+    import numpy as np
+    me = obj.data
+    n = len(me.vertices)
+    if not n:
+        return
+    co = np.empty(n * 3, np.float32)
+    me.vertices.foreach_get('co', co)
+    piv = mod.mirror_object
+    M = (piv.matrix_world.inverted_safe() @ obj.matrix_world) if piv is not None else Matrix.Identity(4)
+    L = co.reshape(-1, 3).astype(np.float64) @ np.array(M.to_3x3()).T + np.array(M.translation)
+    eps = 1e-6 * max(float(np.ptp(L, axis=0).max()), 1e-6)
+    for i in range(3):
+        if not (mod.use_axis[i] and mod.use_bisect_axis[i]):
+            continue
+        side = -L[:, i] if mod.use_bisect_flip_axis[i] else L[:, i]      # (flip off: the + side is kept)
+        if float(side.min()) >= -eps:
+            mod.use_bisect_axis[i] = False
+
+
 def world_center(ob, matrix=None):
     """Middle of an object's bounds in world space (a collection instance: the middle of its collection)."""
     if ob.type == 'EMPTY' and ob.instance_type == 'COLLECTION' and ob.instance_collection is not None:
@@ -450,6 +621,13 @@ class MirrorLeanLogic:
         if not self.target_names:
             return False
         self.snaps = {n: _snapshot(bpy.data.objects[n]) for n in self.target_names}
+        obs = self._targets()
+        self.size0 = max(max(obs[0].dimensions), 0.2)
+        self.center0 = sum((world_center(o) for o in obs), Vector()) / len(obs)
+        self.previews = {}                    # 0.24.177 part -> its lean preview (make_preview)
+        for ob in obs:
+            if wants_preview(context, ob):
+                self.previews[ob.name] = make_preview(context, ob)
         self.axes = [self.p.x, self.p.y, self.p.z]
         self.flips = [self.p.flip_x, self.p.flip_y, self.p.flip_z]
         self.locked = [False, False, False]
@@ -469,21 +647,39 @@ class MirrorLeanLogic:
         origin, axes = mirror_frame(obs[0], self.p, scene)
         if getattr(self, 'pivot_center', None) is not None:
             origin, axes = self.pivot_center.copy(), [Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))]
-        size = max(max(obs[0].dimensions), 0.2)
+        size = getattr(self, 'size0', None) or max(max(obs[0].dimensions), 0.2)   # (a part leaned on its copy is hidden)
         return origin, axes, size
 
     def _apply_live(self, scene):
+        previews = getattr(self, 'previews', {})
         for ob in self._targets():
             if ob.type == 'CURVES':
                 setup_curves_mirror(ob, self.p, scene, self.axes, getattr(self, 'pivot_center', None))
                 continue
+            info = previews.get(ob.name)
+            if info is not None:
+                show_preview(bpy.context, info, ob, self.p, scene, self.axes, self.flips,
+                             getattr(self, 'pivot_center', None))
+                continue
             setup_mirror(ob, self.p, scene, self.axes, self.flips, getattr(self, 'pivot_center', None))
+
+    def commit(self, scene):
+        """The lean over: each part gets its real mirror (the settings as chosen, Bisect as set) once, its preview
+        copy gone."""
+        previews = getattr(self, 'previews', {})
+        for ob in self._targets():
+            if ob.type == 'CURVES':
+                continue
+            drop_preview(previews.get(ob.name), ob)
+            setup_mirror(ob, self.p, scene, self.axes, self.flips, getattr(self, 'pivot_center', None))
+            ob.select_set(True)
+        self.previews = {}
 
     def point_at(self, scene, xy):
         """0.24.15 the mouse on another object: that object is the mirror centre and the copy goes to its far
         side (axis = the world axis from the selection toward it).  Returns True while pointing."""
         obs = self._targets()
-        skip = set(self.target_names)
+        skip = set(self.target_names) | {n for i in getattr(self, 'previews', {}).values() for n in preview_names(i)}
         for o in obs:                          # an instance's own collection parts are part of the selection
             if o.type == 'EMPTY' and o.instance_collection is not None:
                 from . import live_ref
@@ -498,7 +694,9 @@ class MirrorLeanLogic:
                 self._apply_live(scene)
             return False
         name, pc = hit
-        tc = sum((world_center(o) for o in obs), Vector()) / len(obs)
+        tc = getattr(self, 'center0', None)
+        if tc is None:
+            tc = sum((world_center(o) for o in obs), Vector()) / len(obs)
         delta = pc - tc
         i = max(range(3), key=lambda k: abs(delta[k]))
         sign = 1 if delta[i] > 0 else -1
@@ -548,11 +746,13 @@ class MirrorLeanLogic:
 
     def finish_live(self, scene):
         self.store_settings()
+        self.commit(scene)
         return f'Live mirror on {", ".join(self.target_names)}: {self.describe()} (Apply in the panel or Enter next time)'
 
     def finish_apply(self, context):
         from . import core_geometry
         self.store_settings()
+        self.commit(context.scene)
         policy = getattr(getattr(context.scene, 'mch_cut', None), 'shared_mesh', 'SINGLE')
         done, failed = [], []
         for ob in self._targets():
@@ -586,10 +786,14 @@ class MirrorLeanLogic:
             (' | FAILED: ' + '; '.join(failed) if failed else '')
 
     def restore_all(self):
+        previews = getattr(self, 'previews', {})
         for n, snap in self.snaps.items():
             ob = bpy.data.objects.get(n)
+            drop_preview(previews.get(n), ob)
             if ob is not None:
                 _restore(ob, snap)
+                ob.select_set(True)
+        self.previews = {}
 
     def describe(self):
         out = []
