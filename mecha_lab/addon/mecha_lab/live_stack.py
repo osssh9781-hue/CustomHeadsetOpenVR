@@ -32,6 +32,7 @@ NAMES = (
     ('MCH_Shell', 'Shell', None),
     ('MCH_RobotBevel', 'Robot Bevel', None),
     ('MCH_Subsurf', 'Subdivide', None),
+    ('MCH_Bend', 'Bend', 'bend_any'),                 # 0.24.180 (its Apply: Freeze - the part as shown)
 )
 TYPE_NAMES = {'MIRROR': 'Mirror', 'ARRAY': 'Array', 'BEVEL': 'Bevel', 'SUBSURF': 'Subdivide', 'BOOLEAN': 'Boolean',
               'NODES': 'Geometry Nodes', 'SOLIDIFY': 'Solidify', 'SHRINKWRAP': 'Shrinkwrap', 'REMESH': 'Remesh',
@@ -254,8 +255,10 @@ def draw(layout, context):
     if ob is None or ob.type != 'MESH':
         box.label(text='Select a part', icon='INFO')
         return
+    from . import bend_any                       # 0.24.180 Bend any part (the Base Mesh window's Bend card)
     if not rows:
         box.label(text=f'{ob.name}: nothing live (a plain mesh)', icon='INFO')
+        bend_any.draw(box, context, ob)
         return
     for i, (mod, name, shown) in enumerate(rows):
         row = box.row(align=True)
@@ -270,6 +273,7 @@ def draw(layout, context):
     for w in warnings(ob):
         box.label(text=w, icon='INFO')
     box.operator('mch.stack_apply_all', text=f'Apply All ({len(rows)})', icon='CHECKMARK')
+    bend_any.draw(box, context, ob)
 
 
 CLASSES = (MCH_OT_stack_toggle, MCH_OT_stack_move, MCH_OT_stack_apply, MCH_OT_stack_remove, MCH_OT_stack_apply_all)
