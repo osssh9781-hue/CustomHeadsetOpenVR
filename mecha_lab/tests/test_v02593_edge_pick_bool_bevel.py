@@ -172,8 +172,28 @@ check(f'round one edge, then chamfer the one beside it: the chamfer runs on into
       f'above it: {near_corner:.3f} in, the chamfer 0.2 - before: a notch, it stopped square), closed ({bad7}); the '
       f'other way round: the same part (volume {vol7:.4f} / {vol8:.4f}) - {msg_b}',
       abs(near_corner - 0.2) < 0.01 and bad7 == 0 and bad8 == 0 and abs(vol7 - vol8) < 1e-4)
+# Alt + click the round: off - the chamfer stays, running on to the corner now
+r_alt = bb.perform(C, bx, [(0.0, -1.0, -1.0)], whole=True, reach=0.05, remove=True)
+d_round_gone = dist_to_surface(bx, (0.0, -1.0, -1.0))
+d_cham_still = dist_to_surface(bx, (1.0, -1.0, 0.0)) * math.sqrt(2)
+check(f'Alt + click the round edge: its cut off (the corner {d_round_gone:.4f} off the surface: there again), the '
+      f'chamfer kept ({d_cham_still:.3f}) - {r_alt}', d_round_gone < 1e-6 and abs(d_cham_still - 0.2) < 0.01)
+# a thin one (0.24.179 "불린 베벨도 더 얇은 두께도 되게"): 1 mm on a 2 m block
+st.profile, st.width = 'CHAMFER', 0.001
+bb.perform(C, bx2, [(-1.0, 0.0, 1.0)], whole=True, reach=0.05)
+d_thin = dist_to_surface(bx2, (-1.0, 0.0, 1.0)) * math.sqrt(2)
+bad_t, _vt = closed_ok(bx2)
+rna = bb.MCH_PG_BoolBevel.bl_rna.properties['width']
+check(f'thin: Width 1 mm cut ({d_thin * 1000:.2f} mm), closed ({bad_t}); the slider from {rna.soft_min * 1000:.1f} mm '
+      f'to {rna.soft_max * 1000:.0f} mm (min {rna.hard_min * 1000:.2f} mm)', abs(d_thin - 0.001) < 1e-4 and bad_t == 0
+      and rna.hard_min <= 0.0001 and rna.soft_max <= 0.2 + 1e-6)
+st.width = 0.2
 bpy.data.objects.remove(bx)
 bpy.data.objects.remove(bx2)
+# Targets (0.24.179 "셀렉트랑 오토"): Selected - a mesh not selected is looked through
+from mecha_lab import geo_sculpt as gs2, target_rules as tr  # noqa: E402
+check('Targets: the Boolean Bevel and Geo Sculpt tools have the Target row (Auto / Selected / Active)',
+      {'BBEVEL', 'GSCULPT'} <= tr.TARGET_ONLY)
 # a step (a low block and a tall one joined): the low one's top front edge and the tall one's front edge, rounded
 bpy.ops.mesh.primitive_cube_add(size=1.0)
 stp = C.active_object

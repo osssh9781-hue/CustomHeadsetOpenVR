@@ -126,6 +126,20 @@ hair.mch_hshape.hide_shape = False
 shown = not lock.hide_get()
 hair.mch_hshape.hide_shape = True
 check(f'Hide the Shape off: the lock shown ({shown}); on: hidden', shown and lock.hide_get())
+# the start clicked (0.24.179 "결 시작 부분은 내가 찍어 주는 게 낫지 않나?"): at the lock's far end - the hair runs from there
+S.mch_hshape.count = 400
+ob_c, msg_c = hs.make(C, lock, None, starts=[tuple(C_[-1])])
+Wc = strands(ob_c)
+d_r = np.median(np.linalg.norm(Wc[:, 0] - np.array(tuple(C_[-1])), axis=1))
+d_t = np.median(np.abs(np.linalg.norm(Wc[:, -1], axis=1) - 1.0))
+check(f'a start clicked at the lock\'s far end: rooted there (roots {d_r:.2f} from it), running back to the head (tips '
+      f'{d_t:.2f} off its skin) - {msg_c}', d_r < 0.25 and d_t < 0.2 and 'clicked' in msg_c)
+ob_c.mch_hshape.frizz = 0.4
+hs.rebuild(ob_c)
+Wc2 = strands(ob_c)
+check('... kept with it: rebuilt (Frizz), still from there',
+      np.median(np.linalg.norm(Wc2[:, 0] - np.array(tuple(C_[-1])), axis=1)) < 0.25)
+bpy.data.objects.remove(ob_c)
 # a second piece with nothing under it: rooted at its top
 lock2 = lock_mesh('Bun', [Vector((4.0, 0.0, 1.0 - 0.02 * i)) for i in range(40)], 0.12, 0.04)
 for o in C.selected_objects:

@@ -94,9 +94,10 @@ def find_body(context, shape, V, size):
     return best if best_n >= 3 else None
 
 
-def analyse(context, shape, body=None):
+def analyse(context, shape, body=None, starts=None):
     """The shape's flow: clusters (centroids), the distance along the shape from the roots, the way on, thickness;
-    its surface (BVH); the root triangles."""
+    its surface (BVH); the root triangles.  ``starts`` (world points clicked on the shape - 0.24.179 user: "결 시작
+    부분은 내가 찍어 주는 게 낫지 않나?"): the roots there, not found from the body."""
     V, T, E = _world_mesh(context, shape)
     if not len(T):
         raise ShapeError(f'"{shape.name}" has no faces - pick the hair shape you sculpted (a mesh)')
@@ -123,7 +124,13 @@ def analyse(context, shape, body=None):
     tol = size * 0.03
     roots = np.zeros(nC, bool)                        # (where the distance starts: at the body's skin and in it)
     skin = np.zeros(nC, bool)                         # (where strands start: at the skin)
-    if body is not None:
+    if starts:                                        # (picked: round each clicked point)
+        rs = max(h * 3.0, size * 0.05)
+        for q in starts:
+            near = np.linalg.norm(cen - np.asarray(q, float), axis=1) < rs
+            roots |= near
+            skin |= near
+    elif body is not None:
         BV, BT, _E = _world_mesh(context, body)
         bb = BVHTree.FromPolygons([tuple(p) for p in BV], [tuple(t) for t in BT])
         for c in range(nC):
@@ -229,7 +236,8 @@ def analyse(context, shape, body=None):
     if not len(root_tris):
         root_tris = T[skin[inv[T]].any(1)]
     return {'V': V, 'T': T, 'root_tris': root_tris, 'bvh': bvh, 'kd': kd, 'cen': cen, 'D': D, 'dmax': dmax,
-            'way': way, 'thick': thick, 'h': h, 'size': size, 'body': body, 'roots': int(roots.sum()), 'pieces': k}
+            'way': way, 'thick': thick, 'h': h, 'size': size, 'body': body, 'roots': int(roots.sum()), 'pieces': k,
+            'picked': bool(starts)}
 
 
 # -----------------------------------------------------------------------------
@@ -419,7 +427,8 @@ def rebuild(ob, context=None, force_trace=False):
     if force_trace or cache is None or cache['key'] != key:
         if shape is None:
             raise ShapeError('Its shape is gone - pick the shape again')
-        a = _analysed(context, shape, p.body, fresh=force_trace)
+        a = _analysed(context, shape, p.body, fresh=force_trace,
+                      starts=[tuple(ob.matrix_world @ Vector(q)) for q in starts_of(ob)])
         traced_w = trace(a, key[0], p.fill, p.seed)
         inv = np.array(ob.matrix_world.inverted())
         traced = [s @ inv[:3, :3].T + inv[:3, 3] for s in traced_w]
@@ -439,23 +448,34 @@ def _scale(ob):
 _ANALYSED = {}                         # shape name -> (its mesh and place, the analysis): Fill / Seed trace again only
 
 
-def _analysed(context, shape, body, fresh=False):
+def starts_of(ob):
+    try:
+        return [tuple(q) for q in json.loads(ob.get(STARTS, '[]'))]
+    except ValueError:
+        return []
+
+
+STARTS = 'mch_hair_starts'             # on the hair object: the start points clicked (its local space)
+
+
+def _analysed(context, shape, body, fresh=False, starts=None):
     me = shape.data
     key = (me.as_pointer(), len(me.vertices), len(me.polygons), tuple(tuple(r) for r in shape.matrix_world),
-           body.name if body is not None else None)
+           body.name if body is not None else None, tuple(tuple(round(x, 6) for x in q) for q in (starts or ())))
     hit = _ANALYSED.get(shape.name)
     if not fresh and hit is not None and hit[0] == key:
         return hit[1]
-    a = analyse(context, shape, body)
+    a = analyse(context, shape, body, starts)
     _ANALYSED.clear()                                 # (one kept: they hold the shape's trees)
     _ANALYSED[shape.name] = (key, a)
     return a
 
 
-def make(context, shape, body=None):
-    """A hair object filling ``shape`` (the Fur tool's settings for the next hair).  Returns (object, message)."""
+def make(context, shape, body=None, starts=None):
+    """A hair object filling ``shape`` (the Fur tool's settings for the next hair); ``starts``: world points where it
+    starts (clicked), else found from the body.  Returns (object, message)."""
     st = context.scene.mch_hshape
-    a = _analysed(context, shape, body, fresh=True)
+    a = _analysed(context, shape, body, fresh=True, starts=starts)
     from . import creature_fur as cf
     data = bpy.data.hair_curves.new('Hair')
     data.materials.append(cf.fur_material())
@@ -482,8 +502,13 @@ def make(context, shape, body=None):
         p.body = a['body']
     finally:
         _BUSY[0] = False
+    if starts:
+        inv0 = ob.matrix_world.inverted()
+        ob[STARTS] = json.dumps([list(inv0 @ Vector(q)) for q in starts])
     _ANALYSED[shape.name] = ((shape.data.as_pointer(), len(shape.data.vertices), len(shape.data.polygons),
-                              tuple(tuple(r) for r in shape.matrix_world), a['body'].name if a['body'] else None), a)
+                              tuple(tuple(r) for r in shape.matrix_world), a['body'].name if a['body'] else None,
+                              tuple(tuple(round(x, 6) for x in Vector(q)) for q in ([ob.matrix_world @ Vector(v)
+                                    for v in starts_of(ob)] if starts else ()))), a)
     traced = trace(a, min(int(p.count), TRACE_MAX), p.fill, p.seed)
     inv = np.array(ob.matrix_world.inverted())
     _CACHE[ob.name] = {'key': _trace_key(p), 'strands': [s @ inv[:3, :3].T + inv[:3, 3] for s in traced],
@@ -495,7 +520,12 @@ def make(context, shape, body=None):
         o.select_set(False)
     ob.select_set(True)
     context.view_layer.objects.active = ob
-    on = f' on "{a["body"].name}" (rooted where it meets it)' if a['body'] is not None else ' (no body under it: rooted at its top)'
+    if a.get('picked'):
+        on = f' (from the {len(starts)} start{"s" if len(starts) != 1 else ""} you clicked)'
+    elif a['body'] is not None:
+        on = f' on "{a["body"].name}" (rooted where it meets it)'
+    else:
+        on = ' (no body under it: rooted at its top)'
     return ob, (f'Hair in "{shape.name}"{on}: {n:,} strands, {len(traced):,} traced through it, {a["pieces"]} '
                 f'piece{"s" if a["pieces"] != 1 else ""} - its values live in the window')
 
@@ -579,7 +609,112 @@ def _shape_pick(context):
     return obs, None
 
 
-class MCH_OT_hair_from_shape(bpy.types.Operator):
+_PICK = {'op': None}
+
+
+def _draw_starts():
+    op = _PICK['op']
+    if op is None:
+        return
+    try:
+        from bpy_extras import view3d_utils
+        from . import ui_gpu as ug
+        region, rv3d = bpy.context.region, bpy.context.region_data
+        if region is None or rv3d is None or region != op.region:
+            return
+        for q in op.starts:
+            c = view3d_utils.location_3d_to_region_2d(region, rv3d, Vector(q[1]))
+            if c is not None:
+                ug.polyline(ug.circle_pts(c.x, c.y, 9.0, n=24), (1.0, 0.85, 0.2, 1.0), 2.5, closed=True)
+                ug.polyline(ug.circle_pts(c.x, c.y, 3.0, n=12), (1.0, 0.85, 0.2, 1.0), 3.0, closed=True)
+    except (ReferenceError, AttributeError, RuntimeError):
+        pass
+
+
+class PickStarts:
+    """0.24.179 (user: "결 시작 부분은 내가 찍어 주는 게 낫지 않나?"): click on the shape where the hair starts
+    (Shift + click: more starts), Enter: go (no click: found by itself), Esc: cancel."""
+
+    def begin(self, context, shapes):
+        from . import light_copies as lc
+        self.region = context.region
+        self.shapes = [o for o in shapes if o is not None and o.type == 'MESH']
+        self.trees = {}
+        for o in self.shapes:
+            V, T, _E = _world_mesh(context, o)
+            if len(T):
+                self.trees[o.name] = BVHTree.FromPolygons([tuple(p) for p in V], [tuple(t) for t in T])
+        del lc
+        self.starts = []                             # [(shape name, world point)]
+        for o in self.shapes:                        # (seen while picking, even when hidden by an earlier hair)
+            try:
+                o.hide_set(False)
+            except RuntimeError:
+                pass
+        _PICK['op'] = self
+        self._h = bpy.types.SpaceView3D.draw_handler_add(_draw_starts, (), 'WINDOW', 'POST_PIXEL')
+        context.window_manager.modal_handler_add(self)
+        self._status(context)
+        return {'RUNNING_MODAL'}
+
+    def _status(self, context):
+        try:
+            context.area.header_text_set(f'Hair: click where it starts on the shape (Shift + click: more) - '
+                                         f'{len(self.starts)} start{"s" if len(self.starts) != 1 else ""} | Enter: '
+                                         f'make it{" (no click: found by itself)" if not self.starts else ""} | Esc: cancel')
+        except (AttributeError, ReferenceError):
+            pass
+
+    def _end(self, context):
+        _PICK['op'] = None
+        try:
+            bpy.types.SpaceView3D.draw_handler_remove(self._h, 'WINDOW')
+        except (ValueError, RuntimeError):
+            pass
+        try:
+            context.area.header_text_set(None)
+            context.area.tag_redraw()
+        except (AttributeError, ReferenceError):
+            pass
+
+    def modal(self, context, event):
+        from bpy_extras import view3d_utils
+        if event.type in {'MIDDLEMOUSE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE', 'TRACKPADPAN', 'TRACKPADZOOM',
+                          'NDOF_MOTION', 'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE'}:
+            return {'PASS_THROUGH'}
+        if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
+            xy = (event.mouse_region_x, event.mouse_region_y)
+            o = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, xy)
+            d = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, xy).normalized()
+            best = None
+            for name, bvh in self.trees.items():
+                loc, _n, _i, dist = bvh.ray_cast(o, d)
+                if loc is not None and (best is None or dist < best[2]):
+                    best = (name, tuple(loc), dist)
+            if best is not None:
+                if not event.shift:
+                    self.starts = [s_ for s_ in self.starts if s_[0] != best[0]]
+                self.starts.append(best[:2])
+            self._status(context)
+            context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+        if event.type in {'RET', 'NUMPAD_ENTER', 'SPACE'} and event.value == 'PRESS':
+            self._end(context)
+            return self.go(context)
+        if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
+            self._end(context)
+            self.cancelled(context)
+            return {'CANCELLED'}
+        return {'RUNNING_MODAL'}
+
+    def starts_for(self, shape):
+        return [q for n, q in self.starts if n == shape.name] or None
+
+    def cancelled(self, context):
+        pass
+
+
+class MCH_OT_hair_from_shape(PickStarts, bpy.types.Operator):
     """Strands in the hair shape you sculpted (a mesh of its own): select it (and Shift + click the body last, if it
     is not found by itself) - the hair follows it from where it sits on the body to its ends"""
     bl_idname = 'mch.hair_from_shape'
@@ -590,20 +725,78 @@ class MCH_OT_hair_from_shape(bpy.types.Operator):
     def poll(cls, context):
         return context.mode == 'OBJECT'
 
+    def invoke(self, context, event):
+        shapes, body = _shape_pick(context)
+        if not shapes:
+            self.report({'WARNING'}, 'Select the hair shape you sculpted (a mesh of its own) first')
+            return {'CANCELLED'}
+        if context.area is None or context.area.type != 'VIEW_3D':
+            return self.execute(context)
+        self._body = body
+        return self.begin(context, shapes)
+
+    def go(self, context):
+        return self._make(context, self.shapes, self._body, self)
+
     def execute(self, context):
         shapes, body = _shape_pick(context)
         if not shapes:
             self.report({'WARNING'}, 'Select the hair shape you sculpted (a mesh of its own) first')
             return {'CANCELLED'}
+        return self._make(context, shapes, body, None)
+
+    def _make(self, context, shapes, body, picker):
         msgs = []
         for shape in shapes:
             try:
-                _ob, msg = make(context, shape, body)
+                _ob, msg = make(context, shape, body, picker.starts_for(shape) if picker is not None else None)
                 msgs.append(msg)
             except ShapeError as ex:
                 self.report({'WARNING'}, str(ex))
                 return {'CANCELLED'}
         self.report({'INFO'}, ' | '.join(msgs))
+        return {'FINISHED'}
+
+
+class MCH_OT_hair_shape_pick(PickStarts, bpy.types.Operator):
+    """Click where the selected hair starts on its shape again (Shift + click: more starts), Enter: rebuilt from
+    there (no click: found by itself)"""
+    bl_idname = 'mch.hair_shape_pick'
+    bl_label = 'Pick Where It Starts'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def invoke(self, context, event):
+        ob = context.active_object
+        if not is_hair(ob) or ob.mch_hshape.shape is None or context.area is None:
+            return {'CANCELLED'}
+        self.hair = ob.name
+        self.was_hidden = ob.mch_hshape.shape.hide_get()
+        return self.begin(context, [ob.mch_hshape.shape])
+
+    def cancelled(self, context):
+        ob = bpy.data.objects.get(self.hair)
+        if ob is not None and ob.mch_hshape.shape is not None and self.was_hidden:
+            ob.mch_hshape.shape.hide_set(True)
+
+    def go(self, context):
+        ob = bpy.data.objects.get(self.hair)
+        if ob is None:
+            return {'CANCELLED'}
+        starts = self.starts_for(ob.mch_hshape.shape)
+        if starts:
+            inv = ob.matrix_world.inverted()
+            ob[STARTS] = json.dumps([list(inv @ Vector(q)) for q in starts])
+        elif STARTS in ob:
+            del ob[STARTS]
+        try:
+            n = rebuild(ob, context, force_trace=True)
+        except ShapeError as ex:
+            self.report({'WARNING'}, str(ex))
+            return {'CANCELLED'}
+        if ob.mch_hshape.hide_shape and ob.mch_hshape.shape is not None:
+            ob.mch_hshape.shape.hide_set(True)
+        self.report({'INFO'}, f'{ob.name}: {n:,} strands, from ' + (f'the {len(starts)} start(s) you clicked' if starts
+                                                                     else 'where the shape meets the body'))
         return {'FINISHED'}
 
 
@@ -656,8 +849,8 @@ def draw(layout, context, ob=None):
             col.label(text=f'Shape: {p.shape.name}' + (f',  on {p.body.name}' if p.body is not None else ''))
         del c
     else:
-        col.label(text='Select your hair shape (its own mesh),')
-        col.label(text='then: Hair in the Selected Shape')
+        col.label(text='Select your hair shape (its own mesh), then')
+        col.label(text='the button: click where it starts, Enter')
         box.operator('mch.hair_from_shape', text='Hair in the Selected Shape')
         return                                         # (its values once it is made: pick the hair)
     for group, props in (('Strands', ('count', 'fill', 'segments', 'seed')),
@@ -670,12 +863,14 @@ def draw(layout, context, ob=None):
             col.prop(p, k)
     box.prop(p, 'hide_shape')
     if live:
+        box.operator('mch.hair_shape_pick', text='Pick Where It Starts')
         row = box.row(align=True)
         row.operator('mch.hair_shape_rebuild', text='Rebuild')
         row.operator('mch.hair_shape_apply', text='Apply')
 
 
-CLASSES = (MCH_PG_HairShape, MCH_OT_hair_from_shape, MCH_OT_hair_shape_rebuild, MCH_OT_hair_shape_apply)
+CLASSES = (MCH_PG_HairShape, MCH_OT_hair_from_shape, MCH_OT_hair_shape_pick, MCH_OT_hair_shape_rebuild,
+           MCH_OT_hair_shape_apply)
 
 
 def register():
