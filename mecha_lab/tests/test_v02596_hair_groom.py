@@ -220,7 +220,8 @@ p.clump, p.clump_size = 1.0, 60
 hs.rebuild(hp)
 tight = to_tufts(strands(hp)[:, -1], 50)
 p.clump, p.clump_size = 0.6, 3
-check(f'Tip Gather 1: the tips meet (spread {sp_0:.3f} -> {sp_g:.4f} - what is left: Frizz's wobble, left on); Volume 1: fuller (half way: '
+check(f'Tip Gather 1: the tips meet (spread {sp_0:.3f} -> {sp_g:.4f} - what is left: the Frizz wobble, left on); '
+      f'Volume 1: fuller (half way: '
       f'{r0:.3f} -> {r5:.3f} from the middle); Clump 1, Clump Size 60 (50 tufts): each tip at its tuft\'s '
       f'({loose:.3f} -> {tight:.4f} from the nearest tuft tip)', sp_g < sp_0 * 0.15 and r5 > r0 * 1.2
       and tight < loose * 0.15)
