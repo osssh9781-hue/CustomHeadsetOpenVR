@@ -185,6 +185,12 @@ def _draw_overlay():
     if _LIVE['line'] is not None:
         pts = _LIVE['line']
         ug.lines(list(zip(pts, pts[1:])), (1.0, 0.3, 0.25, 1.0), 2.5 * k)
+    for world in _SKETCH['world']:                   # 0.24.177 the sketch's pieces, where they were drawn
+        pts = [q for q in (scr(w) for w in world) if q is not None]
+        if len(pts) >= 2:
+            ug.lines(list(zip(pts, pts[1:])), (1.0, 0.55, 0.15, 1.0), 2.5 * k)
+            for q in (pts[0], pts[-1]):
+                ug.polyline(ug.circle_pts(q[0], q[1], 4 * k, 12), (1.0, 0.55, 0.15, 1.0), 2.0 * k, closed=True)
 
 
 class MCH_OT_print_measure(bpy.types.Operator):
@@ -1082,20 +1088,6 @@ class MCH_OT_print_keys(bpy.types.Operator):
         return {'FINISHED'}
 
 
-def plane_from_line(context, p0, p1, depth_point):
-    """The plane through the screen line p0 - p1 and the view (world): (point, normal)."""
-    from bpy_extras import view3d_utils
-    region, rv3d = context.region, context.region_data
-    a = view3d_utils.region_2d_to_location_3d(region, rv3d, p0, depth_point)
-    b = view3d_utils.region_2d_to_location_3d(region, rv3d, p1, depth_point)
-    mid = ((p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2)
-    d = view3d_utils.region_2d_to_vector_3d(region, rv3d, mid)
-    nrm = (b - a).cross(d)
-    if nrm.length < 1e-12:
-        return None
-    return (a + b) / 2, nrm.normalized()
-
-
 def _bends(path, px=6.0):
     """A drawn path that is not a straight line (some point more than ``px`` off the line from its start to its end)."""
     if len(path) < 3:
@@ -1125,23 +1117,104 @@ def _simplify(path, px=2.5):
     return keep + [path[-1]]
 
 
-def _part_under_line(context, p0, p1, path=None):
-    """The mesh the line (or the drawn ``path``) crosses most (the active one if it is crossed)."""
-    from bpy_extras import view3d_utils
+def _snap_line(p0, p1):
+    """Shift: the line straight - horizontal, vertical or 45 degrees on screen."""
+    dx, dy = p1[0] - p0[0], p1[1] - p0[1]
+    ang = round(math.atan2(dy, dx) / (math.pi / 4)) * (math.pi / 4)
+    L = math.hypot(dx, dy)
+    return (p0[0] + L * math.cos(ang), p0[1] + L * math.sin(ang))
+
+
+# ---- 0.24.177 (user: "3d 프린트 ... 스케치 모드도 되게 해 줘, 너무 한 번에 그어야 되는디?"): the cut line in pieces ----
+_SKETCH = {'strokes': [], 'straight': [], 'proj': None, 'world': []}
+
+
+def sketch_on(context):
+    return bool(getattr(getattr(context.scene, 'mch_brush', None), 'sketch_first', False))
+
+
+def sketch_count():
+    return len(_SKETCH['strokes'])
+
+
+def sketch_clear():
+    _SKETCH.update(strokes=[], straight=[], proj=None, world=[])
+
+
+def _join(path, stroke):
+    """``stroke`` joined to ``path`` at its nearer end (either way round)."""
+    if not path:
+        return list(stroke)
+    P, Q = list(path), list(stroke)
+    d = {('end', 'start'): math.dist(P[-1], Q[0]), ('end', 'end'): math.dist(P[-1], Q[-1]),
+         ('start', 'end'): math.dist(P[0], Q[-1]), ('start', 'start'): math.dist(P[0], Q[0])}
+    k = min(d, key=d.get)
+    if k == ('end', 'start'):
+        return P + Q
+    if k == ('end', 'end'):
+        return P + Q[::-1]
+    if k == ('start', 'end'):
+        return Q + P
+    return Q[::-1] + P
+
+
+def sketch_path():
+    path = []
+    for st in _SKETCH['strokes']:
+        path = _join(path, st)
+    return path
+
+
+def _depth_point(projector, xy, pivot):
+    """The point on the ray through ``xy`` at the depth of ``pivot`` (a plane facing the view)."""
+    o, d = projector.ray(xy)
+    o, d = Vector(o), Vector(d)
+    vd = Vector(projector.view_dir)
+    den = d.dot(vd)
+    if abs(den) < 1e-12:
+        return o
+    return o + d * ((Vector(pivot) - o).dot(vd) / den)
+
+
+def sketch_add(context, stroke, straight, projector, pivot):
+    """One more stroke of the sketch: kept in the view of the first one (a stroke drawn after orbiting is carried
+    into it through the depth of ``pivot``), and in world points for the overlay."""
+    from . import armor_plate as ap
+    if _SKETCH['proj'] is None:
+        _SKETCH['proj'] = ap.freeze_projector(projector)
+    first = ap.thaw_projector(_SKETCH['proj'])
+    world = [_depth_point(projector, xy, pivot) for xy in stroke]
+    px = [first.to_screen(w) for w in world]
+    if any(q is None for q in px):
+        raise PrintError('This stroke is behind the view the sketch was started in')
+    _SKETCH['strokes'].append([tuple(q) for q in px])
+    _SKETCH['straight'].append(bool(straight))
+    _SKETCH['world'].append(world)
+    return sketch_count()
+
+
+def _plane_from_path(projector, p0, p1, depth_point):
+    a = _depth_point(projector, p0, depth_point)
+    b = _depth_point(projector, p1, depth_point)
+    _o, d = projector.ray(((p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2))
+    nrm = (b - a).cross(Vector(d))
+    if nrm.length < 1e-12:
+        return None
+    return (a + b) / 2, nrm.normalized()
+
+
+def _part_under(context, path, projector):
+    """The mesh the drawn ``path`` crosses most (the active one if it is crossed) - through ``projector``'s view."""
     from . import target_rules
-    region, rv3d = context.region, context.region_data
     dg = context.evaluated_depsgraph_get()
     counts = {}
-    if path and len(path) > 2:
-        idx = np.linspace(0, len(path) - 1, 25)
-        spots = [tuple(np.asarray(path[int(i)], float)) for i in idx]
-    else:
-        spots = [(p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t) for t in np.linspace(0.0, 1.0, 25)]
-    for xy in spots:
-        o = view3d_utils.region_2d_to_origin_3d(region, rv3d, xy)
-        d = view3d_utils.region_2d_to_vector_3d(region, rv3d, xy)
+    P = np.asarray(path, float)
+    cum = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))]
+    for t in np.linspace(0.0, cum[-1], 25):                 # (evenly along it: a straight line has 2 points)
+        xy = (float(np.interp(t, cum, P[:, 0])), float(np.interp(t, cum, P[:, 1])))
+        o, d = projector.ray(xy)
         try:
-            hit, _l, _n, _i, hob, _m = target_rules.scene_ray(context, dg, o, d)
+            hit, _l, _n, _i, hob, _m = target_rules.scene_ray(context, dg, Vector(o), Vector(d))
         except (RuntimeError, TypeError):
             continue
         if hit and hob is not None:
@@ -1154,17 +1227,43 @@ def _part_under_line(context, p0, p1, path=None):
     return bpy.data.objects[max(counts, key=counts.get)] if counts else None
 
 
-def _snap_line(p0, p1):
-    """Shift: the line straight - horizontal, vertical or 45 degrees on screen."""
-    dx, dy = p1[0] - p0[0], p1[1] - p0[1]
-    ang = round(math.atan2(dy, dx) / (math.pi / 4)) * (math.pi / 4)
-    L = math.hypot(dx, dy)
-    return (p0[0] + L * math.cos(ang), p0[1] + L * math.sin(ang))
+def apply_path(context, path, straight, projector):
+    """The drawn ``path`` (pixels in ``projector``'s view) cut as Print Cut does: a line that bends - split along it;
+    a straight one - by its plane through the part's middle.  Returns the report; raises PrintError."""
+    if len(path) < 2 or math.dist(path[0], path[-1]) < 8:
+        raise PrintError('Draw a longer line across the part')
+    ob = _part_under(context, path, projector)
+    if ob is None:
+        raise PrintError('Draw the line across a part')
+    if not straight and _bends(path):
+        *_r, msg = cut_along_line(context, ob, _simplify(path), projector)
+        return msg
+    p0, p1 = path[0], path[-1]
+    bb = world_bounds(context, [ob])
+    plane = _plane_from_path(projector, p0, p1, (bb[0] + bb[1]) / 2 if bb else ob.matrix_world.translation)
+    if plane is None:
+        raise PrintError('The line is along the view: draw it across')
+    *_r, msg = cut_with_pins(context, ob, plane[0], plane[1])
+    return msg
+
+
+def sketch_commit(context):
+    """The sketch's strokes joined into one line and cut (in the view of its first stroke); the sketch cleared."""
+    from . import armor_plate as ap
+    if not sketch_count():
+        raise PrintError('No sketch: turn Sketch on and draw the line in pieces first')
+    path = sketch_path()
+    straight = len(_SKETCH['strokes']) == 1 and _SKETCH['straight'][0]
+    projector = ap.thaw_projector(_SKETCH['proj'])
+    msg = apply_path(context, path, straight, projector)
+    sketch_clear()
+    return msg
 
 
 class MCH_OT_print_cut(bpy.types.Operator):
     """Drag a line across a part: it is split along the line you draw (like Split's line, following it through the
-    part) into two closed parts, keys / pins across the cut.  Shift: a straight line (horizontal / vertical / 45)"""
+    part) into two closed parts, keys / pins across the cut.  Shift: a straight line (horizontal / vertical / 45).
+    Sketch on: each drag adds a piece of the line - Enter cuts, Backspace takes the last off, Esc clears"""
     bl_idname = 'mch.print_cut'
     bl_label = 'Print Cut'
     bl_options = {'REGISTER', 'UNDO'}
@@ -1199,27 +1298,19 @@ class MCH_OT_print_cut(bpy.types.Operator):
             context.area.tag_redraw()
             if len(path) < 2 or math.dist(path[0], path[-1]) < 8:
                 return {'CANCELLED'}
-            p0, p1 = path[0], path[-1]
-            ob = _part_under_line(context, p0, p1, path)
-            if ob is None:
-                self.report({'WARNING'}, 'Draw the line across a part')
-                return {'CANCELLED'}
-            if not self.straight and _bends(path):
-                from . import cut_engine as ce
+            from . import cut_engine as ce
+            projector = ce.make_projector(context.region, context.region_data)
+            if sketch_on(context):                # 0.24.177 a piece of the line: kept, not cut yet
                 try:
-                    *_r, msg = cut_along_line(context, ob, _simplify(path), ce.make_projector(context.region,
-                                                                                             context.region_data))
+                    n = sketch_add(context, path, self.straight, projector, context.region_data.view_location)
                 except PrintError as ex:
                     self.report({'WARNING'}, str(ex))
                     return {'CANCELLED'}
-                self.report({'INFO'}, msg)
+                self.report({'INFO'}, f'Print Cut sketch: {n} piece{"s" if n != 1 else ""} of the line | Enter: cut, '
+                                      f'Backspace: last, Esc: clear')
                 return {'FINISHED'}
-            bb = world_bounds(context, [ob])
-            plane = plane_from_line(context, p0, p1, (bb[0] + bb[1]) / 2 if bb else ob.matrix_world.translation)
-            if plane is None:
-                return {'CANCELLED'}
             try:
-                *_r, msg = cut_with_pins(context, ob, plane[0], plane[1])
+                msg = apply_path(context, path, self.straight, projector)
             except PrintError as ex:
                 self.report({'WARNING'}, str(ex))
                 return {'CANCELLED'}
@@ -1230,6 +1321,53 @@ class MCH_OT_print_cut(bpy.types.Operator):
             context.area.tag_redraw()
             return {'CANCELLED'}
         return {'RUNNING_MODAL'}
+
+
+class MCH_OT_print_cut_sketch(bpy.types.Operator):
+    """Print Cut sketch: cut along the pieces drawn (Enter), take the last piece off (Backspace), clear (Esc)"""
+    bl_idname = 'mch.print_cut_sketch'
+    bl_label = 'Print Cut Sketch'
+    bl_options = {'REGISTER', 'UNDO'}
+    action: EnumProperty(items=[('CUT', 'Cut', ''), ('LAST', 'Last Off', ''), ('CLEAR', 'Clear', ''),
+                                ('CLEAR_OR_EXIT', 'Clear / Leave', '')], default='CUT', options={'SKIP_SAVE'})
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT'
+
+    def invoke(self, context, event):
+        if not sketch_count():
+            if self.action == 'CLEAR_OR_EXIT':     # (no sketch: Esc leaves the tool as before)
+                try:
+                    bpy.ops.mch.exit_tool('INVOKE_DEFAULT')
+                except RuntimeError:
+                    pass
+                return {'FINISHED'}
+            return {'PASS_THROUGH'}
+        return self.execute(context)
+
+    def execute(self, context):
+        if self.action == 'CUT':
+            try:
+                msg = sketch_commit(context)
+            except PrintError as ex:
+                self.report({'WARNING'}, str(ex))
+                return {'CANCELLED'}
+            self.report({'INFO'}, msg)
+        elif self.action == 'LAST':
+            for k in ('strokes', 'straight', 'world'):
+                if _SKETCH[k]:
+                    _SKETCH[k].pop()
+            if not _SKETCH['strokes']:
+                sketch_clear()
+            self.report({'INFO'}, f'Print Cut sketch: {sketch_count()} piece(s) left')
+        else:
+            sketch_clear()
+            self.report({'INFO'}, 'Print Cut sketch cleared')
+        for a in getattr(context.screen, 'areas', []):
+            if a.type == 'VIEW_3D':
+                a.tag_redraw()
+        return {'FINISHED'}
 
 
 class MCH_OT_print_cut_axis(bpy.types.Operator):
@@ -1365,8 +1503,19 @@ def draw_cut(layout, context):
     col = layout.column(align=True)                       # 0.24.166 parts from any Split: keys between them
     col.operator('mch.print_keys', icon='MOD_BOOLEAN')
     col.label(text='(select the 2 halves of any Split)')
+    col = layout.column(align=True)                       # 0.24.177 the line in pieces
+    br = getattr(context.scene, 'mch_brush', None)
+    if br is not None:
+        col.prop(br, 'sketch_first', text='Sketch (draw the line in pieces)', toggle=True)
+    if sketch_count():
+        col.label(text=f'Sketch: {sketch_count()} piece(s) - Enter cuts')
+        row = col.row(align=True)
+        row.operator('mch.print_cut_sketch', text='Cut (Enter)').action = 'CUT'
+        row.operator('mch.print_cut_sketch', text='Last Off').action = 'LAST'
+        row.operator('mch.print_cut_sketch', text='Clear').action = 'CLEAR'
     col = layout.column(align=True)
     for line in ('Drag across a part: split along the line you draw', 'Shift: a straight line (horizontal / vertical / 45)',
+                 'Sketch on: each drag a piece of the line, Enter cuts',
                  'Keys on the smaller part, sockets in the bigger', 'The original is kept, hidden'):
         col.label(text=line)
 
@@ -1399,10 +1548,15 @@ TOOLS = (
           'Drag a line across a part: cut into two closed parts with connection pins across the cut (Shift: straight)',
           (('mch.print_cut', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, None),
            ('mch.print_cut', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'shift': True}, None),
-           ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None)), draw_cut),
+           # 0.24.177 the sketch's keys (no sketch: Enter / Backspace pass on, Esc leaves the tool as before)
+           ('mch.print_cut_sketch', {'type': 'RET', 'value': 'PRESS'}, {'properties': [('action', 'CUT')]}),
+           ('mch.print_cut_sketch', {'type': 'NUMPAD_ENTER', 'value': 'PRESS'}, {'properties': [('action', 'CUT')]}),
+           ('mch.print_cut_sketch', {'type': 'BACK_SPACE', 'value': 'PRESS'}, {'properties': [('action', 'LAST')]}),
+           ('mch.print_cut_sketch', {'type': 'ESC', 'value': 'PRESS'}, {'properties': [('action', 'CLEAR_OR_EXIT')]})),
+          draw_cut),
 )
 CLASSES = (MCH_PG_Print, MCH_OT_print_measure, MCH_OT_print_clear_measures, MCH_OT_print_scale_height, MCH_OT_print_cut,
-           MCH_OT_print_cut_axis, MCH_OT_print_keys)
+           MCH_OT_print_cut_sketch, MCH_OT_print_cut_axis, MCH_OT_print_keys)
 _HANDLE = [None]
 
 
