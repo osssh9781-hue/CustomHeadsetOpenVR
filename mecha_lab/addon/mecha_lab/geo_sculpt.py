@@ -35,7 +35,7 @@ import math
 import bmesh
 import bpy
 import numpy as np
-from bpy.props import EnumProperty, FloatProperty, IntProperty
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 
@@ -102,6 +102,8 @@ class MCH_PG_GeoSculpt(bpy.types.PropertyGroup):
                          default=60, min=3, max=1200, soft_max=500, subtype='PIXEL', update=_redraw)
     intensity: FloatProperty(name='Intensity', description='How strong a stroke is (U at the cursor)', default=0.5,
                              min=0.01, max=2.0, soft_max=1.0, update=_redraw)
+    edge_loop: BoolProperty(name='Edge Loop', default=False, update=_redraw,
+                            description='0.24.180 (user: "엣지 루프 기능도 만들어 주라 - 베벨 말이지"): a click takes the whole edge loop - the edges round the face area on the mouse\'s side of the edge (a box\'s top: its four edges, a cap: its rim); Shift + click does it too')
     resolution: FloatProperty(name='Resolution', description='How fine the mesh under a stroke is made: 1 = faces about '
                               'a fifth of the brush radius (a big brush: coarse, a thin line: fine); 2 = twice as fine. '
                               'Only near the strokes - the rest of the part is not split', default=1.0, min=0.1, max=8.0,
@@ -1139,8 +1141,9 @@ def mark_bevel(ob, kind, pts, radius, remove=False):
     return mark_edges(ob, kind, edges_along(ob.data, pts, radius), radius, remove)
 
 
-def pick_run(ob, p_local, reach):
-    """0.24.178 the run of hard edges (edge_runs) nearest ``p_local`` within ``reach``: (run id, its edges) or None."""
+def pick_run(ob, p_local, reach, loop=False):
+    """0.24.178 the run of hard edges (edge_runs) nearest ``p_local`` within ``reach``: (run id, its edges) or None.
+    0.24.180 ``loop``: the edge loop through the edge there instead (id: ('loop', its first edge))."""
     from . import edge_runs
     runs = edge_runs.get(ob)
     slack = {}
@@ -1151,6 +1154,9 @@ def pick_run(ob, p_local, reach):
     hit = runs.nearest(p_local, reach, slack or None)
     if hit is None:
         return None
+    if loop:
+        edges = runs.loop(hit[1], p_local)
+        return ('loop', min(edges)), edges
     return hit[0], list(runs.edge_ids[hit[0]])
 
 
@@ -1458,7 +1464,7 @@ def _circle(cx, cy, r, colour, width=2.0, dashed=False):
         ug.polyline(pts, colour, width, closed=True)
 
 
-HOVER = {'region': None, 'xy': (-1.0, -1.0), 'drawn': None, 'part': None, 'run': None}
+HOVER = {'region': None, 'xy': (-1.0, -1.0), 'drawn': None, 'part': None, 'run': None, 'edges': None}
 
 
 def draw_cursor():
@@ -1498,14 +1504,16 @@ class MCH_OT_geo_hover(bpy.types.Operator):
             if HOVER['region'] != region.as_pointer() or abs(xy[0] - HOVER['xy'][0]) + abs(xy[1] - HOVER['xy'][1]) >= 1.0:
                 HOVER['region'] = region.as_pointer()
                 HOVER['xy'] = xy
-                _hover_run(context, xy)
+                _hover_run(context, xy, shift=event.shift)
                 region.tag_redraw()
         return {'PASS_THROUGH'}
 
 
-def _hover_run(context, xy):
-    """0.24.178 Chamfer / Round: the part under the mouse and the run of hard edges under the brush (shown lit)."""
+def _hover_run(context, xy, shift=False):
+    """0.24.178 Chamfer / Round: the part under the mouse and the run of hard edges under the brush (shown lit);
+    0.24.180 Edge Loop (or Shift): the loop through it."""
     st = settings(context)
+    HOVER['edges'] = None
     if st is None or st.brush not in BEVEL_MODS or not tool_active(context):
         HOVER['part'] = HOVER['run'] = None
         return
@@ -1519,8 +1527,9 @@ def _hover_run(context, xy):
         ppw = px_per_world(context.region, context.region_data, loc)
         sc = _mean_scale(ob)
         reach = max(st.size_px / ppw, 12.0 / ppw) / sc
-        got = pick_run(ob, ob.matrix_world.inverted_safe() @ loc, reach)
+        got = pick_run(ob, ob.matrix_world.inverted_safe() @ loc, reach, loop=st.edge_loop or shift)
         HOVER['run'] = got[0] if got is not None else None
+        HOVER['edges'] = got[1] if got is not None else None
     except (ReferenceError, RuntimeError, ValueError):
         HOVER['run'] = None
 
@@ -1556,8 +1565,8 @@ def draw_edges():
             if ids:
                 edge_runs.draw_lines(edge_runs.world_segs(ob, runs, ids), col, 3.0)
         rid = HOVER['run']
-        if rid is not None and running is None and rid < len(runs.edge_ids):
-            edge_runs.draw_lines(edge_runs.world_segs(ob, runs, runs.edge_ids[rid]), EDGE_LIT, 4.0)
+        if rid is not None and running is None and HOVER.get('edges'):
+            edge_runs.draw_lines(edge_runs.world_segs(ob, runs, HOVER['edges']), EDGE_LIT, 4.0)
     except (ReferenceError, AttributeError, RuntimeError, KeyError):
         pass
 
@@ -1631,6 +1640,7 @@ class MCH_OT_geo_stroke(bpy.types.Operator):
             # 브러시 크기로 베벨이랑 챔퍼가 생기고, 알트 누르면 지워지게"): the shown edge run under the brush is taken
             # (click), every run the brush passes over while dragging too; the width = the brush
             self.reach = max(self.radius, (12.0 / ppw) / _mean_scale(ob))
+            self.loop = bool(st.edge_loop or event.shift)            # 0.24.180 the edge loop
             self.done_runs = set()
             self.marked = 0
             self._take(first[0])
@@ -1647,7 +1657,7 @@ class MCH_OT_geo_stroke(bpy.types.Operator):
 
     def _take(self, p_local):
         """Chamfer / Round: the run under the brush at ``p_local`` (once per stroke)."""
-        got = pick_run(self.ob, p_local, self.reach)
+        got = pick_run(self.ob, p_local, self.reach, loop=getattr(self, 'loop', False))
         if got is None or got[0] in self.done_runs:
             return
         self.done_runs.add(got[0])
@@ -1944,9 +1954,13 @@ def draw(layout, context):
     col = layout.column(align=True)
     lines = HELP
     if st.brush in BEVEL_MODS:            # 0.24.178 pick edges, not a stroke
-        lines = ('Click a shown edge: ' + ('chamfered' if st.brush == 'CHAMFER' else 'rounded') + ', Draw Size wide',
+        row = layout.row(align=True)
+        row.scale_y = 1.2
+        row.prop(st, 'edge_loop', text='Edge Loop  (Shift + click)', toggle=True)
+        lines = ('Click a shown edge' + (' - its whole loop round the face' if st.edge_loop else '') + ': '
+                 + ('chamfered' if st.brush == 'CHAMFER' else 'rounded') + ', Draw Size wide',
                  'Drag: every edge the brush passes.  Alt + click: off',
-                 'Yellow: the edge under the brush; pink / violet: done')
+                 'Yellow: what the click takes; pink / violet: done')
     for line in lines:
         col.label(text=line)
 

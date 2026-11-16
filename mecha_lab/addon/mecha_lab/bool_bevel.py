@@ -16,7 +16,7 @@ import math
 import bmesh
 import bpy
 import numpy as np
-from bpy.props import EnumProperty, FloatProperty, IntProperty, PointerProperty
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty
 from mathutils import Vector
 
 from . import edge_runs
@@ -39,6 +39,8 @@ class MCH_PG_BoolBevel(bpy.types.PropertyGroup):
                                      'the slider finer)')
     segments: IntProperty(name='Round Segments', default=8, min=2, max=48,
                           description='Steps of the round cut\'s arc')
+    edge_loop: BoolProperty(name='Edge Loop', default=False, update=_redraw,
+                            description='0.24.180 (user: "엣지 루프 기능도 만들어 주라 - 베벨 말이지"): a click takes the whole edge loop - the edges round the face area on the mouse\'s side of the edge (a box\'s top: its four edges, a cap: its rim); Shift + click does it too')
 
 
 class BevelError(Exception):
@@ -367,6 +369,18 @@ def portion(runs, pts, reach, whole=False):
     return rid, start, end
 
 
+def loop_edges(runs, e, p, view=None):
+    """0.24.180 the edge loop through ``e`` (``p``: the side) - its outside edges (a Boolean Bevel cuts those; an
+    inside corner on the loop, as where a step meets its wall, is left): (edges, how many inside ones left)."""
+    edges = runs.loop(e, p, view)
+    out = []
+    for i in edges:
+        (nA, _iA, _fA), (_nB, iB, _fB) = runs.faces[i]
+        if float(np.dot(iB, nA)) < 1e-6:             # (face B goes down from face A's plane: an outside edge)
+            out.append(i)
+    return out, len(edges) - len(out)
+
+
 def _mean_scale(ob):
     s = ob.matrix_world.to_scale()
     return max((abs(s.x) + abs(s.y) + abs(s.z)) / 3.0, 1e-9)
@@ -451,9 +465,9 @@ def _rebuild(context, ob, base, cuts):
     return done
 
 
-def perform(context, ob, pts_local, whole=False, reach=None, remove=False):
+def perform(context, ob, pts_local, whole=False, reach=None, remove=False, loop=False, view=None):
     """Boolean Bevel ``ob`` along the edge ``pts_local`` (its local space) were drawn over (``remove``: that edge's
-    cut taken off).  Returns a message."""
+    cut taken off; 0.24.180 ``loop``: the whole edge loop through the edge clicked).  Returns a message."""
     import json
     st = context.scene.mch_bool_bevel
     w = st.width / _mean_scale(ob)
@@ -470,7 +484,16 @@ def perform(context, ob, pts_local, whole=False, reach=None, remove=False):
         d = {'base': base.name, 'cuts': []}
     base = bpy.data.meshes[d['base']]
     runs = edge_runs.get_mesh(base)
-    parts = portions(runs, pts_local, reach if reach is not None else max(w * 1.5, 1e-6), whole)
+    r_ = reach if reach is not None else max(w * 1.5, 1e-6)
+    skipped = 0
+    if loop:
+        hit = runs.nearest(pts_local[0], r_)
+        edges, skipped = loop_edges(runs, hit[1], pts_local[0], view) if hit is not None else ([], 0)
+        parts = runs.loop_parts(edges) if edges else []
+        if hit is not None and not edges:
+            raise BevelError('That loop is all inside corners - Boolean Bevel cuts outside edges')
+    else:
+        parts = portions(runs, pts_local, r_, whole)
     if not parts:
         raise BevelError('No edge there - drag along one of the shown edges of the part')
     before = len(ob.data.polygons)
@@ -494,16 +517,19 @@ def perform(context, ob, pts_local, whole=False, reach=None, remove=False):
     if remove:
         return f'Boolean Bevel taken off {len(parts)} edge{"s" if len(parts) != 1 else ""} of "{ob.name}"'
     length = sum(s1 - s0 for _r, s0, s1 in parts) * _mean_scale(ob)
+    note = ''
+    if loop:
+        note = ' (the edge loop' + (f' - {skipped} inside corner edge(s) left as they are' if skipped else '') + ')'
     return (f'Boolean Bevel ({st.profile.title()}, {st.width:.3g} wide) on "{ob.name}": {length:.3g} along '
-            f'{len(parts)} edge{"s" if len(parts) != 1 else ""}; {len(cuts)} cut{"s" if len(cuts) != 1 else ""} on '
-            f'it, read from the part as it was - corners meet ({before:,} -> {len(ob.data.polygons):,} faces)')
+            f'{len(parts)} edge{"s" if len(parts) != 1 else ""}{note}; {len(cuts)} cut{"s" if len(cuts) != 1 else ""} '
+            f'on it, read from the part as it was - corners meet ({before:,} -> {len(ob.data.polygons):,} faces)')
 
 
 # -----------------------------------------------------------------------------
 # the tool
 # -----------------------------------------------------------------------------
 
-HOVER = {'part': None, 'run': None, 'region': None}
+HOVER = {'part': None, 'run': None, 'region': None, 'loop': None}
 _LIVE = {'op': None}
 
 
@@ -549,7 +575,17 @@ def screen_pick(context, ob, xy, px=16.0):
         return None
     e = int(ids[k])
     a, b = runs.edges[e]
-    return runs.run_of[e], runs.co[a] + (runs.co[b] - runs.co[a]) * float(t[k])
+    return runs.run_of[e], runs.co[a] + (runs.co[b] - runs.co[a]) * float(t[k]), e
+
+
+def _view_local(context, ob):
+    """The view's direction in ``ob``'s space (which side of a shown edge picked off the part faces you)."""
+    try:
+        rv3d = context.region_data
+        v = rv3d.view_rotation @ Vector((0.0, 0.0, -1.0))
+        return tuple((ob.matrix_world.inverted_safe().to_3x3() @ v).normalized())
+    except (AttributeError, ReferenceError):
+        return None
 
 
 def tool_on(context):
@@ -575,6 +611,8 @@ def draw_edges():
         if op is not None and op.portion:
             for rid, s0, s1 in op.portion:            # (what will be cut, snapped onto the edges)
                 edge_runs.draw_lines(edge_runs.portion_segs(ob, runs, rid, s0, s1), (1.0, 0.5, 0.1, 1.0), 5.0)
+        elif HOVER.get('loop'):                       # 0.24.180 the edge loop the click takes
+            edge_runs.draw_lines(edge_runs.world_segs(ob, runs, HOVER['loop']), (1.0, 0.92, 0.2, 1.0), 4.0)
         elif HOVER['run'] is not None and HOVER['run'] < len(runs.edge_ids):
             edge_runs.draw_lines(edge_runs.world_segs(ob, runs, runs.edge_ids[HOVER['run']]), (1.0, 0.92, 0.2, 1.0),
                                  4.0)
@@ -593,22 +631,29 @@ class MCH_OT_bool_bevel_hover(bpy.types.Operator):
             return {'PASS_THROUGH'}
         xy = (event.mouse_region_x, event.mouse_region_y)
         hit = _pick(context, xy)
-        part, run = None, None
+        part, run, loop = None, None, None
+        want_loop = context.scene.mch_bool_bevel.edge_loop or event.shift
         if hit is None and HOVER['part']:             # (off the part: a shown edge near the mouse, on screen)
             ob = bpy.data.objects.get(HOVER['part'])
             sp_ = screen_pick(context, ob, xy) if ob is not None and ob.type == 'MESH' else None
             if sp_ is not None:
                 part, run = ob.name, sp_[0]
+                if want_loop:
+                    loop = loop_edges(runs_for(ob), sp_[2], sp_[1], _view_local(context, ob))[0]
         if hit is not None:
             ob, loc, _n = hit
             part = ob.name
             try:
-                got = runs_for(ob).nearest(ob.matrix_world.inverted_safe() @ loc, _reach_px(context, ob, loc))
+                runs = runs_for(ob)
+                p_l = ob.matrix_world.inverted_safe() @ loc
+                got = runs.nearest(p_l, _reach_px(context, ob, loc))
                 run = got[0] if got is not None else None
+                if got is not None and want_loop:
+                    loop = loop_edges(runs, got[1], p_l)[0]
             except (ReferenceError, RuntimeError, ValueError):
                 run = None
-        if (part, run) != (HOVER['part'], HOVER['run']):
-            HOVER['part'], HOVER['run'] = part, run
+        if (part, run, loop) != (HOVER['part'], HOVER['run'], HOVER.get('loop')):
+            HOVER['part'], HOVER['run'], HOVER['loop'] = part, run, loop
             context.region.tag_redraw()
         return {'PASS_THROUGH'}
 
@@ -656,6 +701,8 @@ class MCH_OT_bool_bevel_draw(bpy.types.Operator):
         self.runs = runs_for(self.ob)
         self.portion = []
         self.remove = bool(event.alt)
+        self.loop = bool(st.edge_loop or event.shift)         # 0.24.180 a click: the whole edge loop
+        self.view = _view_local(context, self.ob)
         self._update()
         _LIVE['op'] = self
         context.window_manager.modal_handler_add(self)
@@ -663,11 +710,16 @@ class MCH_OT_bool_bevel_draw(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
     def _update(self):
+        if self.loop and self.moved < 6.0:
+            hit = self.runs.nearest(self.pts[0], self.reach)
+            edges = loop_edges(self.runs, hit[1], self.pts[0], self.view)[0] if hit is not None else []
+            self.portion = self.runs.loop_parts(edges) if edges else []
+            return
         self.portion = portions(self.runs, self.pts, self.reach, whole=self.moved < 6.0)
 
     def _end(self, context):
         _LIVE['op'] = None
-        HOVER['run'] = None
+        HOVER['run'] = HOVER['loop'] = None
         if context.area:
             context.area.tag_redraw()
 
@@ -685,7 +737,7 @@ class MCH_OT_bool_bevel_draw(bpy.types.Operator):
             self._end(context)
             try:
                 msg = perform(context, self.ob, self.pts, whole=self.moved < 6.0, reach=self.reach,
-                              remove=self.remove)
+                              remove=self.remove, loop=self.loop and self.moved < 6.0, view=self.view)
             except BevelError as ex:
                 self.report({'WARNING'}, str(ex))
                 return {'CANCELLED'}
@@ -708,10 +760,14 @@ def draw(layout, context):
     col.prop(st, 'width')
     if st.profile == 'ROUND':
         col.prop(st, 'segments')
+    row = layout.row(align=True)
+    row.scale_y = 1.2
+    row.prop(st, 'edge_loop', text='Edge Loop  (Shift + click)', toggle=True)
     col = layout.column(align=True)
     for line in ('Drag along the edges: it snaps onto them (round corners',
                  'too) - that much is cut off (orange while you draw)',
-                 'Click an edge: all of it.  Alt + click: its cut off',
+                 ('Click an edge: its whole loop round the face' if st.edge_loop else 'Click an edge: all of it')
+                 + '.  Alt + click: its cut off',
                  'Edges cut one after another meet at their corners',
                  'Target (top bar, T): Auto / Selected / Active'):
         col.label(text=line)
@@ -736,6 +792,8 @@ class MCH_TOOL_bool_bevel(bpy.types.WorkSpaceTool):
     bl_keymap = (('mch.bool_bevel_hover', {'type': 'MOUSEMOVE', 'value': 'ANY', 'any': True}, None),
                  ('mch.bool_bevel_draw', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, None),
                  ('mch.bool_bevel_draw', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'alt': True}, None),   # (off)
+                 ('mch.bool_bevel_draw', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'shift': True}, None),  # (loop)
+                 ('mch.bool_bevel_draw', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'shift': True, 'alt': True}, None),
                  ('mch.toggle_targets', {'type': 'T', 'value': 'PRESS'}, None),      # (Auto <-> Selected)
                  ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None))
     draw_settings = staticmethod(_tool_settings)

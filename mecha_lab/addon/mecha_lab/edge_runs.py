@@ -79,6 +79,12 @@ class Runs:
         I1, I2 = inward(L1, P1), inward(L2, P2)
         N = pn[P1] + pn[P2]
         N = N / np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
+        # 0.24.180 (edge loops) the faces either side of each two-face edge that is not hard: the flat areas
+        soft = two[~hard_mask[two]]
+        ks = pos[soft]
+        self._soft = (lp[l1[ks]], lp[l2[ks]])
+        self._nP = nP
+        self._labels = None
         self.edges = {int(e): (int(ev[e, 0]), int(ev[e, 1])) for e in hi}
         self.normal = {int(e): N[j] for j, e in enumerate(hi)}
         self.faces = {int(e): [(pn[P1[j]], I1[j], int(P1[j])), (pn[P2[j]], I2[j], int(P2[j]))]
@@ -165,6 +171,98 @@ class Runs:
         else:
             self.kd = None
             self._half = 0.0
+
+    def labels(self):
+        """0.24.180 each face's flat area (faces joined across edges that are not hard) - worked out once."""
+        if self._labels is not None:
+            return self._labels
+        nP = self._nP
+        a, b = self._soft
+        lab = -np.ones(nP, np.int64)
+        if nP:
+            src = np.concatenate([a, b])
+            dst = np.concatenate([b, a])
+            order = np.argsort(src, kind='stable')
+            nb = dst[order].tolist()
+            start = np.concatenate([[0], np.cumsum(np.bincount(src, minlength=nP))]).tolist()
+            k = 0
+            for f0 in range(nP):
+                if lab[f0] >= 0:
+                    continue
+                lab[f0] = k
+                stack = [f0]
+                while stack:
+                    f = stack.pop()
+                    for g in nb[start[f]:start[f + 1]]:
+                        if lab[g] < 0:
+                            lab[g] = k
+                            stack.append(g)
+                k += 1
+        self._labels = lab
+        return lab
+
+    def loop(self, e, p=None, view=None):
+        """0.24.180 (user: "엣지 루프 기능도 만들어 주라 - 베벨 말이지") the edge loop through the hard edge ``e``: the
+        hard edges round the flat area on the side of ``e`` the point ``p`` (local, near it) is on - the outline of
+        that face area through ``e`` (a box's top: its four edges; a cylinder's cap: its rim; an area with a hole:
+        the hole's rim or the outline, whichever ``e`` is on).  ``p`` on the edge itself (a shown edge picked off the
+        part): the side whose face looks toward ``view`` (the view's direction, local).  [hard edge ids]"""
+        if e not in self.faces:
+            return [e]
+        fa = self.faces[e]
+        side = 0
+        if p is not None:
+            a, b = self.edges[e]
+            A, B = self.co[a], self.co[b]
+            d = B - A
+            t = float(np.clip(np.dot(np.asarray(p, float) - A, d) / max(np.dot(d, d), 1e-18), 0.0, 1.0))
+            q = np.asarray(p, float) - (A + d * t)
+            if float(np.linalg.norm(q)) < 1e-7 * max(float(np.linalg.norm(d)), 1e-9) and view is not None:
+                v = np.asarray(view, float)
+                side = 0 if float(-v @ fa[0][0]) >= float(-v @ fa[1][0]) else 1
+            else:
+                side = 0 if float(q @ fa[0][1]) >= float(q @ fa[1][1]) else 1
+        lab = self.labels()
+        area = lab[fa[side][2]]
+        ids = self._ids
+        if not len(ids):
+            return [e]
+        if not hasattr(self, '_hf'):
+            self._hf = np.array([[self.faces[int(i)][0][2], self.faces[int(i)][1][2]] for i in ids], np.int64)
+        on = (lab[self._hf[:, 0]] == area) ^ (lab[self._hf[:, 1]] == area)
+        cand = {int(i) for i in ids[on]}
+        if e not in cand:
+            return [e]
+        at = {}
+        for i in cand:
+            for v in self.edges[i]:
+                at.setdefault(v, []).append(i)
+        out, seen, stack = [], {e}, [e]
+        while stack:
+            i = stack.pop()
+            out.append(i)
+            for v in self.edges[i]:
+                for j in at.get(v, ()):
+                    if j not in seen:
+                        seen.add(j)
+                        stack.append(j)
+        return out
+
+    def loop_parts(self, edges):
+        """The runs a loop's edges lie on, each with the stretch of it in the loop: [(run, s0, s1)]."""
+        by = {}
+        for i in edges:
+            by.setdefault(self.run_of[i], []).append(i)
+        out = []
+        for rid, es in by.items():
+            total = self.arc(rid, self.co[self.paths[rid][:1]])[1]
+            if len(es) == len(self.edge_ids[rid]) or self.closed[rid]:
+                out.append((rid, 0.0, total))
+                continue
+            pts = self.co[[v for i in es for v in self.edges[i]]]
+            s, _t = self.arc(rid, pts)
+            out.append((rid, float(s.min()), float(s.max())))
+        return out
 
     def _away(self, e, v):
         a, b = self.edges[e]
