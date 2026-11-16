@@ -1541,9 +1541,13 @@ class MCH_OT_hair_shape_comb(bpy.types.Operator):
         raw = json.dumps(strokes, separators=(',', ':'))
         ob[COMBS] = raw
         cache = _CACHE.get(ob.name)
-        if cache is not None and 'k1' in cache:        # (what is drawn is this: no combing again)
-            cache['k2'] = (cache['k1'], zlib.crc32(raw.encode()))
-            cache['k3'] = (cache['k2'], _bkey(ob, ob.mch_hshape, raw))
+        if cache is not None and 'k1' in cache:        # (combed as drawn: not combed again; out of the body once
+            cache['k2'] = (cache['k1'], zlib.crc32(raw.encode()))      # more, all of it the way a rebuild does -
+            cache.pop('k3', None)                      # so Ctrl + Z / a value later gives back just this)
+            try:
+                rebuild(ob)
+            except ShapeError:
+                pass
         self.n += 1
         self._status()
 

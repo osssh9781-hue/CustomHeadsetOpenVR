@@ -1,0 +1,14 @@
+1 amount 2000 -> 17295 p.count 17295 traced again False
+shot 1_amount.png True
+shot 2_comb.png True
+2 comb on True strokes 1 2 1 tips dx 0.063 dz 0.001 moved 0.066 alt back to 0.044 ctrl+z -> as after the first 0.0 ended True
+shot 2_comb_done.png True
+3 gravity 0.688 tips dz -0.146 in head 0.0759 -> 0.0788
+shot 3_gravity.png True
+4 colour (0.3, 0.21, 0.1) True
+shot 4_blonde.png True
+PASS 1 Amount: a REAL drag on its slider - more strands at once, nothing traced again
+PASS 2 Comb: a REAL click on Comb, a REAL drag - the strands turn that way; Alt + a REAL drag - back toward the shape; a REAL Ctrl + Z - that stroke off; a REAL Enter - done
+PASS 3 Gravity: a REAL drag on its slider - the tips come down, none into the head
+PASS 4 a colour preset: a REAL click on Blonde - its colour
+4/4 passed
