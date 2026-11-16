@@ -155,7 +155,7 @@ def groups(context, tool):
         if cut_presets.LAST_LOOPS[0] is not None:
             out.append(('', [_cell('seg', 'Save Shape', action=('op', 'mch.save_cut_shape', {}))]))
     cut = getattr(scene, 'mch_cut', None)
-    if cut is not None and drawing:
+    if cut is not None and (drawing or tool in target_rules.TARGET_ONLY):
         out.append(('Target', [_cell('seg', label, cut.targets == ident, ('enum', ident), cut, 'targets')
                                for ident, label in (('AUTO', 'Auto'), ('SELECTED', 'Selected'),
                                                     ('ACTIVE', 'Active'))]))

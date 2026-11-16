@@ -150,6 +150,55 @@ check(f'a hole\'s top rim clicked: chamfered ({mid:.3f}), not past the hole\'s c
       f'its left rim too: they meet at the corner (the corner {corner * math.sqrt(2):.3f} in), closed ({bad5}, {bad6})',
       abs(mid - 0.08) < 3e-3 and beyond < 1e-6 and abs(corner * math.sqrt(2) - 0.08) < 0.02 and bad5 == 0 and bad6 == 0)
 bpy.data.objects.remove(pl)
+# (user, two screenshots: "옆에 라인 클릭해서 베벨 하면 이렇게 돼, 저 베벨이 만나야 되는 거 아니여?") one edge, then the
+# one beside it: they meet at their corner, whichever came first
+bpy.ops.mesh.primitive_cube_add(size=2.0)
+bx = C.active_object
+st.profile, st.width, st.segments = 'ROUND', 0.2, 8
+bb.perform(C, bx, [(0.0, -1.0, -1.0)], whole=True, reach=0.05)          # (the bottom front edge, rounded)
+st.profile = 'CHAMFER'
+msg_b = bb.perform(C, bx, [(1.0, -1.0, 0.0)], whole=True, reach=0.05)   # (then the right front edge, chamfered)
+near_corner = dist_to_surface(bx, (1.0, -1.0, -0.85)) * math.sqrt(2)   # (on the right edge, just above the round)
+bad7, vol7 = closed_ok(bx)
+# the same two, the other way round: the same part
+bpy.ops.mesh.primitive_cube_add(size=2.0, location=(0.0, 0.0, 0.0))
+bx2 = C.active_object
+st.profile = 'CHAMFER'
+bb.perform(C, bx2, [(1.0, -1.0, 0.0)], whole=True, reach=0.05)
+st.profile = 'ROUND'
+bb.perform(C, bx2, [(0.0, -1.0, -1.0)], whole=True, reach=0.05)
+bad8, vol8 = closed_ok(bx2)
+check(f'round one edge, then chamfer the one beside it: the chamfer runs on into the corner and meets the round (just '
+      f'above it: {near_corner:.3f} in, the chamfer 0.2 - before: a notch, it stopped square), closed ({bad7}); the '
+      f'other way round: the same part (volume {vol7:.4f} / {vol8:.4f}) - {msg_b}',
+      abs(near_corner - 0.2) < 0.01 and bad7 == 0 and bad8 == 0 and abs(vol7 - vol8) < 1e-4)
+bpy.data.objects.remove(bx)
+bpy.data.objects.remove(bx2)
+# a step (a low block and a tall one joined): the low one's top front edge and the tall one's front edge, rounded
+bpy.ops.mesh.primitive_cube_add(size=1.0)
+stp = C.active_object
+stp.scale = (2.0, 1.0, 1.0)
+stp.location = (0.0, 0.0, 0.0)
+bpy.ops.object.transform_apply(location=True, scale=True)
+bpy.ops.mesh.primitive_cube_add(size=1.0, location=(1.5, 0.0, 0.5))
+tall = C.active_object
+tall.scale = (1.0, 1.0, 2.0)
+bpy.ops.object.transform_apply(location=True, scale=True)
+m = stp.modifiers.new('U', 'BOOLEAN')
+m.object, m.operation, m.solver = tall, 'UNION', 'EXACT'
+C.view_layer.objects.active = stp
+bpy.ops.object.modifier_apply(modifier='U')
+bpy.data.objects.remove(tall)
+st.profile, st.width = 'ROUND', 0.15
+bb.perform(C, stp, [(0.0, -0.5, 0.5)], whole=True, reach=0.05)        # (the low block's top front edge)
+bb.perform(C, stp, [(1.0, -0.5, 1.0)], whole=True, reach=0.05)        # (the tall block's front left edge)
+bad9, _v9 = closed_ok(stp)
+corner_left = dist_to_surface(stp, (0.98, -0.48, 0.52))                 # (where the two met: the corner's block)
+on_wall = dist_to_surface(stp, (0.9, -0.3, 0.5))                         # (the low block's top beside the wall)
+check(f'a step: the low block\'s top edge and the tall block\'s front edge rounded, one after the other - no block left '
+      f'in the corner where they meet ({corner_left:.4f} of the corner point off the new surface), the low block\'s top '
+      f'by the wall untouched ({on_wall:.4f}), closed ({bad9})', corner_left > 0.01 and on_wall < 1e-6 and bad9 == 0)
+bpy.data.objects.remove(stp)
 # a loop: the top rim of a cylinder, half of it
 bpy.ops.mesh.primitive_cylinder_add(vertices=48, radius=1.0, depth=1.0)
 cy = C.active_object

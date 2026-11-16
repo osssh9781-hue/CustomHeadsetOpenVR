@@ -1325,8 +1325,13 @@ def draw(layout, context):
         if st.grow != 'FUR':
             skin_cover.draw(layout, context)
             return
+    from . import hair_shape                   # 0.24.179 hair in a sculpted shape (its own values when picked)
+    if hair_shape.is_hair(context.active_object):
+        hair_shape.draw(layout, context)
+        return
     ob = active_fur(context)
     pg = ob.mch_fur if ob is not None else context.scene.mch_fur
+    hair_shape.draw(layout, context)
     col = layout.column(align=True)
     if ob is not None:
         col.label(text=f'{ob.name} on {ob.parent.name if ob.parent else "?"}: {strands(ob, context):,} strands (live)')

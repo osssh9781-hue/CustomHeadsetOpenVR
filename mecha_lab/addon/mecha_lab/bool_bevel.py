@@ -33,8 +33,10 @@ def _redraw(self, context):
 
 class MCH_PG_BoolBevel(bpy.types.PropertyGroup):
     profile: EnumProperty(name='Profile', items=PROFILES, default='CHAMFER', update=_redraw)
-    width: FloatProperty(name='Width', default=0.05, min=0.0005, soft_max=1.0, precision=3, unit='LENGTH',
-                         update=_redraw, description='How far in from the edge the cut goes, on each face')
+    width: FloatProperty(name='Width', default=0.05, min=0.00005, soft_min=0.0002, soft_max=0.2, precision=4,
+                         step=0.1, unit='LENGTH', update=_redraw,
+                         description='How far in from the edge the cut goes, on each face (0.24.179: down to 0.05 mm, '
+                                     'the slider finer)')
     segments: IntProperty(name='Round Segments', default=8, min=2, max=48,
                           description='Steps of the round cut\'s arc')
 
@@ -114,22 +116,23 @@ def _end(runs, rid, k, sec, sign, ext, inside=None):
     end_edge = runs.edge_ids[rid][0 if k == 0 else -1]
     # each of the edge's two faces: its next hard edge at that point, and whether the face's corner there is convex
     corners = {}
-    for _n, inward, f in runs.faces[end_edge]:
+    for fn, inward, f in runs.faces[end_edge]:
         best = None
         for e, (a, b) in runs.edges.items():
-            if e in mine or v not in (a, b) or not any(ff == f for _nn, _ii, ff in runs.faces[e]):
+            if e in mine or v not in (a, b):
                 continue
             o = b if a == v else a
             d = _unit(runs.co[o] - runs.co[v])
+            # (in that face's plane - a boolean's face round a hole is split into several faces)
+            if not any(ff == f for _nn, _ii, ff in runs.faces[e]) and abs(float(np.dot(d, fn))) > 0.05:
+                continue
             key = abs(float(np.dot(d, dirn)))
             if best is None or key < best[0]:
                 best = (key, d)
         corners[f] = None if best is None else (best[1], float(np.dot(best[1], inward)) > 1e-6)
-    if corners and all(c is not None and c[1] for c in corners.values()):
-        return (p, T, pts, (p + dirn * ext, T, [q + dirn * ext for q in pts]))   # (a box's corner: on through it)
     reflex = [c for c in corners.values() if c is not None and not c[1]]
-    if not reflex:
-        return (p, T, pts, None)                      # (a face going on smoothly: square)
+    if not reflex:                                    # (a box's corner - or a face going on past it: on through)
+        return (p, T, pts, (p + dirn * ext, T, [q + dirn * ext for q in pts]))
     nxt = reflex[0][0]
     m = _unit(dirn + nxt)                             # (reflex: the mitre between the way on and the next edge)
     if np.linalg.norm(m) < 1e-9 or abs(float(np.dot(m, dirn))) < 1e-6:
@@ -297,7 +300,6 @@ def cut(context, ob, cutter_me):
     ob.data = new
     if old.users == 0:
         bpy.data.meshes.remove(old)
-    edge_runs.clear()
     return before, len(new.polygons)
 
 
@@ -370,37 +372,131 @@ def _mean_scale(ob):
     return max((abs(s.x) + abs(s.y) + abs(s.z)) / 3.0, 1e-9)
 
 
-def perform(context, ob, pts_local, whole=False, reach=None):
-    """Boolean Bevel ``ob`` along the edge ``pts_local`` (its local space) were drawn over.  Returns a message."""
-    st = context.scene.mch_bool_bevel
-    w = st.width / _mean_scale(ob)
-    runs = edge_runs.get(ob)
-    parts = portions(runs, pts_local, reach if reach is not None else max(w * 1.5, 1e-6), whole)
-    if not parts:
-        raise BevelError('No edge there - drag along one of the shown edges of the part')
-    inside = _inside_test(ob.data)
-    cutters = [cutter_mesh(runs, rid, s0, s1, w, st.profile, st.segments, inside=inside) for rid, s0, s1 in parts]
-    before = len(ob.data.polygons)
-    done, length = 0, 0.0
+# 0.24.179 (user, two screenshots: "옆에 라인 클릭해서 베벨 하면 이렇게 돼, 저 베벨이 만나야 되는 거 아니여?"): cut one
+# after another, the second edge met the first one's cut faces at its end - not the part's corner - and stopped square
+# there (a notch, a block left in the corner).  Now the part's mesh as it was before its first Boolean Bevel is kept
+# (its "base"), with the list of the cuts on it; each click cuts the base again with all of them - every edge's ends
+# read from the base's own corners, so two edges meeting at a corner meet, whichever was cut first.  Alt + click: that
+# edge's cut taken off.  Changed by anything else since (a cut, a sculpt ...): the part as it is now is the new base.
+STATE = 'mch_bool_bevel'               # on the part: {"base": mesh name, "sig": ..., "cuts": [...]}
+
+
+def _signature(me):
+    n = len(me.vertices)
+    co = np.empty(n * 3, np.float64)
+    me.vertices.foreach_get('co', co)
+    return [n, len(me.polygons), round(float(co.sum()), 5), round(float(np.abs(co).sum()), 5)]
+
+
+def state(ob):
+    """The part's Boolean Bevel set ({'base', 'sig', 'cuts'}) when its mesh is still what the last cut made, else
+    None."""
+    import json
+    raw = ob.get(STATE)
+    if not raw:
+        return None
     try:
-        for (rid, s0, s1), me in zip(parts, cutters):     # (one cut per edge: corners where two cutters overlap)
+        d = json.loads(raw)
+    except ValueError:
+        return None
+    base = bpy.data.meshes.get(d.get('base', ''))
+    if base is None or ob.data is None or d.get('sig') != _signature(ob.data):
+        return None
+    return d
+
+
+def base_mesh(ob):
+    d = state(ob)
+    return bpy.data.meshes.get(d['base']) if d else ob.data
+
+
+def runs_for(ob):
+    """The runs to pick from: the base's (the edges as they were, bevelled ones too) while the set is live."""
+    me = base_mesh(ob)
+    return edge_runs.get_mesh(me)
+
+
+def _rebuild(context, ob, base, cuts):
+    """``ob``'s mesh = ``base`` with every cut of ``cuts`` taken out (each read on the base)."""
+    runs = edge_runs.get_mesh(base)
+    inside = _inside_test(base)
+    cutters = []
+    for c in cuts:
+        rid = c['rid'] if c['rid'] < len(runs.paths) else None
+        if rid is None or float(np.linalg.norm(runs.co[runs.paths[rid][0]] - np.array(c['p0']))) > 1e-6:
+            continue                                  # (the base's runs read the same way every time; a stale one: off)
+        cutters.append((c, cutter_mesh(runs, rid, c['s0'], c['s1'], c['w'], c['profile'], c['segments'],
+                                       inside=inside)))
+    work = base.copy()
+    work.name = (ob.data.name if ob.data is not None else base.name) + ' bevelled'
+    old = ob.data
+    ob.data = work
+    if old is not None and old.users == 0:
+        bpy.data.meshes.remove(old)
+    done = 0
+    try:
+        for c, me in cutters:
             try:
                 cut(context, ob, me)
                 done += 1
-                length += (s1 - s0) * _mean_scale(ob)
             except BevelError:
                 pass
     finally:
-        for me in cutters:
-            try:                                          # (cut() removes each with its temporary object)
+        for _c, me in cutters:
+            try:
                 if me.users == 0:
                     bpy.data.meshes.remove(me)
             except ReferenceError:
                 pass
-    if not done:
+    return done
+
+
+def perform(context, ob, pts_local, whole=False, reach=None, remove=False):
+    """Boolean Bevel ``ob`` along the edge ``pts_local`` (its local space) were drawn over (``remove``: that edge's
+    cut taken off).  Returns a message."""
+    import json
+    st = context.scene.mch_bool_bevel
+    w = st.width / _mean_scale(ob)
+    d = state(ob)
+    if d is None:                                     # (the first cut, or the part changed since: a new base)
+        base = ob.data.copy()
+        base.name = 'MCH Bool Bevel Base - ' + ob.name
+        base.use_fake_user = True
+        old = bpy.data.meshes.get(json.loads(ob[STATE])['base']) if ob.get(STATE) else None
+        if old is not None and old.users <= 1 and old is not base:
+            old.use_fake_user = False
+            if old.users == 0:
+                bpy.data.meshes.remove(old)
+        d = {'base': base.name, 'cuts': []}
+    base = bpy.data.meshes[d['base']]
+    runs = edge_runs.get_mesh(base)
+    parts = portions(runs, pts_local, reach if reach is not None else max(w * 1.5, 1e-6), whole)
+    if not parts:
+        raise BevelError('No edge there - drag along one of the shown edges of the part')
+    before = len(ob.data.polygons)
+    cuts = list(d['cuts'])
+    if remove:
+        gone = {rid for rid, _a, _b in parts}
+        kept = [c for c in cuts if c['rid'] not in gone]
+        if len(kept) == len(cuts):
+            raise BevelError('That edge has no Boolean Bevel to take off')
+        cuts = kept
+    else:
+        for rid, s0, s1 in parts:
+            cuts.append({'rid': int(rid), 'p0': [float(x) for x in runs.co[runs.paths[rid][0]]], 's0': float(s0),
+                         's1': float(s1), 'w': float(w), 'profile': st.profile, 'segments': int(st.segments)})
+    done = _rebuild(context, ob, base, cuts)
+    if cuts and not done:
         raise BevelError('The cut took nothing off (is the edge inside the part, or the part not closed?)')
+    d['cuts'] = cuts
+    d['sig'] = _signature(ob.data)
+    ob[STATE] = json.dumps(d)
+    if remove:
+        return f'Boolean Bevel taken off {len(parts)} edge{"s" if len(parts) != 1 else ""} of "{ob.name}"'
+    length = sum(s1 - s0 for _r, s0, s1 in parts) * _mean_scale(ob)
     return (f'Boolean Bevel ({st.profile.title()}, {st.width:.3g} wide) on "{ob.name}": {length:.3g} along '
-            f'{done} edge{"s" if done != 1 else ""} ({before:,} -> {len(ob.data.polygons):,} faces)')
+            f'{len(parts)} edge{"s" if len(parts) != 1 else ""}; {len(cuts)} cut{"s" if len(cuts) != 1 else ""} on '
+            f'it, read from the part as it was - corners meet ({before:,} -> {len(ob.data.polygons):,} faces)')
 
 
 # -----------------------------------------------------------------------------
@@ -439,8 +535,8 @@ def draw_edges():
         ob = bpy.data.objects.get(name) if name else None
         if ob is None or ob.type != 'MESH':
             return
-        runs = edge_runs.get(ob)
-        edge_runs.draw_lines(edge_runs.world_segs(ob, runs), (0.35, 0.85, 1.0, 0.55), 1.5)
+        runs = runs_for(ob)
+        edge_runs.draw_all(ob, runs, (0.35, 0.85, 1.0, 0.55), 1.5)
         if op is not None and op.portion:
             for rid, s0, s1 in op.portion:            # (what will be cut, snapped onto the edges)
                 edge_runs.draw_lines(edge_runs.portion_segs(ob, runs, rid, s0, s1), (1.0, 0.5, 0.1, 1.0), 5.0)
@@ -467,7 +563,7 @@ class MCH_OT_bool_bevel_hover(bpy.types.Operator):
             ob, loc, _n = hit
             part = ob.name
             try:
-                got = edge_runs.get(ob).nearest(ob.matrix_world.inverted_safe() @ loc, _reach_px(context, ob, loc))
+                got = runs_for(ob).nearest(ob.matrix_world.inverted_safe() @ loc, _reach_px(context, ob, loc))
                 run = got[0] if got is not None else None
             except (ReferenceError, RuntimeError, ValueError):
                 run = None
@@ -507,8 +603,9 @@ class MCH_OT_bool_bevel_draw(bpy.types.Operator):
         self.pts = [tuple(first[0])]
         st = context.scene.mch_bool_bevel
         self.reach = max(st.width * 1.5 / _mean_scale(self.ob), _reach_px(context, self.ob, loc, 24.0))
-        self.runs = edge_runs.get(self.ob)
+        self.runs = runs_for(self.ob)
         self.portion = []
+        self.remove = bool(event.alt)
         self._update()
         _LIVE['op'] = self
         context.window_manager.modal_handler_add(self)
@@ -537,7 +634,8 @@ class MCH_OT_bool_bevel_draw(bpy.types.Operator):
         if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
             self._end(context)
             try:
-                msg = perform(context, self.ob, self.pts, whole=self.moved < 6.0, reach=self.reach)
+                msg = perform(context, self.ob, self.pts, whole=self.moved < 6.0, reach=self.reach,
+                              remove=self.remove)
             except BevelError as ex:
                 self.report({'WARNING'}, str(ex))
                 return {'CANCELLED'}
@@ -563,7 +661,9 @@ def draw(layout, context):
     col = layout.column(align=True)
     for line in ('Drag along the edges: it snaps onto them (round corners',
                  'too) - that much is cut off (orange while you draw)',
-                 'Click an edge: all of it.  Ctrl+Z: back'):
+                 'Click an edge: all of it.  Alt + click: its cut off',
+                 'Edges cut one after another meet at their corners',
+                 'Target (top bar, T): Auto / Selected / Active'):
         col.label(text=line)
 
 
@@ -585,6 +685,8 @@ class MCH_TOOL_bool_bevel(bpy.types.WorkSpaceTool):
     bl_widget = None
     bl_keymap = (('mch.bool_bevel_hover', {'type': 'MOUSEMOVE', 'value': 'ANY', 'any': True}, None),
                  ('mch.bool_bevel_draw', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, None),
+                 ('mch.bool_bevel_draw', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'alt': True}, None),   # (off)
+                 ('mch.toggle_targets', {'type': 'T', 'value': 'PRESS'}, None),      # (Auto <-> Selected)
                  ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None))
     draw_settings = staticmethod(_tool_settings)
 
@@ -597,6 +699,7 @@ def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
     bpy.types.Scene.mch_bool_bevel = PointerProperty(type=MCH_PG_BoolBevel)
+    edge_runs.register()
     try:
         bpy.utils.register_tool(MCH_TOOL_bool_bevel, separator=False, group=False)
     except (ValueError, RuntimeError, KeyError):
@@ -606,6 +709,7 @@ def register():
 
 
 def unregister():
+    edge_runs.unregister()
     if _HANDLE[0] is not None:
         try:
             bpy.types.SpaceView3D.draw_handler_remove(_HANDLE[0], 'WINDOW')

@@ -1357,8 +1357,9 @@ def pick_part(context, xy):
         return None
     o = view3d_utils.region_2d_to_origin_3d(region, rv3d, xy)
     d = view3d_utils.region_2d_to_vector_3d(region, rv3d, xy)
-    try:
-        hit, loc, nrm, _i, ob, _m = context.scene.ray_cast(context.evaluated_depsgraph_get(), o, d)
+    try:                                  # 0.24.179 the Targets setting (Auto / Selected / Active) like the other tools
+        from . import target_rules
+        hit, loc, nrm, _i, ob, _m = target_rules.scene_ray(context, context.evaluated_depsgraph_get(), o, d)
     except (RuntimeError, AttributeError, TypeError):
         return None
     if not hit or ob is None:
@@ -1547,7 +1548,7 @@ def draw_edges():
             return
         from . import edge_runs
         runs = edge_runs.get(ob)
-        edge_runs.draw_lines(edge_runs.world_segs(ob, runs), EDGE_DIM, 1.5)
+        edge_runs.draw_all(ob, runs, EDGE_DIM, 1.5)
         me = ob.data
         for kind, col in (('CHAMFER', EDGE_CHAMFER), ('ROUND', EDGE_ROUND)):
             w = _raw_widths(me, kind)

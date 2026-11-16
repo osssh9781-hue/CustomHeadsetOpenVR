@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import math
 
-import bmesh
 import bpy
 import numpy as np
 from mathutils import Vector
@@ -26,43 +25,64 @@ class Runs:
     ``paths`` (run -> its points in order), ``closed`` (run -> a loop), ``edge_ids`` (run -> its edges in order)."""
 
     def __init__(self, me):
+        """0.24.179 (user: "버벅이니까") read with numpy in one go - no BMesh, no Python loop over every edge."""
         n = len(me.vertices)
         co = np.empty(n * 3, np.float64)
         me.vertices.foreach_get('co', co)
         self.co = co.reshape(-1, 3)
-        bm = bmesh.new()
-        bm.from_mesh(me)
-        bm.edges.ensure_lookup_table()
-        hard = set()
+        self.version = 0
+        self.batch = None
+        nE, nP, nL = len(me.edges), len(me.polygons), len(me.loops)
+        ev = np.empty(nE * 2, np.int64)
+        me.edges.foreach_get('vertices', ev)
+        ev = ev.reshape(-1, 2)
+        pn = np.empty(nP * 3, np.float64)
+        me.polygons.foreach_get('normal', pn)
+        pn = pn.reshape(-1, 3)
+        ls = np.empty(nP, np.int64)
+        lt = np.empty(nP, np.int64)
+        me.polygons.foreach_get('loop_start', ls)
+        me.polygons.foreach_get('loop_total', lt)
+        lv = np.empty(nL, np.int64)
+        le = np.empty(nL, np.int64)
+        me.loops.foreach_get('vertex_index', lv)
+        me.loops.foreach_get('edge_index', le)
+        lp = np.repeat(np.arange(nP), lt)                       # (the face of each corner)
+        nxt = ls[lp] + (np.arange(nL) - ls[lp] + 1) % lt[lp]    # (the next corner round the face)
+        order = np.argsort(le, kind='stable')
+        cnt = np.bincount(le, minlength=nE)
+        first = np.concatenate([[0], np.cumsum(cnt)[:-1]])
+        two = np.nonzero(cnt == 2)[0]
+        l1, l2 = order[first[two]], order[first[two] + 1]
+        dot = np.clip((pn[lp[l1]] * pn[lp[l2]]).sum(1), -1.0, 1.0)
+        hard_mask = np.zeros(nE, bool)
+        hard_mask[two[np.arccos(dot) > HARD_ANGLE]] = True
         for name in ('sharp_edge', 'mch_hard'):
-            a = me.attributes.get(name)
-            if a is not None and a.domain == 'EDGE' and a.data_type == 'BOOLEAN' and len(me.edges):
-                v = np.zeros(len(me.edges), bool)
-                a.data.foreach_get('value', v)
-                hard.update(int(i) for i in np.nonzero(v)[0])
-        for e in bm.edges:
-            if len(e.link_faces) == 2:
-                try:
-                    if e.calc_face_angle() > HARD_ANGLE:
-                        hard.add(e.index)
-                except ValueError:
-                    pass
-        hard = {i for i in hard if len(bm.edges[i].link_faces) == 2}
-        self.edges = {i: (bm.edges[i].verts[0].index, bm.edges[i].verts[1].index) for i in hard}
-        self.normal = {}                       # edge -> the mean of its two faces' normals (off the surface)
-        self.faces = {}                        # edge -> its two faces' (normal, way into the face from the edge,
-        for i in hard:                         #  face index) - the way in from the face's winding, not its centre
-            e = bm.edges[i]                    #  (a face round a hole has its centre in the hole)
-            fs = e.link_faces
-            n = (fs[0].normal + fs[1].normal)
-            self.normal[i] = np.array(n.normalized() if n.length > 1e-9 else fs[0].normal, float)
-            sides = []
-            for lp in e.link_loops:
-                d = lp.link_loop_next.vert.co - lp.vert.co
-                inward = lp.face.normal.cross(d)
-                sides.append((np.array(lp.face.normal, float),
-                              np.array(inward.normalized() if inward.length > 1e-12 else inward, float), lp.face.index))
-            self.faces[i] = sides
+            at = me.attributes.get(name)
+            if at is not None and at.domain == 'EDGE' and at.data_type == 'BOOLEAN' and nE:
+                v = np.zeros(nE, bool)
+                at.data.foreach_get('value', v)
+                hard_mask |= v
+        hard_mask &= cnt == 2
+        pos = np.full(nE, -1, np.int64)
+        pos[two] = np.arange(len(two))
+        hard = set(int(i) for i in np.nonzero(hard_mask)[0])
+        hi = np.nonzero(hard_mask)[0]
+        k = pos[hi]
+        L1, L2 = l1[k], l2[k]
+        P1, P2 = lp[L1], lp[L2]
+
+        def inward(L, P):
+            d = self.co[lv[nxt[L]]] - self.co[lv[L]]
+            w = np.cross(pn[P], d)
+            return w / np.maximum(np.linalg.norm(w, axis=1, keepdims=True), 1e-12)
+        I1, I2 = inward(L1, P1), inward(L2, P2)
+        N = pn[P1] + pn[P2]
+        N = N / np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
+        self.edges = {int(e): (int(ev[e, 0]), int(ev[e, 1])) for e in hi}
+        self.normal = {int(e): N[j] for j, e in enumerate(hi)}
+        self.faces = {int(e): [(pn[P1[j]], I1[j], int(P1[j])), (pn[P2[j]], I2[j], int(P2[j]))]
+                      for j, e in enumerate(hi)}
         # at each point: hard edges that go on nearly straight are joined (each edge to its straightest partner)
         at = {}
         for i, (a, b) in self.edges.items():
@@ -132,7 +152,6 @@ class Runs:
             self.paths.append(verts)
             self.closed.append(closed)
             self.edge_ids.append(order)
-        bm.free()
         ids = list(self.edges)
         self._ids = np.array(ids, np.int64)
         if ids:
@@ -199,20 +218,26 @@ def _angle(a, b):
     return math.acos(max(-1.0, min(1.0, float(np.dot(a, b)) / (la * lb))))
 
 
+_DIRTY = set()                         # meshes whose geometry changed since their runs were read
+
+
 def _key(me):
-    n = len(me.vertices)
-    co = np.empty(n * 3, np.float32)
-    me.vertices.foreach_get('co', co)
-    return (n, len(me.edges), len(me.polygons), float(co.sum()) if n else 0.0, float(np.abs(co).sum()) if n else 0.0)
+    """Cheap (every mouse move): the mesh's counts; a change of its points comes from the depsgraph (``_DIRTY``)."""
+    return (me.as_pointer(), len(me.vertices), len(me.edges), len(me.polygons))
 
 
 def get(ob):
-    """The runs of ``ob``'s own mesh (cached until it changes)."""
-    me = ob.data
+    """The runs of ``ob``'s own mesh (kept until it changes)."""
+    return get_mesh(ob.data)
+
+
+def get_mesh(me):
+    """The runs of a mesh (kept until it changes)."""
     key = _key(me)
     hit = _CACHE.get(me.name)
-    if hit is not None and hit[0] == key:
+    if hit is not None and hit[0] == key and me.name not in _DIRTY:
         return hit[1]
+    _DIRTY.discard(me.name)
     r = Runs(me)
     if len(_CACHE) > 16:
         _CACHE.clear()
@@ -222,6 +247,61 @@ def get(ob):
 
 def clear():
     _CACHE.clear()
+
+
+@bpy.app.handlers.persistent
+def _on_update(scene, depsgraph):
+    try:
+        for u in depsgraph.updates:
+            if u.is_updated_geometry and isinstance(u.id, bpy.types.Object):
+                ob = u.id.original
+                if ob.type == 'MESH' and ob.data is not None and ob.data.name in _CACHE:
+                    _DIRTY.add(ob.data.name)
+    except (ReferenceError, AttributeError, RuntimeError):
+        pass
+
+
+def register():
+    if _on_update not in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.append(_on_update)
+
+
+def unregister():
+    if _on_update in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.remove(_on_update)
+    _CACHE.clear()
+
+
+def draw_all(ob, runs, colour, width=1.5):
+    """Every hard edge of ``ob`` (one GPU batch, kept while the part and its place stay the same)."""
+    import gpu
+    from gpu_extras.batch import batch_for_shader
+    key = (tuple(tuple(r) for r in ob.matrix_world), len(runs.edges))
+    if runs.batch is None or runs.batch[0] != key:
+        segs = world_segs(ob, runs)
+        if not segs:
+            return
+        sh = _shader()
+        runs.batch = (key, sh, batch_for_shader(sh, 'LINES', {'pos': [tuple(p) for s_ in segs for p in s_]}))
+    _key_, sh, batch = runs.batch
+    gpu.state.blend_set('ALPHA')
+    gpu.state.depth_test_set('LESS_EQUAL')
+    gpu.state.depth_mask_set(False)
+    try:
+        if 'POLYLINE' in getattr(sh, 'name', 'POLYLINE'):
+            try:
+                region = bpy.context.region
+                sh.uniform_float('viewportSize', (region.width, region.height))
+                sh.uniform_float('lineWidth', width)
+            except (ValueError, AttributeError):
+                pass
+        else:
+            gpu.state.line_width_set(width)
+        sh.uniform_float('color', colour)
+        batch.draw(sh)
+    finally:
+        gpu.state.depth_test_set('NONE')
+        gpu.state.blend_set('NONE')
 
 
 # --- drawing (POST_VIEW, world space) ----------------------------------------------------------------------------
