@@ -775,7 +775,8 @@ def draw_axes_table(layout, st):
         row = layout.row(align=True)
         ic = axis_icon(key)
         if ic:
-            row.template_icon(icon_value=ic, scale=3.0)
+            from .workspace_ui import isz
+            row.template_icon(icon_value=ic, scale=isz(3.0))
         else:
             row.label(text='')
         row.label(text=label)

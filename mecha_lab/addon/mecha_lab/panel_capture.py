@@ -164,7 +164,8 @@ def tiles(layout, entries, columns=4, scale=3.4):
     for label, _path, icon_value, on, idname, props in entries:
         col = grid.column(align=True)
         if icon_value:
-            col.template_icon(icon_value=icon_value, scale=scale)
+            from .workspace_ui import isz
+            col.template_icon(icon_value=icon_value, scale=isz(scale))   # (Panel Icons size)
         op = col.operator(idname, text=label, depress=on)
         for k, v in props.items():
             setattr(op, k, v)

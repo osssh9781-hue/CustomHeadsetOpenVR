@@ -2493,7 +2493,8 @@ class MCH_OT_press_shape_grid(bpy.types.Operator):
                 continue
             col = grid.column(align=True)
             if icon:
-                col.template_icon(icon_value=icon, scale=3.6)
+                from .workspace_ui import isz
+                col.template_icon(icon_value=icon, scale=isz(3.6))   # (Panel Icons size)
             op = col.operator('mch.press_pick_shape', text=name.split(' (')[0][:12],
                               depress=(stem == st.shape and not st.drawn))
             op.stem = stem

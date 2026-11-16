@@ -751,7 +751,8 @@ def draw_base(layout, context):
             row.label(text='Ends')
             row.prop(p, 'line_end', expand=True)
             if p.profile_sweep == 'ALPHA':
-                section.template_icon_view(context.scene.mch_press, 'shape', show_labels=True, scale=4.0)
+                from .workspace_ui import isz
+                section.template_icon_view(context.scene.mch_press, 'shape', show_labels=True, scale=isz(4.0))
                 row = section.row(align=True)
                 row.operator('mch.import_cut_png', text='Import PNG / JPG', icon='IMPORT')
                 if ob is not None and ob.get(base_mesh.SWEEP_KEY):
