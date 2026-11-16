@@ -794,6 +794,9 @@ class MirrorLeanLogic:
                 if ob.modifiers[0] != cm:              # (a live Fur: its strands are made by the modifier above)
                     failed.append(f'{ob.name} (a live Fur - the mirror stays live; Apply the fur, then the mirror)')
                     continue
+                if ob.get('mch_hair_shape'):           # 0.24.181 hair in a shape is made again on every value: a
+                    failed.append(f'{ob.name} (live hair in a shape - the mirror stays live; its Apply bakes both)')
+                    continue                           # baked mirror would go - it stays live
                 try:
                     with context.temp_override(object=ob, active_object=ob, selected_objects=[ob]):
                         bpy.ops.object.modifier_apply(modifier=cm.name)

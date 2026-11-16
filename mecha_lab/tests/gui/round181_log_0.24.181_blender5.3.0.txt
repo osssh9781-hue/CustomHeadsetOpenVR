@@ -1,0 +1,9 @@
+1 hair Lock Hair strands 1500 shown 3000 x [-0.75, 0.75]
+shot 1_hair_mirrored.png True
+2 amount 10473 shown 20946
+shot 2_amount_mirrored.png True
+3 apply: strands 20946 was shown 20946 mirror left False
+PASS 1 a head with a live Mirror X: a REAL click on "Hair in the Selected Shape", a REAL Enter - the hair mirrored like the head
+PASS 2 a REAL drag on Amount - still mirrored
+PASS 3 a REAL click on the hair's Apply - the mirror baked into its strands
+3/3 passed

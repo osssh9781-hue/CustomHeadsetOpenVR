@@ -966,6 +966,7 @@ def make(context, shape, body=None, starts=None):
     _CACHE[ob.name] = _trace_into(context, ob, a)
     traced = _CACHE[ob.name]['strands']
     n = rebuild(ob, context)
+    mirrored = follow_mirror(ob, a['body'], shape)
     if p.hide_shape:
         shape.hide_set(True)
         shape.hide_render = True
@@ -980,7 +981,51 @@ def make(context, shape, body=None, starts=None):
     else:
         on = ' (no body under it: rooted at its top)'
     return ob, (f'Hair in "{shape.name}"{on}: {n:,} strands, {len(traced):,} traced through it, {a["pieces"]} '
-                f'piece{"s" if a["pieces"] != 1 else ""} - its values live in the window')
+                f'piece{"s" if a["pieces"] != 1 else ""}{mirrored} - its values live in the window')
+
+
+def follow_mirror(ob, body, shape):
+    """0.24.181 (user: "근데 머리카락 미러는 왜 아직 안 되지?"): a head with a live Mirror mirrors the hair made on it,
+    as it does plates and Creature Hair (that follow went to meshes only - this hair is curves).  Each of the head's
+    mirror planes the hair's roots all sit on one side of: the hair mirrored across it (the curves mirror, live: a
+    value or Amount keeps it); roots on both sides (a lock across the middle): not across that one.  A shape with
+    its own Mirror (sculpted with it): its hair is on both sides already.  Returns a short note ('' = none)."""
+    from . import mirror_tools, symmetry
+    if body is None or mirror_tools.curves_mod(ob) is not None or symmetry.mirror_mod(shape) is not None:
+        return ''
+    m = symmetry.mirror_mod(body)
+    if m is None or not any(m.use_axis):
+        return ''
+    piv = m.mirror_object or body
+    P = np.empty(len(ob.data.points) * 3, np.float32)
+    ob.data.attributes['position'].data.foreach_get('vector', P)
+    seg = int(ob.mch_hshape.segments)
+    M = np.array(ob.matrix_world)
+    roots = (P.reshape(-1, 3).astype(float) @ M[:3, :3].T + M[:3, 3])[::max(seg, 1)]
+    if not len(roots):
+        return ''
+    PM = np.array(piv.matrix_world)
+    local = (roots - PM[:3, 3]) @ PM[:3, :3]          # (in the mirror object's frame: its planes are its axes)
+    axes = []
+    for k in range(3):
+        if not m.use_axis[k]:
+            axes.append(False)
+            continue
+        side = np.sign(local[:, k])
+        axes.append(bool(abs(float(side.mean())) > 0.9))   # (all - or nearly all - on one side)
+    if not any(axes):
+        return ''
+    mod = ob.modifiers.new(mirror_tools.MOD_NAME, 'NODES')
+    mod.node_group = mirror_tools.curves_mirror_tree()
+    try:                                          # (first: Viewport % thins after it)
+        ob.modifiers.move(len(ob.modifiers) - 1, 0)
+    except (RuntimeError, TypeError, AttributeError):
+        pass
+    mirror_tools._gn_set(mod, 'Mirror Object', piv)
+    for a, on in zip('XYZ', axes):
+        mirror_tools._gn_set(mod, a, on)
+    ob.update_tag()
+    return f' | Mirror {"".join(a for a, on in zip("XYZ", axes) if on)} like {body.name}'
 
 
 # -----------------------------------------------------------------------------
@@ -1335,6 +1380,14 @@ class MCH_OT_hair_shape_apply(bpy.types.Operator):
         ob = context.active_object
         if not is_hair(ob):
             return {'CANCELLED'}
+        from . import mirror_tools                # 0.24.181 its live mirror into the strands now (not live any more)
+        cm = mirror_tools.curves_mod(ob)
+        if cm is not None:
+            try:
+                with context.temp_override(object=ob, active_object=ob, selected_objects=[ob]):
+                    bpy.ops.object.modifier_apply(modifier=cm.name)
+            except RuntimeError as ex:
+                self.report({'WARNING'}, f'{ob.name}: the mirror stays live ({ex})')
         del ob[KEY]
         _CACHE.pop(ob.name, None)
         return {'FINISHED'}
@@ -1639,6 +1692,14 @@ def draw(layout, context, ob=None):
         col.label(text=f'{ob.name}: {len(ob.data.curves):,} strands (live)')
         if p.shape is not None:
             col.label(text=f'Shape: {p.shape.name}' + (f',  on {p.body.name}' if p.body is not None else ''))
+        from . import mirror_tools
+        cm = mirror_tools.curves_mod(ob)
+        if cm is not None:
+            try:
+                axes = ''.join(a for a in 'XYZ' if mirror_tools._gn_get(cm, a))
+            except (KeyError, AttributeError, TypeError):
+                axes = ''
+            col.label(text=f'Mirror {axes} (live - Apply bakes it)')
         del c
     else:
         col.label(text='Select your hair shape (its own mesh), then')
