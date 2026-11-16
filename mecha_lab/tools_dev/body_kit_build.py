@@ -196,9 +196,11 @@ def build(kit, path):
         light.verts.index_update()
         N = np.array([len(f.verts) for f in light.faces], np.int32)
         L = np.array([v.index for f in light.faces for v in f.verts], np.int32)
-        arrays[f'{n}_V'] = V
-        arrays[f'{n}_N'] = N
-        arrays[f'{n}_L'] = L
+        lo_, hi_ = V.min(0), V.max(0)                   # (16-bit over the part's box: ~0.005 mm on a 1.8 m body)
+        arrays[f'{n}_Q'] = np.round((V - lo_) / np.maximum(hi_ - lo_, 1e-9) * 65535).astype(np.uint16)
+        arrays[f'{n}_box'] = np.array([lo_, hi_], np.float32)
+        arrays[f'{n}_N'] = N.astype(np.uint8)
+        arrays[f'{n}_L'] = L.astype(np.uint16) if len(V) < 65535 else L
         meta['parts'].append({'name': n, 'slot': slot, 'side': d['side'], 'parent': d['parent'],
                               'pivot': [round(float(x), 6) for x in d['pivot']],
                               'end': [round(float(x), 6) for x in d['end']]})
@@ -208,6 +210,7 @@ def build(kit, path):
     os.makedirs(OUT, exist_ok=True)
     np.savez_compressed(os.path.join(OUT, f'{kit}.npz'), meta=np.array(json.dumps(meta)), **arrays)
     print('saved', kit, sum(len(arrays[k]) for k in arrays if k.endswith('_N')), 'faces')
+    return
 
 
 args = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else sys.argv[1:]

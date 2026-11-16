@@ -97,7 +97,20 @@ def tail():
     return top + bot
 
 
+def blob(k, r=0.78, sx=1.0, sz=1.0):
+    return radial(lambda a: r * (1 + 0.14 * math.sin(2 * a + k) + 0.07 * math.sin(3 * a + 2 * k) +
+                                 0.04 * math.sin(5 * a + k)), sx=sx, sz=sz)
+
+
 SHAPES = {
+    'SHARD': blob(0.3, sx=1.15, sz=0.85),
+    'TERRACE': blob(1.1, sx=1.2, sz=0.8),
+    'FACETS': blob(2.0),
+    'CREST': blob(2.7, sx=1.2, sz=0.75),
+    'PLATES': blob(3.3, sx=1.1),
+    'BLOCKS': blob(4.1, sx=1.1, sz=0.9),
+    'FOLDS': blob(4.9, sx=1.2, sz=0.8),
+    'TIERS': blob(5.6, sx=1.05),
     'BONEFLAKE': radial(lambda a: 0.75 * (1 + 0.18 * math.cos(a - 1.2) + 0.06 * math.sin(3 * a)), sz=0.8),
     'KELOID': radial(lambda a: 0.72 * (1 + 0.08 * math.sin(3 * a) + 0.05 * math.cos(5 * a))),
     'HIDE': radial(lambda a: 0.7 * (1 + 0.12 * math.sin(2 * a + 0.5) + 0.05 * math.sin(4 * a)), sx=1.1),
@@ -163,7 +176,7 @@ def camera(loc, look, lens=50):
 clear()
 if MODE == 'thumbs':
     S.cycles.samples = 32
-    S.render.resolution_x = S.render.resolution_y = 192
+    S.render.resolution_x = S.render.resolution_y = 128
     S.view_settings.exposure = -1.0
     lights()
     camera((0.9, -3.6, 0.75), (0.0, 0.0, 0.0), lens=58)

@@ -83,7 +83,7 @@ def wire_pass(objs, path):
 
 if MODE == 'thumbs':
     S.cycles.samples = 32
-    S.render.resolution_x = S.render.resolution_y = 256
+    S.render.resolution_x = S.render.resolution_y = 128
     for kit in ('human', 'creature'):
         root = bk.make_kit(C, kit, height=1.8, location=(0, 0, 0))
         look((1.2, -6.0, 1.05), (0.0, 0.0, 0.92), 2.05)

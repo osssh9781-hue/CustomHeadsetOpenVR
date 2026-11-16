@@ -59,8 +59,15 @@ def load(kit):
         return _CACHE[kit]
     with np.load(os.path.join(KIT_DIR, kit + '.npz'), allow_pickle=False) as z:
         meta = json.loads(str(z['meta']))
-        raw = {p['name']: dict(p, V=z[p['name'] + '_V'].astype(np.float64), N=np.array(z[p['name'] + '_N']),
-                               L=np.array(z[p['name'] + '_L'])) for p in meta['parts']}
+        raw = {}
+        for p in meta['parts']:
+            n = p['name']
+            if n + '_Q' in z:                         # (16-bit over the part's box)
+                lo, hi = z[n + '_box'].astype(np.float64)
+                V = z[n + '_Q'].astype(np.float64) / 65535.0 * (hi - lo) + lo
+            else:
+                V = z[n + '_V'].astype(np.float64)
+            raw[n] = dict(p, V=V, N=np.array(z[n + '_N']).astype(np.int64), L=np.array(z[n + '_L']).astype(np.int64))
     order = []
 
     def add(n):

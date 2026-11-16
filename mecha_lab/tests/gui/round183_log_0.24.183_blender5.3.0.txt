@@ -1,0 +1,25 @@
+1 tiles ['Human', 'Creature'] kit creature
+1 parts 15
+shot 1a_body_kit.png True
+1b active Body Thigh.L
+1c legs 1.3372371196746826 height 1.8000507354736328 -> 2.0000534057617188 floor 2.9802322387695312e-08
+shot 1c_legs.png True
+1d muscles ['Thigh Quads.L', 'Thigh Hamstrings.L', 'Thigh Inner.L', 'Thigh Outer.L', 'Thigh Quads.R', 'Thigh Hamstrings.R', 'Thigh Inner.R', 'Thigh Outer.R']
+shot 1d_thigh_muscles.png True
+2 muscles 8 -> 9 ['Muscle']
+shot 2_muscle_clicks.png True
+3 masses 1 faces 607
+shot 3_omass.png True
+4 holes [('Mecha Holes', 'Cube')]
+shot 4_mecha_holes.png True
+5 print cut ['PrintBox.A', 'PrintBox.B'] True
+shot 5_print_cut.png True
+PASS 1a Body Kit: REAL click on the "Creature" picture tile, REAL "Add Body" - its 15 parts on the cursor
+PASS 1b a REAL click on the thigh picks it
+PASS 1c the Legs slider dragged for REAL: longer legs, taller, the feet still on the floor
+PASS 1d REAL click "All": the thighs' muscles (both sides), the user's sculpted shapes
+PASS 2 Muscle: two REAL clicks on the torso - a muscle between them (the user's one-belly shape)
+PASS 3 Creature Base Mesh 2: a REAL outline - a big form (Terraces), light
+PASS 4 Mecha Holes: a REAL outline over a cube - a holed panel on it
+PASS 5 Print Cut: a REAL lasso over half a cube - split in two (the original hidden)
+8/8 passed
