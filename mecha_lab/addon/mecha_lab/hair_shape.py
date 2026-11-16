@@ -19,7 +19,7 @@ from __future__ import annotations
 import heapq
 import json
 import math
-import random
+import zlib
 
 import bpy
 import numpy as np
@@ -45,12 +45,14 @@ class ShapeError(Exception):
 # reading the shape
 # -----------------------------------------------------------------------------
 
-def _world_mesh(context, ob):
-    """(V world (n, 3), triangles (m, 3), edges (k, 2)) of ``ob`` as shown (its own geometry, not a light copy)."""
+def _world_mesh(context, ob, colors=False):
+    """(V world (n, 3), triangles (m, 3), edges (k, 2)) of ``ob`` as shown (its own geometry, not a light copy);
+    ``colors``: also its painted colour per point ((n, 4), or None with no colour attribute)."""
     from . import light_copies as lc
     dg = context.evaluated_depsgraph_get()
     ev = lc.full(ob, dg)
     me = ev.to_mesh()
+    col = None
     try:
         n = len(me.vertices)
         co = np.empty(n * 3, np.float64)
@@ -63,9 +65,40 @@ def _world_mesh(context, ob):
         me.loop_triangles.foreach_get('vertices', T)
         E = np.empty(len(me.edges) * 2, np.int64)
         me.edges.foreach_get('vertices', E)
+        if colors:
+            col = _point_colors(ob, me)
     finally:
         ev.to_mesh_clear()
+    if colors:
+        return V, T.reshape(-1, 3), E.reshape(-1, 2), col
     return V, T.reshape(-1, 3), E.reshape(-1, 2)
+
+
+def _point_colors(ob, me):
+    """The painted colour (the active colour attribute - polypaint) per point of ``me``, or None."""
+    try:
+        name = ob.data.color_attributes.active_color_name
+    except AttributeError:
+        name = ''
+    att = me.color_attributes.get(name) if name else None
+    if att is None and len(me.color_attributes):
+        att = me.color_attributes[0]
+    if att is None or len(att.data) == 0:
+        return None
+    c = np.empty(len(att.data) * 4, np.float32)
+    att.data.foreach_get('color', c)
+    c = c.reshape(-1, 4).astype(np.float64)
+    n = len(me.vertices)
+    if att.domain == 'POINT' and len(c) == n:
+        return c
+    if att.domain == 'CORNER':
+        lv = np.empty(len(me.loops), np.int64)
+        me.loops.foreach_get('vertex_index', lv)
+        acc = np.zeros((n, 4))
+        np.add.at(acc, lv, c)
+        cnt = np.bincount(lv, minlength=n).astype(float)
+        return acc / np.maximum(cnt, 1.0)[:, None]
+    return None
 
 
 def find_body(context, shape, V, size):
@@ -98,7 +131,7 @@ def analyse(context, shape, body=None, starts=None):
     """The shape's flow: clusters (centroids), the distance along the shape from the roots, the way on, thickness;
     its surface (BVH); the root triangles.  ``starts`` (world points clicked on the shape - 0.24.179 user: "결 시작
     부분은 내가 찍어 주는 게 낫지 않나?"): the roots there, not found from the body."""
-    V, T, E = _world_mesh(context, shape)
+    V, T, E, colors = _world_mesh(context, shape, colors=True)
     if not len(T):
         raise ShapeError(f'"{shape.name}" has no faces - pick the hair shape you sculpted (a mesh)')
     size = float(np.ptp(V, axis=0).max())
@@ -197,6 +230,13 @@ def analyse(context, shape, body=None, starts=None):
     for c in range(nC):
         kd0.insert(Vector(cen[c]), c)
     kd0.balance()
+    # 0.24.180 the thickness evened over 3 cells (the median: a ray slipping out at an edge is one far-off cluster)
+    ts = thick.copy()
+    for c in range(nC):
+        nb = [i for _co, i, _d in kd0.find_range(Vector(cen[c]), h * 3.0)]
+        if nb:
+            ts[c] = float(np.median(thick[nb]))
+    thick = ts
     # the way on: where the distance from the roots grows fastest round each cluster (a fit over the clusters within
     # 3 cells - the shortest paths' own steps zigzag round a lock's sides)
     # (first the distance evened round the lock: each cluster the mean over the clusters within its thickness - the
@@ -237,78 +277,115 @@ def analyse(context, shape, body=None, starts=None):
         root_tris = T[skin[inv[T]].any(1)]
     return {'V': V, 'T': T, 'root_tris': root_tris, 'bvh': bvh, 'kd': kd, 'cen': cen, 'D': D, 'dmax': dmax,
             'way': way, 'thick': thick, 'h': h, 'size': size, 'body': body, 'roots': int(roots.sum()), 'pieces': k,
-            'picked': bool(starts)}
+            'picked': bool(starts), 'rootc': roots, 'comp': comp, 'colors': colors}
 
 
 # -----------------------------------------------------------------------------
 # strands
 # -----------------------------------------------------------------------------
 
-def _root_points(a, n, rng):
-    V, RT = a['V'], a['root_tris']
-    if not len(RT):
-        raise ShapeError('No root area found on the shape')
-    p0, p1, p2 = V[RT[:, 0]], V[RT[:, 1]], V[RT[:, 2]]
-    area = np.linalg.norm(np.cross(p1 - p0, p2 - p0), axis=1) / 2
-    prob = area / max(area.sum(), 1e-18)
-    pick = rng.choice(len(RT), size=n, p=prob)
-    u, v = rng.random(n), rng.random(n)
-    flip = u + v > 1
-    u[flip], v[flip] = 1 - u[flip], 1 - v[flip]
-    return p0[pick] + (p1[pick] - p0[pick]) * u[:, None] + (p2[pick] - p0[pick]) * v[:, None]
+def _seeds(a, n, fill, rng):
+    """0.24.180 (user: "메쉬에서 만드는 머리카락 좋긴 한데 좀 더 메쉬 외곽까지의 형태가 비슷한 게 좋을 거 같아"): ``n``
+    points spread through the shape's volume (no deeper than ``fill`` of the way to its middle), each with its depth
+    as a share of the half thickness there.  A strand is traced through each - back to the roots and on to the
+    end - so where the shape is wide the strands are spread to its outline (traced from the roots alone they stayed
+    as close together as the roots: a fan / a bulge was filled a third)."""
+    V, bvh, kd, thick, h = a['V'], a['bvh'], a['kd'], a['thick'], a['h']
+    lo, hi = V.min(0), V.max(0)
+    pts, rho = [], []
+    top = max(float(fill), 0.05)
+    for _round in range(80):
+        Q = lo + rng.random((max(4 * n, 4000), 3)) * (hi - lo)
+        for q in Q:
+            loc, nrm, _i, d = bvh.find_nearest(Vector(q))
+            if loc is None or (Vector(q) - loc).dot(nrm) >= 0.0:          # (outside)
+                continue
+            _co, c, _dd = kd.find(loc)
+            r = d / max(thick[c] * 0.5, 1e-12)
+            if d < h * 0.05 or r > top:
+                continue
+            pts.append(q)
+            rho.append(min(r, 1.0))
+            if len(pts) >= n:
+                return np.array(pts), np.array(rho)
+    return np.array(pts).reshape(-1, 3), np.array(rho)
+
+
+def _walk(a, p, rho, back, step):
+    """From ``p`` along the way on (``back``: against it, to the roots), kept at ``rho`` of the half thickness under
+    the shape's skin.  Returns (points after ``p``, reached: the roots / the end)."""
+    bvh, kd, way, D, dmax, thick, h, rootc = (a['bvh'], a['kd'], a['way'], a['D'], a['dmax'], a['thick'], a['h'],
+                                              a['rootc'])
+    sign = -1.0 if back else 1.0
+    pts = []
+    prev = None
+    _co, c, _dd = kd.find(Vector(p))
+    best, stall = -1e18, 0
+    limit = int(max(dmax[c], h) / step * 3.0) + 20
+    for _s in range(limit):
+        _co, c, _dd = kd.find(Vector(p))
+        if back and rootc[c]:
+            return pts, True
+        d = way[c] * sign
+        if prev is not None:
+            d = prev * 0.5 + d * 0.5
+            d = d / max(np.linalg.norm(d), 1e-12)
+        q = p + d * step
+        sl, sn, _i, _dist = bvh.find_nearest(Vector(q))
+        if sl is not None:
+            sl, sn = np.array(sl), np.array(sn)
+            depth = -float(np.dot(q - sl, sn))
+            want = min(max(rho * thick[c] * 0.5, h * 0.08), thick[c] * 0.48)
+            if depth < h * 0.05:                       # (leaving the shape: back in, at its depth)
+                q = sl - sn * want
+            else:                                      # (eased to its depth: the strands keep their place across)
+                q = q - sn * ((want - depth) * 0.25)
+        moved = q - p
+        if np.linalg.norm(moved) < step * 0.05:
+            break
+        prev = moved / np.linalg.norm(moved)
+        p = q
+        pts.append(p.copy())
+        _co, c2, _dd = kd.find(Vector(p))
+        prog = -D[c2] if back else D[c2]
+        if prog > best + h * 0.05:
+            best, stall = prog, 0
+        else:
+            stall += 1
+        if not back and D[c2] >= dmax[c2] * 0.985:
+            return pts, True
+        if stall > 10:
+            break
+    return pts, False
 
 
 def trace(a, n, fill, seed):
-    """``n`` strands (world points) through the shape, each at its own depth (0 .. ``fill`` of the way to the
-    shape's middle): it steps along the way on and is put back in only where it would leave the shape."""
+    """``n`` strands (world points, root first) through the shape: each through a point spread in its volume
+    (``_seeds``), back to the roots and on to its end, kept at its share of the depth.  Returns (strands, the piece
+    of the shape each runs in)."""
     rng = np.random.default_rng(seed)
-    roots = _root_points(a, n, rng)
-    bvh, kd, way, D, dmax, thick, h = a['bvh'], a['kd'], a['way'], a['D'], a['dmax'], a['thick'], a['h']
+    h, D, dmax, kd = a['h'], a['D'], a['dmax'], a['kd']
     step = h * 0.9
+    seeds, rho = _seeds(a, int(n * 1.25) + 8, fill, rng)
     out = []
-    for r in roots:
-        loc, nrm, _i, _d = bvh.find_nearest(Vector(r))
-        if loc is None:
-            continue
-        _co, c, _dd = kd.find(loc)
-        frac = max(0.06, fill * float(rng.random()) ** 0.7)
-        depth = max(frac * thick[c] * 0.5, h * 0.15)
-        keep = max(min(depth, thick[c] * 0.5), h * 0.15)
-        p = np.array(loc - nrm * depth)
-        pts = [p.copy()]
-        prev = None
-        best_d, stall = -1.0, 0
-        limit = int(dmax[c] / step * 2.5) + 20
-        for _s in range(limit):
-            _co, c, _dd = kd.find(Vector(p))
-            d = way[c]
-            if prev is not None:
-                d = prev * 0.5 + d * 0.5
-                d = d / max(np.linalg.norm(d), 1e-12)
-            q = p + d * step
-            sl, sn, _i, _dist = bvh.find_nearest(Vector(q))
-            if sl is not None:
-                sl, sn = np.array(sl), np.array(sn)
-                if float(np.dot(q - sl, sn)) > -h * 0.1:              # (leaving the shape: back in, as deep as it was)
-                    q = sl - sn * min(keep, thick[c] * 0.45)
-            moved = q - p
-            if np.linalg.norm(moved) < step * 0.05:
-                break
-            prev = moved / np.linalg.norm(moved)
-            p = q
-            pts.append(p.copy())
-            _co, c2, _dd = kd.find(Vector(p))
-            if D[c2] > best_d + h * 0.05:
-                best_d, stall = D[c2], 0
-            else:
-                stall += 1
-            if D[c2] >= dmax[c2] * 0.985 or stall > 10:
-                break
+    pieces = []
+    for q, r in zip(seeds, rho):
+        back, rooted = _walk(a, q, r, True, step)
+        if not rooted:                                 # (lost on the way back: kept only if it began near the roots)
+            _co, c0, _dd = kd.find(Vector(back[-1] if back else q))
+            if D[c0] > dmax[c0] * 0.15:
+                continue
+        fwd, _end = _walk(a, q, r, False, step)
+        pts = back[::-1] + [q] + fwd
         if len(pts) >= 3:
             out.append(np.array(pts))
+            _co, cq, _dd = kd.find(Vector(q))
+            pieces.append(int(a['comp'][cq]))
+        if len(out) >= n:
+            break
     if not out:
         raise ShapeError('No strand could run through the shape')
-    return out
+    return out, pieces
 
 
 def resample(P, n):
@@ -320,53 +397,307 @@ def resample(P, n):
     return np.stack([np.interp(t, s, P[:, k]) for k in range(3)], axis=1)
 
 
-def finish(traced, p, size, seed):
-    """The strands as drawn (local): (points (N, seg, 3), radius (N, seg), colour (N, seg, 4)) from the traced ones."""
-    rng = np.random.default_rng(seed + 7)
+# -----------------------------------------------------------------------------
+# 0.24.180 shaping the traced strands (user: "그래비티나 그런 게 왜 메쉬 머리카락에는 안 되는겨", "원래 기존에 있던
+# 헤어 세팅 다 쓸 수 있으면 좋겠어", "머리카락 빗는 것도 만들어 주고"): the traced ones (guides) - Length, Bend,
+# Gravity, then the combing, then out of the body; the rest of the strands are made beside them (finish).
+# -----------------------------------------------------------------------------
+
+def _turn(G, goal, w):
+    """Each segment of the strands ``G`` (n, seg, 3) turned toward ``goal`` (unit: (3,) or per segment) by ``w``
+    (per segment), its length kept - built again from the root."""
+    v = np.diff(G, axis=1)
+    L = np.linalg.norm(v, axis=2, keepdims=True)
+    d = v / np.maximum(L, 1e-12)
+    nd = d + w[..., None] * (goal - d)
+    n_ = np.linalg.norm(nd, axis=2, keepdims=True)
+    nd = np.where(n_ > 1e-6, nd / np.maximum(n_, 1e-12), d)          # (turned right round: kept)
+    out = G.copy()
+    out[:, 1:] = G[:, :1] + np.cumsum(nd * L, axis=1)
+    return out
+
+
+def _length(G, frac):
+    """The strands cut to ``frac`` of their length, or carried on straight past their tips (above 1)."""
+    if abs(frac - 1.0) < 1e-6:
+        return G
+    seg = G.shape[1]
+    u = np.linspace(0.0, frac, seg) * (seg - 1)
+    i0 = np.clip(np.floor(u).astype(np.int64), 0, seg - 2)
+    w = (u - i0)[None, :, None]
+    return G[:, i0] * (1.0 - w) + G[:, i0 + 1] * w
+
+
+def _ramp(t, at, soft):
+    """0 before ``at``, 1 after it, over ``soft`` (smooth)."""
+    lo, hi = at - soft * 0.5, at + soft * 0.5 + 1e-6
+    x = np.clip((t - lo) / (hi - lo), 0.0, 1.0)
+    return x * x * (3.0 - 2.0 * x)
+
+
+def shaped(G0, p, M):
+    """Length, Bend, Gravity on the traced strands (local); ``M`` the hair's world matrix."""
+    G = _length(G0, float(p.length))
+    seg = G.shape[1]
+    tm = (np.arange(seg - 1) + 0.5) / max(seg - 1, 1)
+    inv = np.linalg.inv(np.array(M)[:3, :3])
+    if p.bend > 1e-6:
+        bd = inv @ np.array(tuple(p.bend_dir), float)
+        bd /= max(np.linalg.norm(bd), 1e-12)
+        w = _ramp(tm, float(p.bend_at), float(p.bend_soft)) * min(1.0, float(p.bend) / (math.pi / 2))
+        G = _turn(G, bd[None, None, :], np.tile(w, (len(G), 1)))
+    if p.gravity > 1e-6:
+        down = inv @ np.array((0.0, 0.0, -1.0))
+        down /= max(np.linalg.norm(down), 1e-12)
+        w = np.clip(float(p.gravity) * tm ** 0.8, 0.0, 1.0)
+        G = _turn(G, down[None, None, :], np.tile(w, (len(G), 1)))
+    return G
+
+
+COMBS = 'mch_hair_combs'               # on the hair object: the comb strokes (its local space, JSON)
+
+
+def combs_of(ob):
+    try:
+        return json.loads(ob.get(COMBS, '[]'))
+    except ValueError:
+        return []
+
+
+def comb_sample(G, ref, c, d, v, r, strength, restore=False):
+    """One step of a comb stroke on the strands ``G`` (changed in place): the segments within ``r`` across of the
+    line through ``c`` along the view ``v`` (from ``r`` in front to 1.5 ``r`` behind) turned toward ``d`` (Restore:
+    back toward ``ref``'s), the root's segment half as much.  Returns the strands changed."""
+    mids = (G[:, 1:] + G[:, :-1]) * 0.5
+    rel = mids - c
+    along = rel @ v
+    lat = np.linalg.norm(rel - along[..., None] * v, axis=2)
+    m = (lat < r) & (along > -r) & (along < r * 1.5)
+    if not m.any():
+        return np.zeros(0, np.int64)
+    rows = np.nonzero(m.any(1))[0]
+    w = np.zeros(m.shape)
+    w[m] = float(strength) * 0.35 * (1.0 - (lat[m] / r) ** 2) ** 2
+    w[:, 0] *= 0.5
+    if restore:
+        rv = np.diff(ref[rows], axis=1)
+        goal = rv / np.maximum(np.linalg.norm(rv, axis=2, keepdims=True), 1e-12)
+    else:
+        goal = np.asarray(d, float)[None, None, :]
+    G[rows] = _turn(G[rows], goal, w[rows])
+    return rows
+
+
+def combed(Gs, strokes):
+    G = Gs.copy()
+    for st in strokes:
+        r, sv, v = float(st.get('r', 0.1)), float(st.get('s', 0.5)), np.array(st.get('v', (0, 0, -1)), float)
+        for q in st.get('p', ()):
+            comb_sample(G, Gs, np.array(q[:3]), np.array(q[3:6]), v, float(q[6]) if len(q) > 6 else r, sv,
+                        st.get('m') == 'R')
+    return G
+
+
+_BODY = {}                             # body name -> (key, BVH world, size)
+
+
+def _body_tree(context, body):
+    key = (body.data.as_pointer(), len(body.data.vertices), tuple(tuple(r) for r in body.matrix_world))
+    hit = _BODY.get(body.name)
+    if hit is not None and hit[0] == key:
+        return hit[1], hit[2]
+    V, T, _E = _world_mesh(context, body)
+    bvh = BVHTree.FromPolygons([tuple(q) for q in V], [tuple(t) for t in T]) if len(T) else None
+    size = float(np.ptp(V, axis=0).max()) if len(V) else 1.0
+    _BODY.clear()
+    _BODY[body.name] = (key, bvh, size)
+    return bvh, size
+
+
+def _inside_mask(Gw, bvh):
+    m = np.zeros(Gw.shape[:2], bool)
+    for i in range(Gw.shape[0]):
+        for j in range(Gw.shape[1]):
+            loc, nrm, _f, _d = bvh.find_nearest(Vector(Gw[i, j]))
+            if loc is not None and (Vector(Gw[i, j]) - loc).dot(nrm) < 0.0:
+                m[i, j] = True
+    return m
+
+
+def collide(Gw, keep, bvh, eps):
+    """The strands (world) kept out of the body: built again from the root, a point that would go in is put on the
+    body's skin (its segment's length kept); points in it from the start (``keep`` - a root sunk in) stay."""
+    v = np.diff(Gw, axis=1)
+    L = np.linalg.norm(v, axis=2)
+    d = v / np.maximum(L[..., None], 1e-12)
+    P = Gw.copy()
+    reach = float(L.max()) * 2.0 + eps * 4.0 if L.size else eps
+    for j in range(1, Gw.shape[1]):
+        want = P[:, j - 1] + d[:, j - 1] * L[:, j - 1, None]
+        for i in np.nonzero(~keep[:, j])[0]:
+            q = Vector(want[i])
+            loc, nrm, _f, _d = bvh.find_nearest(q, reach)
+            if loc is not None and (q - loc).dot(nrm) < eps:
+                dv = np.array(loc + nrm * eps) - P[i, j - 1]
+                want[i] = P[i, j - 1] + dv / max(np.linalg.norm(dv), 1e-12) * L[i, j - 1]
+        P[:, j] = want
+    return P
+
+
+def guides(ob, cache, p, context=None):
+    """The traced strands as drawn (local, (n, seg, 3)): resampled, shaped, combed, kept out of the body - each step
+    kept until what it reads changes."""
     seg = int(p.segments)
-    base = [resample(s, seg) for s in traced]
-    if not base:
+    if cache.get('k0') != seg:
+        cache['G0'] = np.array([resample(q, seg) for q in cache['strands']])
+        cols = cache.get('colors')
+        cache['C0'] = (np.array([np.stack([np.interp(np.linspace(0, 1, seg), np.linspace(0, 1, len(c_)), c_[:, k])
+                                           for k in range(4)], axis=1) for c_ in cols]) if cols is not None else None)
+        cache['k0'] = seg
+        for k in ('k1', 'k2', 'k3', 'mask'):
+            cache.pop(k, None)
+    M = ob.matrix_world
+    k1 = (seg, round(p.length, 5), round(p.bend, 5), round(p.bend_at, 5), round(p.bend_soft, 5),
+          tuple(round(x, 5) for x in p.bend_dir), round(p.gravity, 5), tuple(tuple(round(x, 6) for x in r) for r in M))
+    if cache.get('k1') != k1:
+        cache['Gs'] = shaped(cache['G0'], p, M)
+        cache['k1'] = k1
+    raw = ob.get(COMBS, '')
+    k2 = (k1, zlib.crc32(raw.encode()) if raw else 0)
+    if cache.get('k2') != k2:
+        cache['Gc'] = combed(cache['Gs'], combs_of(ob)) if raw else cache['Gs']
+        cache['k2'] = k2
+    k3 = (k2, _bkey(ob, p, raw))
+    if cache.get('k3') != k3:
+        cache['Gf'] = settle(ob, cache, cache['Gc'], context)
+        cache['k3'] = k3
+    return cache['Gf']
+
+
+def _moved(p, raw):
+    return bool(raw) or p.gravity > 1e-6 or p.bend > 1e-6 or p.length > 1.0 + 1e-6
+
+
+def _bkey(ob, p, raw):
+    body = p.body
+    if body is None or body.type != 'MESH' or not _moved(p, raw):
+        return None
+    return (body.name, body.data.as_pointer(), len(body.data.vertices))
+
+
+def settle(ob, cache, G, context=None, rows=None, force=False):
+    """``G`` (local) kept out of the hair's body (``rows``: only those strands); as it is with no body or nothing
+    moved (``force``: a comb stroke's strands - moved)."""
+    p = ob.mch_hshape
+    body = p.body
+    raw = ob.get(COMBS, '')
+    if body is None or body.type != 'MESH' or not (force or _moved(p, raw)):
+        return G if rows is None else G[rows]
+    bvh, bsize = _body_tree(context or bpy.context, body)
+    if bvh is None:
+        return G if rows is None else G[rows]
+    M = np.array(ob.matrix_world)
+    if cache.get('mask') is None:
+        G0w = cache['G0'] @ M[:3, :3].T + M[:3, 3]
+        cache['mask'] = _inside_mask(G0w, bvh)
+    sub = G if rows is None else G[rows]
+    keep = cache['mask'] if rows is None else cache['mask'][rows]
+    if keep.shape != sub.shape[:2]:
+        keep = np.zeros(sub.shape[:2], bool)
+    W = sub @ M[:3, :3].T + M[:3, 3]
+    eps = max(float(p.root_thick) * 2.0, bsize * 0.0015)
+    P = collide(W, keep, bvh, eps)
+    return (P - M[:3, 3]) @ np.linalg.inv(M[:3, :3]).T
+
+
+def _tufts(G, N, size_):
+    """Each traced strand's tuft: the traced strand its tips gather to (Clump Size strands a tuft)."""
+    nT = len(G)
+    n_t = int(round(N / max(int(size_), 1)))
+    if n_t >= nT:
+        return np.arange(nT)
+    n_t = max(n_t, 1)
+    mid = G[:, G.shape[1] // 2]
+    kd = KDTree(n_t)
+    for i in range(n_t):
+        kd.insert(Vector(mid[i]), i)
+    kd.balance()
+    return np.array([kd.find(Vector(q))[1] for q in mid], np.int64)
+
+
+def finish(G, p, size, seed, pieces=None, colors=None, body_colors=None):
+    """The strands as drawn (local): (points (N, seg, 3), radius (N, seg), colour (N, seg, 4)) - the traced ones
+    ``G`` (n, seg, 3) and Amount - n more beside them; Spread, Clump (+ Size), Tip Gather, Volume, Length Random,
+    Frizz, Curl; thickness; colour (``colors``: painted, per traced point)."""
+    rng = np.random.default_rng(seed + 7)
+    nT = len(G)
+    seg = G.shape[1] if nT else int(p.segments)
+    if not nT:
         return np.zeros((0, seg, 3)), np.zeros((0, seg)), np.zeros((0, seg, 4))
-    B = np.array(base)
-    nT = len(B)
     N = max(int(p.count), 1)
     t = np.linspace(0.0, 1.0, seg)
-    out = []
-    src = [i % nT for i in range(N)]
-    spread = size / CELLS * 1.6
-    for k, i in enumerate(src):
-        S = B[i].copy()
-        if k >= nT:                                   # (made beside a traced one, gathering to it toward the tip)
-            tan = S[min(1, seg - 1)] - S[0]
-            tan = tan / max(np.linalg.norm(tan), 1e-12)
-            o = rng.normal(size=3)
-            o -= tan * float(np.dot(o, tan))
-            o = o / max(np.linalg.norm(o), 1e-12) * spread * float(rng.random()) ** 0.5
-            S = S + o[None, :] * (1.0 - p.clump * t[:, None] ** 0.8)
-        if p.length_random > 0:
-            cut = 1.0 - p.length_random * float(rng.random())
-            S = resample(S[: max(2, int(round(cut * (seg - 1))) + 1)], seg)
-        if p.frizz > 0:
-            w = rng.normal(size=(4, 3)) * spread * p.frizz
-            ph = rng.random(4) * 2 * math.pi
-            wob = sum(w[j][None, :] * np.sin(t * (j + 2) * math.pi + ph[j])[:, None] for j in range(4))
-            S = S + wob * t[:, None]
-        if p.curl > 0:
-            tan = S[-1] - S[0]
-            tan = tan / max(np.linalg.norm(tan), 1e-12)
-            u = np.cross(tan, (0.0, 0.0, 1.0) if abs(tan[2]) < 0.9 else (1.0, 0.0, 0.0))
-            u /= max(np.linalg.norm(u), 1e-12)
-            v = np.cross(tan, u)
-            ang = t * p.curl_turns * 2 * math.pi + float(rng.random()) * 2 * math.pi
-            amp = p.curl * spread * np.minimum(t * 4.0, 1.0)
-            S = S + (np.cos(ang)[:, None] * u + np.sin(ang)[:, None] * v) * amp[:, None]
-        out.append(S)
-    P = np.array(out)
-    R = np.tile(p.root_thick + (p.root_thick * p.tip_thin - p.root_thick) * t, (len(P), 1))
-    root, tip = np.array(tuple(p.root_color) + (1.0,)), np.array(tuple(p.tip_color) + (1.0,))
+    h = size / CELLS
+    src = np.arange(N) % nT
+    S = G[src].copy()
+    kids = np.nonzero(np.arange(N) >= nT)[0]
+    if len(kids):                                      # (made beside a traced one: Spread)
+        tan = S[kids, 1] - S[kids, 0]
+        tan /= np.maximum(np.linalg.norm(tan, axis=1, keepdims=True), 1e-12)
+        o = rng.normal(size=(len(kids), 3))
+        o -= tan * np.sum(o * tan, axis=1, keepdims=True)
+        o /= np.maximum(np.linalg.norm(o, axis=1, keepdims=True), 1e-12)
+        o *= (h * (0.4 + 3.0 * float(p.spread)) * rng.random(len(kids)) ** 0.5)[:, None]
+        S[kids] += o[:, None, :]
+    if p.clump > 0:                                    # (the tips gathered into tufts)
+        cen = _tufts(G, N, p.clump_size)
+        S += (G[cen[src]] - S) * (float(p.clump) * t ** 0.8)[None, :, None]
+    pc = np.asarray(pieces if pieces is not None else np.zeros(nT), np.int64)
+    if p.gather > 0 or p.volume > 0:
+        ids = np.unique(pc)
+        if p.gather > 0:                               # (Tip Gather: a piece's tips meet at its end)
+            end = {k: G[pc == k, -1].mean(0) for k in ids}
+            E = np.array([end[k] for k in pc[src]])
+            S += (E - S[:, -1])[:, None, :] * (float(p.gather) * t ** 1.5)[None, :, None]
+        if p.volume > 0:                               # (Volume: fuller - out from the piece's middle)
+            mid = {k: G[pc == k].mean(0) for k in ids}
+            Mi = np.array([mid[k] for k in pc[src]])
+            S += (S - Mi) * (float(p.volume) * 0.6 * np.minimum(t * 3.0, 1.0))[None, :, None]
+    if p.length_random > 0:
+        cut = 1.0 - float(p.length_random) * rng.random(N)
+        u = cut[:, None] * np.arange(seg)[None, :]
+        i0 = np.clip(np.floor(u).astype(np.int64), 0, seg - 2)
+        w = (u - i0)[..., None]
+        S = (np.take_along_axis(S, i0[..., None], axis=1) * (1.0 - w)
+             + np.take_along_axis(S, (i0 + 1)[..., None], axis=1) * w)
+    spread = h * 1.6
+    if p.frizz > 0:
+        wv = rng.normal(size=(N, 4, 3)) * spread * float(p.frizz)
+        ph = rng.random((N, 4)) * 2 * math.pi
+        k_ = np.arange(4) + 2
+        sn = np.sin(t[None, None, :] * k_[None, :, None] * math.pi + ph[:, :, None])          # (N, 4, seg)
+        S = S + np.einsum('njs,njc->nsc', sn, wv) * t[None, :, None]
+    if p.curl > 0:
+        tan = S[:, -1] - S[:, 0]
+        tan /= np.maximum(np.linalg.norm(tan, axis=1, keepdims=True), 1e-12)
+        ref = np.where(np.abs(tan[:, 2:3]) < 0.9, np.array([[0.0, 0.0, 1.0]]), np.array([[1.0, 0.0, 0.0]]))
+        u_ = np.cross(tan, ref)
+        u_ /= np.maximum(np.linalg.norm(u_, axis=1, keepdims=True), 1e-12)
+        v_ = np.cross(tan, u_)
+        ang = t[None, :] * float(p.curl_turns) * 2 * math.pi + rng.random(N)[:, None] * 2 * math.pi
+        amp = float(p.curl) * spread * np.minimum(t * 4.0, 1.0)
+        S = S + (np.cos(ang)[..., None] * u_[:, None, :] + np.sin(ang)[..., None] * v_[:, None, :]) * amp[None, :, None]
+    R = np.tile(p.root_thick + (p.root_thick * p.tip_thin - p.root_thick) * t, (N, 1))
+    tip = np.array(tuple(p.tip_color) + (1.0,))
+    if p.use_polypaint and colors is not None:
+        base = colors[src]
+    elif p.use_polypaint and body_colors is not None:
+        base = np.repeat(body_colors[src][:, None, :], seg, axis=1)
+    else:
+        base = np.tile(np.array(tuple(p.root_color) + (1.0,))[None, None, :], (N, seg, 1))
     mix = np.clip((t - (1.0 - p.tip_blend)) / max(p.tip_blend, 1e-6), 0.0, 1.0) if p.tip_blend > 0 else np.zeros(seg)
-    Cc = np.tile(root[None, :] * (1 - mix[:, None]) + tip[None, :] * mix[:, None], (len(P), 1, 1))
-    return P, R, Cc
+    Cc = base * (1 - mix[None, :, None]) + tip[None, None, :] * mix[None, :, None]
+    Cc[..., 3] = 1.0
+    return S, R, Cc
 
 
 # -----------------------------------------------------------------------------
@@ -378,7 +709,8 @@ def is_hair(ob):
 
 
 def _trace_key(p):
-    return (int(min(p.count, TRACE_MAX)), round(p.fill, 4), int(p.seed))
+    """What the tracing reads (0.24.180: not Amount - the strands beside the traced ones are made again only)."""
+    return (round(p.fill, 4), int(p.seed))
 
 
 def _collection(context):
@@ -391,9 +723,19 @@ def _collection(context):
 
 
 def _write(ob, P, R, Cc):
-    """New curves data for ``ob`` from points (N, seg, 3) local, radius, colour."""
+    """``ob``'s curves from points (N, seg, 3) local, radius, colour: in place when as many strands as long as
+    before (0.24.180 - a comb stroke redraws them as you drag), else new curves data."""
     from . import creature_fur as cf
     old = ob.data
+    N, seg = (P.shape[0], P.shape[1]) if len(P) else (0, 0)
+    if (old is not None and N and len(old.curves) == N and len(old.points) == N * seg
+            and old.attributes.get('mch_fur_col') is not None and old.attributes.get('radius') is not None):
+        old.attributes['position'].data.foreach_set('vector', P.reshape(-1).astype(np.float32))
+        old.attributes['radius'].data.foreach_set('value', R.reshape(-1).astype(np.float32))
+        old.attributes['mch_fur_col'].data.foreach_set('color', Cc.reshape(-1).astype(np.float32))
+        old.update_tag()
+        ob.update_tag()
+        return
     data = bpy.data.hair_curves.new(old.name if old is not None else 'Hair')
     N, seg = (P.shape[0], P.shape[1]) if len(P) else (0, 0)
     if N:
@@ -416,27 +758,136 @@ def _write(ob, P, R, Cc):
         bpy.data.hair_curves.remove(old)
 
 
+def _trace_into(context, ob, a):
+    """Trace the strands for the hair ``ob`` (its settings) through the analysed shape: the cache entry."""
+    p = ob.mch_hshape
+    traced_w, pieces = trace(a, TRACE_MAX, p.fill, p.seed)
+    colors = _paint_along(a, traced_w)
+    body_cols = None
+    if colors is None and a['body'] is not None:
+        body_cols = _body_paint(context, a['body'], [q[0] for q in traced_w])
+    inv = np.array(ob.matrix_world.inverted())
+    return {'key': _trace_key(p), 'strands': [q @ inv[:3, :3].T + inv[:3, 3] for q in traced_w],
+            'pieces': np.array(pieces, np.int64), 'colors': colors, 'body_colors': body_cols,
+            'size': a['size'] / max(_scale(ob), 1e-9), 'roots': a['roots'], 'n_pieces': a['pieces']}
+
+
+def _bary(bvh, V, T, col, q):
+    loc, _n, f, _d = bvh.find_nearest(Vector(q))
+    if loc is None or f is None:
+        return None
+    a_, b_, c_ = V[T[f, 0]], V[T[f, 1]], V[T[f, 2]]
+    v0, v1, v2 = b_ - a_, c_ - a_, np.array(loc) - a_
+    d00, d01, d11 = v0 @ v0, v0 @ v1, v1 @ v1
+    d20, d21 = v2 @ v0, v2 @ v1
+    den = d00 * d11 - d01 * d01
+    if abs(den) < 1e-18:
+        return col[T[f, 0]]
+    v = (d11 * d20 - d01 * d21) / den
+    w = (d00 * d21 - d01 * d20) / den
+    return col[T[f, 0]] * (1 - v - w) + col[T[f, 1]] * v + col[T[f, 2]] * w
+
+
+def _paint_along(a, strands):
+    """0.24.180 Use Polypaint: the colour painted on the shape where each strand runs (per point), or None."""
+    col = a.get('colors')
+    if col is None:
+        return None
+    out = []
+    for q in strands:
+        c = [_bary(a['bvh'], a['V'], a['T'], col, x) for x in q]
+        c = [x if x is not None else col.mean(0) for x in c]
+        out.append(np.array(c))
+    return out
+
+
+def _body_paint(context, body, roots):
+    """The body's painted colour at each root (the Fur tool's way), or None with no paint on it."""
+    try:
+        V, T, _E, col = _world_mesh(context, body, colors=True)
+    except RuntimeError:
+        return None
+    if col is None or not len(T):
+        return None
+    bvh = BVHTree.FromPolygons([tuple(q) for q in V], [tuple(t) for t in T])
+    out = [_bary(bvh, V, T, col, r) for r in roots]
+    return np.array([x if x is not None else col.mean(0) for x in out])
+
+
+VIEW_TREE = 'MCH Hair Viewport'
+VIEW_MOD = 'MCH Hair Viewport'
+
+
+def _view_tree():
+    ng = bpy.data.node_groups.get(VIEW_TREE)
+    if ng is not None and ng.get('mch_v') == 1:
+        return ng
+    if ng is None:
+        ng = bpy.data.node_groups.new(VIEW_TREE, 'GeometryNodeTree')
+    ng.nodes.clear()
+    for it in list(ng.interface.items_tree):
+        ng.interface.remove(it)
+    ng.interface.new_socket('Geometry', in_out='INPUT', socket_type='NodeSocketGeometry')
+    sh = ng.interface.new_socket('Viewport %', in_out='INPUT', socket_type='NodeSocketFloat')
+    sh.default_value, sh.min_value, sh.max_value = 1.0, 0.0, 1.0
+    ng.interface.new_socket('Geometry', in_out='OUTPUT', socket_type='NodeSocketGeometry')
+    N, L = ng.nodes, ng.links
+    gi, go = N.new('NodeGroupInput'), N.new('NodeGroupOutput')
+    isv = N.new('GeometryNodeIsViewport')
+    rnd = N.new('FunctionNodeRandomValue')
+    rnd.data_type = 'BOOLEAN'
+    inv = N.new('ShaderNodeMath')
+    inv.operation = 'SUBTRACT'
+    inv.inputs[0].default_value = 1.0
+    L.new(gi.outputs['Viewport %'], inv.inputs[1])
+    L.new(inv.outputs[0], rnd.inputs['Probability'])
+    both = N.new('FunctionNodeBooleanMath')
+    both.operation = 'AND'
+    L.new(isv.outputs[0], both.inputs[0])
+    L.new(rnd.outputs[3] if len(rnd.outputs) > 3 else rnd.outputs['Value'], both.inputs[1])
+    dele = N.new('GeometryNodeDeleteGeometry')
+    dele.domain = 'CURVE'
+    L.new(gi.outputs['Geometry'], dele.inputs['Geometry'])
+    L.new(both.outputs[0], dele.inputs['Selection'])
+    L.new(dele.outputs[0], go.inputs[0])
+    ng['mch_v'] = 1
+    return ng
+
+
+def viewport_share(ob, share):
+    """Viewport %: only that share of the strands drawn in the viewport (all of them render)."""
+    mod = ob.modifiers.get(VIEW_MOD)
+    if share >= 0.999:
+        if mod is not None:
+            ob.modifiers.remove(mod)
+        return
+    if mod is None:
+        mod = ob.modifiers.new(VIEW_MOD, 'NODES')
+        mod.node_group = _view_tree()
+        mod.show_in_editmode = False
+    from . import geo_sculpt as gs                     # (the modifier's input: the way every Mecha node tool sets it)
+    gs.set_input(mod, 'Viewport %', float(share))
+    ob.update_tag()
+
+
 def rebuild(ob, context=None, force_trace=False):
-    """``ob``'s strands from its settings: traced again only when Strands (up to the traced share), Fill or Seed
-    changed (or never in this session)."""
+    """``ob``'s strands from its settings: traced again only when Fill or Seed changed (or never in this session);
+    Amount and the rest only make the strands again from the traced ones."""
     context = context or bpy.context
     p = ob.mch_hshape
     shape = p.shape
     cache = _CACHE.get(ob.name)
-    key = _trace_key(p)
-    if force_trace or cache is None or cache['key'] != key:
+    if force_trace or cache is None or cache['key'] != _trace_key(p):
         if shape is None:
             raise ShapeError('Its shape is gone - pick the shape again')
         a = _analysed(context, shape, p.body, fresh=force_trace,
                       starts=[tuple(ob.matrix_world @ Vector(q)) for q in starts_of(ob)])
-        traced_w = trace(a, key[0], p.fill, p.seed)
-        inv = np.array(ob.matrix_world.inverted())
-        traced = [s @ inv[:3, :3].T + inv[:3, 3] for s in traced_w]
-        cache = {'key': key, 'strands': traced, 'size': a['size'] / max(_scale(ob), 1e-9), 'roots': a['roots'],
-                 'pieces': a['pieces']}
+        cache = _trace_into(context, ob, a)
         _CACHE[ob.name] = cache
-    P, R, Cc = finish(cache['strands'], p, cache['size'], p.seed)
+    G = guides(ob, cache, p, context)
+    P, R, Cc = finish(G, p, cache['size'], p.seed, cache['pieces'], cache.get('C0'), cache.get('body_colors'))
     _write(ob, P, R, Cc)
+    viewport_share(ob, p.display)
     return len(P)
 
 
@@ -509,10 +960,8 @@ def make(context, shape, body=None, starts=None):
                               tuple(tuple(r) for r in shape.matrix_world), a['body'].name if a['body'] else None,
                               tuple(tuple(round(x, 6) for x in Vector(q)) for q in ([ob.matrix_world @ Vector(v)
                                     for v in starts_of(ob)] if starts else ()))), a)
-    traced = trace(a, min(int(p.count), TRACE_MAX), p.fill, p.seed)
-    inv = np.array(ob.matrix_world.inverted())
-    _CACHE[ob.name] = {'key': _trace_key(p), 'strands': [s @ inv[:3, :3].T + inv[:3, 3] for s in traced],
-                       'size': a['size'], 'roots': a['roots'], 'pieces': a['pieces']}
+    _CACHE[ob.name] = _trace_into(context, ob, a)
+    traced = _CACHE[ob.name]['strands']
     n = rebuild(ob, context)
     if p.hide_shape:
         shape.hide_set(True)
@@ -570,14 +1019,19 @@ def _upd_hide(self, context):
 
 
 LIVE = ('count', 'fill', 'seed', 'segments', 'clump', 'frizz', 'curl', 'curl_turns', 'length_random', 'root_thick',
-        'tip_thin', 'root_color', 'tip_color', 'tip_blend', 'hide_shape')
+        'tip_thin', 'root_color', 'tip_color', 'tip_blend', 'hide_shape',
+        # 0.24.180 the Fur tool's values too (user: "원래 기존에 있던 헤어 세팅 다 쓸 수 있으면 좋겠어")
+        'length', 'display', 'volume', 'spread', 'gravity', 'clump_size', 'gather', 'bend', 'bend_at', 'bend_soft',
+        'bend_dir', 'bend_side', 'use_polypaint')
 
 
 class MCH_PG_HairShape(bpy.types.PropertyGroup):
     shape: PointerProperty(type=bpy.types.Object, name='Shape')
     body: PointerProperty(type=bpy.types.Object, name='Body')
-    count: IntProperty(name='Strands', default=4000, min=10, soft_max=40000, max=200000, update=_upd,
-                       description=f'How many strands (up to {TRACE_MAX} traced through the shape, the rest beside them)')
+    # 0.24.180 (user: "머리카락 양도 조절 가능하게"): live - the strands beside the traced ones made again, no tracing
+    count: IntProperty(name='Amount', default=4000, min=10, soft_max=40000, max=200000, update=_upd,
+                       description=f'How many strands (live: {TRACE_MAX} traced through the shape, the rest made '
+                                   f'beside them - changing it traces nothing again)')
     fill: FloatProperty(name='Fill', default=0.8, min=0.0, max=1.0, update=_upd,
                         description='How deep into the shape the strands go: 0 only under its skin, 1 to its middle')
     seed: IntProperty(name='Seed', default=1, min=0, update=_upd)
@@ -588,9 +1042,9 @@ class MCH_PG_HairShape(bpy.types.PropertyGroup):
     curl: FloatProperty(name='Curl', default=0.0, min=0.0, max=5.0, update=_upd)
     curl_turns: FloatProperty(name='Curl Turns', default=3.0, min=0.0, max=40.0, update=_upd)
     length_random: FloatProperty(name='Length Random', default=0.15, min=0.0, max=0.9, update=_upd)
-    root_thick: FloatProperty(name='Thickness', default=0.0, min=0.0, soft_max=0.02, precision=4, unit='LENGTH',
+    root_thick: FloatProperty(name='Root Thickness', default=0.0, min=0.0, soft_max=0.02, precision=4, unit='LENGTH',
                               update=_upd, description='Root radius (0: from the shape\'s size)')
-    tip_thin: FloatProperty(name='Tip', default=0.2, min=0.0, max=1.0, update=_upd,
+    tip_thin: FloatProperty(name='Tip Thickness', default=0.2, min=0.0, max=1.0, update=_upd,
                             description='The tip\'s thickness, a share of the root\'s')
     root_color: FloatVectorProperty(name='Root Color', subtype='COLOR', size=3, min=0.0, max=1.0,
                                     default=(0.09, 0.06, 0.04), update=_upd)
@@ -598,6 +1052,39 @@ class MCH_PG_HairShape(bpy.types.PropertyGroup):
                                    default=(0.32, 0.22, 0.14), update=_upd)
     tip_blend: FloatProperty(name='Tip Blend', default=0.5, min=0.0, max=1.0, update=_upd)
     hide_shape: BoolProperty(name='Hide the Shape', default=True, update=_upd_hide)
+    # 0.24.180 the Fur tool's values (user: "그래비티나 그런 게 왜 메쉬 머리카락에는 안 되는겨", "원래 기존에 있던 헤어
+    # 세팅 다 쓸 수 있으면 좋겠어")
+    length: FloatProperty(name='Length', default=1.0, min=0.05, soft_max=2.0, max=5.0, update=_upd,
+                          description='1: as long as the shape; less: shorter; more: on past the shape\'s end')
+    display: FloatProperty(name='Viewport %', default=1.0, min=0.0, max=1.0, subtype='FACTOR', update=_upd,
+                           description='The share of strands drawn in the viewport (all of them render)')
+    volume: FloatProperty(name='Volume', default=0.0, min=0.0, max=1.0, update=_upd,
+                          description='Fuller: the strands out from the middle of the shape (0: as the shape)')
+    spread: FloatProperty(name='Spread', default=0.4, min=0.0, max=1.0, update=_upd,
+                          description='How far beside a traced strand the others are made')
+    gravity: FloatProperty(name='Gravity', default=0.0, min=0.0, max=1.0, update=_upd,
+                           description='Bends the strands down toward their tips (1: the tips hang straight down); '
+                                       'they stay out of the body')
+    clump_size: IntProperty(name='Clump Size', default=3, min=1, max=500, update=_upd,
+                            description='About how many strands in a tuft (Clump gathers their tips)')
+    gather: FloatProperty(name='Tip Gather', default=0.0, min=0.0, max=1.0, update=_upd,
+                          description='The tips of a piece of the shape gathered to its end (1: they meet)')
+    bend: FloatProperty(name='Bend', default=0.0, min=0.0, max=math.pi, subtype='ANGLE', update=_upd,
+                        description='How far the strands turn toward the bend side (set by the buttons; 0 = none)')
+    bend_at: FloatProperty(name='Bend At', default=0.3, min=0.0, max=0.95, update=_upd,
+                           description='Where along the strands they bend (0 = at the root, 0.9 = near the tip)')
+    bend_soft: FloatProperty(name='Bend Soft', default=0.35, min=0.0, max=1.0, update=_upd,
+                             description='0 = a sharp kink, 1 = a long smooth curve')
+    bend_dir: FloatVectorProperty(name='Bend Direction', size=3, default=(1.0, 0.0, 0.0), options={'HIDDEN'},
+                                  update=_upd)
+    bend_side: bpy.props.StringProperty(default='', options={'HIDDEN'})
+    use_polypaint: BoolProperty(name='Use Polypaint', default=True, update=_upd,
+                                description='The colour painted on the hair shape (along each strand), else the '
+                                            'body\'s at the root; off: Root Color')
+    # the comb (the tool's, not each hair's)
+    comb_size: IntProperty(name='Comb Size', default=70, min=5, max=600, subtype='PIXEL',
+                           description='The comb\'s circle on the screen')
+    comb_strength: FloatProperty(name='Comb Strength', default=0.5, min=0.01, max=1.0, subtype='FACTOR')
     auto_thick: BoolProperty(name='Thickness from the Shape', default=True,
                              description='The next hair: its thickness from the shape\'s size')
 
@@ -850,6 +1337,288 @@ class MCH_OT_hair_shape_apply(bpy.types.Operator):
         return {'FINISHED'}
 
 
+_COMB = {'op': None}
+
+
+def _draw_comb():
+    op = _COMB['op']
+    if op is None or op.mouse is None:
+        return
+    try:
+        if bpy.context.region != op.region:
+            return
+        from . import ui_gpu as ug
+        x, y = op.mouse
+        r = float(bpy.context.scene.mch_hshape.comb_size)
+        col = (1.0, 0.6, 0.25, 1.0) if op.alt else (1.0, 1.0, 1.0, 0.95)
+        ug.polyline(ug.circle_pts(x, y, r, n=48), col, 1.6, closed=True)
+        ug.polyline(ug.circle_pts(x, y, 2.5, n=10), col, 2.0, closed=True)
+    except (ReferenceError, AttributeError, RuntimeError):
+        pass
+
+
+class MCH_OT_hair_shape_comb(bpy.types.Operator):
+    """0.24.180 (user: "머리카락 빗는 것도 만들어 주고"): comb the selected hair - drag over it: the strands under the comb
+    turn the way you drag (their roots stay, their length kept, out of the body); Alt + drag: back as they were;
+    [ ]: comb size; Ctrl + Z: the last stroke off; Enter / Esc / right click: done.  Kept with the hair: the values,
+    Amount, Rebuild comb it again the same way"""
+    bl_idname = 'mch.hair_shape_comb'
+    bl_label = 'Comb'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def invoke(self, context, event):
+        ob = context.active_object
+        if not is_hair(ob):
+            self.report({'WARNING'}, 'Select a hair made in a sculpted shape first')
+            return {'CANCELLED'}
+        self.hair = ob.name
+        if context.area is None or context.area.type != 'VIEW_3D':
+            from . import workspace_ui
+            ov = workspace_ui._view3d_override(context)
+            if ov is None:
+                return {'CANCELLED'}
+            with context.temp_override(**ov):
+                return self._begin(bpy.context)
+        return self._begin(context)
+
+    def _begin(self, context):
+        ob = bpy.data.objects.get(self.hair)
+        try:
+            rebuild(ob, context)
+        except ShapeError as ex:
+            self.report({'WARNING'}, str(ex))
+            return {'CANCELLED'}
+        self.region, self.rv3d, self.area = context.region, context.region_data, context.area
+        self.mouse, self.stroke, self.alt, self.last, self.n = None, None, False, None, 0
+        _COMB['op'] = self
+        self._h = bpy.types.SpaceView3D.draw_handler_add(_draw_comb, (), 'WINDOW', 'POST_PIXEL')
+        context.window_manager.modal_handler_add(self)
+        self._status()
+        return {'RUNNING_MODAL'}
+
+    def _status(self):
+        try:
+            self.area.header_text_set(f'Comb: drag over the hair | Alt + drag: back as it was | [ ]: size | Ctrl + Z: '
+                                      f'the last stroke off | Enter / Esc: done  ({self.n} stroke'
+                                      f'{"s" if self.n != 1 else ""})')
+        except (AttributeError, ReferenceError):
+            pass
+
+    def _end(self):
+        _COMB['op'] = None
+        try:
+            bpy.types.SpaceView3D.draw_handler_remove(self._h, 'WINDOW')
+        except (ValueError, RuntimeError):
+            pass
+        try:
+            self.area.header_text_set(None)
+            self.area.tag_redraw()
+        except (AttributeError, ReferenceError):
+            pass
+
+    def modal(self, context, event):
+        ob = bpy.data.objects.get(self.hair)
+        if ob is None or not is_hair(ob):
+            self._end()
+            return {'CANCELLED'}
+        if event.type in {'MIDDLEMOUSE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE', 'TRACKPADPAN', 'TRACKPADZOOM',
+                          'NDOF_MOTION'}:
+            return {'PASS_THROUGH'}
+        self.alt = event.alt
+        reg = self.region
+        mx, my = event.mouse_x - reg.x, event.mouse_y - reg.y
+        if event.type in {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE'}:
+            self.mouse = (mx, my)
+            if self.stroke is not None:
+                self._sample(context, ob, mx, my)
+            self.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+        if event.type == 'LEFTMOUSE':
+            if event.value == 'PRESS':
+                self._start(ob, restore=event.alt)
+                self.mouse = (mx, my)
+                self._sample(context, ob, mx, my)
+            elif event.value == 'RELEASE' and self.stroke is not None:
+                self._commit(ob)
+            return {'RUNNING_MODAL'}
+        st = context.scene.mch_hshape
+        if event.type in {'LEFT_BRACKET', 'RIGHT_BRACKET'} and event.value == 'PRESS':
+            st.comb_size = int(round(st.comb_size * (1.15 if event.type == 'RIGHT_BRACKET' else 1 / 1.15)))
+            self.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+        if event.type == 'Z' and event.value == 'PRESS' and (event.ctrl or event.oskey):
+            strokes = combs_of(ob)
+            if strokes:
+                strokes.pop()
+                if strokes:
+                    ob[COMBS] = json.dumps(strokes, separators=(',', ':'))
+                elif COMBS in ob:
+                    del ob[COMBS]
+                rebuild(ob, context)
+                self.n = max(self.n - 1, 0)
+                self._status()
+            return {'RUNNING_MODAL'}
+        if event.type in {'RET', 'NUMPAD_ENTER', 'ESC', 'RIGHTMOUSE', 'SPACE'} and event.value == 'PRESS':
+            if self.stroke is not None:
+                self._commit(ob)
+            self._end()
+            return {'FINISHED'}
+        return {'RUNNING_MODAL'}
+
+    def _start(self, ob, restore=False):
+        cache = _CACHE.get(ob.name)
+        if cache is None or 'Gf' not in cache:
+            return
+        cache['Gc'] = cache['Gc'].copy()              # (combed in place from here: never the steps before it)
+        cache['Gf'] = cache['Gf'].copy()
+        self.stroke = {'m': 'R' if restore else 'C', 's': round(float(bpy.context.scene.mch_hshape.comb_strength), 4),
+                       'v': None, 'p': []}
+        self.last = None
+
+    def _sample(self, context, ob, mx, my):
+        from bpy_extras import view3d_utils as vu
+        cache = _CACHE.get(ob.name)
+        if cache is None or self.stroke is None or 'Gf' not in cache:
+            return
+        reg, rv3d = self.region, self.rv3d
+        R = float(context.scene.mch_hshape.comb_size)
+        M = np.array(ob.matrix_world)
+        W = (cache['Gf'] @ M[:3, :3].T + M[:3, 3]).reshape(-1, 3)
+        PM = np.array(rv3d.perspective_matrix)
+        hom = W @ PM[:3, :3].T + PM[:3, 3]
+        w = W @ PM[3, :3] + PM[3, 3]
+        ok = w > 1e-6
+        ws = np.where(ok, w, 1.0)
+        sx = (hom[:, 0] / ws * 0.5 + 0.5) * reg.width
+        sy = (hom[:, 1] / ws * 0.5 + 0.5) * reg.height
+        under = ok & ((sx - mx) ** 2 + (sy - my) ** 2 < R * R)
+        if not under.any():
+            self.last = None                           # (off the hair: the next step starts again)
+            return
+        vdir = np.array(vu.region_2d_to_vector_3d(reg, rv3d, (mx, my)).normalized())
+        org = np.array(vu.region_2d_to_origin_3d(reg, rv3d, (mx, my)))
+        front = W[under][np.argmin((W[under] - org) @ vdir)]
+        c = vu.region_2d_to_location_3d(reg, rv3d, (mx, my), Vector(front))
+        r = (vu.region_2d_to_location_3d(reg, rv3d, (mx + R, my), c) - c).length
+        c = np.array(c)
+        if self.last is None:
+            self.last = c
+            return
+        delta = c - self.last
+        delta -= vdir * float(delta @ vdir)
+        if np.linalg.norm(delta) < r * 0.12:
+            return
+        d = delta / np.linalg.norm(delta)
+        self.last = c
+        inv = np.linalg.inv(M)
+        cl = inv[:3, :3] @ c + inv[:3, 3]
+        dl = inv[:3, :3] @ d
+        dl /= max(np.linalg.norm(dl), 1e-12)
+        vl = inv[:3, :3] @ vdir
+        vl /= max(np.linalg.norm(vl), 1e-12)
+        rl = r / max(_scale(ob), 1e-9)
+        st = self.stroke
+        if st['v'] is None:
+            st['v'] = [round(float(x), 5) for x in vl]
+        st['p'].append([round(float(x), 6) for x in cl] + [round(float(x), 5) for x in dl] + [round(float(rl), 6)])
+        rows = comb_sample(cache['Gc'], cache['Gs'], cl, dl, np.array(st['v']), rl, st['s'], st['m'] == 'R')
+        if len(rows):
+            cache['Gf'][rows] = settle(ob, cache, cache['Gc'], context, rows=rows, force=True)
+            p = ob.mch_hshape
+            P, R_, Cc = finish(cache['Gf'], p, cache['size'], p.seed, cache['pieces'], cache.get('C0'),
+                               cache.get('body_colors'))
+            _write(ob, P, R_, Cc)
+
+    def _commit(self, ob):
+        st, self.stroke = self.stroke, None
+        if st is None or not st['p']:
+            return
+        strokes = combs_of(ob)
+        strokes.append(st)
+        raw = json.dumps(strokes, separators=(',', ':'))
+        ob[COMBS] = raw
+        cache = _CACHE.get(ob.name)
+        if cache is not None and 'k1' in cache:        # (what is drawn is this: no combing again)
+            cache['k2'] = (cache['k1'], zlib.crc32(raw.encode()))
+            cache['k3'] = (cache['k2'], _bkey(ob, ob.mch_hshape, raw))
+        self.n += 1
+        self._status()
+
+
+class MCH_OT_hair_shape_comb_clear(bpy.types.Operator):
+    """Take all the combing off the selected hair (back as the shape has it)"""
+    bl_idname = 'mch.hair_shape_comb_clear'
+    bl_label = 'Clear Comb'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        ob = context.active_object
+        if not is_hair(ob):
+            return {'CANCELLED'}
+        if COMBS in ob:
+            del ob[COMBS]
+        try:
+            rebuild(ob, context)
+        except ShapeError as ex:
+            self.report({'WARNING'}, str(ex))
+            return {'CANCELLED'}
+        return {'FINISHED'}
+
+
+class MCH_OT_hair_shape_bend(bpy.types.Operator):
+    """Bend the hair toward this side of the view you are looking through (the selected hair and the next)"""
+    bl_idname = 'mch.hair_shape_bend'
+    bl_label = 'Hair Bend Toward'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    side: bpy.props.StringProperty(default='RIGHT')
+
+    def execute(self, context):
+        from . import creature_hair as ch
+        d = None if self.side == 'OFF' else ch.view_direction(context, self.side)
+        if self.side != 'OFF' and d is None:
+            self.report({'WARNING'}, 'Bend: no 3D view to take the direction from')
+            return {'CANCELLED'}
+        ob = context.active_object
+        for pg in [context.scene.mch_hshape] + ([ob.mch_hshape] if is_hair(ob) else []):
+            _BUSY[0] = True
+            try:
+                if self.side == 'OFF':
+                    pg.bend, pg.bend_side = 0.0, ''
+                else:
+                    pg.bend_dir, pg.bend_side = tuple(d), self.side
+                    if pg.bend < 1e-6:
+                        pg.bend = math.radians(60.0)
+            finally:
+                _BUSY[0] = False
+        if is_hair(ob):
+            rebuild(ob, context)
+        return {'FINISHED'}
+
+
+class MCH_OT_hair_shape_colour(bpy.types.Operator):
+    """The hair's colour from a preset (root and tip; the painted colour off)"""
+    bl_idname = 'mch.hair_shape_colour'
+    bl_label = 'Hair Colour'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    preset: bpy.props.StringProperty(default='BROWN')
+
+    def execute(self, context):
+        from . import creature_hair as ch
+        hit = next((c for c in ch.COLOUR_PRESETS if c[0] == self.preset), None)
+        if hit is None:
+            return {'CANCELLED'}
+        ob = context.active_object
+        for pg in [context.scene.mch_hshape] + ([ob.mch_hshape] if is_hair(ob) else []):
+            _BUSY[0] = True
+            try:
+                pg.root_color, pg.tip_color, pg.use_polypaint = hit[2], hit[3], False
+            finally:
+                _BUSY[0] = False
+        if is_hair(ob):
+            rebuild(ob, context)
+        return {'FINISHED'}
+
+
 def draw(layout, context, ob=None):
     """In the Fur window: the selected shape-hair's values (live), else the next one's and the button."""
     ob = ob if ob is not None else context.active_object
@@ -869,24 +1638,68 @@ def draw(layout, context, ob=None):
         col.label(text='the button: click where it starts, Enter')
         box.operator('mch.hair_from_shape', text='Hair in the Selected Shape')
         return                                         # (its values once it is made: pick the hair)
-    for group, props in (('Strands', ('count', 'fill', 'segments', 'seed')),
-                         ('Look', ('clump', 'frizz', 'curl', 'curl_turns', 'length_random')),
-                         ('Thickness', ('root_thick', 'tip_thin')),
-                         ('Color', ('root_color', 'tip_color', 'tip_blend'))):
+    # 0.24.180 Amount first (live), the comb, then the Fur tool's groups
+    row = box.row(align=True)
+    row.scale_y = 1.3
+    row.prop(p, 'count')
+    comb = box.box()
+    r = comb.row(align=True)
+    r.scale_y = 1.4
+    r.operator('mch.hair_shape_comb', text='Comb', icon='BRUSH_DATA')
+    st = context.scene.mch_hshape
+    r = comb.row(align=True)
+    r.prop(st, 'comb_size', text='Size')
+    r.prop(st, 'comb_strength', text='Strength')
+    n = len(combs_of(ob))
+    if n:
+        comb.operator('mch.hair_shape_comb_clear', text=f'Clear Comb ({n} stroke{"s" if n != 1 else ""})')
+    comb.label(text='Drag: comb | Alt + drag: back | [ ]: size')
+    for group, props in (('Strands', ('length', 'length_random', 'segments', 'display', 'fill', 'seed')),
+                         ('Shape', ('volume', 'spread', 'gravity', 'curl', 'curl_turns', 'frizz', 'clump',
+                                    'clump_size', 'gather')),
+                         ('Bend', ()),
+                         ('Thickness', ('root_thick', 'tip_thin'))):
         col = box.column(align=True)
         col.label(text=group)
+        if group == 'Bend':                            # (toward a side of the view you look through)
+            from . import creature_hair as ch
+            for keys in (ch.BEND_SIDES[:4], ch.BEND_SIDES[4:] + (('OFF', 'No Bend'),)):
+                rr = col.row(align=True)
+                for key, label in keys:
+                    on = (p.bend > 0 and p.bend_side == key) if key != 'OFF' else p.bend <= 0
+                    rr.operator('mch.hair_shape_bend', text=label, depress=on).side = key
+            col.prop(p, 'bend')
+            if p.bend > 0:
+                col.prop(p, 'bend_at')
+                col.prop(p, 'bend_soft')
         for k in props:
             col.prop(p, k)
+    col = box.column(align=True)
+    col.label(text='Color')
+    col.prop(p, 'use_polypaint')
+    c = _CACHE.get(ob.name) or {}
+    painted = c.get('colors') is not None
+    if p.use_polypaint:
+        col.label(text='Painted on the shape' if painted else ('From the body\'s paint' if c.get('body_colors')
+                                                                is not None else 'No paint found: Root Color'))
+    if not p.use_polypaint or not (painted or c.get('body_colors') is not None):
+        col.prop(p, 'root_color')
+    col.prop(p, 'tip_color')
+    col.prop(p, 'tip_blend')
+    from . import creature_hair as ch
+    g = col.grid_flow(columns=4, align=True)
+    for key, label, _r, _t in ch.COLOUR_PRESETS:
+        g.operator('mch.hair_shape_colour', text=label).preset = key
     box.prop(p, 'hide_shape')
-    if live:
-        box.operator('mch.hair_shape_pick', text='Pick Where It Starts')
-        row = box.row(align=True)
-        row.operator('mch.hair_shape_rebuild', text='Rebuild')
-        row.operator('mch.hair_shape_apply', text='Apply')
+    box.operator('mch.hair_shape_pick', text='Pick Where It Starts')
+    row = box.row(align=True)
+    row.operator('mch.hair_shape_rebuild', text='Rebuild')
+    row.operator('mch.hair_shape_apply', text='Apply')
 
 
 CLASSES = (MCH_PG_HairShape, MCH_OT_hair_from_shape, MCH_OT_hair_shape_pick, MCH_OT_hair_shape_rebuild,
-           MCH_OT_hair_shape_apply)
+           MCH_OT_hair_shape_apply, MCH_OT_hair_shape_comb, MCH_OT_hair_shape_comb_clear, MCH_OT_hair_shape_bend,
+           MCH_OT_hair_shape_colour)
 
 
 def register():
@@ -907,6 +1720,7 @@ def unregister():
             pass
     _CACHE.clear()
     _ANALYSED.clear()
+    _BODY.clear()
 
 
-_unused = (json, random)
+
