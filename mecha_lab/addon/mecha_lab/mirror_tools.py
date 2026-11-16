@@ -542,6 +542,36 @@ def show_preview(context, info, ob, p, scene, enabled, flips, center=None):
     quick_bisect(base, mod)
 
 
+@bpy.app.handlers.persistent
+def clean_previews(_dummy=None):
+    """A file saved in the middle of a lean (an autosave, a crash) keeps the lean's copies and its part hidden: tidied
+    when it is opened."""
+    for pr in [o for o in bpy.data.objects if o.get(PREVIEW_KEY)]:
+        try:
+            target = bpy.data.objects.get(str(pr[PREVIEW_KEY]))
+            if target is not None and not target.get(PREVIEW_KEY):
+                target.hide_viewport = False
+            m = pr.modifiers.get(MOD_NAME)
+            pivot = m.mirror_object if m is not None and m.type == 'MIRROR' else None
+            me = pr.data
+            bpy.data.objects.remove(pr, do_unlink=True)
+            if me is not None and me.users == 0:
+                bpy.data.meshes.remove(me)
+            _remove_unused_pivot(pivot)
+        except (ReferenceError, RuntimeError):
+            continue
+
+
+def register_handlers():
+    if clean_previews not in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.append(clean_previews)
+
+
+def unregister_handlers():
+    if clean_previews in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(clean_previews)
+
+
 def quick_bisect(obj, mod):
     """A Bisect left out on an axis where it would cut nothing (all of the mesh on the kept side): the same result,
     about twice as fast.  Only for a still mesh (a preview copy)."""

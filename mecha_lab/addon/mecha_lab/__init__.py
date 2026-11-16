@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
     "author": "OpenAI / ChatGPT, Claude Code",
-    "version": (0, 24, 176),
+    "version": (0, 24, 177),
     "blender": (4, 3, 0),
     "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
     "description": "Cut, Split, Base Mesh, Boolean, Face Extract, Armor Sculpt, Molding, Cable, Hollow, curve arrays, Mirror",
@@ -2050,6 +2050,7 @@ def _register():
     bpy.types.Scene.mch_settings = PointerProperty(type=MCH_PG_Settings)
     cut_presets.register()
     bpy.types.Scene.mch_mirror = PointerProperty(type=mirror_tools.MCH_PG_Mirror)
+    mirror_tools.register_handlers()              # 0.24.177 a lean's copies left in a file: tidied when it opens
     bpy.types.Scene.mch_conform = PointerProperty(type=surface_conform.MCH_PG_Conform)
     bpy.types.Object.mch_live = PointerProperty(type=MCH_PG_Live)
     bpy.types.Object.mch_radial = PointerProperty(type=radial_array.MCH_PG_Radial)
@@ -2322,6 +2323,7 @@ def _unregister_steps():
         ('along_curve', along_curve.unregister),
         ('hollow_shell', hollow_shell.unregister),
         ('edge_molding', edge_molding.unregister),
+        ('mirror_tools handlers', mirror_tools.unregister_handlers),
         ('armor_shell', armor_shell.unregister),
         ('face_extract', face_extract.unregister),
         ('self_test', self_test.unregister),

@@ -149,6 +149,15 @@ mt.drop_preview(info, det)
 check('... the preview gone: its copies, its mesh, its pivot; the part shown',
       not [o for o in bpy.data.objects if o.get(mt.PREVIEW_KEY)] and 'MCH Mirror Preview' not in bpy.data.meshes
       and not [o for o in bpy.data.objects if o.get('_mch_world_pivot')] and not det.hide_viewport)
+# a file saved in the middle of a lean (an autosave): its copies and the hidden part tidied when it is opened
+info = mt.make_preview(C, det)
+mt.show_preview(C, info, det, S.mch_mirror, S, (True, False, False), (False, False, False))
+left_before = len([o for o in bpy.data.objects if o.get(mt.PREVIEW_KEY)])
+mt.clean_previews()
+check(f'a file saved mid-lean, opened: the lean\'s copies ({left_before}) gone, the part shown again '
+      f'(the tidy-up runs when a file opens: {mt.clean_previews in bpy.app.handlers.load_post})',
+      left_before == 2 and not [o for o in bpy.data.objects if o.get(mt.PREVIEW_KEY)] and not det.hide_viewport
+      and mt.clean_previews in bpy.app.handlers.load_post)
 # a light part (no other modifiers): as before, no copy
 bpy.ops.mesh.primitive_cube_add(size=1.0, location=(3.0, 0.0, 0.0))
 cube = C.active_object
