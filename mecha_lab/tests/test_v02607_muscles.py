@@ -80,6 +80,34 @@ cb = build_with('MMUSCLE', [A, B], preset='SPINDLE', style='CABLE', cap='NUT')
 check('Cables: a cable with end caps', len(cb.data.polygons) > 50 and
       set(np.unique([p.material_index for p in cb.data.polygons])) == {0, 2},
       (sorted(int(x) for x in np.unique([p.material_index for p in cb.data.polygons])), cb.mch_muscle.style))
+# 0.24.185 your own mesh as a muscle shape; cables as a bundle with a belly
+mg.MY_SHAPE_DIR[0] = os.path.join(TMP, 'shapes')
+bpy.ops.mesh.primitive_cone_add(vertices=12, radius1=0.2, radius2=0.05, depth=1.5, location=(5, 0, 0))
+mine = C.active_object
+nfm = len(mine.data.polygons)
+r = bpy.ops.mch.muscle_shape_save(name='Cone Muscle', tool='MUSCLE')
+check('Save Selected Mesh as My Muscle: kept (a scratch folder), picked', r == {'FINISHED'} and
+      'Cone Muscle' in mg.my_shapes() and S.mch_muscle.my_shape == 'Cone Muscle')
+m3 = build_with('MUSCLE', [A, B], preset='SPINDLE', shape='SCULPT', style='CREATURE')
+V3 = np.array([m3.matrix_world @ v.co for v in m3.data.vertices])
+ends = [float(np.min(np.linalg.norm(V3 - np.array(q[1]), axis=1))) for q in (A, B)]
+check(f'... a muscle between two points is that mesh ({nfm} faces), from point to point ({ends[0]:.3f}, {ends[1]:.3f})',
+      len(m3.data.polygons) == nfm and max(ends) < 0.15)
+S.mch_muscle.my_shape = ''
+c1 = build_with('MMUSCLE', [A, B], preset='SPINDLE', style='CABLE', cable_count=7, cable_spread=0.0, cable_ties=0)
+c2 = build_with('MMUSCLE', [A, B], preset='SPINDLE', style='CABLE', cable_count=7, cable_spread=1.0, cable_ties=0)
+
+
+def girth(ob, z0, z1):
+    V_ = np.array([ob.matrix_world @ v.co for v in ob.data.vertices])
+    m_ = (V_[:, 2] > z0) & (V_[:, 2] < z1)
+    return float(np.ptp(V_[m_, 0]))
+
+
+check(f'Cables: 7 in a bundle, no ties; Bundle Belly: apart between the ends ({girth(c1, -0.1, 0.1):.3f} -> '
+      f'{girth(c2, -0.1, 0.1):.3f}), tight at them ({girth(c2, 0.62, 0.72):.3f})',
+      girth(c2, -0.1, 0.1) > girth(c1, -0.1, 0.1) * 1.4 and girth(c2, 0.62, 0.72) < girth(c2, -0.1, 0.1) * 0.8 and
+      set(np.unique([p.material_index for p in c1.data.polygons])) == {0, 2})
 # your own presets (no muscle picked: the window's - the tool's - settings)
 for o in C.selected_objects:
     o.select_set(False)

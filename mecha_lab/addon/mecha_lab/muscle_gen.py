@@ -607,14 +607,119 @@ def templates():
     return {k: v for k, v in _TPL.items() if k != '_none'}
 
 
+# 0.24.185 (user: "내가 만든 프리셋을 차라리 사용하는 게 낫겠다, 그것도 기능 넣어 줘"): your own mesh kept as a muscle shape
+MY_SHAPE_DIR = [None]                    # (a test points it elsewhere: never the user's own folder)
+_MY = {}
+
+
+def my_shape_dir():
+    if MY_SHAPE_DIR[0]:
+        return MY_SHAPE_DIR[0]
+    return os.path.join(bpy.utils.user_resource('CONFIG', path='mecha_lab', create=False), 'muscle_shapes')
+
+
+def my_shapes():
+    """{name: shape} of the muscle shapes you saved (read again when the folder changed)."""
+    d = my_shape_dir()
+    try:
+        key = (d, tuple(sorted((f, os.path.getmtime(os.path.join(d, f))) for f in os.listdir(d) if f.endswith('.npz'))))
+    except OSError:
+        return {}
+    if _MY.get('key') != key:
+        out = {}
+        for f, _m in key[1]:
+            try:
+                with np.load(os.path.join(d, f), allow_pickle=False) as z:
+                    out[f[:-4]] = {'kind': 'LINE', 'length': float(z['length']), 'A': z['A'].astype(np.float64),
+                                   'N': np.array(z['N']), 'L': np.array(z['L']), 'lo': z['lo'].astype(np.float64)}
+            except (OSError, KeyError, ValueError):
+                continue
+        _MY['key'], _MY['data'] = key, out
+    return _MY['data']
+
+
+def shape_data(sid):
+    return my_shapes()[sid[3:]] if sid.startswith('my:') else templates()[sid]
+
+
+def line_shape(V):
+    """A long shape's points as (along 0 .. 1, across, up) over its length, and its underside along it (as the
+    built-in shapes are kept: tools_dev/muscle_templates_build.py)."""
+    c = V.mean(0)
+    X = V - c
+    _w, E = np.linalg.eigh(np.cov(X.T))
+    E = E[:, ::-1]
+    a, sx, v = X @ E[:, 0], X @ E[:, 1], X @ E[:, 2]
+    L = max(a.max() - a.min(), 1e-9)
+    t = (a - a.min()) / L
+    w0 = np.ptp(sx[t < 0.15]) if (t < 0.15).any() else 0.0
+    w1 = np.ptp(sx[t > 0.85]) if (t > 0.85).any() else 0.0
+    if w1 > w0 * 1.15:                       # (its start: the end that splits into heads)
+        t = 1.0 - t
+        sx = -sx
+    if v.max() < -v.min():                   # (its flatter side down)
+        v = -v
+        sx = -sx
+    nb = 41
+    lo = np.zeros(nb)
+    k = np.clip((t * (nb - 1)).round().astype(int), 0, nb - 1)
+    have = np.zeros(nb, bool)
+    for i in range(nb):
+        m = k == i
+        if m.any():
+            lo[i] = (v[m] / L).min()
+            have[i] = True
+    idx = np.arange(nb)
+    if have.any():
+        lo = np.interp(idx, idx[have], lo[have])
+    lo = np.convolve(np.pad(lo, 1, mode='edge'), [0.25, 0.5, 0.25], mode='valid')
+    return np.c_[t, sx / L, v / L], lo, float(L)
+
+
+def save_my_shape(context, src, name, faces=3000):
+    """The mesh ``src`` (as shown; made light if heavy) kept as your muscle shape ``name``."""
+    md = None
+    tris = sum(len(p.vertices) - 2 for p in src.data.polygons)
+    if tris > faces * 1.5:
+        md = src.modifiers.new('MCH tmp', 'DECIMATE')
+        md.ratio = faces / tris
+    try:
+        dg = context.evaluated_depsgraph_get()
+        ev = src.evaluated_get(dg)
+        me = ev.to_mesh()
+        V = np.empty(len(me.vertices) * 3)
+        me.vertices.foreach_get('co', V)
+        M = np.array(src.matrix_world)
+        V = V.reshape(-1, 3) @ M[:3, :3].T + M[:3, 3]
+        N = np.array([len(p.vertices) for p in me.polygons], np.int32)
+        Lp = np.empty(len(me.loops), np.int32)
+        me.loops.foreach_get('vertex_index', Lp)
+        ev.to_mesh_clear()
+    finally:
+        if md is not None:
+            src.modifiers.remove(md)
+    if len(V) < 8 or len(N) < 4:
+        raise RuntimeError('Pick a mesh')
+    A, lo, L = line_shape(V)
+    d = my_shape_dir()
+    os.makedirs(d, exist_ok=True)
+    safe = ''.join(c for c in name if c.isalnum() or c in ' _-').strip() or 'Muscle'
+    np.savez_compressed(os.path.join(d, safe + '.npz'), A=A.astype(np.float32), N=N, L=Lp, lo=lo.astype(np.float32),
+                        length=np.array(L))
+    _MY.clear()
+    return safe, len(N)
+
+
 def sculpt_of(pg, kind):
     """The sculpted shape a muscle is laid with - None: strands (another look, no shape for it, the file gone)."""
     if pg.style not in {'CREATURE', 'BAND'} or pg.shape != 'SCULPT' or kind == 'SHEET':
         return None
+    want = 'FAN' if kind == 'FAN' else 'LINE'
+    if pg.my_shape and want == 'LINE' and pg.my_shape in my_shapes():
+        return 'my:' + pg.my_shape              # (your own shape - a long one, two points)
     tp = templates()
     auto = pg.sculpt == 'AUTO'
     sid = TEMPLATE_OF.get(pg.preset) if auto else pg.sculpt
-    want = 'FAN' if kind == 'FAN' else 'LINE'
     if sid is None:
         return None
     if sid not in tp or tp[sid]['kind'] != want:
@@ -760,7 +865,7 @@ def lay_fan(context, mesh, tp, ob, pg):
 def sculpt_mesh(context, ob, sid):
     """(``Mesh``, length) of a muscle laid with a sculpted shape."""
     pg = ob.mch_muscle
-    tp = templates()[sid]
+    tp = shape_data(sid)
     mesh = Mesh()
     mecha = pg.style == 'BAND'              # 0.24.185 the user's muscle shapes as artificial muscles: + end fittings
     if tp['kind'] == 'FAN':
@@ -932,9 +1037,11 @@ def build_mesh(context, ob):
             tk = np.linspace(0.0, 1.0, K)
             tw = tk * math.pi * 2.0 * float(pg.cable_twist)
             rc = np.full(K, r1)
+            sp_ = 1.0 + float(pg.cable_spread) * np.sin(math.pi * tk) ** 1.5   # (tight at its ends, apart between)
+            ctr = C + nrm * (Rb * 1.05 * sp_)[:, None]
             for ox, oy in offs:
-                dx = ox * np.cos(tw) - oy * np.sin(tw)
-                dy = ox * np.sin(tw) + oy * np.cos(tw)
+                dx = (ox * np.cos(tw) - oy * np.sin(tw)) * sp_
+                dy = (ox * np.sin(tw) + oy * np.cos(tw)) * sp_
                 tube(mesh, ctr + side * dx[:, None] + nrm * dy[:, None], side, nrm, rc, rc, 0,
                      sides=8 if nc > 6 else 10)
             for j in range(int(pg.cable_ties)):               # the ties: bands round the bundle
@@ -1239,10 +1346,10 @@ def _collection(context):
     return coll
 
 
-LIVE = ('preset', 'shape', 'sculpt', 'style', 'strands', 'twist', 'spread', 'thickness', 'width', 'volume', 'length', 'belly', 'tendon',
+LIVE = ('preset', 'shape', 'sculpt', 'my_shape', 'style', 'strands', 'twist', 'spread', 'thickness', 'width', 'volume', 'length', 'belly', 'tendon',
         'segments', 'sink', 'fibers', 'fiber_scale', 'smooth', 'resolution', 'remesh', 'color', 'tendon_color', 'core',
         'core_count', 'core_size', 'core_color', 'holes', 'hole_size', 'hole_cells', 'sleeve_thick', 'sleeve_color',
-        'cap', 'cap_size', 'cap_length', 'cap_color', 'cable_radius', 'cable_count', 'cable_ties', 'cable_twist',
+        'cap', 'cap_size', 'cap_length', 'cap_color', 'cable_radius', 'cable_count', 'cable_ties', 'cable_twist', 'cable_spread',
         'band_teeth', 'band_weave', 'band_weave_scale', 'band_color')
 
 
@@ -1469,6 +1576,8 @@ class MCH_PG_Muscle(bpy.types.PropertyGroup):
     preset: EnumProperty(name='Muscle', items=PRESET_ITEMS, default='SPINDLE', update=_upd_preset)
     shape: EnumProperty(name='Shape', items=SHAPES, default='SCULPT', update=_upd,
                         description='Your sculpted muscles or strands')
+    my_shape: StringProperty(name='My Shape', default='', update=_upd,
+                             description='Your own saved muscle shape (empty: the built-in ones)')
     sculpt: EnumProperty(name='Sculpt', items=SCULPTS, default='AUTO', update=_upd,
                          description='Which of your sculpted muscles')
     style: EnumProperty(name='Look', items=STYLES, default='CREATURE', update=_upd)
@@ -1538,6 +1647,9 @@ class MCH_PG_Muscle(bpy.types.PropertyGroup):
                              description='How many cables each bundle is made of')
     cable_ties: IntProperty(name='Ties', default=0, min=0, max=12, update=_upd,
                             description='Bands that tie the bundle along its length')
+    cable_spread: FloatProperty(name='Bundle Belly', default=0.7, min=0.0, max=3.0, update=_upd,
+                                description='The cables apart between their ends, tight at the ends (a muscle\'s '
+                                            'shape); 0: side by side all the way')
     cable_twist: FloatProperty(name='Bundle Twist', default=0.25, min=0.0, max=3.0, update=_upd,
                                description='The cables wind round each other (turns along its length)')
 
@@ -1789,6 +1901,56 @@ class MCH_OT_muscle_my_delete(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_muscle_shape_save(bpy.types.Operator):
+    bl_idname = 'mch.muscle_shape_save'
+    bl_label = 'Save Selected Mesh as My Muscle'
+    bl_description = ('The selected mesh (a muscle you made - a long one) kept as your muscle shape: there in every '
+                      'file, laid between two clicked points like the built-in ones (heavy meshes made light)')
+    bl_options = {'REGISTER', 'UNDO'}
+    tool: StringProperty(default='MUSCLE')
+    name: StringProperty(name='Name', default='My Muscle')
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.active_object
+        return ob is not None and ob.type == 'MESH' and not is_muscle(ob) and not is_skin(ob)
+
+    def invoke(self, context, event):
+        self.name = context.active_object.name
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        try:
+            name, nf = save_my_shape(context, context.active_object, self.name)
+        except RuntimeError as ex:
+            self.report({'WARNING'}, str(ex))
+            return {'CANCELLED'}
+        st = settings(context, self.tool)
+        st.shape = 'SCULPT'
+        st.my_shape = name
+        self.report({'INFO'}, f'My muscle shape "{name}" ({nf:,} faces) - picked: click two points')
+        return {'FINISHED'}
+
+
+class MCH_OT_muscle_shape_delete(bpy.types.Operator):
+    bl_idname = 'mch.muscle_shape_delete'
+    bl_label = 'Delete My Muscle Shape'
+    bl_description = 'Take this saved muscle shape away (the muscles made with it go back to the built-in shape)'
+    bl_options = {'REGISTER'}
+    name: StringProperty(default='')
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_confirm(self, event)
+
+    def execute(self, context):
+        try:
+            os.remove(os.path.join(my_shape_dir(), self.name + '.npz'))
+        except OSError:
+            pass
+        _MY.clear()
+        return {'FINISHED'}
+
+
 class MCH_OT_muscle_set(bpy.types.Operator):
     """Pick this (the selected muscle too)"""
     bl_idname = 'mch.muscle_set'
@@ -1895,6 +2057,14 @@ def draw(layout, context, tool='MUSCLE'):
         layout.row(align=True).prop(pg, 'shape', expand=True)
         if pg.shape == 'SCULPT':
             layout.prop(pg, 'sculpt')
+            col = layout.column(align=True)
+            col.label(text='My Muscle Shapes (long ones, two points)')
+            for nm in sorted(my_shapes()):
+                r = col.row(align=True)
+                o = r.operator('mch.muscle_set', text=nm, depress=pg.my_shape == nm)
+                o.tool, o.prop, o.value = tool, 'my_shape', ('' if pg.my_shape == nm else nm)
+                r.operator('mch.muscle_shape_delete', text='', icon='X').name = nm
+            col.operator('mch.muscle_shape_save', icon='ADD').tool = tool
     col = layout.column(align=True)
     col.label(text='Shape')
     keys = (('thickness', 'volume', 'width', 'length', 'strands', 'sink') if sculpted else
@@ -1921,7 +2091,7 @@ def draw(layout, context, tool='MUSCLE'):
     elif style == 'CABLE':
         col = layout.column(align=True)
         col.label(text='Cable Bundle')
-        for k in ('cable_count', 'cable_radius', 'cable_ties', 'cable_twist'):
+        for k in ('cable_count', 'cable_radius', 'cable_spread', 'cable_twist', 'cable_ties'):
             col.prop(pg, k)
         _draw_caps(layout, pg, tool)
     else:
@@ -2050,7 +2220,7 @@ class MCH_TOOL_mecha_muscle(bpy.types.WorkSpaceTool):
 
 CLASSES = (MCH_PG_Muscle, MCH_PG_MuscleSkin, MCH_OT_muscle_click, MCH_OT_muscle_back, MCH_OT_muscle_finish,
            MCH_OT_muscle_esc, MCH_OT_muscle_my_save, MCH_OT_muscle_my_apply, MCH_OT_muscle_my_delete,
-           MCH_OT_muscle_set, MCH_OT_muscle_apply, MCH_OT_muscle_skin)
+           MCH_OT_muscle_shape_save, MCH_OT_muscle_shape_delete, MCH_OT_muscle_set, MCH_OT_muscle_apply, MCH_OT_muscle_skin)
 _HANDLE = [None]
 
 
