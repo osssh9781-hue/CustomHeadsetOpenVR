@@ -87,7 +87,7 @@ PRESET_ITEMS = [(p[0], p[1], ('Click: ' + ', '.join(p[2]) if p[2] else 'Click po
 STYLES = (('CREATURE', 'Muscle', 'A muscle: smooth, fibres, tendons'),
           ('ARTIFICIAL', 'Artificial Muscle', 'A core in a holed sleeve, end caps'),
           ('CABLE', 'Cables', 'Cables between the points, end caps'),
-          ('BAND', 'Woven Bands', 'Flat woven bands lying over each other, toothed tabs where they start, a clamp '
+          ('BAND', 'Pods', 'Smooth pods in your muscle shapes (or flat bands lying over each other, toothed tabs where they start, a clamp '
            'where they end (a synthetic chest / arm)'))
 CORES = (('BUNDLE', 'Fibre Bundle', 'Thin fibres twisting round each other'),
          ('SMOOTH', 'Smooth', 'One smooth spindle'),
@@ -734,7 +734,7 @@ def clean_line(tp, K, S=CLEAN_SIDES):
     ang = (np.arange(S) + 0.5) / S * 2 * math.pi - math.pi
     R = np.full((K, S), np.nan)
     Cn = np.full((K, 2), np.nan)
-    half = 0.55 / (K - 1)
+    half = max(0.55 / (K - 1), 0.028)                 # (never a thinner slice than the shape's own points fill)
     for i in range(K):
         m = np.abs(t - tk[i]) <= half
         if m.sum() < 3:
@@ -761,7 +761,7 @@ def clean_line(tp, K, S=CLEAN_SIDES):
     for c in range(2):
         Cn[:, c] = np.interp(ii, ii[have], Cn[have, c])
     R = (np.roll(R, 1, axis=1) + R * 6 + np.roll(R, -1, axis=1)) / 8.0     # smooth: a little round each ring
-    for _ in range(2):                                # ... and along the muscle
+    for _ in range(max(2, round(K * K / 400))):       # ... and along the muscle (as smooth at any Detail)
         P_ = np.pad(R, ((1, 1), (0, 0)), mode='edge')
         R = (P_[:-2] + P_[1:-1] * 2 + P_[2:]) / 4.0
         Pc = np.pad(Cn, ((1, 1), (0, 0)), mode='edge')
@@ -853,7 +853,7 @@ def _put(mesh, tp, pos, tend, ang):
         mesh.add_f(idx, 0)
 
 
-def lay_line(mesh, tp, P, N, pg, ext, share=1.0):
+def lay_line(mesh, tp, P, N, pg, ext, share=1.0, along=False):
     """A LINE shape along a strand's path (its length between the points, Length round its middle): along t, across
     s, up v (both over its length); its underside on the surface (Sink: that much of it into it)."""
     seg = np.linalg.norm(np.diff(P, axis=0), axis=1)
@@ -883,6 +883,8 @@ def lay_line(mesh, tp, P, N, pg, ext, share=1.0):
     full = np.interp(t, np.linspace(0.0, 1.0, len(tp['lo'])), -tp['lo'] / max(-tp['lo'].min(), 1e-9))
     tend = np.clip(1.0 - (full - 0.12) / 0.3, 0.0, 1.0)
     ang = np.arctan2(v - (lo + depth * 0.5), s)
+    if along:                                         # (a band: how far along it, for its surface pattern)
+        tend = np.clip(t, 0.0, 1.0)
     _put(mesh, tp, pos, tend, ang)
     return Lm, (C[0], T[0], nrm[0]), (C[-1], T[-1], nrm[-1])
 
@@ -945,6 +947,9 @@ def lay_fan(context, mesh, tp, ob, pg):
     tend = np.clip((t - 0.8) / 0.2, 0.0, 1.0)
     tend = tend * tend * (3 - 2 * tend)
     ang = u * math.pi * 2.0 * 3.0
+    if pg.style == 'BAND':
+        tend = np.clip(t, 0.0, 1.0)
+        ang = np.full(len(t), math.pi / 2)
     _put(mesh, tp, pos, tend, ang)
     return Lb
 
@@ -976,7 +981,7 @@ def sculpt_mesh(context, ob, sid):
     paths = paths_of(context, ob, strands=None if many else 1)
     lens = []
     for P, N, _w in paths:
-        Lm, e0, e1 = lay_line(mesh, tp, P, N, pg, 0.3, share=(1.0 / math.sqrt(len(paths)) if many else 1.0))
+        Lm, e0, e1 = lay_line(mesh, tp, P, N, pg, 0.3, share=(1.0 / math.sqrt(len(paths)) if many else 1.0), along=mecha)
         lens.append(Lm)
         if mecha:
             for (c_, t_, n_), sgn in ((e0, -1.0), (e1, 1.0)):
@@ -994,7 +999,7 @@ def band(mesh, C, A1, A2, ra, rb, mat=0, sides=16):
             c_, s_ = math.cos(a), math.sin(a)
             x = math.copysign(abs(c_) ** 0.25, c_)
             y = math.copysign(abs(s_) ** 0.6, s_)
-            ring.append(mesh.add_v(C[i] + A1[i] * x * ra[i] + A2[i] * y * rb[i], 0.0, a))
+            ring.append(mesh.add_v(C[i] + A1[i] * x * ra[i] + A2[i] * y * rb[i], i / max(len(C) - 1, 1), a))
         rings.append(ring)
     for i in range(len(C) - 1):
         for k in range(sides):
@@ -1024,6 +1029,96 @@ def _weave(m, amount, scale):
         bump.inputs['Strength'].default_value = min(max(amount, 0.0), 1.0)
         bump.inputs['Distance'].default_value = 0.002
         nt.nodes['MCH Weave Tex'].inputs['Scale'].default_value = scale
+
+
+# 0.24.185 (user's references - "약간 고등어 같은 느낌": smooth pods, a pattern over the back that fades out):
+SURFACES = (('WEAVE', 'Weave', 'A fine woven cloth'),
+            ('SCALES', 'Glossy Scales', 'A glossy shell, rows of small scale dents over its back fading to its ends'),
+            ('DIMPLES', 'Dimpled Rubber', 'Matt rubber, dimples all over'),
+            ('NET', 'Clear Net', 'A see-through net (a clear mesh sleeve)'))
+SURFACE_LOOK = {'WEAVE': ((0.5, 0.5, 0.52), 0.7, 0.0), 'SCALES': ((0.3, 0.015, 0.02), 0.18, 1.0),
+                'DIMPLES': ((0.025, 0.025, 0.028), 0.5, 0.0), 'NET': ((0.75, 0.85, 0.95), 0.15, 0.0)}
+
+
+def _surface(m, pg):
+    """A band's surface: dots in rows (every other row half a step on) round and along it - dents (Scales: over its
+    back only, fading to its ends; Dimples: all over) or the holes of a net.  In the material - no points."""
+    nt = m.node_tree
+    bs = next((n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED'), None)
+    for n in [n for n in nt.nodes if n.name.startswith('MCHS')]:
+        nt.nodes.remove(n)
+    kind = pg.band_surface
+    if bs is None:
+        return
+    for sock in ('Normal', 'Alpha'):
+        for l in list(bs.inputs[sock].links):
+            if not l.from_node.name.startswith('MCH '):
+                nt.links.remove(l)
+    bs.inputs['Alpha'].default_value = 1.0
+    try:
+        bs.inputs['Coat Weight'].default_value = SURFACE_LOOK[kind][2]
+        bs.inputs['Transmission Weight'].default_value = 0.6 if kind == 'NET' else 0.0
+    except KeyError:
+        pass
+    bs.inputs['Roughness'].default_value = SURFACE_LOOK[kind][1]
+    if kind == 'WEAVE':
+        return
+    k = [0]
+
+    def node(kind_, **props):
+        n = nt.nodes.new(kind_)
+        k[0] += 1
+        n.name = f'MCHS {k[0]}'
+        for a, v in props.items():
+            setattr(n, a, v)
+        return n
+
+    def math_(op, a, b=None):
+        n = node('ShaderNodeMath', operation=op)
+        for i, v in enumerate((a, b)):
+            if v is None:
+                continue
+            if isinstance(v, (int, float)):
+                n.inputs[i].default_value = v
+            else:
+                nt.links.new(v, n.inputs[i])
+        return n.outputs[0]
+
+    def attr(name):
+        n = node('ShaderNodeAttribute')
+        n.attribute_name = name
+        return n.outputs['Fac']
+    c_, s_, t_ = attr(FIB_C), attr(FIB_S), attr(TEND)
+    rows = float(pg.band_weave_scale) / 4.0                       # rows along it
+    round_ = max(round(rows * 0.45), 6.0)                         # dots round it
+    x = math_('MULTIPLY', math_('ARCTAN2', s_, c_), round_ / (2 * math.pi))
+    y = math_('MULTIPLY', t_, rows)
+    odd = math_('MULTIPLY', math_('MODULO', math_('FLOOR', y), 2.0), 0.5)
+    fx = math_('SUBTRACT', math_('FRACT', math_('ADD', x, odd)), 0.5)
+    fy = math_('SUBTRACT', math_('FRACT', y), 0.5)
+    d = math_('SQRT', math_('ADD', math_('MULTIPLY', fx, fx), math_('MULTIPLY', fy, fy)))
+    r = 0.42 if kind == 'NET' else 0.3
+    def smooth(x_, lo_, hi_):
+        n = node('ShaderNodeMapRange', interpolation_type='SMOOTHSTEP')
+        nt.links.new(x_, n.inputs[0])
+        n.inputs[1].default_value, n.inputs[2].default_value = lo_, hi_
+        n.inputs[3].default_value, n.inputs[4].default_value = 0.0, 1.0
+        return n.outputs[0]
+    dot = math_('SUBTRACT', 1.0, smooth(d, r - 0.08, r))
+    if kind == 'NET':
+        nt.links.new(math_('SUBTRACT', 1.0, dot), bs.inputs['Alpha'])
+        return
+    amt = dot
+    if kind == 'SCALES':                              # (over its back, fading out to its ends and its sides)
+        back = smooth(s_, 0.1, 0.75)
+        ends = math_('SINE', math_('MULTIPLY', t_, math.pi))
+        amt = math_('MULTIPLY', dot, math_('MULTIPLY', back, math_('POWER', ends, 1.5)))
+    bump = node('ShaderNodeBump')
+    bump.invert = True
+    bump.inputs['Strength'].default_value = min(max(float(pg.band_weave), 0.0), 1.0)
+    bump.inputs['Distance'].default_value = 0.004
+    nt.links.new(amt, bump.inputs['Height'])
+    nt.links.new(bump.outputs['Normal'], bs.inputs['Normal'])
 
 
 def cable_layout(n, r):
@@ -1201,7 +1296,8 @@ def materials(ob):
         _fibres(core, float(pg.fibers), float(pg.fiber_scale))
     if pg.style == 'BAND':
         _principled(core, pg.band_color, 0.7, 0.0)
-        _weave(core, float(pg.band_weave), float(pg.band_weave_scale))
+        _weave(core, float(pg.band_weave) if pg.band_surface == 'WEAVE' else 0.0, float(pg.band_weave_scale))
+        _surface(core, pg)
     else:
         _weave(core, 0.0, float(pg.band_weave_scale))
     _principled(slv, pg.sleeve_color, 0.35, 0.6)
@@ -1438,7 +1534,7 @@ LIVE = ('preset', 'shape', 'sculpt', 'my_shape', 'style', 'strands', 'twist', 's
         'segments', 'sink', 'fibers', 'fiber_scale', 'smooth', 'resolution', 'remesh', 'color', 'tendon_color', 'core',
         'core_count', 'core_size', 'core_color', 'holes', 'hole_size', 'hole_cells', 'sleeve_thick', 'sleeve_color',
         'cap', 'cap_size', 'cap_length', 'cap_color', 'cable_radius', 'cable_count', 'cable_ties', 'cable_twist', 'cable_spread',
-        'band_teeth', 'band_weave', 'band_weave_scale', 'band_color')
+        'band_surface', 'band_teeth', 'band_weave', 'band_weave_scale', 'band_color')
 
 
 def make(context, tool, pts):
@@ -1660,6 +1756,17 @@ def _upd_preset(self, context):
     _upd(self, context)
 
 
+def _upd_surface(self, context):
+    if _BUSY[0]:
+        return
+    _BUSY[0] = True
+    try:
+        self.band_color = SURFACE_LOOK[self.band_surface][0]
+    finally:
+        _BUSY[0] = False
+    _upd(self, context)
+
+
 class MCH_PG_Muscle(bpy.types.PropertyGroup):
     preset: EnumProperty(name='Muscle', items=PRESET_ITEMS, default='SPINDLE', update=_upd_preset)
     shape: EnumProperty(name='Shape', items=SHAPES, default='SCULPT', update=_upd,
@@ -1723,6 +1830,7 @@ class MCH_PG_Muscle(bpy.types.PropertyGroup):
     cap_color: FloatVectorProperty(name='Caps', subtype='COLOR', size=3, min=0.0, max=1.0, default=(0.6, 0.58, 0.52),
                                    update=_upd)
     cable_radius: FloatProperty(name='Cable Thickness', default=0.2, min=0.05, max=1.0, update=_upd)
+    band_surface: EnumProperty(name='Surface', items=SURFACES, default='SCALES', update=_upd_surface)
     band_teeth: IntProperty(name='Tabs', default=4, min=0, max=12, update=_upd,
                             description='Toothed tabs where each band starts (0: none)')
     band_weave: FloatProperty(name='Weave', default=0.6, min=0.0, max=1.0, update=_upd,
@@ -1730,7 +1838,7 @@ class MCH_PG_Muscle(bpy.types.PropertyGroup):
     band_weave_scale: FloatProperty(name='Weave Size', default=260.0, min=20.0, max=2000.0, update=_upd,
                                     description='Finer weave (higher)')
     band_color: FloatVectorProperty(name='Bands', subtype='COLOR', size=3, min=0.0, max=1.0,
-                                    default=(0.5, 0.5, 0.52), update=_upd)
+                                    default=(0.3, 0.015, 0.02), update=_upd)
     cable_count: IntProperty(name='Cables in a Bundle', default=5, min=1, max=37, update=_upd,
                              description='How many cables each bundle is made of')
     cable_ties: IntProperty(name='Ties', default=0, min=0, max=12, update=_upd,
@@ -2170,8 +2278,9 @@ def draw(layout, context, tool='MUSCLE'):
         r.prop(pg, 'tendon_color', text='')
     elif style == 'BAND':
         col = layout.column(align=True)
-        col.label(text='Woven Bands')
-        for k in ('band_teeth', 'band_weave', 'band_weave_scale'):
+        col.label(text='Surface')
+        col.row(align=True).prop(pg, 'band_surface', expand=True)
+        for k in ('band_weave', 'band_weave_scale', 'band_teeth'):
             col.prop(pg, k)
         r = col.row(align=True)
         r.prop(pg, 'band_color', text='')
