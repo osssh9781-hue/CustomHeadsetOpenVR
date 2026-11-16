@@ -16,6 +16,10 @@
   8. Face Pop Split (user: "페이스 팝은 별개의 메쉬로 분리되어야지" - "그냥 페이스 팝도 유지하고 스플릿 버전도"): a REAL
      click on "Split", a REAL click on a rock's face - a piece of its own (the rock not touched); a REAL drag over two
      more - into the same piece; Alt + a REAL click - one off
+  9. Bend any part (user: "내가 만든 오브젝트를 나중에 벤드로 휠 수 있는 거"): a bar selected, a REAL click on "Bend" in
+     the Layers window's Live Stack, a REAL drag on "Bend Up / Down" - bent
+ 10. (user: "눈 끈 거만 한 번에 카메라 꺼지게, 다시 켜는 것도"): a part's eye off, a REAL click on "No Render" (the hidden ones) -
+     out of renders; a REAL click on "Render Again" - back
 """
 import math
 import os
@@ -642,6 +646,79 @@ def flow():
         '- into the same piece; Alt + a REAL click on it - one off'] = (
         S.mch_pop.mode == 'SPLIT' and m1 == (1, 1) and m2[0] == 1 and m2[1] >= 3 and m3 == (1, m2[1] - 1) and same)
     shot('8_face_pop_alt.png')
+    # 9 Bend a bar from the Layers window's Live Stack
+    from mecha_lab import bend_any, layers_panel, render_hidden
+    globals()['lp'] = layers_panel
+    with C.temp_override(window=w, area=a, region=r):
+        for o in list(S.objects):
+            bpy.data.objects.remove(o)
+        bpy.ops.mesh.primitive_grid_add(x_subdivisions=48, y_subdivisions=3, size=1.0)
+        bar = C.active_object
+        bar.name = 'Bar'
+        bar.scale = (3.0, 0.4, 1.0)
+        bpy.ops.object.transform_apply(scale=True)
+        sm = bar.modifiers.new('S', 'SOLIDIFY')
+        sm.thickness = 0.08
+        bpy.ops.object.modifier_apply(modifier='S')
+        for o in C.selected_objects:
+            o.select_set(False)
+        bar.select_set(True)
+        C.view_layer.objects.active = bar
+        view((math.radians(80), 0.0, 0.0), (0.0, 0.0, 0.3), 5.0)
+    set_tool('SELECT') if 'SELECT' in __import__('mecha_lab').tool_state.TOOL_BY_ID else None
+    with C.temp_override(window=w, area=a, region=r):
+        for o in C.selected_objects:
+            o.select_set(False)
+        bar.select_set(True)
+        C.view_layer.objects.active = bar
+    yield 2.0
+    it = lfind(lambda i: getattr(i, 'label', '') == 'Bend' and i.clickable())
+    if it is not None:
+        yield from lclick(it)
+    yield 1.0
+    on9 = bend_any.has(bar)
+    it2 = None
+    for _k in range(30):                               # (the Layers window scrolled to it: the wheel's way)
+        it2 = lfind(lambda i: getattr(i, 'label', '') == 'Bend Up / Down' and i.clickable())
+        if it2 is not None:
+            break
+        with C.temp_override(window=w, area=a, region=r):
+            layers_panel.scroll_by(C, r.width, r.height, ui_factor(C, r), 80)
+        yield from wait_draws(1)
+    yield from wait_draws(2)
+    it2 = lfind(lambda i: getattr(i, 'label', '') == 'Bend Up / Down' and i.clickable())
+    if it2 is not None:
+        yield from slider_drag(it2, 0.5, int(it2.w * 0.05), steps=10)
+    yield 1.5
+    dg = C.evaluated_depsgraph_get()
+    zmax = max(v.co.z for v in bar.evaluated_get(dg).data.vertices)
+    log('9 bend: added', on9, 'slider', it2 is not None, 'up', round(math.degrees(bar.mch_bend.up), 1), 'ends z',
+        round(zmax, 3))
+    res['9 Bend any part: a REAL click on "Bend" in the Live Stack, a REAL drag on "Bend Up / Down" - bent'] = (
+        on9 and abs(bar.mch_bend.up) > math.radians(10) and zmax > 0.1)
+    shot('9_bend.png')
+    C.window_manager.mch_layers_scroll = 0.0
+    yield from wait_draws(2)
+    # 10 eye-off parts out of renders, and back
+    with C.temp_override(window=w, area=a, region=r):
+        bpy.ops.mesh.primitive_cube_add(size=0.5, location=(0.0, 0.0, 1.5))
+        cub = C.active_object
+        cub.name = 'Hidden Cube'
+        cub.hide_set(True)
+    yield 1.0
+    it = lfind(lambda i: getattr(i, 'label', '').startswith('No Render') and i.clickable())
+    if it is not None:
+        yield from lclick(it)
+    yield 1.0
+    off10 = cub.hide_render
+    it = lfind(lambda i: getattr(i, 'label', '').startswith('Render Again') and i.clickable())
+    if it is not None:
+        yield from lclick(it)
+    yield 1.0
+    back10 = not cub.hide_render
+    log('10 hidden: no render', off10, 'render again', back10)
+    res['10 a part\'s eye off: a REAL click on "No Render" (the hidden ones) - out of renders; "Render Again" - back'] = (
+        off10 and back10)
     bpy.types.SpaceView3D.draw_handler_remove(handle, 'WINDOW')
     for k_, v in res.items():
         log(('PASS ' if v else 'FAIL ') + k_)

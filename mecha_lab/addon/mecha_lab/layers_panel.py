@@ -335,6 +335,17 @@ def content(context, x, width, k):
         for i, (label, action, ok) in enumerate(cells2):
             out.append(Item('tbtn', x + i * (cw2 + GAP * k), y, cw2, ROW * k, label, '', False, ok, action))
         y -= GAP * k
+    try:                                     # 0.24.180 (user: "눈 끈 거만 한 번에 카메라 꺼지게, 다시 켜는 것도")
+        from . import render_hidden
+        cells3 = render_hidden.toolbar_cells(context)
+    except (ImportError, AttributeError, ReferenceError, RuntimeError):
+        cells3 = []
+    if cells3:
+        cw3 = (width - GAP * k * (len(cells3) - 1)) / len(cells3)
+        y -= ROW * k
+        for i, (label, action, ok) in enumerate(cells3):
+            out.append(Item('tbtn', x + i * (cw3 + GAP * k), y, cw3, ROW * k, label, '', False, ok, action))
+        y -= GAP * k
     try:                                     # 0.24.59 ZBrush's Active / Total Points Count
         from . import point_counts
         act, tot = point_counts(context)
