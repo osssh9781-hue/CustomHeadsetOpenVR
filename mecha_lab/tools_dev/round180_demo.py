@@ -262,12 +262,12 @@ def scene_loops():
     bx = C.active_object
     bx.data.materials.append(steel)
     st.profile, st.width = 'CHAMFER', 0.25
-    print(bb.perform(C, bx, [(0.0, -0.9, 1.0)], whole=True, reach=0.08, loop=True))
+    print(bb.perform(C, bx, [(0.0, -0.9, 1.0)], whole=True, reach=0.15, loop=True))
     bpy.ops.mesh.primitive_cylinder_add(vertices=48, radius=1.0, depth=2.0, location=(-1.5, 0.0, 0.0))
     cy = C.active_object
     cy.data.materials.append(steel)
     st.profile, st.width, st.segments = 'ROUND', 0.25, 10
-    print(bb.perform(C, cy, [(0.0, -0.95, 1.0)], whole=True, reach=0.08, loop=True))
+    print(bb.perform(C, cy, [(0.0, -0.95, 1.0)], whole=True, reach=0.15, loop=True))
     bpy.ops.mesh.primitive_cube_add(size=2.0, location=(1.5, 0.0, 0.0))
     pl = C.active_object
     pl.scale = (1.0, 0.25, 1.0)
@@ -283,7 +283,7 @@ def scene_loops():
     pl.data.materials.clear()
     pl.data.materials.append(steel)
     st.profile, st.width = 'CHAMFER', 0.12
-    print(bb.perform(C, pl, [(0.0, -0.25, 0.4)], whole=True, reach=0.08, loop=True))
+    print(bb.perform(C, pl, [(0.0, -0.25, 0.4)], whole=True, reach=0.15, loop=True))
     bpy.ops.mesh.primitive_cube_add(size=2.0, location=(4.5, 0.0, 0.0))
     lo = C.active_object
     bpy.ops.mesh.primitive_cube_add(size=2.0, location=(4.5, 1.0, 1.0))
@@ -298,7 +298,7 @@ def scene_loops():
     lo.data.materials.clear()
     lo.data.materials.append(steel)
     st.profile, st.width = 'ROUND', 0.25
-    print(bb.perform(C, lo, [(0.0, -0.95, 1.0)], whole=True, reach=0.08, loop=True))
+    print(bb.perform(C, lo, [(0.0, -0.95, 1.0)], whole=True, reach=0.15, loop=True))
     bpy.ops.mesh.primitive_cube_add(size=2.0, location=(0.0, 4.0, 0.0))
     gb = C.active_object
     gb.data.materials.append(mat('Geo', (0.45, 0.3, 0.22), 0.45, 0.3))
@@ -364,7 +364,7 @@ def scene_bend():
     ar.relative_offset_displace = (1.15, 0.0, 0.0)
     bend_any.add(C, b3)
     b3.mch_bend.side = math.radians(140)
-    stage((0.0, -8.5, 6.0), (0.3, 0.6, 0.0), lens=38)
+    stage((1.4, -10.5, 6.5), (1.4, 0.9, 0.2), lens=30)
     shoot('bend_any', thick=0.0012)
 
 

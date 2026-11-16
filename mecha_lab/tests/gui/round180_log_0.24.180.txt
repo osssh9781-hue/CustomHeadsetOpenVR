@@ -16,8 +16,15 @@ shot 5_loop_cut.png True
 6 geo chamfer loop: switch True edges marked 4
 shot 6_geo_loop.png True
 shot 7_save_dialog.png True
-7 saved ['Concrete 1'] file /tmp/claude-0/-home-user-CustomHeadsetOpenVR/7e2bc25f-fcd2-5c43-817f-f359a797ad9a/scratchpad/gui_clean/cfg/mecha_lab/my_presets.json cracks back 0.66
+7 saved ['Concrete 1'] file <scratch config>/mecha_lab/my_presets.json cracks back 0.66
 shot 7_preset.png True
+8 mode SPLIT
+shot 8_face_pop_piece.png True
+8 face pop pieces/faces: click (1, 1) drag (1, 3) alt (1, 2) rock untouched True piece Rock Pop parent Rock
+shot 8_face_pop_alt.png True
+9 bend: added True slider True up 294.0 ends z 1.069
+shot 9_bend.png True
+10 hidden: no render True render again True
 PASS 1 Amount: a REAL drag on its slider - more strands at once, nothing traced again
 PASS 2 Comb: a REAL click on Comb, a REAL drag - the strands turn that way; Alt + a REAL drag - back toward the shape; a REAL Ctrl + Z - that stroke off; a REAL Enter - done
 PASS 3 Gravity: a REAL drag on its slider - the tips come down, none into the head
@@ -25,4 +32,7 @@ PASS 4 a colour preset: a REAL click on Blonde - its colour
 PASS 5 Boolean Bevel Edge Loop: Shift + a REAL click by the top front edge - the top's four edges cut; Shift + Alt + a REAL click - all off
 PASS 6 Geo Sculpt Chamfer: a REAL click on "Edge Loop", a REAL click by the edge - the top's four edges
 PASS 7 Plate Detail 4: a REAL click on Save Preset, a REAL Enter - saved; a REAL click on it - its values back
-7/7 passed
+PASS 8 Face Pop Split: a REAL click on "Split", a REAL click - a piece of its own (the rock not touched); a REAL drag - into the same piece; Alt + a REAL click on it - one off
+PASS 9 Bend any part: a REAL click on "Bend" in the Live Stack, a REAL drag on "Bend Up / Down" - bent
+PASS 10 a part's eye off: a REAL click on "No Render" (the hidden ones) - out of renders; "Render Again" - back
+10/10 passed
