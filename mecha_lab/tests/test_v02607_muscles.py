@@ -172,7 +172,7 @@ for o in C.selected_objects:
     o.select_set(False)
 body.select_set(True)
 C.view_layer.objects.active = body
-r = bpy.ops.mch.muscle_skin(look='CREATURE')
+r = bpy.ops.mch.muscle_skin(look='CREATURE', how='SMOOTH')
 skin = C.active_object
 dg = C.evaluated_depsgraph_get()
 sv = np.array([skin.matrix_world @ v.co for v in skin.evaluated_get(dg).data.vertices])
@@ -187,6 +187,26 @@ skin.mch_mskin.detail = 120
 n1 = len(skin.evaluated_get(C.evaluated_depsgraph_get()).data.polygons)
 check(f'... Detail live ({n0} -> {n1} faces); Refresh Skin lays it again', n1 < n0 and
       bpy.ops.mch.muscle_skin_refresh() == {'FINISHED'})
+
+# the skin as a vacuum pack (the simulation itself: a few frames only here)
+from mecha_lab import vacuum_pack as vpk  # noqa: E402
+for o in C.selected_objects:
+    o.select_set(False)
+body.select_set(True)
+C.view_layer.objects.active = body
+S.mch_vacuum.points = 3000
+r = bpy.ops.mch.muscle_skin(look='CREATURE', how='VACUUM')
+film = C.active_object
+ok_start = r == {'FINISHED'} and vpk.is_film(film) and film.name.startswith('Skin') and len(film.data.vertices) > 1500
+n = 0
+while n < 5 and vpk.sim_step(C):
+    n += 1
+msg = vpk.sim_keep(C)
+fv = np.array([film.matrix_world @ v.co for v in film.data.vertices])
+check(f'Skin (Vacuum, folds): a bag tight round the body and the muscles ({len(fv)} cloth points), sucked on by '
+      f'Vacuum Pack\'s simulation ({n} frames here), kept: {msg}', ok_start and n == 5 and 'kept' in msg and
+      abs(fv[:, 2].max() - bv[:, 2].max()) < 0.25 and bpy.data.objects.get('MCH Skin Proxy') is not None and
+      bpy.data.objects['MCH Skin Proxy'].hide_get())
 
 mecha_lab.unregister()
 sys.exit(1 if summary() else 0)

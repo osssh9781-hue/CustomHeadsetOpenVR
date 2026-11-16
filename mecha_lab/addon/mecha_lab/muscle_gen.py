@@ -1934,6 +1934,134 @@ def make_skin(context, look='CREATURE'):
     return ob
 
 
+def skin_sources(context):
+    """The bodies the muscles are on (a kit: every part), the selected meshes, and every muscle."""
+    coll = bpy.data.collections.get(COLLECTION)
+    bodies, mus = [], []
+    if coll is not None:
+        for o in coll.objects:
+            if is_muscle(o):
+                mus.append(o)
+                bd = bpy.data.objects.get(data(o).get('body', ''))
+                if bd is not None and bd not in bodies:
+                    bodies.append(bd)
+    for o in context.selected_objects:
+        if o.type == 'MESH' and not is_muscle(o) and not is_skin(o) and o not in bodies:
+            bodies.append(o)
+    try:
+        from . import body_kit as bk
+        for o in list(bodies):
+            if bk.is_part(o):
+                for q in bk.parts_of(bk.root_of(o)):
+                    if q not in bodies:
+                        bodies.append(q)
+    except ImportError:
+        pass
+    return bodies, mus
+
+
+def make_vacuum_skin(context, look='CREATURE'):
+    """0.24.185 (user: "우리 진공팩처럼 만들면 되잖아 - 주름이 왜 하나도 없냐"): the skin as a Vacuum Pack - the bodies and
+    the muscles in one bag, the air sucked out (Blender's cloth: it buckles into folds).  Space runs it, Enter keeps it;
+    Suction / Tightness / Folds in the Cloth Drape window.  Returns (the film, report)."""
+    from . import vacuum_pack as vp
+    bodies, mus = skin_sources(context)
+    if not bodies and not mus:
+        raise RuntimeError('Make some muscles first (or select the bodies)')
+    # one closed mesh of them all first (a voxel remesh: open meshes and many parts too) - the bag is made round
+    # it and it is what the cloth is sucked onto
+    old = bpy.data.objects.get('MCH Skin Proxy')
+    if old is not None:
+        om = old.data
+        bpy.data.objects.remove(old)
+        if om.users == 0:
+            bpy.data.meshes.remove(om)
+    px = bpy.data.objects.new('MCH Skin Proxy', bpy.data.meshes.new('MCH Skin Proxy'))
+    context.scene.collection.objects.link(px)
+    px[SKIN_KEY] = json.dumps({'bodies': [o.name for o in bodies], 'look': look})
+    px.mch_mskin.tension = 0
+    px.mch_mskin.detail = 200
+    refresh_skin(context, px)
+    dg = context.evaluated_depsgraph_get()
+    pm = bpy.data.meshes.new_from_object(px.evaluated_get(dg), depsgraph=dg)
+    for m in list(px.modifiers):
+        px.modifiers.remove(m)
+    raw = px.data
+    px.data = pm
+    bpy.data.meshes.remove(raw)
+    del px[SKIN_KEY]
+    for o in context.selected_objects:
+        o.select_set(False)
+    px.select_set(True)
+    context.view_layer.objects.active = px
+    st = context.scene.mch_vacuum
+    st.points = max(int(st.points), 20000)            # (enough points for folds)
+    # the bag: the same closed surface a little off the body - tight round every limb (Vacuum Pack's own bag closes
+    # the gaps between the arms and the body into one sack), of about Points points
+    bg = bpy.data.objects.new('MCH Skin Bag', bpy.data.meshes.new('MCH Skin Bag'))
+    context.scene.collection.objects.link(bg)
+    bg[SKIN_KEY] = json.dumps({'bodies': [o.name for o in bodies], 'look': look})
+    bg.mch_mskin.tension = 3
+    bg.mch_mskin.adaptivity = 0.0
+    bg.mch_mskin.fat = 0.012 + 0.03 * float(st.bag)   # (Bag: how loose - more cloth to fold)
+    detail = 110
+    bag = None
+    for _try in range(3):
+        bg.mch_mskin.detail = int(detail)
+        refresh_skin(context, bg)
+        dg = context.evaluated_depsgraph_get()
+        if bag is not None:
+            bpy.data.meshes.remove(bag)
+        bag = bpy.data.meshes.new_from_object(bg.evaluated_get(dg), depsgraph=dg)
+        n = max(len(bag.vertices), 1)
+        if abs(n - st.points) < st.points * 0.2:
+            break
+        detail = max(40, min(600, detail * math.sqrt(st.points / n)))
+    raw = bg.data
+    bpy.data.objects.remove(bg)
+    bpy.data.meshes.remove(raw)
+    bm = bmesh.new()                                  # (the remesh's stray crumbs off: only the body's own pieces)
+    bm.from_mesh(bag)
+    bm.verts.ensure_lookup_table()
+    seen, groups = set(), []
+    for v in bm.verts:
+        if v.index in seen:
+            continue
+        st_, grp = [v], [v]
+        seen.add(v.index)
+        while st_:
+            x = st_.pop()
+            for e in x.link_edges:
+                y = e.other_vert(x)
+                if y.index not in seen:
+                    seen.add(y.index)
+                    st_.append(y)
+                    grp.append(y)
+        groups.append(grp)
+    big = max((len(g) for g in groups), default=0)
+    junk = [v for g in groups if len(g) < big * 0.05 for v in g]
+    if junk:
+        bmesh.ops.delete(bm, geom=junk, context='VERTS')
+    bm.to_mesh(bag)
+    bm.free()
+    try:
+        msg = vp.perform(context, bag=bag)
+    finally:
+        px.hide_set(True)
+        px.hide_render = True
+    film = context.active_object
+    film.name = 'Skin' if look == 'CREATURE' else 'Mecha Skin'
+    vp._sim()['ob'] = film.name                       # (the simulation finds it by its name)
+    mat = bpy.data.materials.new('MCH Skin' if look == 'CREATURE' else 'MCH Mecha Skin')
+    mat.use_nodes = True
+    _principled(mat, (0.55, 0.4, 0.33) if look == 'CREATURE' else (0.12, 0.13, 0.14),
+                0.5 if look == 'CREATURE' else 0.35, 0.0 if look == 'CREATURE' else 0.3,
+                sss=0.2 if look == 'CREATURE' else 0.0)
+    film.data.materials.clear()
+    film.data.materials.append(mat)
+    return film, msg
+
+
 def refresh_skin(context, ob):
     """The skin's own mesh again from the bodies and the muscles as they are now (all joined, in the world); its
     modifiers - a voxel remesh (one closed surface over them all, open meshes too), a smooth (Tension), a push out
@@ -2575,8 +2703,22 @@ class MCH_OT_muscle_skin(bpy.types.Operator):
     bl_label = 'Skin Over Muscles'
     bl_options = {'REGISTER', 'UNDO'}
     look: StringProperty(default='CREATURE')
+    how: StringProperty(default='VACUUM')
 
     def execute(self, context):
+        if self.how == 'VACUUM':                      # 0.24.185 the skin sucked on like a vacuum pack: folds
+            from . import core_geometry as cg
+            try:
+                film, msg = make_vacuum_skin(context, self.look)
+            except (RuntimeError, ValueError, cg.CutError) as ex:
+                self.report({'WARNING'}, str(ex))
+                return {'CANCELLED'}
+            try:                                      # (its Space / Enter / sliders: the Cloth Drape tool's)
+                bpy.ops.mch.bar_tool(tool='CDRAPE')
+            except (RuntimeError, AttributeError, TypeError):
+                pass
+            self.report({'INFO'}, f'{film.name}: {msg}')
+            return {'FINISHED'}
         try:
             ob = make_skin(context, self.look)
         except RuntimeError as ex:
@@ -2677,8 +2819,10 @@ def draw(layout, context, tool='MUSCLE'):
         _draw_caps(layout, pg, tool)
         _draw_my(layout, MY_ALL, 'Whole Muscle', tool)
     row = layout.row(align=True)
-    o = row.operator('mch.muscle_skin', text='Skin Over All', icon='MOD_SKIN')
-    o.look = 'MECHA' if tool == 'MMUSCLE' else 'CREATURE'
+    o = row.operator('mch.muscle_skin', text='Skin (Vacuum, folds)', icon='MOD_CLOTH')
+    o.look, o.how = ('MECHA' if tool == 'MMUSCLE' else 'CREATURE'), 'VACUUM'
+    o = row.operator('mch.muscle_skin', text='Smooth Skin', icon='MOD_SKIN')
+    o.look, o.how = ('MECHA' if tool == 'MMUSCLE' else 'CREATURE'), 'SMOOTH'
     if ob is not None:
         row.operator('mch.muscle_apply', text='Apply (Enter)', icon='CHECKMARK')
     if is_skin(skin):

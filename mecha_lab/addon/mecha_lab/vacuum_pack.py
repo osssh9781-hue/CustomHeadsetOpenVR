@@ -352,20 +352,30 @@ def bag_mesh(context, parts, loose, points):
     try:
         detail = 80
         me = None
-        for _try in range(2):                           # (the detail that gives about Points points)
+        good = None                                     # (the last bag that came out - 0.24.185: a finer try can
+        for _try in range(4):                           # come out empty on thin shapes; then a detail between)
             for sock, v in (('Size', size), ('Hug', 1.0 - 0.75 * loose), ('Gap', 0.035), ('Detail', int(detail)),
                             ('Creases', 0.0), ('Crease Size', 0.04), ('Seed', 0), ('Over Parts', 0.0),
                             ('Center', (0.0, 0.0, 0.0)), ('E1', (1.0, 0.0, 0.0)), ('E2', (0.0, 1.0, 0.0))):
                 gs.set_input(mod, sock, v)
             dg = context.evaluated_depsgraph_get()
             dg.update()
-            if me is not None:
-                bpy.data.meshes.remove(me)
             me = bpy.data.meshes.new_from_object(tmp.evaluated_get(dg), depsgraph=dg)
             n = len(me.vertices)
-            if n == 0 or abs(n - points) < points * 0.25:
+            if n == 0:
+                bpy.data.meshes.remove(me)
+                me = None
+                if good is None:
+                    break
+                detail = (detail + good[1]) * 0.5       # (too fine: half way back to the one that worked)
+                continue
+            if good is not None:
+                bpy.data.meshes.remove(good[0])
+            good = (me, detail)
+            if abs(n - points) < points * 0.25:
                 break
             detail = max(20, min(600, detail * math.sqrt(points / n)))
+        me = good[0] if good is not None else bpy.data.meshes.new('MCH Vacuum Bag empty')
     finally:
         bpy.data.objects.remove(tmp)
         if tmp_me.users == 0:
@@ -517,7 +527,7 @@ def _gather(film, me, vp, frame0):
     return len(idx)
 
 
-def perform(context):
+def perform(context, bag=None):
     """The selected meshes in one bag, ready to be sucked in (Space).  Returns a report."""
     from . import cloth_drape as cd
     from . import core_geometry as cg
@@ -528,7 +538,7 @@ def perform(context):
         raise cg.CutError('Vacuum Pack: select the meshes to seal in the bag')
     vp = context.scene.mch_vacuum
     size = bounds_size(context, parts)
-    me = bag_mesh(context, parts, vp.bag, vp.points)
+    me = bag if bag is not None else bag_mesh(context, parts, vp.bag, vp.points)   # (bag: one made by the caller)
     if not len(me.vertices):
         bpy.data.meshes.remove(me)
         raise cg.CutError('Vacuum Pack: the bag came out empty')
