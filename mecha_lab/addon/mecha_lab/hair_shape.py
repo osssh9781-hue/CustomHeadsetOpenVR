@@ -625,10 +625,11 @@ def _tufts(G, N, size_):
     return np.array([kd.find(Vector(q))[1] for q in mid], np.int64)
 
 
-def finish(G, p, size, seed, pieces=None, colors=None, body_colors=None):
+def finish(G, p, size, seed, pieces=None, colors=None, body_colors=None, base=None):
     """The strands as drawn (local): (points (N, seg, 3), radius (N, seg), colour (N, seg, 4)) - the traced ones
     ``G`` (n, seg, 3) and Amount - n more beside them; Spread, Clump (+ Size), Tip Gather, Volume, Length Random,
-    Frizz, Curl; thickness; colour (``colors``: painted, per traced point)."""
+    Frizz, Curl; thickness; colour (``colors``: painted, per traced point).  ``base``: the traced strands as traced
+    (the others are set round their roots by them: a comb or Gravity does not move the roots)."""
     rng = np.random.default_rng(seed + 7)
     nT = len(G)
     seg = G.shape[1] if nT else int(p.segments)
@@ -641,13 +642,21 @@ def finish(G, p, size, seed, pieces=None, colors=None, body_colors=None):
     S = G[src].copy()
     kids = np.nonzero(np.arange(N) >= nT)[0]
     if len(kids):                                      # (made beside a traced one: Spread)
-        tan = S[kids, 1] - S[kids, 0]
+        B = base if base is not None and base.shape == G.shape else G
+        tan = B[src[kids], 1] - B[src[kids], 0]
         tan /= np.maximum(np.linalg.norm(tan, axis=1, keepdims=True), 1e-12)
         o = rng.normal(size=(len(kids), 3))
         o -= tan * np.sum(o * tan, axis=1, keepdims=True)
         o /= np.maximum(np.linalg.norm(o, axis=1, keepdims=True), 1e-12)
         o *= (h * (0.4 + 3.0 * float(p.spread)) * rng.random(len(kids)) ** 0.5)[:, None]
         S[kids] += o[:, None, :]
+    if p.length_random > 0:
+        cut = 1.0 - float(p.length_random) * rng.random(N)
+        u = cut[:, None] * np.arange(seg)[None, :]
+        i0 = np.clip(np.floor(u).astype(np.int64), 0, seg - 2)
+        w = (u - i0)[..., None]
+        S = (np.take_along_axis(S, i0[..., None], axis=1) * (1.0 - w)
+             + np.take_along_axis(S, (i0 + 1)[..., None], axis=1) * w)
     if p.clump > 0:                                    # (the tips gathered into tufts)
         cen = _tufts(G, N, p.clump_size)
         S += (G[cen[src]] - S) * (float(p.clump) * t ** 0.8)[None, :, None]
@@ -662,13 +671,6 @@ def finish(G, p, size, seed, pieces=None, colors=None, body_colors=None):
             mid = {k: G[pc == k].mean(0) for k in ids}
             Mi = np.array([mid[k] for k in pc[src]])
             S += (S - Mi) * (float(p.volume) * 0.6 * np.minimum(t * 3.0, 1.0))[None, :, None]
-    if p.length_random > 0:
-        cut = 1.0 - float(p.length_random) * rng.random(N)
-        u = cut[:, None] * np.arange(seg)[None, :]
-        i0 = np.clip(np.floor(u).astype(np.int64), 0, seg - 2)
-        w = (u - i0)[..., None]
-        S = (np.take_along_axis(S, i0[..., None], axis=1) * (1.0 - w)
-             + np.take_along_axis(S, (i0 + 1)[..., None], axis=1) * w)
     spread = h * 1.6
     if p.frizz > 0:
         wv = rng.normal(size=(N, 4, 3)) * spread * float(p.frizz)
@@ -885,7 +887,8 @@ def rebuild(ob, context=None, force_trace=False):
         cache = _trace_into(context, ob, a)
         _CACHE[ob.name] = cache
     G = guides(ob, cache, p, context)
-    P, R, Cc = finish(G, p, cache['size'], p.seed, cache['pieces'], cache.get('C0'), cache.get('body_colors'))
+    P, R, Cc = finish(G, p, cache['size'], p.seed, cache['pieces'], cache.get('C0'), cache.get('body_colors'),
+                      cache.get('G0'))
     _write(ob, P, R, Cc)
     viewport_share(ob, p.display)
     return len(P)
@@ -1526,7 +1529,7 @@ class MCH_OT_hair_shape_comb(bpy.types.Operator):
             cache['Gf'][rows] = settle(ob, cache, cache['Gc'], context, rows=rows, force=True)
             p = ob.mch_hshape
             P, R_, Cc = finish(cache['Gf'], p, cache['size'], p.seed, cache['pieces'], cache.get('C0'),
-                               cache.get('body_colors'))
+                               cache.get('body_colors'), cache.get('G0'))
             _write(ob, P, R_, Cc)
 
     def _commit(self, ob):
