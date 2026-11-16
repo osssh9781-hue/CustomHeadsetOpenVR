@@ -770,6 +770,27 @@ def sculpt_mesh(context, ob, sid):
     return mesh, (lens[0] if lens else 1.0)
 
 
+def cable_layout(n, r):
+    """Where the ``n`` cables (radius ``r``) of a bundle sit round its middle [(x, y)]: touching, as tight as they go
+    (one; a ring up to six; then one in the middle and rings round it)."""
+    if n <= 1:
+        return [(0.0, 0.0)]
+    if n <= 6:
+        R = r / math.sin(math.pi / n)
+        return [(R * math.cos(2 * math.pi * i / n), R * math.sin(2 * math.pi * i / n)) for i in range(n)]
+    out = [(0.0, 0.0)]
+    ring = 1
+    while len(out) < n:
+        R = 2.0 * r * ring
+        m = min(6 * ring, n - len(out))
+        full = 6 * ring
+        for i in range(m):
+            a = 2 * math.pi * i / full + (0.5 * math.pi / full if ring % 2 == 0 else 0.0)
+            out.append((R * math.cos(a), R * math.sin(a)))
+        ring += 1
+    return out
+
+
 def build_mesh(context, ob):
     """The muscle's mesh from its paths and sliders (``Mesh``), and the length of its first strand."""
     pg = ob.mch_muscle
@@ -817,11 +838,27 @@ def build_mesh(context, ob):
             tend = np.clip(1.0 - (r2 - 0.16) / 0.5, 0.0, 1.0)
             tube(mesh, ctr, side, nrm, W2, H2, 0, tend=tend, flat=0.55, sides=18)
         elif style == 'CABLE':
-            rc = np.full(K, base_w * 0.18 * float(pg.cable_radius) / 0.2 * vol)
-            ctr = C + nrm * (rc * 1.05)[:, None]
-            tube(mesh, ctr, side, nrm, rc, rc, 0, sides=10)
+            # 0.24.185 (user: "케이블은 다발로 묶여야지, 다발 개수도 내가 정할 수 있고"): a bundle of cables side by
+            # side round its middle, tied with bands
+            nc = max(int(pg.cable_count), 1)
+            r1 = base_w * 0.18 * float(pg.cable_radius) / 0.2 * vol / math.sqrt(max(nc, 1)) * 1.25
+            offs = cable_layout(nc, r1)
+            Rb = max((math.hypot(x, y) for x, y in offs), default=0.0) + r1      # the bundle's radius
+            ctr = C + nrm * (Rb * 1.05)
+            tk = np.linspace(0.0, 1.0, K)
+            tw = tk * math.pi * 2.0 * float(pg.cable_twist)
+            rc = np.full(K, r1)
+            for ox, oy in offs:
+                dx = ox * np.cos(tw) - oy * np.sin(tw)
+                dy = ox * np.sin(tw) + oy * np.cos(tw)
+                tube(mesh, ctr + side * dx[:, None] + nrm * dy[:, None], side, nrm, rc, rc, 0,
+                     sides=8 if nc > 6 else 10)
+            for j in range(int(pg.cable_ties)):               # the ties: bands round the bundle
+                k_ = int(round((j + 1) / (int(pg.cable_ties) + 1) * (K - 1)))
+                cylinder(mesh, ctr[k_], T[k_], Rb * 1.12, max(L * 0.025, r1 * 1.2), mat=2, r_in=Rb * 0.98, sides=20,
+                         side=side[k_])
             for end, sgn in ((0, -1.0), (K - 1, 1.0)):
-                cap(mesh, pg.cap, ctr[end], T[end] * sgn, nrm[end], rc[end] * 1.4, L * float(pg.cap_length) * 0.6,
+                cap(mesh, pg.cap, ctr[end], T[end] * sgn, nrm[end], Rb * 1.15, L * float(pg.cap_length) * 0.6,
                     float(pg.cap_size), mat=2)
         else:                                         # ARTIFICIAL: core, sleeve, caps
             R = np.maximum(W, H) * 0.5 + 1e-6
@@ -1116,7 +1153,7 @@ def _collection(context):
 LIVE = ('preset', 'shape', 'sculpt', 'style', 'strands', 'twist', 'spread', 'thickness', 'width', 'volume', 'length', 'belly', 'tendon',
         'segments', 'sink', 'fibers', 'fiber_scale', 'smooth', 'resolution', 'remesh', 'color', 'tendon_color', 'core',
         'core_count', 'core_size', 'core_color', 'holes', 'hole_size', 'hole_cells', 'sleeve_thick', 'sleeve_color',
-        'cap', 'cap_size', 'cap_length', 'cap_color', 'cable_radius')
+        'cap', 'cap_size', 'cap_length', 'cap_color', 'cable_radius', 'cable_count', 'cable_ties', 'cable_twist')
 
 
 def make(context, tool, pts):
@@ -1399,6 +1436,12 @@ class MCH_PG_Muscle(bpy.types.PropertyGroup):
     cap_color: FloatVectorProperty(name='Caps', subtype='COLOR', size=3, min=0.0, max=1.0, default=(0.6, 0.58, 0.52),
                                    update=_upd)
     cable_radius: FloatProperty(name='Cable Thickness', default=0.2, min=0.05, max=1.0, update=_upd)
+    cable_count: IntProperty(name='Cables in a Bundle', default=5, min=1, max=37, update=_upd,
+                             description='How many cables each bundle is made of')
+    cable_ties: IntProperty(name='Ties', default=3, min=0, max=12, update=_upd,
+                            description='Bands that tie the bundle along its length')
+    cable_twist: FloatProperty(name='Bundle Twist', default=0.25, min=0.0, max=3.0, update=_upd,
+                               description='The cables wind round each other (turns along its length)')
 
 
 # ---- the clicks ------------------------------------------------------------------------------------------------------------
@@ -1771,7 +1814,9 @@ def draw(layout, context, tool='MUSCLE'):
         r.prop(pg, 'tendon_color', text='')
     elif style == 'CABLE':
         col = layout.column(align=True)
-        col.prop(pg, 'cable_radius')
+        col.label(text='Cable Bundle')
+        for k in ('cable_count', 'cable_radius', 'cable_ties', 'cable_twist'):
+            col.prop(pg, k)
         _draw_caps(layout, pg, tool)
     else:
         _draw_core(layout, pg, tool)
