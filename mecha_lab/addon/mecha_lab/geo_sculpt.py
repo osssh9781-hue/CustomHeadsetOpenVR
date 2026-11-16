@@ -1031,13 +1031,85 @@ def _bevel_mod(ob, kind):
     return mod
 
 
-def _sync_bevel(ob, kind):
-    """The drawn widths ('<attr>_w') as weights 0..1 on the modifier's attribute, the modifier width = the widest."""
-    me = ob.data
+def _raw_widths(me, kind):
     raw = me.attributes.get(BEVEL_ATTR[kind] + '_w')
     w = np.zeros(len(me.edges), np.float32)
     if raw is not None and len(me.edges):
         raw.data.foreach_get('value', w)
+    return w
+
+
+def safe_widths(me):
+    """0.24.177 (user: "처음엔 돼도 같은 메쉬 다른 곳에 한 번 더 그으면 이렇게 돼"): {kind: the widths the bevels get} -
+    the drawn widths, each run of joined edges (one kind) capped by what fits beside it.  Blender's Clamp Overlap
+    narrowed EVERY bevel of the part to its tightest spot (a second stroke along a narrow strip between panel holes
+    shrank the first chamfer 0.08 -> 0.06, and less on busier parts); now only the run that does not fit is narrower.
+    What fits: the bevel slides its points along the face edges next to the bevelled edge - at most 90 % of such an
+    edge (45 % when its other end is bevelled too), measured square to the bevelled edge."""
+    import math as _m
+    raws = {kd: _raw_widths(me, kd) for kd in BEVEL_MODS}
+    n = len(me.edges)
+    marked = np.zeros(n, bool)
+    for w in raws.values():
+        marked |= w > 0
+    if not marked.any():
+        return raws
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.edges.ensure_lookup_table()
+    bev_v = set()
+    for i in np.nonzero(marked)[0]:
+        bev_v.update(v.index for v in bm.edges[int(i)].verts)
+    cap = np.full(n, np.inf)
+    for i in np.nonzero(marked)[0]:
+        e = bm.edges[int(i)]
+        c = _m.inf
+        for f in e.link_faces:
+            for v in e.verts:
+                d0 = e.other_vert(v).co - v.co
+                for sp in v.link_edges:
+                    if sp is e or marked[sp.index] or f not in sp.link_faces:
+                        continue
+                    o = sp.other_vert(v)
+                    d1 = o.co - v.co
+                    if d0.length < 1e-12 or d1.length < 1e-12:
+                        continue
+                    sin = abs(_m.sin(d0.angle(d1)))
+                    if sin < 0.1:              # (the edge going on straight - split there, a boolean's T point:
+                        continue               #  the bevel ends at that point, it slides along nothing)
+                    c = min(c, (0.45 if o.index in bev_v else 0.9) * d1.length * sin)
+        cap[i] = c
+    out = {}
+    for kd, w in raws.items():
+        idx = np.nonzero(w > 0)[0]
+        eff = w.copy()
+        if len(idx):                                   # (runs of joined edges of this kind: one width each)
+            parent = {}
+
+            def find(x):
+                while parent.setdefault(x, x) != x:
+                    parent[x] = parent[parent[x]]
+                    x = parent[x]
+                return x
+            for i in idx:
+                a_, b_ = (v.index for v in bm.edges[int(i)].verts)
+                parent[find(a_)] = find(b_)
+            run_cap = {}
+            for i in idx:
+                r = find(bm.edges[int(i)].verts[0].index)
+                run_cap[r] = min(run_cap.get(r, _m.inf), cap[i])
+            for i in idx:
+                eff[i] = min(float(w[i]), run_cap[find(bm.edges[int(i)].verts[0].index)])
+        out[kd] = eff
+    bm.free()
+    return out
+
+
+def _sync_bevel(ob, kind, eff=None):
+    """The widths ('<attr>_w' as drawn, ``eff`` as they fit) as weights 0..1 on the modifier's attribute, the modifier
+    width = the widest; no Clamp Overlap (each run is capped by ``safe_widths`` instead)."""
+    me = ob.data
+    w = eff if eff is not None else _raw_widths(me, kind)
     wmax = float(w.max()) if len(w) else 0.0
     a = me.attributes.get(BEVEL_ATTR[kind]) or me.attributes.new(BEVEL_ATTR[kind], 'FLOAT', 'EDGE')
     if len(me.edges):
@@ -1053,6 +1125,7 @@ def _sync_bevel(ob, kind):
         return None
     mod = _bevel_mod(ob, kind)
     mod.width = wmax
+    mod.use_clamp_overlap = False
     _place_after_bevels(ob)
     return mod
 
@@ -1084,8 +1157,9 @@ def mark_bevel(ob, kind, pts, radius, remove=False):
             w[idx] = 0.0
             o.data.foreach_set('value', w)
         kinds = (kind, other)
+    eff = safe_widths(me)
     for kd in kinds:
-        _sync_bevel(ob, kd)
+        _sync_bevel(ob, kd, eff[kd])
     me.update()
     return len(idx)
 
