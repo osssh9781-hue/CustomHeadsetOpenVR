@@ -7,8 +7,22 @@ shot 2_comb_done.png True
 shot 3_gravity.png True
 4 colour (0.3, 0.21, 0.1) True
 shot 4_blonde.png True
+5 hover: part, run, loop Box 11 None
+shot 5_loop_hover.png True
+5 hover with Shift: part, run, loop edges ('Box', 11, 4)
+shot 5_loop_shift_hover.png True
+shot 5_loop_cut.png True
+5 bool bevel loop [0.2, 0.2, 0.2, 0.2] -> alt [0.0, 0.0, 0.0, 0.0]
+6 geo chamfer loop: switch True edges marked 4
+shot 6_geo_loop.png True
+shot 7_save_dialog.png True
+7 saved ['Concrete 1'] file /tmp/claude-0/-home-user-CustomHeadsetOpenVR/7e2bc25f-fcd2-5c43-817f-f359a797ad9a/scratchpad/gui_clean/cfg/mecha_lab/my_presets.json cracks back 0.66
+shot 7_preset.png True
 PASS 1 Amount: a REAL drag on its slider - more strands at once, nothing traced again
 PASS 2 Comb: a REAL click on Comb, a REAL drag - the strands turn that way; Alt + a REAL drag - back toward the shape; a REAL Ctrl + Z - that stroke off; a REAL Enter - done
 PASS 3 Gravity: a REAL drag on its slider - the tips come down, none into the head
 PASS 4 a colour preset: a REAL click on Blonde - its colour
-4/4 passed
+PASS 5 Boolean Bevel Edge Loop: Shift + a REAL click by the top front edge - the top's four edges cut; Shift + Alt + a REAL click - all off
+PASS 6 Geo Sculpt Chamfer: a REAL click on "Edge Loop", a REAL click by the edge - the top's four edges
+PASS 7 Plate Detail 4: a REAL click on Save Preset, a REAL Enter - saved; a REAL click on it - its values back
+7/7 passed

@@ -8,6 +8,11 @@
   3. Gravity (user: "그래비티나 그런 게 왜 메쉬 머리카락에는 안 되는겨"): a REAL drag on the Gravity slider - the tips
      come down, none into the head
   4. a colour preset (user: "원래 기존에 있던 헤어 세팅 다 쓸 수 있으면"): a REAL click on Blonde - its colour
+  5. Boolean Bevel Edge Loop (user: "엣지 루프 기능도 만들어 주라 - 베벨 말이지"): Shift + a REAL click by a box's top
+     front edge, on the top - the top's four edges cut; Shift + Alt + a REAL click - all off
+  6. Geo Sculpt Chamfer: a REAL click on "Edge Loop" in the window, a REAL click by the edge - the top's four edges
+  7. Plate Detail 4 (user: "디테일 플레이트 4에 프리셋 저장도 만들어 줘"): a REAL click on Save Preset, a REAL Enter -
+     saved (a scratch config folder, not the user's); a value changed, a REAL click on the saved one - back
 """
 import math
 import os
@@ -441,6 +446,133 @@ def flow():
     log('4 colour', tuple(round(x, 3) for x in p.root_color), ok4)
     res['4 a colour preset: a REAL click on Blonde - its colour'] = bool(ok4)
     shot('4_blonde.png')
+    # 5 Boolean Bevel: Edge Loop by Shift + click
+    from mecha_lab import bool_bevel as bb, geo_sculpt as gs, my_presets as mp, plate_detail as pd
+    with C.temp_override(window=w, area=a, region=r):
+        for o in list(S.objects):
+            bpy.data.objects.remove(o)
+        bpy.ops.mesh.primitive_cube_add(size=2.0)
+        box = C.active_object
+        box.name = 'Box'
+        for o in C.selected_objects:
+            o.select_set(False)
+        view((math.radians(62), 0.0, math.radians(-28)), (0.0, 0.0, 0.0), 6.5)
+    S.mch_bool_bevel.profile, S.mch_bool_bevel.width, S.mch_bool_bevel.edge_loop = 'CHAMFER', 0.2, False
+    set_tool('BBEVEL')
+    yield 2.0
+
+    def cutd(ob, pts):
+        me = ob.data
+        bv = BVHTree.FromPolygons([tuple(v.co) for v in me.vertices], [tuple(f.vertices) for f in me.polygons])
+        return [round(bv.find_nearest(Vector(q))[3] * math.sqrt(2), 3) for q in pts]
+
+    tops = [(0, -1, 1), (0, 1, 1), (-1, 0, 1), (1, 0, 1)]
+    xdo('mousemove', *screen_xy((0.0, -0.92, 1.0)))
+    yield from wait_draws(2)
+    xdo('mousemove', *screen_xy((0.02, -0.92, 1.0)))
+    yield from wait_draws(3)
+    log('5 hover: part, run, loop', bb.HOVER.get('part'), bb.HOVER.get('run'), bb.HOVER.get('loop'))
+    shot('5_loop_hover.png')
+    xdo('keydown', 'shift')
+    yield 0.3
+    xdo('mousemove', *screen_xy((0.05, -0.92, 1.0)))
+    yield from wait_draws(2)
+    xdo('mousemove', *screen_xy((0.07, -0.92, 1.0)))
+    yield from wait_draws(3)
+    hov = (bb.HOVER.get('part'), bb.HOVER.get('run'), len(bb.HOVER.get('loop') or ()))
+    log('5 hover with Shift: part, run, loop edges', hov)
+    shot('5_loop_shift_hover.png')
+    xdo('click', 1)
+    yield 0.4
+    xdo('keyup', 'shift')
+    yield 3.0
+    c1 = cutd(box, tops)
+    shot('5_loop_cut.png')
+    xdo('mousemove', *screen_xy((0.0, -0.95, 0.95)))
+    yield from wait_draws(2)
+    xdo('keydown', 'shift')
+    xdo('keydown', 'alt')
+    yield 0.3
+    xdo('click', 1)
+    yield 0.4
+    xdo('keyup', 'alt')
+    xdo('keyup', 'shift')
+    yield 3.0
+    c2 = cutd(box, tops)
+    log('5 bool bevel loop', c1, '-> alt', c2)
+    res['5 Boolean Bevel Edge Loop: Shift + a REAL click by the top front edge - the top\'s four edges cut; Shift + Alt + '
+        'a REAL click - all off'] = all(abs(x - 0.2) < 5e-3 for x in c1) and all(x < 1e-4 for x in c2)
+    # 6 Geo Sculpt Chamfer with the Edge Loop switch
+    with C.temp_override(window=w, area=a, region=r):
+        for o in list(S.objects):
+            bpy.data.objects.remove(o)
+        bpy.ops.mesh.primitive_cube_add(size=2.0)
+        gb = C.active_object
+        for o in C.selected_objects:
+            o.select_set(False)
+    S.mch_geo.brush, S.mch_geo.size_px, S.mch_geo.edge_loop = 'CHAMFER', 40, False
+    set_tool('GSCULPT')
+    yield 2.0
+    it = yield from scrolled_item('Edge Loop  (Shift + click)')
+    if it is not None:
+        yield from press(it)
+    on6 = S.mch_geo.edge_loop
+    xdo('mousemove', *screen_xy((0.0, -0.9, 1.0)))
+    yield from wait_draws(2)
+    xdo('click', 1)
+    yield 3.0
+    wts = gs.safe_widths(gb.data)['CHAMFER']
+    n6 = int((wts > 0).sum())
+    log('6 geo chamfer loop: switch', on6, 'edges marked', n6)
+    res['6 Geo Sculpt Chamfer: a REAL click on "Edge Loop", a REAL click by the edge - the top\'s four edges'] = (
+        on6 and n6 == 4)
+    shot('6_geo_loop.png')
+    # 7 Plate Detail 4: Save Preset
+    with C.temp_override(window=w, area=a, region=r):
+        for o in list(S.objects):
+            bpy.data.objects.remove(o)
+        bpy.ops.mesh.primitive_plane_add(size=4.0)
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.subdivide(number_cuts=30)
+        bpy.ops.object.mode_set(mode='OBJECT')
+        for o in C.selected_objects:
+            o.select_set(False)
+        view((math.radians(38), 0.0, math.radians(10)), (0.0, 0.0, 0.0), 4.0)
+    S.mch_brush.shape = 'STROKE'
+    set_tool('DETAIL4')
+    yield 2.0
+    yield from real_outline(ring_at(Vector((0.0, 0.0, 0.0)), 260, 160, wob=0.08))
+    plate = next((o for o in S.objects if pd.is_detail(o)), None)
+    ok7 = False
+    if plate is not None:
+        with C.temp_override(window=w, area=a, region=r):
+            for o in C.selected_objects:
+                o.select_set(False)
+            plate.select_set(True)
+            C.view_layer.objects.active = plate
+        plate.mch_pdetail.r_cracks = 0.66
+        yield 1.0
+        before = set(mp.names(pd.MY_KIND))
+        it = yield from scrolled_item('Save Preset')
+        if it is not None:
+            yield from press(it)
+        yield 1.0
+        shot('7_save_dialog.png')
+        xdo('key', 'Return')
+        yield 2.0
+        new = sorted(set(mp.names(pd.MY_KIND)) - before)
+        plate.mch_pdetail.r_cracks = 0.1
+        yield 1.0
+        it2 = (yield from scrolled_item(new[0])) if new else None
+        if it2 is not None:
+            yield from press(it2)
+        yield 1.5
+        back7 = plate.mch_pdetail.r_cracks
+        conf = mp.path()
+        log('7 saved', new, 'file', conf, 'cracks back', round(back7, 3))
+        ok7 = bool(new) and abs(back7 - 0.66) < 1e-4 and 'gui_clean' in conf
+    res['7 Plate Detail 4: a REAL click on Save Preset, a REAL Enter - saved; a REAL click on it - its values back'] = ok7
+    shot('7_preset.png')
     bpy.types.SpaceView3D.draw_handler_remove(handle, 'WINDOW')
     for k_, v in res.items():
         log(('PASS ' if v else 'FAIL ') + k_)

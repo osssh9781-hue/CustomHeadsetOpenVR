@@ -646,7 +646,9 @@ class MCH_OT_bool_bevel_hover(bpy.types.Operator):
             try:
                 runs = runs_for(ob)
                 p_l = ob.matrix_world.inverted_safe() @ loc
-                got = runs.nearest(p_l, _reach_px(context, ob, loc))
+                reach = max(context.scene.mch_bool_bevel.width * 1.5 / _mean_scale(ob),
+                            _reach_px(context, ob, loc, 24.0))          # (0.24.180 as far as a click takes one)
+                got = runs.nearest(p_l, reach)
                 run = got[0] if got is not None else None
                 if got is not None and want_loop:
                     loop = loop_edges(runs, got[1], p_l)[0]
