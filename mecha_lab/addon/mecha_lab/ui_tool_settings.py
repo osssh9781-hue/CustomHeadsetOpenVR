@@ -1044,6 +1044,11 @@ def draw_detail4(layout, context):
     plate_detail.draw(layout, context, 'DETAIL4')
 
 
+def draw_bbevel(layout, context):
+    from . import bool_bevel             # 0.24.178 Boolean Bevel
+    bool_bevel.draw(layout, context)
+
+
 def draw_press(layout, context):
     from . import press_cut
     press_cut.draw(layout, context)
@@ -1180,6 +1185,7 @@ DRAWERS = {
     'PRIMITIVE': draw_primitive, 'PLATE': draw_plate, 'WRINKLE': draw_wrinkle, 'CDRAPE': draw_cloth_drape, 'ZONE': draw_lasso_zone, 'WLINES': draw_wrinkle_lines, 'CBASE': draw_base,
     'CPLATE': draw_cplate, 'BELT': draw_belt, 'SPIKE': draw_spike,
     'SCALES': draw_scales, 'SBRUSH': draw_scale_brush, 'BRIDGE': draw_bridge, 'FLOWER': draw_flower, 'CAPE': draw_cape, 'SCAPE': draw_scarf_cape, 'HAIR': draw_hair, 'GARMENT': draw_clothing, 'HOOD': draw_hood, 'SCARF': draw_scarf, 'SCURVE': draw_surface_curve,
+    'BBEVEL': draw_bbevel,
     'EXTRACT': draw_extract, 'MOLDING': draw_molding, 'HOLLOW': draw_hollow, 'ALONG': draw_along,
     'CABLE': draw_cable, 'TUBE': draw_tube, 'TUBE_SAME': draw_line_curve, 'DETAIL3': draw_detail3, 'DETAIL4': draw_detail4, 'HIDE': draw_hide, 'DETAIL': draw_detail, 'DETAIL2': draw_detail2, 'SCREW': draw_screw, 'PRESS': draw_press,
     # MIRROR, RADIAL, SURFACE: own sub-panels.

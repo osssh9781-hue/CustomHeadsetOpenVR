@@ -68,8 +68,10 @@ BRUSHES = (
                           '- in a band as wide as the brush both sides go flat (Alt: an inward edge)'),
     ('PANEL', 'Panel Line', 'Draw a line: a panel line along it - a groove with a flat floor and straight walls, as wide '
                             'as the brush, only as far as you drew it (Alt: a raised rib)'),
-    ('CHAMFER', 'Chamfer', 'Stroke along a hard edge of the part: it is chamfered, as wide as the brush (Alt: taken off)'),
-    ('ROUND', 'Round', 'Stroke along a hard edge of the part: it is rounded, as wide as the brush (Alt: taken off)'),
+    ('CHAMFER', 'Chamfer', 'Click one of the shown edges of the part: it is chamfered, as wide as the brush (drag: '
+                           'every edge the brush passes; Alt: taken off)'),
+    ('ROUND', 'Round', 'Click one of the shown edges of the part: it is rounded, as wide as the brush (drag: every edge '
+                       'the brush passes; Alt: taken off)'),
 )
 BRUSH_ROWS = (('STANDARD', 'CLAY', 'BUILDUP'), ('FLAT', 'MOVE', 'SMOOTH'), ('EDGE', 'PANEL'), ('CHAMFER', 'ROUND'))
 BRUSH_COLOUR = {'STANDARD': (1.0, 0.62, 0.15, 0.95), 'CLAY': (1.0, 0.62, 0.15, 0.95), 'BUILDUP': (1.0, 0.62, 0.15, 0.95),
@@ -78,6 +80,7 @@ BRUSH_COLOUR = {'STANDARD': (1.0, 0.62, 0.15, 0.95), 'CLAY': (1.0, 0.62, 0.15, 0
 POINT_ATTRS = (('stroke', 'INT'), ('radius', 'FLOAT'), ('strength', 'FLOAT'), ('kind', 'INT'),
                ('move', 'FLOAT_VECTOR'), ('normal', 'FLOAT_VECTOR'), ('fade', 'FLOAT'))
 _CURSOR = [None]
+_EDGES = [None]                 # 0.24.178 the Chamfer / Round edges you can pick (POST_VIEW)
 
 
 # -----------------------------------------------------------------------------
@@ -1133,8 +1136,24 @@ def _sync_bevel(ob, kind, eff=None):
 def mark_bevel(ob, kind, pts, radius, remove=False):
     """Chamfer / Round the part's hard edges along a stroke (local space) as wide as ``radius``; remove: taken off
     (both kinds).  Returns the number of edges changed."""
+    return mark_edges(ob, kind, edges_along(ob.data, pts, radius), radius, remove)
+
+
+def pick_run(ob, p_local, reach):
+    """0.24.178 the run of hard edges (edge_runs) nearest ``p_local`` within ``reach``: (run id, its edges) or None."""
+    from . import edge_runs
+    runs = edge_runs.get(ob)
+    hit = runs.nearest(p_local, reach)
+    if hit is None:
+        return None
+    return hit[0], list(runs.edge_ids[hit[0]])
+
+
+def mark_edges(ob, kind, idx, radius, remove=False):
+    """Chamfer / Round the edges ``idx`` as wide as ``radius`` (local); remove: taken off (both kinds).  Returns how
+    many."""
     me = ob.data
-    idx = edges_along(me, pts, radius)
+    idx = list(idx)
     if not idx:
         return 0
     kinds = tuple(BEVEL_MODS) if remove else (kind,)
@@ -1433,7 +1452,7 @@ def _circle(cx, cy, r, colour, width=2.0, dashed=False):
         ug.polyline(pts, colour, width, closed=True)
 
 
-HOVER = {'region': None, 'xy': (-1.0, -1.0), 'drawn': None}
+HOVER = {'region': None, 'xy': (-1.0, -1.0), 'drawn': None, 'part': None, 'run': None}
 
 
 def draw_cursor():
@@ -1473,8 +1492,68 @@ class MCH_OT_geo_hover(bpy.types.Operator):
             if HOVER['region'] != region.as_pointer() or abs(xy[0] - HOVER['xy'][0]) + abs(xy[1] - HOVER['xy'][1]) >= 1.0:
                 HOVER['region'] = region.as_pointer()
                 HOVER['xy'] = xy
+                _hover_run(context, xy)
                 region.tag_redraw()
         return {'PASS_THROUGH'}
+
+
+def _hover_run(context, xy):
+    """0.24.178 Chamfer / Round: the part under the mouse and the run of hard edges under the brush (shown lit)."""
+    st = settings(context)
+    if st is None or st.brush not in BEVEL_MODS or not tool_active(context):
+        HOVER['part'] = HOVER['run'] = None
+        return
+    hit = pick_part(context, xy)
+    if hit is None:
+        HOVER['run'] = None
+        return
+    ob, loc, _n = hit
+    HOVER['part'] = ob.name
+    try:
+        ppw = px_per_world(context.region, context.region_data, loc)
+        sc = _mean_scale(ob)
+        reach = max(st.size_px / ppw, 12.0 / ppw) / sc
+        got = pick_run(ob, ob.matrix_world.inverted_safe() @ loc, reach)
+        HOVER['run'] = got[0] if got is not None else None
+    except (ReferenceError, RuntimeError, ValueError):
+        HOVER['run'] = None
+
+
+EDGE_DIM = (0.35, 0.85, 1.0, 0.55)
+EDGE_LIT = (1.0, 0.92, 0.2, 1.0)
+EDGE_CHAMFER = (0.95, 0.4, 1.0, 0.95)
+EDGE_ROUND = (0.6, 0.45, 1.0, 0.95)
+
+
+def draw_edges():
+    """0.24.178 (POST_VIEW) Chamfer / Round: the part's edges you can pick (dim), the chamfered / rounded ones (their
+    colours), the one under the brush (lit)."""
+    context = bpy.context
+    try:
+        st = settings(context)
+        if st is None or st.brush not in BEVEL_MODS or not tool_active(context) or MCH_OT_geo_size.RUNNING[0]:
+            return
+        name = HOVER['part']
+        running = MCH_OT_geo_stroke.RUNNING[0]
+        if running is not None:
+            name = running.ob.name
+        ob = bpy.data.objects.get(name) if name else None
+        if ob is None or ob.type != 'MESH':
+            return
+        from . import edge_runs
+        runs = edge_runs.get(ob)
+        edge_runs.draw_lines(edge_runs.world_segs(ob, runs), EDGE_DIM, 1.5)
+        me = ob.data
+        for kind, col in (('CHAMFER', EDGE_CHAMFER), ('ROUND', EDGE_ROUND)):
+            w = _raw_widths(me, kind)
+            ids = [int(i) for i in np.nonzero(w > 0)[0]]
+            if ids:
+                edge_runs.draw_lines(edge_runs.world_segs(ob, runs, ids), col, 3.0)
+        rid = HOVER['run']
+        if rid is not None and running is None and rid < len(runs.edge_ids):
+            edge_runs.draw_lines(edge_runs.world_segs(ob, runs, runs.edge_ids[rid]), EDGE_LIT, 4.0)
+    except (ReferenceError, AttributeError, RuntimeError, KeyError):
+        pass
 
 
 def _draw_stroke(op, context):
@@ -1485,7 +1564,7 @@ def _draw_stroke(op, context):
         x, y = op.mouse
         col = BRUSH_COLOUR.get(op.brush, (1, 1, 1, 0.9))
         _circle(x, y, op.r_px, col, 2.0, dashed=op.invert)
-        if op.brush in ('EDGE', 'PANEL', 'CHAMFER', 'ROUND') and len(op.screen) > 1:
+        if op.brush in ('EDGE', 'PANEL') and len(op.screen) > 1:
             from . import ui_gpu as ug
             ug.polyline(op.screen, col, 2.0)
         del st
@@ -1542,6 +1621,13 @@ class MCH_OT_geo_stroke(bpy.types.Operator):
             self.before = read_strokes(self.sob)
         else:
             self.sob, self.before = None, None
+            # 0.24.178 (user: "선을 긋는 게 아니라 내가 선택할 수 있는 엣지들을 보여 주는 게 나을 거 같고, 내가 설정한
+            # 브러시 크기로 베벨이랑 챔퍼가 생기고, 알트 누르면 지워지게"): the shown edge run under the brush is taken
+            # (click), every run the brush passes over while dragging too; the width = the brush
+            self.reach = max(self.radius, (12.0 / ppw) / _mean_scale(ob))
+            self.done_runs = set()
+            self.marked = 0
+            self._take(first[0])
         self._live()
         self._handle = bpy.types.SpaceView3D.draw_handler_add(_draw_stroke, (self, context), 'WINDOW', 'POST_PIXEL')
         MCH_OT_geo_stroke.RUNNING[0] = self
@@ -1552,6 +1638,15 @@ class MCH_OT_geo_stroke(bpy.types.Operator):
 
     def _spacing(self):
         return self.radius * (0.08 if self.brush in LINE_KINDS else 0.2)
+
+    def _take(self, p_local):
+        """Chamfer / Round: the run under the brush at ``p_local`` (once per stroke)."""
+        got = pick_run(self.ob, p_local, self.reach)
+        if got is None or got[0] in self.done_runs:
+            return
+        self.done_runs.add(got[0])
+        self.marked += mark_edges(self.ob, self.brush, got[1], self.radius, remove=self.invert)
+        HOVER['run'] = None
 
     def _live(self):
         """The stroke so far shown by the layer (Chamfer / Round: on release)."""
@@ -1582,6 +1677,11 @@ class MCH_OT_geo_stroke(bpy.types.Operator):
                 w = view3d_utils.region_2d_to_location_3d(context.region, context.region_data, xy, self.grab_world)
                 self.move = self.caster.mi.to_3x3() @ (w - self.grab_world)
                 self._live()
+            elif self.brush in BEVEL_MODS:
+                hit = self.caster.cast(context, xy)
+                if hit is not None:
+                    self._take(hit[0])
+                    self.screen.append(xy)
             else:
                 hit = self.caster.cast(context, xy)
                 if hit is not None and (Vector(hit[0]) - Vector(self.pts[-1])).length >= self._spacing():
@@ -1605,10 +1705,11 @@ class MCH_OT_geo_stroke(bpy.types.Operator):
     def _finish(self, context):
         self._end(context)
         if self.brush in BEVEL_MODS:
-            n = mark_bevel(self.ob, self.brush, self.pts, self.radius, remove=self.invert)
-            if not n:
-                self.report({'INFO'}, 'No hard edge along that stroke (stroke along an edge of the part)')
+            if not self.marked:
+                self.report({'INFO'}, 'No edge to pick there - put the brush over one of the shown edges')
                 return {'CANCELLED'}
+            what = 'off' if self.invert else ('chamfered' if self.brush == 'CHAMFER' else 'rounded')
+            self.report({'INFO'}, f'{len(self.done_runs)} edge run{"s" if len(self.done_runs) != 1 else ""} {what}')
             return {'FINISHED'}
         if self.brush in LINE_KINDS and len(self.pts) >= 3:
             p, n = smooth_line(self.pts, self.caster)
@@ -1835,7 +1936,12 @@ def draw(layout, context):
         row.operator('mch.geo_clear', text='Clear')
         row.operator('mch.geo_apply', text='Apply')
     col = layout.column(align=True)
-    for line in HELP:
+    lines = HELP
+    if st.brush in BEVEL_MODS:            # 0.24.178 pick edges, not a stroke
+        lines = ('Click a shown edge: ' + ('chamfered' if st.brush == 'CHAMFER' else 'rounded') + ', Draw Size wide',
+                 'Drag: every edge the brush passes.  Alt + click: off',
+                 'Yellow: the edge under the brush; pink / violet: done')
+    for line in lines:
         col.label(text=line)
 
 
@@ -1856,9 +1962,17 @@ def register():
             pass
     if _CURSOR[0] is None and not bpy.app.background:
         _CURSOR[0] = bpy.types.SpaceView3D.draw_handler_add(draw_cursor, (), 'WINDOW', 'POST_PIXEL')
+    if _EDGES[0] is None and not bpy.app.background:
+        _EDGES[0] = bpy.types.SpaceView3D.draw_handler_add(draw_edges, (), 'WINDOW', 'POST_VIEW')
 
 
 def unregister():
+    if _EDGES[0] is not None:
+        try:
+            bpy.types.SpaceView3D.draw_handler_remove(_EDGES[0], 'WINDOW')
+        except (ValueError, RuntimeError):
+            pass
+        _EDGES[0] = None
     if _CURSOR[0] is not None:
         try:
             bpy.types.SpaceView3D.draw_handler_remove(_CURSOR[0], 'WINDOW')

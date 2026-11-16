@@ -1,0 +1,289 @@
+"""0.24.178 the hard edges of a part as runs you can pick (user: "선을 긋는 게 아니라 내가 선택할 수 있는 엣지들을 보여주는 게
+나을 거 같고"): Geo Sculpt's Chamfer / Round and the Boolean Bevel tool show them over the part under the mouse, the run
+nearest the mouse lit; a click takes that run.
+
+A run = hard edges (sharp, Edge Memory, or faces folded more than 30 degrees) joined end to end where they go on nearly
+straight (less than 40 degrees turn) - one side of a box, the rim of a round hole, a panel line.  Everything is in the
+part's local space and read from its own mesh (not its modifiers); kept per mesh until the mesh changes.
+"""
+from __future__ import annotations
+
+import math
+
+import bmesh
+import bpy
+import numpy as np
+from mathutils import Vector
+from mathutils.kdtree import KDTree
+
+HARD_ANGLE = math.radians(30.0)
+TURN = math.radians(40.0)              # (two hard edges at a point: one run when the line turns less than this)
+_CACHE = {}
+
+
+class Runs:
+    """The runs of one mesh: ``co`` (N x 3), ``edges`` (hard edge index -> (a, b)), ``run_of`` (edge -> run),
+    ``paths`` (run -> its points in order), ``closed`` (run -> a loop), ``edge_ids`` (run -> its edges in order)."""
+
+    def __init__(self, me):
+        n = len(me.vertices)
+        co = np.empty(n * 3, np.float64)
+        me.vertices.foreach_get('co', co)
+        self.co = co.reshape(-1, 3)
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        bm.edges.ensure_lookup_table()
+        hard = set()
+        for name in ('sharp_edge', 'mch_hard'):
+            a = me.attributes.get(name)
+            if a is not None and a.domain == 'EDGE' and a.data_type == 'BOOLEAN' and len(me.edges):
+                v = np.zeros(len(me.edges), bool)
+                a.data.foreach_get('value', v)
+                hard.update(int(i) for i in np.nonzero(v)[0])
+        for e in bm.edges:
+            if len(e.link_faces) == 2:
+                try:
+                    if e.calc_face_angle() > HARD_ANGLE:
+                        hard.add(e.index)
+                except ValueError:
+                    pass
+        hard = {i for i in hard if len(bm.edges[i].link_faces) == 2}
+        self.edges = {i: (bm.edges[i].verts[0].index, bm.edges[i].verts[1].index) for i in hard}
+        self.normal = {}                       # edge -> the mean of its two faces' normals (off the surface)
+        self.faces = {}                        # edge -> its two faces' (normal, centre)
+        for i in hard:
+            fs = bm.edges[i].link_faces
+            n = (fs[0].normal + fs[1].normal)
+            self.normal[i] = np.array(n.normalized() if n.length > 1e-9 else fs[0].normal, float)
+            self.faces[i] = [(np.array(f.normal, float), np.array(f.calc_center_median(), float)) for f in fs]
+        # at each point: hard edges that go on nearly straight are joined (each edge to its straightest partner)
+        at = {}
+        for i, (a, b) in self.edges.items():
+            at.setdefault(a, []).append(i)
+            at.setdefault(b, []).append(i)
+        link = {i: {} for i in hard}           # edge -> {point: the edge it goes on into there}
+        for v, es in at.items():
+            if len(es) < 2:
+                continue
+            pairs = []
+            for x in range(len(es)):
+                for y in range(x + 1, len(es)):
+                    turn = math.pi - _angle(self._away(es[x], v), self._away(es[y], v))
+                    if turn < TURN:
+                        pairs.append((turn, es[x], es[y]))
+            used = set()
+            for _t, ex, ey in sorted(pairs):
+                if ex in used or ey in used:
+                    continue
+                used.update((ex, ey))
+                link[ex][v] = ey
+                link[ey][v] = ex
+        self.run_of = {}
+        self.paths, self.closed, self.edge_ids = [], [], []
+        for seed in sorted(hard):
+            if seed in self.run_of:
+                continue
+            # back to an end of the run (an edge with a free point), or round a loop to the seed again
+            e, came = seed, None
+            closed = False
+            for _guard in range(len(hard) + 1):
+                a, b = self.edges[e]
+                free = [v for v in (a, b) if v not in link[e]]
+                if free and e != seed or (free and came is None):
+                    break
+                nxt_v = next((v for v in (a, b) if v in link[e] and link[e][v] != came), None)
+                if nxt_v is None:
+                    break
+                came, e = e, link[e][nxt_v]
+                if e == seed:
+                    closed = True
+                    break
+            start = seed if closed else e
+            a, b = self.edges[start]
+            if closed:
+                v0 = a
+            else:
+                v0 = a if a not in link[start] else b
+            rid = len(self.paths)
+            verts, order = [v0], []
+            e, v = start, v0
+            for _guard in range(len(hard) + 1):
+                if e in self.run_of:
+                    break
+                self.run_of[e] = rid
+                order.append(e)
+                ea, eb = self.edges[e]
+                v = eb if ea == v else ea
+                verts.append(v)
+                e = link[e].get(v)
+                if e is None:
+                    break
+            if closed and len(verts) > 2 and verts[-1] == verts[0]:
+                verts.pop()
+            else:
+                closed = False
+            self.paths.append(verts)
+            self.closed.append(closed)
+            self.edge_ids.append(order)
+        bm.free()
+        ids = list(self.edges)
+        self._ids = np.array(ids, np.int64)
+        if ids:
+            ab = np.array([self.edges[i] for i in ids], np.int64)
+            self._a, self._b = self.co[ab[:, 0]], self.co[ab[:, 1]]
+            self.kd = KDTree(len(ids))
+            for k, (pa, pb) in enumerate(zip(self._a, self._b)):
+                self.kd.insert(Vector((pa + pb) / 2), k)
+            self.kd.balance()
+            self._half = float(np.max(np.linalg.norm(self._b - self._a, axis=1))) / 2
+        else:
+            self.kd = None
+            self._half = 0.0
+
+    def _away(self, e, v):
+        a, b = self.edges[e]
+        o = b if a == v else a
+        return self.co[o] - self.co[v]
+
+    def nearest(self, p, reach):
+        """(run, edge, distance) of the hard edge nearest ``p`` (local) within ``reach``, or None."""
+        if self.kd is None:
+            return None
+        p = np.asarray(p, float)
+        best = None
+        for _c, k, _d in self.kd.find_range(Vector(p), reach + self._half):
+            a, b = self._a[k], self._b[k]
+            d = b - a
+            t = float(np.clip(np.dot(p - a, d) / max(np.dot(d, d), 1e-18), 0.0, 1.0))
+            dist = float(np.linalg.norm(a + t * d - p))
+            if dist <= reach and (best is None or dist < best[2]):
+                e = int(self._ids[k])
+                best = (self.run_of[e], e, dist)
+        return best
+
+    def polyline(self, rid):
+        P = self.co[self.paths[rid]]
+        if self.closed[rid]:
+            P = np.vstack([P, P[:1]])
+        return P
+
+    def arc(self, rid, pts):
+        """Arc length along the run of the nearest point to each of ``pts`` (local); and the run's length."""
+        P = self.polyline(rid)
+        seg = P[1:] - P[:-1]
+        L = np.linalg.norm(seg, axis=1)
+        s0 = np.concatenate([[0.0], np.cumsum(L)])
+        out = []
+        for p in np.asarray(pts, float).reshape(-1, 3):
+            t = np.clip(((p - P[:-1]) * seg).sum(1) / np.maximum((seg * seg).sum(1), 1e-18), 0.0, 1.0)
+            q = P[:-1] + t[:, None] * seg
+            k = int(np.argmin(np.linalg.norm(q - p, axis=1)))
+            out.append(float(s0[k] + t[k] * L[k]))
+        return np.array(out), float(s0[-1])
+
+
+def _angle(a, b):
+    la, lb = float(np.linalg.norm(a)), float(np.linalg.norm(b))
+    if la < 1e-12 or lb < 1e-12:
+        return 0.0
+    return math.acos(max(-1.0, min(1.0, float(np.dot(a, b)) / (la * lb))))
+
+
+def _key(me):
+    n = len(me.vertices)
+    co = np.empty(n * 3, np.float32)
+    me.vertices.foreach_get('co', co)
+    return (n, len(me.edges), len(me.polygons), float(co.sum()) if n else 0.0, float(np.abs(co).sum()) if n else 0.0)
+
+
+def get(ob):
+    """The runs of ``ob``'s own mesh (cached until it changes)."""
+    me = ob.data
+    key = _key(me)
+    hit = _CACHE.get(me.name)
+    if hit is not None and hit[0] == key:
+        return hit[1]
+    r = Runs(me)
+    if len(_CACHE) > 16:
+        _CACHE.clear()
+    _CACHE[me.name] = (key, r)
+    return r
+
+
+def clear():
+    _CACHE.clear()
+
+
+# --- drawing (POST_VIEW, world space) ----------------------------------------------------------------------------
+
+def _shader():
+    import gpu
+    try:
+        return gpu.shader.from_builtin('POLYLINE_UNIFORM_COLOR')
+    except (ValueError, SystemError):
+        return gpu.shader.from_builtin('UNIFORM_COLOR')
+
+
+def draw_lines(segs, colour, width=2.0, xray=False):
+    """World segments [(a, b), ...] as lines (hidden behind the part unless ``xray``)."""
+    if not segs:
+        return
+    import gpu
+    from gpu_extras.batch import batch_for_shader
+    sh = _shader()
+    coords = [tuple(p) for s in segs for p in s]
+    batch = batch_for_shader(sh, 'LINES', {'pos': coords})
+    gpu.state.blend_set('ALPHA')
+    gpu.state.depth_test_set('NONE' if xray else 'LESS_EQUAL')
+    gpu.state.depth_mask_set(False)
+    try:
+        if 'POLYLINE' in getattr(sh, 'name', 'POLYLINE'):
+            try:
+                region = bpy.context.region
+                sh.uniform_float('viewportSize', (region.width, region.height))
+                sh.uniform_float('lineWidth', width)
+            except (ValueError, AttributeError):
+                pass
+        else:
+            gpu.state.line_width_set(width)
+        sh.uniform_float('color', colour)
+        batch.draw(sh)
+    finally:
+        gpu.state.depth_test_set('NONE')
+        gpu.state.blend_set('NONE')
+
+
+def world_segs(ob, runs, edge_ids=None, lift=None):
+    """World segments of the hard edges (all, or ``edge_ids``), lifted a little off the surface (so the depth test
+    keeps the ones in sight)."""
+    mw = ob.matrix_world
+    ids = list(runs.edges) if edge_ids is None else [e for e in edge_ids if e in runs.edges]
+    if lift is None:
+        lift = (float(np.ptp(runs.co, axis=0).max()) if len(runs.co) else 1.0) * 0.002
+    out = []
+    for e in ids:
+        a, b = runs.edges[e]
+        n = runs.normal[e] * lift
+        out.append((mw @ Vector(runs.co[a] + n), mw @ Vector(runs.co[b] + n)))
+    return out
+
+
+def portion_segs(ob, runs, rid, s0, s1, lift=None):
+    """World segments of a run between arc lengths ``s0`` and ``s1``."""
+    P = runs.polyline(rid)
+    L = np.linalg.norm(P[1:] - P[:-1], axis=1)
+    acc = np.concatenate([[0.0], np.cumsum(L)])
+    pts = []
+    for k in range(len(L)):
+        a, b = acc[k], acc[k + 1]
+        if b < s0 or a > s1 or L[k] < 1e-12:
+            continue
+        t0, t1 = max(s0, a), min(s1, b)
+        pts.append((P[k] + (P[k + 1] - P[k]) * ((t0 - a) / L[k]), P[k] + (P[k + 1] - P[k]) * ((t1 - a) / L[k])))
+    mw = ob.matrix_world
+    if lift is None:
+        lift = float(np.ptp(runs.co, axis=0).max()) * 0.003 if len(runs.co) else 0.0
+    ns = [runs.normal[e] for e in runs.edge_ids[rid]] or [np.zeros(3)]
+    n = np.mean(ns, axis=0)
+    n = n / max(np.linalg.norm(n), 1e-12) * lift
+    return [(mw @ Vector(pa + n), mw @ Vector(pb + n)) for pa, pb in pts]

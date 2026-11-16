@@ -169,6 +169,9 @@ TOOLS = (
      'subtract; Station Primitive presets; RMB = shape picker',
      'primitive', 'MESH_CUBE', 'mecha.primitive', 'OK'),
     ('BOOLEAN', 'Boolean', 'Difference / Union / Intersect with a selected cutter mesh', 'boolean', 'MOD_BOOLEAN', None, 'OK'),
+    ('BBEVEL', 'Boolean Bevel', 'Drag along an edge of a part: that much of it is cut off by a boolean - a chamfer or a '
+     'round, Width wide (click: the whole edge); the edges you can use are shown', 'bool_bevel', 'MOD_BEVEL',
+     'mecha.bool_bevel', 'OK'),
     ('FUSE', 'Smart Fuse', 'Union two overlapping meshes with a fillet/chamfer seam', 'fuse', 'MOD_BEVEL', None, 'PARTIAL'),
     ('MIRROR', 'Symmetry', 'Symmetry: lean the mouse to the side to copy to, Enter applies (left buttons: live Mirror)', 'mirror', 'MOD_MIRROR', None, 'OK'),
     ('MASK', 'Mask', 'Paint a face mask with the shared shapes (Alt: erase)', 'mask', 'MOD_MASK', 'mecha.mask', 'PARTIAL'),
@@ -232,7 +235,7 @@ DRAW_TOOLS |= {'GREEBLE', 'CGREEBLE'}   # 0.24.154 + Greeble / Scale Line (Shift
 # 0.24.55 the tool list by job (about 10 groups instead of one long list); a tool not listed goes to Other
 TOOL_GROUPS = (
     ('Block-out', ('BASE', 'CBASE', 'SUBD', 'PRIMITIVE')),
-    ('Cut', ('CUT', 'SPLIT', 'PRESS', 'HIDE', 'BOOLEAN', 'FUSE', 'PERF')),
+    ('Cut', ('CUT', 'SPLIT', 'PRESS', 'HIDE', 'BOOLEAN', 'BBEVEL', 'FUSE', 'PERF')),
     ('Surface detail', ('GSCULPT', 'GREEBLE', 'PLATE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'SDRAW', 'SCREW', 'EXTRACT', 'MOLDING', 'BELT')),
     ('Move', ('CMOVE', 'CPATH', 'SMOVE', 'SMART', 'POSE', 'REMESH')),
     ('Symmetry & repeat', ('MIRROR', 'RSYM', 'RADIAL', 'ARRAY')),
@@ -267,7 +270,7 @@ _ENUM_NUMBERS = {'CUT': 1, 'BOOLEAN': 2, 'FUSE': 3, 'MIRROR': 4, 'MASK': 5, 'DRA
                  'EXTRACT': 20, 'MOLDING': 21, 'HOLLOW': 22, 'ALONG': 23, 'CABLE': 24, 'PLATE': 25, 'WRINKLE': 26, 'TUBE': 27,
                  'HIDE': 28, 'DETAIL': 29, 'DETAIL2': 30, 'SCREW': 31, 'DETAIL3': 32, 'TUBE_SAME': 33,
                  'CBASE': 34, 'CPLATE': 35, 'BELT': 36, 'SPIKE': 37, 'SCALES': 38, 'FLOWER': 39, 'SCURVE': 40, 'SBRUSH': 41, 'BRIDGE': 42, 'CAPE': 43, 'HAIR': 44, 'GARMENT': 45, 'HOOD': 46, 'SCARF': 47, 'CMOVE': 48, 'CPATH': 50, 'PERF': 51, 'SDRAW': 52, 'SCAPE': 53, 'RSYM': 55, 'SMOVE': 56, 'WLINES': 57, 'CDRAPE': 58, 'ZONE': 59, 'PRESS': 60, 'SMART': 61, 'GSCULPT': 62, 'GREEBLE': 63, 'CGREEBLE': 64, 'FUR': 65, 'WDIRT': 66,
-                 'WDUST': 67, 'WLEAF': 68, 'WSNOW': 69, 'DETAIL4': 70, 'PMEASURE': 71, 'PCUT': 72, 'FGREEBLE': 73, 'WING': 74, 'MEMBRANE': 75}   # 54: the removed Cloth Wrap (kept free)   # 49: the removed Jungle Gym prototype (0.24.31), kept free
+                 'WDUST': 67, 'WLEAF': 68, 'WSNOW': 69, 'DETAIL4': 70, 'PMEASURE': 71, 'PCUT': 72, 'FGREEBLE': 73, 'WING': 74, 'MEMBRANE': 75, 'BBEVEL': 76}   # 54: the removed Cloth Wrap (kept free)   # 49: the removed Jungle Gym prototype (0.24.31), kept free
 TOOL_ENUM_ITEMS = [(t[0], t[1], t[2], t[4], _ENUM_NUMBERS[t[0]]) for t in TOOLS]
 
 SHAPES = (
