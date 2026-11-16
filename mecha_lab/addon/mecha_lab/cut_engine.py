@@ -975,7 +975,10 @@ def _perform_closed_base(context, mode, targets, loops, projector, invert=False)
     for t in targets:
         cg.check_target(t)
     from . import mesh_fix
-    fixed = mesh_fix.auto_fix(context, targets)                  # 0.24.81 a broken part is repaired first
+    if _FIXED_NOW and all(t.name in _FIXED_NOW for t in targets):
+        fixed = {}                                               # 0.24.177 a line cut fixed them just before
+    else:
+        fixed = mesh_fix.auto_fix(context, targets)              # 0.24.81 a broken part is repaired first
     broken = {t.name: n for t in targets for n in (cg.overlap_edges(t),) if any(n)}     # 0.24.21
     try:
         report = _perform_closed(context, mode, targets, groups, projector, invert, cut, auto_apply, baked, frozen)
@@ -1245,6 +1248,23 @@ def _make_live(context, mode, targets, cutter, invert):
             ('Edge Finish requires Auto Apply ON; no bevel generated.' if cut.edge_finish != 'NONE' else ''))
 
 
+_FIXED_NOW = set()
+
+
+class _fixed_already:
+    """0.24.177 While a line cut hands its parts to the closed cut: they were just put through Fix Mesh."""
+
+    def __init__(self, targets):
+        self.names = {t.name for t in targets}
+
+    def __enter__(self):
+        _FIXED_NOW.update(self.names)
+
+    def __exit__(self, *_a):
+        _FIXED_NOW.difference_update(self.names)
+        return False
+
+
 @_with_finish_notes
 def perform_line(context, mode, targets, points, projector, side_xy, invert=False):
     """Open line cut / split. ``side_xy`` picks the half removed by Cut."""
@@ -1375,8 +1395,10 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
         if not clicked_inside:
             half = side_polygon(list(reversed(points)), box)
         # Removing the clicked half; Alt keeps it instead.
-        return perform_closed(context, 'CUT', targets, [half], projector, invert=invert)
-    return perform_closed(context, 'SPLIT', targets, [half], projector)
+        with _fixed_already(targets):
+            return perform_closed(context, 'CUT', targets, [half], projector, invert=invert)
+    with _fixed_already(targets):                  # 0.24.177 (Fix Mesh ran on them above: not twice - 6 s each on 500 k)
+        return perform_closed(context, 'SPLIT', targets, [half], projector)
 
 
 def perform_mask(context, target, loops, projector, erase):

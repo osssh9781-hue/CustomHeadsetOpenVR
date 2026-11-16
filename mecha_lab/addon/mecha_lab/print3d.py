@@ -274,7 +274,7 @@ def world_bounds(context, obs):
     for ob in obs:
         if ob.type != 'MESH':
             continue
-        me = ob.evaluated_get(dg).data
+        me = _shown_or_own(ob, dg)
         if not len(me.vertices):
             continue
         co = np.empty(len(me.vertices) * 3, np.float64)
@@ -342,11 +342,34 @@ class PrintError(Exception):
 
 
 def _world_mesh(context, ob):
-    """The part as it is (modifiers on) in world space: (verts n x 3, faces)."""
+    """The part as it is (modifiers on) in world space: (verts n x 3, faces).  0.24.177 (user: "3d 프린트 메뉴 하이폴도
+    되게 해 줘") the part itself, never its Light Copy: a part of 300 k triangles and more shows a 10 % copy in the
+    viewport - the print parts were made from that copy (327 k faces -> 18 k + 16 k)."""
+    from . import light_copies as lc
     dg = context.evaluated_depsgraph_get()
-    me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), depsgraph=dg)
+    me = bpy.data.meshes.new_from_object(lc.full(ob, dg), depsgraph=dg)
     me.transform(ob.matrix_world)
     return me
+
+
+def _shown_or_own(ob, dg):
+    """The mesh to measure: the part's own when nothing but its Light Copy is on it (exact, and it stays light in
+    the viewport), else as it is evaluated."""
+    from . import light_copies as lc
+    mods = [m for m in ob.modifiers if m.show_viewport]
+    if mods and all(lc.is_light_mod(m) for m in mods):
+        return ob.data
+    return ob.evaluated_get(dg).data
+
+
+def _no_light_copy(ob):
+    """A copy of a part (``ob.copy()``) without the part's Light Copy (its modifier and its note): it would show the
+    whole part's copy; a new one is made for it when it rests (if it is heavy)."""
+    from . import light_copies as lc
+    for m in [m for m in ob.modifiers if lc.is_light_mod(m)]:
+        ob.modifiers.remove(m)
+    if lc.PROP in ob.keys():
+        del ob[lc.PROP]
 
 
 def _basis(n):
@@ -560,20 +583,39 @@ def _drop_empty_slots(me):
     me.update()
 
 
+def _eval_boolean(context, ob, cutter, op, solver):
+    """``ob`` evaluated with a Boolean of ``cutter`` (the part itself, never its Light Copy): a new mesh."""
+    from . import light_copies as lc
+    mod = ob.modifiers.new('MCH_PrintPin', 'BOOLEAN')
+    mod.operation = op
+    mod.solver = solver
+    mod.object = cutter
+    try:
+        dg = context.evaluated_depsgraph_get()
+        return bpy.data.meshes.new_from_object(lc.full(ob, dg), depsgraph=dg)
+    finally:
+        ob.modifiers.remove(mod)
+
+
 def _boolean(context, ob, cutter_me, op):
-    """``ob``'s mesh with ``cutter_me`` added / taken out (Exact)."""
+    """``ob``'s mesh with ``cutter_me`` added / taken out.  0.24.177 (user: "3d 프린트 메뉴 하이폴도 되게 해 줘"):
+    Blender's Manifold solver first (a closed part: much faster on millions of faces), Exact when it refuses (an open
+    part) - Exact alone took 26 s for two keys on a 5.2 M-face part."""
     from . import core_geometry as cg
     cutter = cg.link_temp_object(context, cutter_me, 'MCH_PrintPin_TEMP')
     try:
-        mod = ob.modifiers.new('MCH_PrintPin', 'BOOLEAN')
-        mod.operation = op
-        mod.solver = 'EXACT'
-        mod.object = cutter
-        try:
-            dg = context.evaluated_depsgraph_get()
-            me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), depsgraph=dg)
-        finally:
-            ob.modifiers.remove(mod)
+        me = None
+        solvers = [i.identifier for i in bpy.types.BooleanModifier.bl_rna.properties['solver'].enum_items]
+        if 'MANIFOLD' in solvers:
+            try:
+                me = _eval_boolean(context, ob, cutter, op, 'MANIFOLD')
+            except RuntimeError:
+                me = None
+            if me is not None and (not len(me.polygons) or len(me.polygons) == len(ob.data.polygons)):
+                bpy.data.meshes.remove(me)                   # (refused / did nothing: an open part)
+                me = None
+        if me is None:
+            me = _eval_boolean(context, ob, cutter, op, 'EXACT')
         old = ob.data
         ob.data = me
         if not len(me.materials):                    # (the evaluated copy keeps them already)
@@ -960,6 +1002,7 @@ def split_along_line(context, ob, path, projector):
     saved_apply = getattr(st, 'auto_apply', True) if st is not None else True
     dup = ob.copy()
     dup.data = ob.data.copy()
+    _no_light_copy(dup)                                  # 0.24.177 (its halves showed the whole part's light copy)
     for coll in ob.users_collection or (context.scene.collection,):
         coll.objects.link(dup)
     dup.name = ob.name + '.A'
