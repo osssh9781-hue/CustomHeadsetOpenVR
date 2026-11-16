@@ -1,0 +1,31 @@
+shot 1_sketch_two_pieces.png True
+1 Sketch cell True on True pieces 2 cut before Enter 0 after ['Ball.A', 'Ball.B'] keys True sketch left 0
+shot 1_sketch_cut.png True
+2 spikes Spike Ball_Spikes Length cell True length 3.8 tallest 0.586 -> 2.307
+shot 2_spike_length.png True
+3 rows True True shift range ['Part 1', 'Part 2', 'Part 3', 'Part 4'] ctrl out ['Part 1', 'Part 3', 'Part 4']
+shot 3_layers_range.png True
+4 eye True parts hidden [True, True, True, True] rows closed [True, True, True, True]
+shot 4_folder_eye.png True
+5 group Group row True picked True flip poll True {'FINISHED'} x [-1.5, -0.5] -> [-1.5, -0.5]
+shot 5_group_flip.png True
+shot 6_molding_line.png True
+6 tool mecha.edge_molding molding Hull_Molding on the face True width 0.3048 height on face 0.357 -> 0.602
+shot 6_molding_width.png True
+7 box click Box_Molding pieces 12
+shot 7_molding_box_edges.png True
+shot 8_mirror_detail4.png True
+8 detail Hull_Rough 326656 old lean [2.69, 2.27, 2.24, 2.17, 2.24] idle [1.8, 1.57] over the draws: old [0.48, 0.45, 0.38, 0.45] new [0.3, 0.0, 0.08, 0.0] esc gone True new lean [1.62, 1.87, 1.37, 1.65, 1.38] preview while leaning ['MCH Mirror Preview - Hull_Rough', 'MCH Mirror Preview - Hull_Rough (copy)'] mirror (True, False, False) (True, False, False) x -0.8 0.8 hidden False left []
+shot 9_press_tiles_before.png True
+shot 9_press_tiles.png True
+9 tiles in sight 15 with pictures 15 Arch tile True 92 picked MCH_BUILTIN_M_ARCH
+PASS 1 Print Cut: a REAL click on "Sketch", two REAL drags (nothing cut yet), a REAL Enter: cut along both, keys in
+PASS 2 Creature Spike: a REAL lasso, a REAL drag on "Length": longer spikes
+PASS 3 Layers: a REAL click on a row, Shift + a REAL click on another: every row between; Ctrl + a REAL click: out
+PASS 4 a folder's eye REALLY clicked: its parts hidden, their rows' eyes closed
+PASS 5 a group's row REALLY clicked, Flip: its parts flipped across the world
+PASS 6 Edge Molding: its tile, a REAL drag along a hull - a molding on its face (it follows it); a REAL drag on "Molding Width" - wider
+PASS 7 Edge Molding: a REAL click on a box - a molding along its 12 edges
+PASS 8 Mirror on a Plate Detail 4: a REAL Alt+X, REAL leans, a REAL Enter - its mirror live (both sides), each change (over what drawing alone costs) under half the way it was
+PASS 9 Press Cut: the stamps as picture tiles in the window; a REAL click on "Arch" picks it
+9/9 passed
