@@ -609,7 +609,7 @@ def templates():
 
 def sculpt_of(pg, kind):
     """The sculpted shape a muscle is laid with - None: strands (another look, no shape for it, the file gone)."""
-    if pg.style != 'CREATURE' or pg.shape != 'SCULPT' or kind == 'SHEET':
+    if pg.style not in {'CREATURE', 'BAND'} or pg.shape != 'SCULPT' or kind == 'SHEET':
         return None
     tp = templates()
     auto = pg.sculpt == 'AUTO'
@@ -692,7 +692,7 @@ def lay_line(mesh, tp, P, N, pg, ext, share=1.0):
     tend = np.clip(1.0 - (full - 0.12) / 0.3, 0.0, 1.0)
     ang = np.arctan2(v - (lo + depth * 0.5), s)
     _put(mesh, tp, pos, tend, ang)
-    return Lm
+    return Lm, (C[0], T[0], nrm[0]), (C[-1], T[-1], nrm[-1])
 
 
 def lay_fan(context, mesh, tp, ob, pg):
@@ -762,13 +762,32 @@ def sculpt_mesh(context, ob, sid):
     pg = ob.mch_muscle
     tp = templates()[sid]
     mesh = Mesh()
+    mecha = pg.style == 'BAND'              # 0.24.185 the user's muscle shapes as artificial muscles: + end fittings
     if tp['kind'] == 'FAN':
-        return mesh, lay_fan(context, mesh, tp, ob, pg)
+        Lb = lay_fan(context, mesh, tp, ob, pg)
+        if mecha:
+            d = data(ob)
+            A, B, Cc = (np.asarray(q, float) for q in d['pts'][:3])
+            nA, nB, nC = (np.asarray(q, float) for q in d['nrm'][:3])
+            ax = (B - A) / max(np.linalg.norm(B - A), 1e-9)
+            nm = (nA + nB) / max(np.linalg.norm(nA + nB), 1e-9)
+            ay = np.cross(nm, ax)
+            box(mesh, (A + B) * 0.5 + nm * Lb * 0.012, ax, ay, nm, float(np.linalg.norm(B - A)) * 0.56, Lb * 0.028,
+                Lb * 0.02, 2)
+            mid = (A + B) * 0.5
+            axis = (Cc - mid) / max(np.linalg.norm(Cc - mid), 1e-9)
+            cap(mesh, pg.cap, Cc + nC * Lb * 0.02, axis, nC, Lb * 0.03, Lb * 0.05, float(pg.cap_size), mat=2)
+        return mesh, Lb
     n = int(pg.strands)
     many = sid == 'SINGLE' and n >= 3
     paths = paths_of(context, ob, strands=None if many else 1)
-    lens = [lay_line(mesh, tp, P, N, pg, 0.3, share=(1.0 / math.sqrt(len(paths)) if many else 1.0))
-            for P, N, _w in paths]
+    lens = []
+    for P, N, _w in paths:
+        Lm, e0, e1 = lay_line(mesh, tp, P, N, pg, 0.3, share=(1.0 / math.sqrt(len(paths)) if many else 1.0))
+        lens.append(Lm)
+        if mecha:
+            for (c_, t_, n_), sgn in ((e0, -1.0), (e1, 1.0)):
+                cap(mesh, pg.cap, c_ + n_ * Lm * 0.015, t_ * sgn, n_, Lm * 0.028, Lm * 0.05, float(pg.cap_size), mat=2)
     return mesh, (lens[0] if lens else 1.0)
 
 
@@ -884,7 +903,7 @@ def build_mesh(context, ob):
         elif style == 'BAND':
             # 0.24.185 (user's reference - a synthetic musculature of flat woven sheets): each strand a thin wide band,
             # the next lying over it; toothed tabs on a bar where it starts, a clamp bar where it ends
-            wprof = (1.0 - 0.6 * t ** 1.3) if fan else (0.8 + 0.2 * np.sin(math.pi * t))
+            wprof = (1.0 - 0.8 * t ** 1.2) if fan else (0.18 + 0.82 * np.sin(math.pi * t) ** 0.7)   # (narrow to its ends)
             Wb = base_w * float(pg.width) * vol * wprof * (1.25 if fan else 1.6)
             Hb = np.full(K, base_w * 0.07 * float(pg.thickness) * vol)
             lift = Hb[0] * (1.0 + 1.6 * si)                       # (shingled: each over the one before)
@@ -1179,7 +1198,7 @@ def build(ob, context=None):
     elif mod is not None:
         ob.modifiers.remove(mod)
     for f in me.polygons:
-        f.use_smooth = creature or pg.style == 'CABLE'
+        f.use_smooth = creature or pg.style == 'CABLE' or (pg.style == 'BAND' and pg.shape == 'SCULPT')
     me.update()
     ob.update_tag()
     return len(me.polygons)
@@ -1517,7 +1536,7 @@ class MCH_PG_Muscle(bpy.types.PropertyGroup):
                                     default=(0.5, 0.5, 0.52), update=_upd)
     cable_count: IntProperty(name='Cables in a Bundle', default=5, min=1, max=37, update=_upd,
                              description='How many cables each bundle is made of')
-    cable_ties: IntProperty(name='Ties', default=3, min=0, max=12, update=_upd,
+    cable_ties: IntProperty(name='Ties', default=0, min=0, max=12, update=_upd,
                             description='Bands that tie the bundle along its length')
     cable_twist: FloatProperty(name='Bundle Twist', default=0.25, min=0.0, max=3.0, update=_upd,
                                description='The cables wind round each other (turns along its length)')
@@ -1871,8 +1890,8 @@ def draw(layout, context, tool='MUSCLE'):
     if PRESET[pg.preset][3] == 'SHEET':
         return
     style = pg.style if tool == 'MMUSCLE' or ob is not None else 'CREATURE'
-    sculpted = style == 'CREATURE' and pg.shape == 'SCULPT' and sculpt_of(pg, PRESET[pg.preset][3]) is not None
-    if style == 'CREATURE':                           # 0.24.183 your sculpted muscles / strands
+    sculpted = style in {'CREATURE', 'BAND'} and pg.shape == 'SCULPT' and sculpt_of(pg, PRESET[pg.preset][3]) is not None
+    if style in {'CREATURE', 'BAND'}:                           # 0.24.183 your sculpted muscles / strands
         layout.row(align=True).prop(pg, 'shape', expand=True)
         if pg.shape == 'SCULPT':
             layout.prop(pg, 'sculpt')
