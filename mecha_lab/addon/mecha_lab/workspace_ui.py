@@ -854,7 +854,9 @@ class MCH_TOOL_organic_mass(bpy.types.WorkSpaceTool):
                       'Enter keeps it.  RMB: shapes, Esc: exit')
     bl_icon = 'ops.mesh.primitive_sphere_add_gizmo'
     bl_widget = None
-    bl_keymap = _tool_keymap('OMASS')
+    bl_keymap = (('mch.omass_click', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, None),   # (Click a Mesh, else passed on)
+                 ('mch.omass_click', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'alt': True},
+                  {'properties': [('clear', True)]})) + _tool_keymap('OMASS')
 
     def draw_settings(context, layout, tool):
         _draw_tool_settings(context, layout, tool)

@@ -26,15 +26,73 @@ from mathutils import Matrix, Vector
 KEY = 'mch_omass'                 # on a live lump: its outline (local 2D) and how it sits (json)
 DONE = 'mch_omass_done'
 MOD = 'MCH Organic'
+RD_ATTR = 'mch_rd'                 # on a lump's points: the distance to the outline (its edge - where the detail is)
 TREE = 'MCH Organic'
-TREE_VERSION = 2
+TREE_VERSION = 6
 COLLECTION = None
 _BUSY = [False]
 
 # (id, label, description, base, slider values, recipe weights, colours (a, b), material look)
 #   base: PUFF (inflated lump) | PLATE (a thin curved plate) | CRYSTAL (a cluster)
 #   weights: how much of each surface field the matter has (x Lumps / Detail / Pattern)
+_F = dict(depth=1.0, back=0.0, lumps=0.0, detail=0.0, pattern=0.0, pattern_scale=1.0, pattern_width=1.0,
+          resolution=70, smooth=0)
+_FC = ((0.62, 0.6, 0.56), (0.2, 0.18, 0.16))
 KINDS = (
+    # 0.24.183 big forms (user: "이런 식으로 크게 형태가 들어간 요철로 바리에이션"): the outline kept, a flat bottom, the
+    # edges stepped (the accent), the form big - fine texture only when picked (Surface)
+    ('SHARD', 'Layered Shard', 'A big slanted top; the far edge falls in steps (like your sample)', 'FORM',
+     dict(_F, depth=1.3, count=6, edge_steps=6, edge_width=0.75, jag=0.6, slope=0.4, turn=0.0), dict(), _FC,
+     dict(rough=0.6)),
+    ('TERRACE', 'Terraces', 'Stepped all round like strata, a flat top', 'FORM',
+     dict(_F, depth=0.7, count=6, edge_steps=6, edge_width=1.0, jag=0.7, slope=0.0, turn=0.0), dict(), _FC,
+     dict(rough=0.6)),
+    ('FACETS', 'Big Facets', 'Cut in big flat facets round a peak, sharp ridges between them', 'FORM',
+     dict(_F, depth=1.2, count=7, edge_steps=2, edge_width=0.3, jag=0.4, slope=0.0, turn=0.0), dict(), _FC,
+     dict(rough=0.6)),
+    ('CREST', 'Crest', 'A sharp ridge along its middle, its sides stepped', 'FORM',
+     dict(_F, depth=1.4, count=6, edge_steps=4, edge_width=1.05, jag=0.5, slope=0.0, turn=0.0), dict(), _FC,
+     dict(rough=0.6)),
+    ('PLATES', 'Overlapping Plates', 'Big plates along its length, each tucked under the next', 'FORM',
+     dict(_F, depth=0.8, count=5, edge_steps=3, edge_width=0.5, jag=0.5, slope=0.0, turn=0.0), dict(), _FC,
+     dict(rough=0.6)),
+    ('BLOCKS', 'Split Blocks', 'Big blocks, each its own height and tilt, deep cracks between', 'FORM',
+     dict(_F, depth=0.8, count=7, edge_steps=2, edge_width=0.4, jag=0.5, slope=0.0, turn=0.0), dict(), _FC,
+     dict(rough=0.6)),
+    ('FOLDS', 'Big Folds', 'Big folds running along its length', 'FORM',
+     dict(_F, depth=1.0, count=4, edge_steps=0, edge_width=0.5, jag=0.6, slope=0.0, turn=0.0), dict(), _FC,
+     dict(rough=0.6)),
+    ('TIERS', 'Tiers', 'A few thick rounded tiers, each set back to one side (a shelf fungus, a carapace)', 'FORM',
+     dict(_F, depth=1.0, count=3, edge_steps=0, edge_width=0.25, jag=0.4, slope=0.0, turn=0.0), dict(), _FC,
+     dict(rough=0.6)),
+    # 0.24.183 (user, with creature figures: "내가 말한 건 이런 크리쳐들의 요철을 말한 거야 ... 오가닉한 표면으로 변환";
+    # "너무 잘게 쪼개지는 게 아니라 내가 만든 메쉬의 형태를 유지하면서") creature reliefs: each as big as its pattern,
+    # on the shape you drew - the shape kept
+    ('BONEFLAKE', 'Bone Flakes', 'A bony carapace: layers lifting toward the tip, sharp edges, a few cracks', 'PUFF',
+     dict(depth=0.85, back=0.85, lumps=0.3, detail=0.35, pattern=1.0, pattern_scale=1.0, pattern_width=1.0, count=8,
+          resolution=200, smooth=1),
+     dict(low=0.3, det=0.3, flake=1.0, crk=0.45), ((0.8, 0.76, 0.68), (0.28, 0.22, 0.17)), dict(rough=0.7)),
+    ('KELOID', 'Keloid Plates', 'Lumpy raised plates, deep red cracks between them, wavy ridges on them', 'PUFF',
+     dict(depth=0.85, back=0.85, lumps=0.3, detail=0.3, pattern=1.0, pattern_scale=1.0, pattern_width=1.0, count=8,
+          resolution=200, smooth=1),
+     dict(low=0.3, det=0.25, plate=1.0, wrinkle=0.6), ((0.56, 0.54, 0.53), (0.42, 0.03, 0.05)),
+     dict(rough=0.6, plain=('wrinkle',))),
+    ('HIDE', 'Rough Hide', 'A monster\'s thick hide: bumps big and small, deep wrinkles', 'PUFF',
+     dict(depth=0.85, back=0.85, lumps=0.35, detail=0.5, pattern=1.0, pattern_scale=1.0, pattern_width=1.0, count=8,
+          resolution=200, smooth=1),
+     dict(low=0.35, det=0.5, bump=1.0, wrinkle=0.8), ((0.3, 0.3, 0.29), (0.09, 0.09, 0.09)), dict(rough=0.75)),
+    ('WARTS', 'Warts', 'Round bubbles and warts in clusters', 'PUFF',
+     dict(depth=0.85, back=0.85, lumps=0.25, detail=0.15, pattern=1.0, pattern_scale=0.75, pattern_width=1.0, count=8,
+          resolution=200, smooth=1),
+     dict(low=0.25, det=0.15, bump=1.6), ((0.42, 0.68, 0.34), (0.13, 0.28, 0.11)), dict(rough=0.5, sss=0.1)),
+    ('SCALEROWS', 'Scale Rows', 'Rows of overlapping scales hanging down (a tail, a back)', 'PUFF',
+     dict(depth=0.85, back=0.85, lumps=0.2, detail=0.2, pattern=1.0, pattern_scale=1.0, pattern_width=1.0, count=8,
+          resolution=220, smooth=1),
+     dict(low=0.2, det=0.2, shingle=1.0), ((0.33, 0.4, 0.27), (0.07, 0.09, 0.05)), dict(rough=0.45)),
+    ('POLYPS', 'Coral Polyps', 'Star-shaped coral cups all over', 'PUFF',
+     dict(depth=0.8, back=0.8, lumps=0.25, detail=0.2, pattern=1.0, pattern_scale=1.0, pattern_width=1.0, count=8,
+          resolution=220, smooth=1),
+     dict(low=0.25, det=0.2, polyp=1.0), ((0.64, 0.52, 0.34), (0.2, 0.12, 0.08)), dict(rough=0.7)),
     ('ROCK', 'Rock', 'A boulder: lumpy, chipped, cracked', 'PUFF',
      dict(depth=0.85, back=0.85, lumps=1.0, detail=1.0, pattern=1.0, pattern_scale=1.0, pattern_width=1.0, count=8,
           resolution=150, smooth=1),
@@ -67,7 +125,7 @@ KINDS = (
      dict(depth=0.8, back=0.8, lumps=1.0, detail=0.7, pattern=1.0, pattern_scale=1.3, pattern_width=0.55, count=8,
           resolution=170, smooth=1),
      dict(low=1.0, det=0.7, crk=1.3), ((0.08, 0.07, 0.07), (0.03, 0.03, 0.03)), dict(rough=0.9, glow=1.0)),
-    ('FLESH', 'Flesh', 'A fleshy mass: soft lobes, raised veins', 'PUFF',
+    ('FLESH', 'Veined Flesh', 'A fleshy mass: soft lobes, raised veins', 'PUFF',
      dict(depth=0.9, back=0.9, lumps=1.2, detail=0.25, pattern=1.0, pattern_scale=1.0, pattern_width=1.0, count=8,
           resolution=160, smooth=3),
      dict(low=1.2, det=0.2, vein=1.0), ((0.62, 0.3, 0.3), (0.35, 0.08, 0.12)), dict(rough=0.45, sss=0.4)),
@@ -88,9 +146,13 @@ KIND = {k[0]: k for k in KINDS}
 KIND_ITEMS = [(k[0], k[1], k[2]) for k in KINDS]
 PATTERN_NAME = {'ROCK': 'Cracks', 'SCALE': 'Keel / Rings', 'MUSHROOM': 'Gills / Spots', 'CRYSTAL': 'Crystal Size',
                 'CORAL': 'Grooves', 'BONE': 'Pores', 'SHELL': 'Ribs / Rings', 'LAVA': 'Glowing Cracks',
-                'FLESH': 'Veins', 'ICE': 'Facets', 'SPONGE': 'Holes', 'BARK': 'Fissures'}
+                'FLESH': 'Veins', 'ICE': 'Facets', 'SPONGE': 'Holes', 'BARK': 'Fissures', 'BONEFLAKE': 'Flakes',
+                'KELOID': 'Plates', 'HIDE': 'Bumps / Wrinkles', 'WARTS': 'Warts', 'SCALEROWS': 'Scales',
+                'POLYPS': 'Polyps'}
 COUNT_NAME = {'MUSHROOM': 'Gills', 'CRYSTAL': 'Crystals', 'SHELL': 'Ribs'}
-FIELDS = ('low', 'det', 'crk', 'wave', 'vein', 'pore', 'rib', 'ring', 'gill', 'keel', 'spot', 'bark')
+FORM_COUNT = {'FACETS': 'Facets', 'PLATES': 'Plates', 'BLOCKS': 'Blocks', 'FOLDS': 'Folds', 'TIERS': 'Tiers'}
+FIELDS = ('low', 'det', 'crk', 'wave', 'vein', 'pore', 'rib', 'ring', 'gill', 'keel', 'spot', 'bark', 'flake', 'plate',
+          'bump', 'wrinkle', 'shingle', 'polyp')
 
 
 def is_mass(ob):
@@ -170,7 +232,12 @@ def lump(P2, holes, pg):
     idx_b = np.concatenate([np.arange(nb), n + np.arange(n - nb)])         # (bottom: the rim shared)
     T = np.asarray(tris, np.int64)
     F = np.concatenate([T, idx_b[T][:, ::-1]])
-    return V, F
+    from .creature_hair import outline_distance
+    dist = outline_distance([tuple(q) for q in XY], outer)
+    for h in hl:
+        dist = np.minimum(dist, outline_distance([tuple(q) for q in XY], h))
+    dist[:nb] = 0.0
+    return V, F, np.concatenate([dist, dist[nb:]])
 
 
 def crystals(P2, pg, seed):
@@ -236,6 +303,265 @@ def crystals(P2, pg, seed):
     return np.array(V, float).reshape(-1, 3), F
 
 
+# ---- big forms (0.24.183 user, with a sample FBX: "이거랑 똑같이 하라는 게 아니라 이런 식으로 크게 형태가 들어간 요철로
+# 바리에이션을 하라는 거지"; "각 엣지 부분에 포인트를 넣고") --------------------------------------------------------------
+
+def size_of(P2):
+    return float(np.ptp(np.asarray(P2, float), axis=0).max())
+
+
+def _inside(P, poly):
+    """Even-odd: which points ``P`` (n, 2) are inside ``poly`` (m, 2)."""
+    A = np.asarray(poly, float)
+    B = np.roll(A, -1, axis=0)
+    out = np.zeros(len(P), bool)
+    for i in range(0, len(P), 4096):
+        q = P[i:i + 4096, None, :]
+        cond = (A[None, :, 1] > q[..., 1]) != (B[None, :, 1] > q[..., 1])
+        xint = A[None, :, 0] + (q[..., 1] - A[None, :, 1]) * (B[None, :, 0] - A[None, :, 0]) / \
+            np.where(np.abs(B[None, :, 1] - A[None, :, 1]) < 1e-15, 1e-15, B[None, :, 1] - A[None, :, 1])
+        out[i:i + 4096] = (cond & (q[..., 0] < xint)).sum(1) % 2 == 1
+    return out
+
+
+def _densify(loop, step):
+    P = np.asarray(loop, float)
+    Q = np.roll(P, -1, axis=0)
+    out = []
+    for a, b in zip(P, Q):
+        n = max(1, int(np.ceil(np.linalg.norm(b - a) / step)))
+        out += [a + (b - a) * (k / n) for k in range(n)]
+    return np.array(out)
+
+
+def _noise2(P, scale, seed):
+    """A smooth noise -1 .. 1 at the points ``P`` (n, 2)."""
+    from mathutils import noise
+    off = Vector((seed * 7.31, seed * 3.17, seed * 1.93))
+    return np.array([noise.noise(Vector((x * scale, y * scale, 0.0)) + off) for x, y in P])
+
+
+RISER = 0.12                       # (a step's riser: this share of the step - steep, still a face)
+
+
+def _frame(P2, pg):
+    """(centre, across, along2, u range, v range) - across: the way a Shard rises / Folds run, turned by Turn."""
+    c = P2.mean(0)
+    _u, _s, vt = np.linalg.svd(P2 - c, full_matrices=False)
+    along = vt[0]
+    t = float(pg.turn)
+    across = np.array([-along[1], along[0]])
+    across = across * math.cos(t) + along * math.sin(t)
+    along2 = np.array([across[1], -across[0]])
+    uo, vo = (P2 - c) @ across, (P2 - c) @ along2
+    return c, across, along2, (float(uo.min()), float(uo.max())), (float(vo.min()), float(vo.max()))
+
+
+def form_fields(kind, XY, d, P2, pg, dmax):
+    """The smooth fields a big form is made of at the points ``XY`` (each also linearly right along an edge, so the
+    mesh can be cut along them): d, un / vn (0 .. 1 across / along), wob (noise), g (the rim's step parameter), fk
+    (the form's own: Plates / Tiers / Blocks)."""
+    size = float(np.ptp(P2, axis=0).max())
+    c, across, along2, (u0, u1), (v0, v1) = _frame(P2, pg)
+    un = ((XY - c) @ across - u0) / max(u1 - u0, 1e-9)
+    vn = ((XY - c) @ along2 - v0) / max(v1 - v0, 1e-9)
+    jag = float(pg.jag)
+    wob = _noise2(XY, 6.0 / max(size, 1e-9), int(pg.seed)) if jag > 0 else np.zeros(len(XY))
+    ew = max(float(pg.edge_width), 0.02) * dmax
+    F = {'d': d, 'un': un, 'vn': vn, 'wob': wob, 'g': d / ew + jag * 0.22 * wob}
+    n_ = max(int(pg.count), 1)
+    if kind == 'PLATES':
+        F['fk'] = vn * n_ + 0.25 * wob
+    elif kind == 'TIERS':
+        q = d / dmax
+        F['fk'] = np.clip(q * 1.1 - (un - 0.5) * 0.5 * q, 0.0, 1.0) * n_
+    elif kind == 'BLOCKS':
+        seeds = _block_seeds(XY, d, dmax, pg)
+        D = np.linalg.norm(XY[:, None, :] - seeds[None, :, :], axis=2)
+        Ds = np.sort(D, axis=1)
+        F['fk'] = (Ds[:, 1] - Ds[:, 0]) if D.shape[1] > 1 else np.full(len(XY), 1e9)
+    return F
+
+
+def _block_seeds(XY, d, dmax, pg):
+    rng = np.random.default_rng(int(pg.seed) + 101)
+    n_ = max(int(pg.count), 2)
+    q = d / max(dmax, 1e-9)
+    inside = XY[q > 0.15] if (q > 0.15).sum() > n_ else XY
+    rs = np.random.default_rng(int(pg.seed) + 7)
+    return inside[rs.choice(len(inside), size=min(n_, len(inside)), replace=False)] if len(inside) else XY[:1]
+
+
+def form_cuts(kind, pg, dmax, size):
+    """[(field, level)] the mesh is cut along: each step's riser (its foot and its top), and the form's own edges."""
+    out = []
+    ns = int(pg.edge_steps)
+    for k in range(ns):
+        out += [('g', (k + 1 - RISER) / ns), ('g', (k + 1.0) / ns)]
+    n_ = max(int(pg.count), 1)
+    if kind == 'PLATES':
+        for k in range(-1, n_ + 2):
+            out += [('fk', k - RISER), ('fk', float(k))]
+    elif kind == 'TIERS':
+        for k in range(n_):
+            out += [('fk', float(k)), ('fk', k + 0.6)]
+    elif kind == 'BLOCKS':
+        w = size * 0.012 * max(float(pg.pattern_width), 0.1)
+        out += [('fk', w * 0.25), ('fk', w)]
+    elif kind == 'SHARD':
+        out += [('un', 0.62 + 0.25 * float(pg.slope))]
+    return out
+
+
+def form_heights(kind, F, XY, P2, pg, dmax):
+    """The top of a big form (0 .. 1) from its fields: the form's own shape capped by the stepped rim (Edge Steps over
+    Edge Width - the edges' accent)."""
+    seed = int(pg.seed)
+    rng = np.random.default_rng(seed + 101)
+    d, un, vn, wob = F['d'], F['un'], F['vn'], F['wob']
+    q = d / max(dmax, 1e-9)
+    n_ = max(int(pg.count), 1)
+    if kind == 'SHARD':           # a slanted top rising across it to a crest near the far side, which falls in steps
+        peak = 0.62 + 0.25 * float(pg.slope)
+        form = np.where(un <= peak, 0.18 + 0.82 * un / peak, 1.0 - (un - peak) / max(1.0 - peak, 1e-6) * 0.15)
+        form = form * (0.55 + 0.45 * np.clip(q * 2.2, 0.0, 1.0) ** 0.5)    # (its ends and sides rounded down)
+    elif kind == 'TERRACE':       # only the stepped rim: strata all round, a flat top
+        form = np.ones(len(XY))
+    elif kind == 'FACETS':        # big flat facets: a pyramid of tilted planes round a peak
+        k = max(n_, 3)
+        ang = np.linspace(0, 2 * math.pi, k, endpoint=False) + rng.random(k) * (2 * math.pi / k) * 0.8
+        peak = P2.mean(0) + (rng.random(2) - 0.5) * dmax * 0.4
+        form = np.full(len(XY), 1e9)
+        for a in ang:
+            nrm = np.array([math.cos(a), math.sin(a)])
+            reach = max(float(((P2 - peak) @ nrm).max()), dmax * 0.3)
+            drop = 0.55 + 0.2 * rng.random()
+            form = np.minimum(form, 1.0 - drop * np.maximum((XY - peak) @ nrm, 0.0) / reach)
+    elif kind == 'CREST':         # a sharp ridge along the middle (the outline's middle line), straight sides
+        form = np.clip(q, 0.0, 1.0)
+    elif kind == 'PLATES':        # big plates along its length, each rising to its edge, then a steep drop
+        x = F['fk']
+        f = x - np.floor(x)
+        rise = np.clip(f / (1.0 - RISER), 0.0, 1.0)
+        fall = np.clip((f - (1.0 - RISER)) / RISER, 0.0, 1.0)
+        prof = np.where(f < 1.0 - RISER, 0.55 + 0.45 * rise ** 0.7, 1.0 - 0.45 * fall)
+        form = prof * np.clip(q * 1.6, 0.0, 1.0) ** 0.5
+    elif kind == 'BLOCKS':        # big blocks, each its own height and tilt, deep cracks between them
+        seeds = _block_seeds(XY, d, dmax, pg)
+        D = np.linalg.norm(XY[:, None, :] - seeds[None, :, :], axis=2)
+        i1 = np.argmin(D, axis=1)
+        r2 = np.random.default_rng(seed + 202)
+        hgt = 0.62 + 0.38 * r2.random(len(seeds))
+        tilt = (r2.random((len(seeds), 2)) - 0.5) * (0.5 / max(dmax, 1e-9))
+        form = hgt[i1] + ((XY - seeds[i1]) * tilt[i1]).sum(1)
+        w = float(np.ptp(P2, axis=0).max()) * 0.012 * max(float(pg.pattern_width), 0.1)
+        crack = np.clip(F['fk'] / w, 0.0, 1.0)
+        form = np.clip(form - 0.35 * (1.0 - crack ** 0.6), 0.05, 1.0)
+    elif kind == 'FOLDS':         # big folds running along its length, sharp-crested
+        wv = np.abs(np.sin(math.pi * (un * n_ + 0.35 * wob)))
+        form = np.clip(q * 1.4, 0.0, 1.0) ** 0.6 * (0.45 + 0.55 * wv ** 0.6)
+    else:                         # TIERS: a few thick rounded tiers, each set back to one side (a shelf)
+        s_ = F['fk']
+        k_ = np.floor(s_ + 1e-9)
+        fr = s_ - k_
+        sm = np.clip(fr / 0.6, 0.0, 1.0)
+        form = np.clip((k_ + np.sqrt(np.maximum(1.0 - (1.0 - sm) ** 2, 0.0))) / n_, 0.0, 1.0)
+    # the rim: Edge Steps over Edge Width (0 steps: a smooth rise), each step's edge jagged
+    st = np.clip(F['g'], 0.0, 1.0)
+    ns = int(pg.edge_steps)
+    if ns > 0:
+        x = np.clip(F['g'], 0.0, 1.0) * ns
+        k_ = np.floor(x + 1e-9)
+        fr = x - k_
+        st = (k_ + np.clip((fr - (1.0 - RISER)) / RISER, 0.0, 1.0)) / ns     # (a steep riser, a flat tread)
+    else:
+        st = st * st * (3.0 - 2.0 * st)
+    wall = 0.03                                    # (no wall at the outline: it rises from its foot, as a shard)
+    rim = wall + (1.0 - wall) * np.clip(st, 0.0, 1.0)
+    top = np.maximum(np.minimum(form, rim), wall)
+    return np.where(d > 1e-12, top, wall)
+
+
+def form_mesh(P2, holes, pg):
+    """(verts, faces, distance to the outline) of a big form, light (0.24.183 user: "너무 고밀도야, 가벼워야 돼"): the
+    outline's area in coarse triangles, cut exactly along each step's riser and the form's own edges (so they stay
+    crisp with few points), the top raised, the bottom flat (Back: rounded down too), a wall round the outline - and
+    the flat parts merged into big faces afterwards (build)."""
+    import bmesh
+    from mathutils import geometry
+    from .creature_hair import outline_distance
+    from .plate_detail import cut_iso
+    size = float(np.ptp(P2, axis=0).max())
+    step = size / max(int(pg.resolution), 20)
+    loops = [_densify(P2, step * 0.5)] + [_densify(h, step * 0.5) for h in holes]
+    lo, hi = P2.min(0), P2.max(0)
+    xs = np.arange(lo[0] + step * 0.5, hi[0], step)
+    ys = np.arange(lo[1] + step * 0.5, hi[1], step * 0.866)
+    G = np.array([(x + (step * 0.5 if j % 2 else 0.0), y) for j, y in enumerate(ys) for x in xs]).reshape(-1, 2)
+    keep = _inside(G, P2)
+    for h in holes:
+        keep &= ~_inside(G, h)
+    G = G[keep]
+
+    def dist(Q):
+        dd = outline_distance([tuple(q) for q in Q], [tuple(q) for q in P2])
+        for h in holes:
+            dd = np.minimum(dd, outline_distance([tuple(q) for q in Q], [tuple(q) for q in h]))
+        return dd
+    if len(G):
+        G = G[dist(G) > step * 0.45]
+    verts = [Vector((float(x), float(y))) for lp in loops for x, y in lp] + [Vector((float(x), float(y))) for x, y in G]
+    faces_in, off = [], 0
+    for lp in loops:
+        faces_in.append(list(range(off, off + len(lp))))
+        off += len(lp)
+    out = geometry.delaunay_2d_cdt(verts, [], faces_in, 3, step * 1e-3)
+    V2 = np.array([tuple(v) for v in out[0]], float)
+    T0 = [f for f in out[2] if len(f) == 3]
+    d = dist(V2)
+    d[d < step * 0.05] = 0.0
+    dmax = max(float(d.max()), 1e-9)
+    F = form_fields(pg.kind, V2, d, P2, pg, dmax)
+    # cut along the steps' risers and the form's edges (exact lines: crisp with few points)
+    bm = bmesh.new()
+    lays = {name: bm.verts.layers.float.new('mch_f_' + name) for name in F}   # (layers first: a new layer drops
+    bv = [bm.verts.new((float(x), float(y), 0.0)) for x, y in V2]                #  the points' handles)
+    for name, lay in lays.items():
+        for v, x in zip(bv, F[name]):
+            v[lay] = float(x)
+    for t in T0:
+        try:
+            bm.faces.new([bv[i] for i in t])
+        except ValueError:
+            pass
+    carry = tuple(lays.values())
+    for name, level in form_cuts(pg.kind, pg, dmax, size):
+        if name in lays:
+            cut_iso(bm, lays[name], level, 1e-7, carry)
+    bm.verts.index_update()
+    V2 = np.array([(v.co.x, v.co.y) for v in bm.verts])
+    F = {name: np.array([v[lay] for v in bm.verts]) for name, lay in lays.items()}
+    T = np.array([[v.index for v in f.verts] for f in bm.faces if len(f.verts) == 3], np.int64).reshape(-1, 3)
+    bm.free()
+    d = np.maximum(F['d'], 0.0)
+    H = dmax * 1.5 * float(pg.depth)
+    top = H * form_heights(pg.kind, F, V2, P2, pg, dmax)
+    n = len(V2)
+    bot = -float(pg.back) * top * 0.8
+    V = np.concatenate([np.c_[V2, top], np.c_[V2, bot]])
+    Fc = [tuple(t) for t in T] + [tuple(n + t[::-1]) for t in T]
+    from collections import Counter
+    cnt = Counter()
+    for a, b_, c_ in T:
+        for e in ((a, b_), (b_, c_), (c_, a)):
+            cnt[(min(e), max(e))] += 1
+    for a, b_, c_ in T:
+        for x, y in ((a, b_), (b_, c_), (c_, a)):
+            if cnt[(min(x, y), max(x, y))] == 1:
+                Fc.append((y, x, n + x, n + y))
+    return V, Fc, np.concatenate([d, d])
+
+
 # ---- the surface (Geometry Nodes) ---------------------------------------------------------------------------------
 
 def _menu(sock, value):
@@ -266,6 +592,17 @@ def organic_tree():
         _socket(ng, name, kind, default)
     for f in FIELDS:
         _socket(ng, 'W ' + f, 'FLOAT', 0.0)
+    for f in FIELDS:                                  # (which fields colour the pattern: the cracks, not the ridges)
+        _socket(ng, 'C ' + f, 'FLOAT', 0.0)
+    # 0.24.183 (user: "그냥 우리 플레이트 디테일 4에 넣은 거랑 비슷하게 하는 게 좋을 듯, 각 엣지 부분에 포인트를 넣고"):
+    # strongest at the edges (Rim, Center: how much in the middle) and the Plate Detail 4 surface
+    for name, kind, default in (('Has Edge', 'BOOL', True), ('Rim', 'FLOAT', 0.3), ('Center', 'FLOAT', 0.6),
+                                ('Rough', 'BOOL', False), ('Strength', 'FLOAT', 0.01), ('Feature', 'FLOAT', 0.05),
+                                ('Chips', 'FLOAT', 0.0)):
+        _socket(ng, name, kind, default)
+    from .plate_rough import MIX_PROPS as _MIX
+    for _p, sock, *_r in _MIX:
+        _socket(ng, sock, 'FLOAT', 0.0)
     ng.interface.new_socket('Geometry', in_out='OUTPUT', socket_type='NodeSocketGeometry')
     b = _B(ng)
     gi = b.node('NodeGroupInput')
@@ -378,24 +715,124 @@ def organic_tree():
     st.inputs[0].default_value, st.inputs[1].default_value, st.inputs[2].default_value = 5.0, 0.7, 5.0
     bark = smooth_band(voronoi(b.vec('MULTIPLY', Q, st.outputs['Vector']), b.math('MULTIPLY', ps, 1.6),
                                'DISTANCE_TO_EDGE', 1.0), b.math('MULTIPLY', pw, 0.07))
+    # 0.24.183 creature reliefs - flakes: layers lifting toward the tip (a saw wave up the outline, broken by noise)
+    flw = b.node('ShaderNodeTexWave', wave_type='BANDS', bands_direction='Y', wave_profile='SAW')
+    b.feed(flw.inputs['Vector'], Q)
+    b.feed(flw.inputs['Scale'], b.math('MULTIPLY', ps, 4.0))
+    flw.inputs['Distortion'].default_value = 9.0
+    flw.inputs['Detail'].default_value = 3.0
+    flw.inputs['Detail Scale'].default_value = 1.2
+    patch = b.math('MINIMUM', b.math('MAXIMUM', b.math('MULTIPLY', b.math('SUBTRACT', noise(Q, 2.2, 2.0, 0.5), 0.35),
+                                                         3.0), 0.15), 1.0)      # (some places flake more)
+    flake = b.math('ADD', 0.5, b.math('MULTIPLY', b.math('SUBTRACT', flw.outputs['Factor'], 0.5), patch))
+    # plates: big raised plates, cracks between them
+    pvo = b.node('ShaderNodeTexVoronoi', feature='DISTANCE_TO_EDGE')
+    b.feed(pvo.inputs['Vector'], Q)
+    b.feed(pvo.inputs['Scale'], b.math('MULTIPLY', ps, 2.6))
+    pvo.inputs['Randomness'].default_value = 0.9
+    pvc = b.node('ShaderNodeTexVoronoi', feature='F1')          # (the same cells: each plate's own height)
+    b.feed(pvc.inputs['Vector'], Q)
+    b.feed(pvc.inputs['Scale'], b.math('MULTIPLY', ps, 2.6))
+    pvc.inputs['Randomness'].default_value = 0.9
+    pcs = b.node('FunctionNodeSeparateColor')
+    b.feed(pcs.inputs[0], pvc.outputs['Color'])
+    edge_t = b.math('MINIMUM', b.math('DIVIDE', pvo.outputs['Distance'], b.math('MULTIPLY', pw, 0.2)), 1.0)
+    plate = b.math('MULTIPLY', b.math('SQRT', b.math('MAXIMUM', b.math('SUBTRACT', 1.0, b.math(
+        'MULTIPLY', b.math('SUBTRACT', 1.0, edge_t), b.math('SUBTRACT', 1.0, edge_t))), 0.0)),
+        b.math('ADD', 0.55, b.math('MULTIPLY', pcs.outputs[0], 0.45)))       # (round-shouldered, 55-100 % high)
+
+    def dome(scale, r):
+        t = b.math('MINIMUM', b.math('DIVIDE', voronoi(Q, scale, 'F1', 1.0), b.math('MAXIMUM', r, 1e-6)), 1.0)
+        return b.math('SQRT', b.math('MAXIMUM', b.math('SUBTRACT', 1.0, b.math('MULTIPLY', t, t)), 0.0))
+    # bumps: domes, big and small
+    bump = b.math('MAXIMUM', dome(b.math('MULTIPLY', ps, 5.0), b.math('MULTIPLY', pw, 0.5)),
+                  b.math('MULTIPLY', dome(b.math('MULTIPLY', ps, 11.0), b.math('MULTIPLY', pw, 0.45)), 0.55))
+    # wrinkles: lines where a noise crosses its middle
+    wrinkle = smooth_band(b.math('ABSOLUTE', b.math('SUBTRACT', noise(Q, b.math('MULTIPLY', ps, 3.2), 3.0, 0.55), 0.5)),
+                          b.math('MULTIPLY', pw, 0.05))
+    # shingles: rows of overlapping scales hanging down (up = +Y), every other row half a scale on
+    axn = b.vec('NORMALIZE', I['Axis'])
+    sdn = b.vec('CROSS_PRODUCT', (0.0, 0.0, 1.0), axn)
+    u_ = b.math('MULTIPLY', b.vec('DOT_PRODUCT', Q, sdn), b.math('MULTIPLY', ps, 12.0))
+    v_ = b.math('MULTIPLY', b.math('SUBTRACT', 0.0, b.vec('DOT_PRODUCT', Q, axn)), b.math('MULTIPLY', ps, 13.0))
+    row = b.math('FLOOR', v_)
+    fu = b.math('SUBTRACT', b.math('FRACT', b.math('ADD', u_, b.math('FRACT', b.math('MULTIPLY', row, 0.5)))), 0.5)
+    fv = b.math('FRACT', v_)
+    shingle = b.math('MULTIPLY', b.math('SUBTRACT', 1.0, fv), b.math('MAXIMUM', b.math(
+        'SUBTRACT', 1.0, b.math('MULTIPLY', b.math('MULTIPLY', fu, fu), 2.8)), 0.0))
+    # polyps: cups with a star of ridges in each
+    pv = b.node('ShaderNodeTexVoronoi', feature='F1')
+    b.feed(pv.inputs['Vector'], Q)
+    b.feed(pv.inputs['Scale'], b.math('MULTIPLY', ps, 7.0))
+    pve = b.node('ShaderNodeTexVoronoi', feature='DISTANCE_TO_EDGE')
+    b.feed(pve.inputs['Vector'], Q)
+    b.feed(pve.inputs['Scale'], b.math('MULTIPLY', ps, 7.0))
+    cup = b.math('SUBTRACT', 1.0, smooth_band(pve.outputs['Distance'], b.math('MULTIPLY', pw, 0.28)))   # (0: wall)
+    rel_p = b.node('ShaderNodeSeparateXYZ')
+    b.feed(rel_p.inputs[0], b.vec('SUBTRACT', Q, pv.outputs['Position']))
+    star = b.math('ADD', 0.5, b.math('MULTIPLY', 0.5, b.math('COSINE', b.math('MULTIPLY', b.math(
+        'ARCTAN2', rel_p.outputs['Y'], rel_p.outputs['X']), 12.0))))
+    polyp = b.math('SUBTRACT', b.math('MULTIPLY', b.math('SUBTRACT', 1.0, cup), 0.4),
+                   b.math('MULTIPLY', cup, b.math('SUBTRACT', 0.85, b.math('MULTIPLY', star, b.math('MULTIPLY', cup, 0.5)))))
     terms = (('low', nlow, 0.12), ('det', ndet, 0.03), ('crk', crk, -0.03), ('wave', wave, -0.03),
              ('vein', vein, 0.012), ('pore', pore, -0.035), ('rib', rib, 0.022), ('ring', ring, 0.006),
-             ('gill', gill, -0.035), ('keel', keel, 0.045), ('bark', bark, -0.04))
+             ('gill', gill, -0.035), ('keel', keel, 0.045), ('bark', bark, -0.04),
+             ('flake', b.math('SUBTRACT', flake, 0.5), 0.04), ('plate', plate, 0.032), ('bump', bump, 0.03),
+             ('wrinkle', wrinkle, -0.012), ('shingle', shingle, 0.03), ('polyp', polyp, 0.032))
+    # the edge: a lump's distance to its outline (from the mesh it was made of); a converted mesh: its convex parts
+    # (ridges, rims) count as edges
+    rd_s = b.node('GeometryNodeSampleNearestSurface', data_type='FLOAT')
+    b.feed(rd_s.inputs['Mesh'], I['Geometry'])
+    b.feed(rd_s.inputs['Value'], b.attr(RD_ATTR).outputs['Attribute'])
+    pb = b.node('GeometryNodeBlurAttribute', data_type='FLOAT_VECTOR')
+    b.feed(pb.inputs['Value'], P)
+    pb.inputs['Iterations'].default_value = 4
+    convex = b.math('DIVIDE', b.vec('DOT_PRODUCT', b.vec('SUBTRACT', P, pb.outputs['Value']), N),
+                    b.math('MULTIPLY', sz, 0.0025))
+    rim = b.math('MAXIMUM', b.math('MULTIPLY', I['Rim'], sz), 1e-6)
+    rd_c = b.math('MULTIPLY', rim, b.math('SUBTRACT', 1.0, b.math('MINIMUM', b.math('MAXIMUM', convex, 0.0), 1.0)))
+    rsw2 = b.node('GeometryNodeSwitch', input_type='FLOAT')
+    b.feed(rsw2.inputs['Switch'], I['Has Edge'])
+    b.feed(rsw2.inputs['False'], rd_c)
+    b.feed(rsw2.inputs['True'], rd_s.outputs['Value'])
+    rd = rsw2.outputs['Output']
+    edge_t = b.math('MINIMUM', b.math('DIVIDE', rd, rim), 1.0)
+    at_edge = b.math('SUBTRACT', 1.0, b.math('MULTIPLY', b.math('MULTIPLY', edge_t, edge_t),
+                                             b.math('SUBTRACT', 3.0, b.math('MULTIPLY', edge_t, 2.0))))
+    amount = b.math('ADD', I['Center'], b.math('MULTIPLY', b.math('SUBTRACT', 1.0, I['Center']), at_edge))
     off = None
     for f, val, k in terms:
         t_ = b.math('MULTIPLY', b.math('MULTIPLY', val, I['W ' + f]), k)
+        if f != 'low':
+            t_ = b.math('MULTIPLY', t_, amount)
         off = t_ if off is None else b.math('ADD', off, t_)
     off = b.math('MULTIPLY', off, sz)
+    rough_tex, chips = _rough(b, I, P, rd, rim)
+    rough_on = b.node('GeometryNodeSwitch', input_type='FLOAT')
+    b.feed(rough_on.inputs['Switch'], I['Rough'])
+    rough_on.inputs['False'].default_value = 0.0
+    b.feed(rough_on.inputs['True'], b.math('SUBTRACT', b.math('MULTIPLY', b.math('MULTIPLY', rough_tex, amount),
+                                                               I['Strength']), chips))
+    off = b.math('ADD', off, rough_on.outputs['Output'])
     sp = b.node('GeometryNodeSetPosition')
     b.feed(sp.inputs['Geometry'], geo)
     b.feed(sp.inputs['Offset'], b.vec('SCALE', N, scale=off))
     geo = sp.outputs['Geometry']
     # for the material (worked out where the points were before the offset: the same fields, stored)
     pat = None
-    for f, val in (('crk', crk), ('pore', pore), ('gill', gill), ('vein', vein), ('bark', bark), ('wave', wave)):
-        use = b.math('MINIMUM', b.math('MULTIPLY', I['W ' + f], 20.0), 1.0)
+    for f, val in (('crk', crk), ('pore', pore), ('gill', gill), ('vein', vein), ('bark', bark), ('wave', wave),
+                   ('flake', b.math('MULTIPLY', b.math('SUBTRACT', 1.0, flake), 0.8)),
+                   ('plate', b.math('SUBTRACT', 1.0, plate)), ('bump', b.math('MULTIPLY', b.math('SUBTRACT', 1.0, bump), 0.6)),
+                   ('wrinkle', wrinkle), ('shingle', b.math('MULTIPLY', b.math('SUBTRACT', 1.0, shingle), 0.8)),
+                   ('polyp', cup)):
+        use = b.math('MULTIPLY', b.math('MINIMUM', b.math('MULTIPLY', I['W ' + f], 20.0), 1.0), I['C ' + f])
         t_ = b.math('MULTIPLY', val, use)
         pat = t_ if pat is None else b.math('MAXIMUM', pat, t_)
+    rpat = b.node('GeometryNodeSwitch', input_type='FLOAT')
+    b.feed(rpat.inputs['Switch'], I['Rough'])
+    rpat.inputs['False'].default_value = 0.0
+    b.feed(rpat.inputs['True'], b.math('MULTIPLY', b.math('MAXIMUM', b.math('SUBTRACT', 0.0, rough_tex), 0.0), amount))
+    pat = b.math('MAXIMUM', pat, rpat.outputs['Output'])
     geo = b.store(geo, 'mch_om_pat', b.math('MINIMUM', b.math('MAXIMUM', pat, 0.0), 1.0))
     geo = b.store(geo, 'mch_om_var', b.math('ADD', nlow, 0.5))
     geo = b.store(geo, 'mch_om_spot', b.math('MULTIPLY', spot, b.math('MINIMUM', b.math('MULTIPLY', I['W spot'], 20.0),
@@ -403,12 +840,67 @@ def organic_tree():
     smooth = b.node('GeometryNodeSetShadeSmooth')
     b.feed(smooth.inputs['Mesh'], geo)
     b.feed(smooth.inputs['Shade Smooth'], b.math('SUBTRACT', 1.0, I['Flat']))
+    ea = b.node('GeometryNodeInputMeshEdgeAngle')
+    sharp = b.node('GeometryNodeSetShadeSmooth', domain='EDGE')          # (steps, facets: crisp edges)
+    b.feed(sharp.inputs['Mesh'], smooth.outputs['Mesh'])
+    b.feed(sharp.inputs['Selection'], b.math('GREATER_THAN', ea.outputs['Unsigned Angle'], math.radians(35.0)))
+    sharp.inputs['Shade Smooth'].default_value = False
     sm = b.node('GeometryNodeSetMaterial')
-    b.feed(sm.inputs['Geometry'], smooth.outputs['Mesh'])
+    b.feed(sm.inputs['Geometry'], sharp.outputs['Mesh'])
     b.feed(sm.inputs['Material'], I['Material'])
     b.feed(go.inputs[0], sm.outputs['Geometry'])
     ng['mch_v'] = TREE_VERSION
     return ng
+
+
+def _rough(b, I, pos, rd, rim):
+    """0.24.183 Plate Detail 4's rim texture on the lump (its channels: Bumps, Cells, Cracks, Wrinkles along the
+    outline, Pits, Grain - about -1 .. 1, mixed) and Chips: bites in from the edge.  Returns (texture, chips depth)."""
+    from .plate_rough import _clamp01, _map, _noise, _rgb, _seed, _voronoi, _when
+    feat = b.math('MAXIMUM', I['Feature'], 1e-6)
+    q = b.vec('SCALE', pos, scale=b.math('DIVIDE', 1.0, feat))
+    seed = I['Seed']
+    bumps = b.math('MULTIPLY', b.math('SUBTRACT', _noise(b, q, _seed(b, seed, 3), 1.0, 5.0, 0.55).outputs['Factor'],
+                                      0.5), 2.4)
+    edge_v = _voronoi(b, q, _seed(b, seed, 4), 1.0, 'DISTANCE_TO_EDGE').outputs['Distance']
+    stones = b.math('SUBTRACT', b.math('MULTIPLY', b.math('SQRT', _clamp01(b, b.math('DIVIDE', edge_v, 0.4))), 2.0), 1.0)
+    warp = _noise(b, q, _seed(b, seed, 5), 0.5, 2.0, 0.5).outputs['Color']
+    qc = b.vec('ADD', b.vec('SCALE', q, scale=0.45), b.vec('SCALE', b.vec('SUBTRACT', warp, (0.5, 0.5, 0.5)), scale=0.8))
+    crack_v = _voronoi(b, qc, _seed(b, seed, 6), 1.0, 'DISTANCE_TO_EDGE').outputs['Distance']
+    crack_on = _clamp01(b, b.math('MULTIPLY', b.math('SUBTRACT', _noise(b, q, _seed(b, seed, 7), 0.3, 2.0, 0.5)
+                                                  .outputs['Factor'], 0.38), 5.0))
+    cracks = b.math('MULTIPLY', _map(b, crack_v, 0.0, 0.07, -1.0, 0.0, 'SMOOTHSTEP'), crack_on)
+    spacing = b.math('MULTIPLY', feat, b.math('ADD', 0.38, b.math('MULTIPLY', _noise(b, q, _seed(b, seed, 12), 0.25, 1.0,
+                                                                                   0.5).outputs['Factor'], 0.4)))
+    wob = b.math('MULTIPLY', b.math('SUBTRACT', _noise(b, q, _seed(b, seed, 8), 0.7, 3.0, 0.55).outputs['Factor'], 0.5),
+                 11.0)
+    phase = b.math('ADD', b.math('MULTIPLY', b.math('DIVIDE', rd, spacing), 2 * math.pi), wob)
+    fold = b.math('SQRT', b.math('ABSOLUTE', b.math('SINE', phase)))
+    fold_on = _clamp01(b, b.math('MULTIPLY', b.math('SUBTRACT', _noise(b, q, _seed(b, seed, 9), 0.6, 2.0, 0.5)
+                                                     .outputs['Factor'], 0.33), 3.5))
+    wrinkles = b.math('MULTIPLY', b.math('SUBTRACT', b.math('MULTIPLY', fold, 2.0), 1.3), fold_on)
+    pv = _voronoi(b, q, _seed(b, seed, 10), 1.5)
+    prnd = _rgb(b, pv.outputs['Color'])
+    pit_on = b.math('LESS_THAN', prnd[0], 0.45)
+    radius = b.math('ADD', 0.15, b.math('MULTIPLY', prnd[1], 0.25))
+    pits = b.math('MULTIPLY', _map(b, pv.outputs['Distance'], 0.0, radius, -1.0, 0.0, 'SMOOTHSTEP'), pit_on)
+    grain = b.math('MULTIPLY', b.math('SUBTRACT', _noise(b, q, _seed(b, seed, 11), 3.5, 2.0, 0.6).outputs['Factor'],
+                                      0.5), 2.4)
+    tex = None
+    for chan, sock in ((bumps, 'Bumps'), (stones, 'Cells'), (cracks, 'Cracks'), (wrinkles, 'Wrinkles'), (pits, 'Pits'),
+                       (grain, 'Grain')):
+        term = _when(b, I[sock], b.math('MULTIPLY', chan, I[sock]))
+        tex = term if tex is None else b.math('ADD', tex, term)
+    # chips: round bites and whole chunks taken in from the edge (as deep as 0.6 of the Rim, only near the edge)
+    bite = _clamp01(b, b.math('MULTIPLY', b.math('SUBTRACT', _noise(b, q, _seed(b, seed, 1), 0.35, 3.0, 0.6)
+                                                  .outputs['Factor'], 0.45), 4.0))
+    cells = _rgb(b, _voronoi(b, q, _seed(b, seed, 2), 0.6).outputs['Color'])
+    chunk = _clamp01(b, b.math('MULTIPLY', b.math('SUBTRACT', cells[0], 0.5), 2.5))
+    near = _map(b, rd, 0.0, b.math('MULTIPLY', rim, 0.6), 1.0, 0.0, 'SMOOTHSTEP')
+    chips = _when(b, I['Chips'], b.math('MULTIPLY', b.math('MULTIPLY', b.math('MULTIPLY', I['Chips'],
+                                                                                   b.math('MULTIPLY', rim, 0.25)),
+                                                                     b.math('MAXIMUM', bite, chunk)), near))
+    return tex, chips
 
 
 def material(ob):
@@ -485,24 +977,56 @@ def data(ob):
 
 
 def build(ob, context=None):
-    """The lump again from its outline and sliders; returns the base mesh's face count."""
+    """The lump again from its outline and sliders; returns the base mesh's face count.  A converted mesh (Click a
+    Mesh) keeps its own mesh: only its surface is laid again."""
     d = data(ob)
-    P2 = np.asarray(d.get('outline', []), float)
-    if len(P2) < 3:
-        return 0
-    holes = [np.asarray(h, float) for h in d.get('holes', [])]
     pg = ob.mch_omass
     spec = KIND[pg.kind]
-    if spec[3] == 'CRYSTAL':
-        V, F = crystals(P2, pg, int(pg.seed))
-    else:
-        V, F = lump(P2, holes, pg)
     me = ob.data
-    me.clear_geometry()
-    me.from_pydata([tuple(v) for v in V], [], [list(map(int, f)) for f in F])
-    me.validate(clean_customdata=False)
-    me.update()
-    size = float(np.ptp(P2, axis=0).max())
+    if d.get('converted'):
+        co = np.empty(len(me.vertices) * 3)
+        me.vertices.foreach_get('co', co)
+        co = co.reshape(-1, 3)
+        if not len(co):
+            return 0
+        lo, hi = co.min(0), co.max(0)
+        P2 = np.array([[lo[0], lo[1]], [hi[0], lo[1]], [hi[0], hi[1]], [lo[0], hi[1]]])
+        size = float((hi - lo).max())
+    else:
+        P2 = np.asarray(d.get('outline', []), float)
+        if len(P2) < 3:
+            return 0
+        holes = [np.asarray(h, float) for h in d.get('holes', [])]
+        if spec[3] == 'CRYSTAL':
+            V, F = crystals(P2, pg, int(pg.seed))
+            RD = np.full(len(V), 1e3)
+        elif spec[3] == 'FORM':
+            V, F, RD = form_mesh(P2, holes, pg)
+        else:
+            V, F, RD = lump(P2, holes, pg)
+        me.clear_geometry()
+        me.from_pydata([tuple(v) for v in V], [], [list(map(int, f)) for f in F])
+        me.validate(clean_customdata=False)
+        at = me.attributes.get(RD_ATTR) or me.attributes.new(RD_ATTR, 'FLOAT', 'POINT')
+        if len(at.data) == len(RD):
+            at.data.foreach_set('value', RD.astype(np.float32))
+        if spec[3] == 'FORM':                         # (the wall's faces turned out, as the top's)
+            import bmesh
+            bm = bmesh.new()
+            bm.from_mesh(me)
+            bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+            if pg.surface == 'NONE' and not pg.remesh:
+                # 0.24.183 (user: "너무 고밀도야, 가벼워야 돼") light: the flat and gently bent parts merged into big
+                # faces (a tread, a slanted top, a facet: one face each) - only a fine surface keeps the fine points
+                bmesh.ops.dissolve_limit(bm, angle_limit=math.radians(5.0), use_dissolve_boundaries=False,
+                                         verts=bm.verts[:], edges=bm.edges[:])
+                bmesh.ops.dissolve_degenerate(bm, dist=size_of(P2) * 1e-5, edges=bm.edges[:])
+                # (big hollow-sided faces split into convex ones: they draw, sculpt and boolean without trouble)
+                bmesh.ops.connect_verts_concave(bm, faces=[f for f in bm.faces if len(f.verts) > 4])
+            bm.to_mesh(me)
+            bm.free()
+        me.update()
+        size = float(np.ptp(P2, axis=0).max())
     mod = ob.modifiers.get(MOD)
     if mod is None:
         mod = ob.modifiers.new(MOD, 'NODES')
@@ -513,14 +1037,27 @@ def build(ob, context=None):
     h, ax = hinge_axis(P2)
     cc = cap_centre(P2)
     look = spec[7]
-    vals = {'Remesh': spec[3] != 'CRYSTAL', 'Voxel': size / max(int(pg.resolution), 8), 'Smooth': int(pg.smooth),
+    remesh = pg.remesh if (d.get('converted') or spec[3] == 'FORM') else spec[3] != 'CRYSTAL'
+    vals = {'Remesh': remesh, 'Voxel': size / max(int(pg.resolution), 8), 'Smooth': int(pg.smooth),
             'Size': size, 'Seed': float(pg.seed % 997), 'Pattern Scale': float(pg.pattern_scale),
-            'Pattern Width': float(pg.pattern_width), 'Count': float(pg.count), 'Flat': bool(look.get('flat', False)),
+            'Pattern Width': float(pg.pattern_width), 'Count': float(pg.count),
+            'Flat': bool(look.get('flat', False)) and (remesh or spec[3] == 'CRYSTAL'),
             'Hinge': (float(h[0]), float(h[1]), 0.0), 'Axis': (float(ax[0]), float(ax[1]), 0.0),
             'Centre': (float(cc[0]), float(cc[1]), 0.0), 'Material': material(ob)}
+    surf = pg.surface != 'NONE'
+    vals.update({'Has Edge': not d.get('converted'), 'Rough': surf, 'Rim': float(pg.r_rim),
+                 'Center': float(pg.r_center), 'Strength': float(pg.r_strength) * size,
+                 'Feature': float(pg.r_feature) * size, 'Chips': float(pg.r_chips)})
+    for k, sock in (('r_bumps', 'Bumps'), ('r_cells', 'Cells'), ('r_cracks', 'Cracks'), ('r_wrinkles', 'Wrinkles'),
+                    ('r_pits', 'Pits'), ('r_grain', 'Grain')):
+        vals[sock] = float(getattr(pg, k))
+    if surf and spec[3] == 'FORM' and not pg.remesh:
+        vals['Remesh'] = False                        # (the form's own fine triangles carry it)
     scale_of = {'low': pg.lumps, 'det': pg.detail}
+    nocol = set(spec[7].get('plain', ()))
     for f in FIELDS:
         vals['W ' + f] = float(w.get(f, 0.0)) * float(scale_of.get(f, pg.pattern))
+        vals['C ' + f] = 0.0 if f in nocol else 1.0
     for k, v in vals.items():
         try:
             gs.set_input(mod, k, v)
@@ -558,6 +1095,8 @@ def _upd_kind(self, context):
     try:
         for k, v in spec[4].items():
             setattr(self, k, v)
+        if spec[3] != 'FORM':                         # (a lump: its pattern strongest at the edges, a little inside)
+            self.r_rim, self.r_center = 0.3, 0.6
         self.color_a, self.color_b = spec[6]
         self.glow = 1.0
     finally:
@@ -566,18 +1105,36 @@ def _upd_kind(self, context):
 
 
 LIVE = ('kind', 'depth', 'back', 'lumps', 'detail', 'pattern', 'pattern_scale', 'pattern_width', 'count', 'resolution',
-        'smooth', 'seed', 'color_a', 'color_b', 'glow')
+        'smooth', 'seed', 'color_a', 'color_b', 'glow', 'edge_steps', 'edge_width', 'jag', 'slope', 'turn', 'surface',
+        'r_rim', 'r_center', 'r_strength', 'r_feature', 'r_chips', 'r_bumps', 'r_cells', 'r_cracks', 'r_wrinkles',
+        'r_pits', 'r_grain')
+SURF_LENGTHS = ('r_rim', 'r_strength', 'r_feature')        # (shares of the lump's size, as Plate Detail 4 saves them)
+SURF_PLAIN = ('r_center', 'r_chips', 'r_bumps', 'r_cells', 'r_cracks', 'r_wrinkles', 'r_pits', 'r_grain')
+
+
+_SURF = []
+
+
+def _surface_items(_self, _context):
+    """(kept: Blender needs the strings of a dynamic list to stay alive)"""
+    if not _SURF:
+        from . import plate_rough as pr
+        _SURF.extend([('NONE', 'None', 'No fine texture: the big form as it is')] + [
+            (pid, label, desc) for pid, label, desc, vals in pr.PRESETS if vals.get('r_style', 'ROUGH') == 'ROUGH'
+            and pid not in {'BASALT', 'CLIFF'}])
+    return _SURF
+LIVE_CONVERT = ('remesh',)
 
 
 class MCH_PG_OrganicMass(bpy.types.PropertyGroup):
-    kind: EnumProperty(name='Matter', items=KIND_ITEMS, default='ROCK', update=_upd_kind)
-    depth: FloatProperty(name='Thickness', default=0.85, min=0.05, soft_max=2.0, max=4.0, update=_upd,
+    kind: EnumProperty(name='Form', items=KIND_ITEMS, default='SHARD', update=_upd_kind)
+    depth: FloatProperty(name='Height', default=1.0, min=0.05, soft_max=2.0, max=4.0, update=_upd,
                          description='How thick it is toward you (1: about as thick as wide)')
-    back: FloatProperty(name='Back', default=0.85, min=0.0, max=1.0, update=_upd,
+    back: FloatProperty(name='Back', default=0.0, min=0.0, max=1.0, update=_upd,
                         description='The back: 1 as round as the front, 0 flat (a lump for a wall or a body)')
-    lumps: FloatProperty(name='Lumps', default=1.0, min=0.0, soft_max=2.0, max=5.0, update=_upd,
+    lumps: FloatProperty(name='Lumps', default=0.0, min=0.0, soft_max=2.0, max=5.0, update=_upd,
                          description='Big bulges and dents all over it')
-    detail: FloatProperty(name='Detail', default=1.0, min=0.0, soft_max=2.0, max=5.0, update=_upd,
+    detail: FloatProperty(name='Detail', default=0.0, min=0.0, soft_max=2.0, max=5.0, update=_upd,
                           description='Fine surface grain')
     pattern: FloatProperty(name='Pattern', default=1.0, min=0.0, soft_max=2.0, max=5.0, update=_upd,
                            description='The matter\'s own pattern: Rock cracks, Coral grooves, Bone / Sponge pores, Flesh '
@@ -587,17 +1144,50 @@ class MCH_PG_OrganicMass(bpy.types.PropertyGroup):
                                  description='More, smaller (higher) or fewer, bigger cells / grooves / rings')
     pattern_width: FloatProperty(name='Pattern Width', default=1.0, min=0.1, soft_max=3.0, max=10.0, update=_upd,
                                  description='How wide the cracks / grooves / pores / ribs are')
-    count: IntProperty(name='Count', default=8, min=2, soft_max=60, max=200, update=_upd,
+    count: IntProperty(name='Count', default=6, min=2, soft_max=60, max=200, update=_upd,
                        description='Mushroom: gills; Shell: ribs; Crystal: crystals')
-    resolution: IntProperty(name='Resolution', default=150, min=12, soft_max=320, max=600, update=_upd,
+    resolution: IntProperty(name='Resolution', default=70, min=12, soft_max=320, max=600, update=_upd,
                             description='Points across it (more: finer surface, heavier; Ice: low for big facets)')
-    smooth: IntProperty(name='Smooth', default=1, min=0, max=20, update=_upd,
+    smooth: IntProperty(name='Smooth', default=0, min=0, max=20, update=_upd,
                         description='Smoothed before its surface (softer)')
     seed: IntProperty(name='Seed', default=0, min=0, update=_upd)
-    color_a: FloatVectorProperty(name='Color', subtype='COLOR', size=3, min=0.0, max=1.0, default=(0.36, 0.34, 0.31),
+    # 0.24.183 big forms
+    edge_steps: IntProperty(name='Edge Steps', default=6, min=0, max=24, update=_upd,
+                            description='The edges in steps (layers) - the accent at the edges; 0: a smooth rise')
+    edge_width: FloatProperty(name='Edge Width', default=0.9, min=0.02, max=1.5, update=_upd,
+                              description='How far in from the outline the steps go (1: to the middle)')
+    jag: FloatProperty(name='Jagged', default=0.6, min=0.0, max=1.5, update=_upd,
+                       description='The steps\' edges broken and wandering (0: even, like contour lines)')
+    slope: FloatProperty(name='Slope', default=0.4, min=0.0, max=1.0, update=_upd,
+                         description='Layered Shard: how much of the top is the one big slanted face')
+    turn: FloatProperty(name='Turn', default=0.0, min=-math.pi, max=math.pi, subtype='ANGLE', update=_upd,
+                        description='Which way it rises (Shard), the plates / folds run (turned round)')
+    # 0.24.183 the fine texture on top (Plate Detail 4's): strongest at the edges
+    surface: EnumProperty(name='Surface', items=_surface_items, update=_upd,
+                          description='A Plate Detail 4 surface on the form (strongest at its edges)')
+    r_rim: FloatProperty(name='Rim Width', default=0.15, min=0.0, max=2.0, update=_upd,
+                         description='How far in from the edge the surface is strong (a share of its size)')
+    r_center: FloatProperty(name='Center', default=0.2, min=0.0, max=1.0, update=_upd,
+                            description='How much of the surface in the middle (1: as strong as at the edges)')
+    r_strength: FloatProperty(name='Strength', default=0.01, min=0.0, max=0.5, precision=4, update=_upd,
+                              description='How deep / high the surface goes (a share of its size)')
+    r_feature: FloatProperty(name='Feature Size', default=0.03, min=0.001, max=1.0, precision=4, update=_upd,
+                             description='Size of one lump / stone / pit (a share of its size)')
+    r_chips: FloatProperty(name='Chips', default=0.0, min=0.0, max=1.0, update=_upd,
+                           description='Bites taken in from the edge')
+    r_bumps: FloatProperty(name='Bumps', default=0.0, min=-1.0, max=1.0, update=_upd)
+    r_cells: FloatProperty(name='Cells', default=0.0, min=-1.0, max=1.0, update=_upd)
+    r_cracks: FloatProperty(name='Cracks', default=0.0, min=-1.0, max=1.0, update=_upd)
+    r_wrinkles: FloatProperty(name='Wrinkles', default=0.0, min=-1.0, max=1.0, update=_upd)
+    r_pits: FloatProperty(name='Pits', default=0.0, min=-1.0, max=1.0, update=_upd)
+    r_grain: FloatProperty(name='Grain', default=0.0, min=-1.0, max=1.0, update=_upd)
+    remesh: bpy.props.BoolProperty(name='Remesh', default=False, update=_upd,
+                                   description='A converted mesh: remeshed evenly first (off: its own points, a '
+                                               'dense sculpt kept as it is)')
+    color_a: FloatVectorProperty(name='Color', subtype='COLOR', size=3, min=0.0, max=1.0, default=(0.62, 0.6, 0.56),
                                  update=_upd)
     color_b: FloatVectorProperty(name='Pattern Color', subtype='COLOR', size=3, min=0.0, max=1.0,
-                                 default=(0.16, 0.15, 0.14), update=_upd,
+                                 default=(0.2, 0.18, 0.16), update=_upd,
                                  description='In the cracks / grooves / pores (Mushroom: the spots)')
     glow: FloatProperty(name='Glow', default=1.0, min=0.0, soft_max=3.0, max=20.0, update=_upd,
                         description='Lava Rock: how bright its cracks glow')
@@ -663,8 +1253,21 @@ def perform(context, loops, projector):
 
 
 def apply_mass(ob, context=None):
-    """Kept as it is: the modifier applied (a plain mesh), no longer live."""
-    dg = (context or bpy.context).evaluated_depsgraph_get()
+    """Kept as it is: the modifier applied (a plain mesh), no longer live.  A converted mesh: only this modifier
+    (its own others - a Mirror - stay)."""
+    context = context or bpy.context
+    if data(ob).get('converted') and ob.modifiers.get(MOD) is not None:
+        try:
+            with context.temp_override(object=ob, active_object=ob):
+                bpy.ops.object.modifier_apply(modifier=MOD)
+            for k in (KEY,):
+                if k in ob.keys():
+                    del ob[k]
+            ob[DONE] = 1
+            return len(ob.data.polygons)
+        except RuntimeError:
+            pass
+    dg = context.evaluated_depsgraph_get()
     ev = ob.evaluated_get(dg)
     me = bpy.data.meshes.new_from_object(ev, depsgraph=dg)
     old = ob.data
@@ -678,6 +1281,106 @@ def apply_mass(ob, context=None):
             del ob[k]
     ob[DONE] = 1
     return len(me.polygons)
+
+
+# ---- Click a Mesh: a mesh you made gets the matter's surface (its shape kept) ------------------------------------------
+
+HOW = (('DRAW', 'Draw', 'Draw an outline: a new lump of the matter in that shape'),
+       ('CLICK', 'Click a Mesh', 'Click a mesh you made: its surface becomes the matter, its shape kept (Alt + click: '
+                                 'back)'))
+
+
+def convert(context, ob, pg_from=None):
+    """0.24.183 (user: "어차피 라쏘로 내가 대략적인 외관은 정하니까 이렇게 오가닉한 표면으로 변환시키고 싶어서") ``ob``
+    gets the matter (the window's) on its surface - its own mesh kept under the modifier (Remesh off for a dense one:
+    its sculpt kept as it is)."""
+    pg_from = pg_from or context.scene.mch_omass
+    if not is_mass(ob):
+        ob[KEY] = json.dumps({'converted': True})
+    _BUSY[0] = True
+    try:
+        for k in LIVE:
+            setattr(ob.mch_omass, k, getattr(pg_from, k))
+        ob.mch_omass.remesh = len(ob.data.vertices) < 150000
+        if ob.mch_omass.remesh:
+            ob.mch_omass.resolution = max(ob.mch_omass.resolution, 220)
+    finally:
+        _BUSY[0] = False
+    build(ob, context)
+
+
+def back_to_shape(ob):
+    """The converted mesh as it was (the modifier taken off)."""
+    mod = ob.modifiers.get(MOD)
+    if mod is not None:
+        ob.modifiers.remove(mod)
+    for k in (KEY, 'mch_omass_mat'):
+        if k in ob.keys():
+            del ob[k]
+
+
+def pick(context, xy):
+    from bpy_extras import view3d_utils
+    region, rv3d = context.region, context.region_data
+    if region is None or rv3d is None:
+        return None
+    o = view3d_utils.region_2d_to_origin_3d(region, rv3d, xy)
+    d = view3d_utils.region_2d_to_vector_3d(region, rv3d, xy)
+    try:
+        hit, _loc, _n, _i, ob, _m = context.scene.ray_cast(context.evaluated_depsgraph_get(), o, d)
+    except (RuntimeError, TypeError):
+        return None
+    ob = getattr(ob, 'original', ob) if hit else None
+    return ob if ob is not None and ob.type == 'MESH' else None
+
+
+class MCH_OT_omass_click(bpy.types.Operator):
+    """Click a mesh you made: its surface becomes the matter, its shape kept.  Alt + click: back"""
+    bl_idname = 'mch.omass_click'
+    bl_label = 'Creature Base Mesh 2: Click a Mesh'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    clear: bpy.props.BoolProperty(default=False, options={'SKIP_SAVE'})
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT'
+
+    def invoke(self, context, event):
+        if context.area is None or context.area.type != 'VIEW_3D':
+            return {'PASS_THROUGH'}
+        if getattr(context.scene, 'mch_omass_how', 'DRAW') == 'DRAW':
+            return {'PASS_THROUGH'}                     # (drawn: the lasso has the press)
+        ob = pick(context, (event.mouse_region_x, event.mouse_region_y))
+        if ob is None:
+            return {'PASS_THROUGH'}
+        return self._do(context, ob)
+
+    def _do(self, context, ob):
+        if self.clear:
+            if not data(ob).get('converted'):
+                self.report({'INFO'}, f'{ob.name}: not a converted mesh')
+                return {'CANCELLED'}
+            back_to_shape(ob)
+            msg = f'{ob.name}: back to its shape'
+        else:
+            if is_mass(ob) and not data(ob).get('converted'):
+                ob.mch_omass.kind = context.scene.mch_omass.kind       # (a lump made here: just its matter)
+            else:
+                convert(context, ob)
+            msg = (f'{ob.name}: {KIND[ob.mch_omass.kind][1]} on its surface, its shape kept (live; Alt + click: '
+                   f'back; Enter: keep)')
+        for o in context.selected_objects:
+            o.select_set(False)
+        ob.select_set(True)
+        context.view_layer.objects.active = ob
+        self.report({'INFO'}, msg)
+        return {'FINISHED'}
+
+    def execute(self, context):
+        ob = getattr(context.view_layer.objects, 'active', None)
+        if ob is None or ob.type != 'MESH':
+            return {'CANCELLED'}
+        return self._do(context, ob)
 
 
 def apply_targets(context):
@@ -702,6 +1405,50 @@ class MCH_OT_omass_apply(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def surface_values(pid):
+    """A Plate Detail 4 preset's texture values (lengths as shares of the size)."""
+    from . import plate_rough as pr
+    v = pr.preset_values(pid)
+    return {k: v[k] for k in SURF_LENGTHS + SURF_PLAIN if k in v}
+
+
+class MCH_OT_omass_surface(bpy.types.Operator):
+    """This surface (Plate Detail 4's) on the form: strongest at its edges"""
+    bl_idname = 'mch.omass_surface'
+    bl_label = 'Creature Base Mesh 2 Surface'
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    preset: bpy.props.StringProperty(default='NONE')
+    mine: bpy.props.StringProperty(default='', description='One of your Plate Detail 4 presets')
+
+    def execute(self, context):
+        ob = active_mass(context)
+        vals = {}
+        pid = self.preset
+        if self.mine:
+            from . import my_presets as mp
+            from .plate_detail import MY_KIND
+            got = mp.load_all().get(MY_KIND, {}).get(self.mine)
+            if not got:
+                return {'CANCELLED'}
+            vals = {k: got[k] for k in SURF_LENGTHS + SURF_PLAIN if k in got}
+            pid = got.get('r_preset', 'CONCRETE')
+            if pid in {'BASALT', 'CLIFF'}:
+                pid = 'STONE'
+        elif pid != 'NONE':
+            vals = surface_values(pid)
+        for pg in ([context.scene.mch_omass] + ([ob.mch_omass] if ob is not None else [])):
+            _BUSY[0] = True
+            try:
+                for k, v in vals.items():
+                    setattr(pg, k, v)
+                pg.surface = pid
+            finally:
+                _BUSY[0] = False
+        if ob is not None:
+            build(ob, context)
+        return {'FINISHED'}
+
+
 class MCH_OT_omass_kind(bpy.types.Operator):
     """This matter (the selected lump too): its sliders and colours"""
     bl_idname = 'mch.omass_kind'
@@ -722,28 +1469,81 @@ def draw(layout, context):
     st = context.scene.mch_omass
     ob = active_mass(context)
     pg = ob.mch_omass if ob is not None else st
+    layout.row(align=True).prop(context.scene, 'mch_omass_how', expand=True)
     col = layout.column(align=True)
-    col.label(text=f'{ob.name}: {pg.kind.title()} (live)' if ob is not None else 'The next lump: pick its matter')
-    entries = []
-    for kid, label, _d, *_r in KINDS:
-        path, icon = pc.thumb('omass', kid)
-        entries.append((label, path, icon, pg.kind == kid, 'mch.omass_kind', {'kind': kid}))
-    pc.tiles(layout, entries, columns=4, scale=3.0)
+    conv = ob is not None and data(ob).get('converted')
+    col.label(text=(f'{ob.name}: {KIND[pg.kind][1]} (live{", converted" if conv else ""})' if ob is not None else
+                    'The next lump: pick its matter'))
+    form = KIND[pg.kind][3] == 'FORM'
+
+    def tiles(kinds):
+        entries = []
+        for kid, label, _d, *_r in kinds:
+            path, icon = pc.thumb('omass', kid)
+            entries.append((label, path, icon, pg.kind == kid, 'mch.omass_kind', {'kind': kid}))
+        pc.tiles(layout, entries, columns=4, scale=3.0)
+    layout.label(text='Big Forms')
+    tiles([k for k in KINDS if k[3] == 'FORM'])
     col = layout.column(align=True)
-    col.label(text='Shape')
-    for k in ('depth', 'back', 'lumps', 'detail'):
-        col.prop(pg, k, slider=k != 'depth')
-    col = layout.column(align=True)
-    col.label(text=f'Pattern: {PATTERN_NAME.get(pg.kind, "")}')
-    col.prop(pg, 'pattern', text=PATTERN_NAME.get(pg.kind, 'Pattern'))
-    col.prop(pg, 'pattern_scale')
-    col.prop(pg, 'pattern_width')
-    if pg.kind in COUNT_NAME:
-        col.prop(pg, 'count', text=COUNT_NAME[pg.kind])
+    if form:
+        col.label(text='Form')
+        col.prop(pg, 'depth')
+        col.prop(pg, 'edge_steps')
+        col.prop(pg, 'edge_width', slider=True)
+        col.prop(pg, 'jag', slider=True)
+        if pg.kind in FORM_COUNT:
+            col.prop(pg, 'count', text=FORM_COUNT[pg.kind])
+        if pg.kind == 'SHARD':
+            col.prop(pg, 'slope', slider=True)
+        if pg.kind in {'SHARD', 'PLATES', 'FOLDS', 'CREST'}:
+            col.prop(pg, 'turn')
+        if pg.kind == 'BLOCKS':
+            col.prop(pg, 'pattern_width', text='Crack Width')
+        col.prop(pg, 'back', slider=True)
+    else:
+        col.label(text='Shape')
+        for k in ('depth', 'back', 'lumps', 'detail'):
+            col.prop(pg, k, slider=k != 'depth')
+        col = layout.column(align=True)
+        col.label(text=f'Pattern: {PATTERN_NAME.get(pg.kind, "")}')
+        col.prop(pg, 'pattern', text=PATTERN_NAME.get(pg.kind, 'Pattern'))
+        col.prop(pg, 'pattern_scale')
+        col.prop(pg, 'pattern_width')
+        if pg.kind in COUNT_NAME:
+            col.prop(pg, 'count', text=COUNT_NAME[pg.kind])
+    # the fine surface (Plate Detail 4's presets and yours), strongest at the edges
+    box = layout.box()
+    box.label(text='Surface (Plate Detail 4): ' + (pg.surface.title() if pg.surface != 'NONE' else 'none'))
+    entries = [('None', '', 0, pg.surface == 'NONE', 'mch.omass_surface', {'preset': 'NONE'})]
+    for pid, label, _d in _surface_items(None, context)[1:]:
+        path, icon = pc.thumb('rough', pid)
+        entries.append((label, path, icon, pg.surface == pid, 'mch.omass_surface', {'preset': pid}))
+    pc.tiles(box, entries, columns=4, scale=2.4)
+    from . import my_presets as mp
+    from .plate_detail import MY_KIND
+    mine = mp.names(MY_KIND)
+    if mine:
+        box.label(text='My Presets (Plate Detail 4)')
+        g = box.grid_flow(row_major=True, columns=2, even_columns=True, align=True)
+        for name in mine:
+            g.operator('mch.omass_surface', text=name).mine = name
+    if pg.surface != 'NONE':
+        c2 = box.column(align=True)
+        for k in ('r_strength', 'r_feature', 'r_rim', 'r_center', 'r_chips', 'r_bumps', 'r_cells', 'r_cracks',
+                  'r_wrinkles', 'r_pits', 'r_grain'):
+            c2.prop(pg, k, slider=True)
+    more = getattr(context.scene, 'mch_omass_more', False)
+    layout.prop(context.scene, 'mch_omass_more', text='Lumps (rock, mushroom, crystal ...)', icon='TRIA_DOWN' if more
+                else 'TRIA_RIGHT', emboss=False)
+    if more:
+        tiles([k for k in KINDS if k[3] != 'FORM'])
     col = layout.column(align=True)
     col.label(text='Mesh')
+    if conv or form:
+        col.prop(pg, 'remesh')
     col.prop(pg, 'resolution')
-    col.prop(pg, 'smooth')
+    if not form or pg.remesh:
+        col.prop(pg, 'smooth')
     col.prop(pg, 'seed')
     col = layout.column(align=True)
     col.label(text='Colors')
@@ -753,17 +1553,24 @@ def draw(layout, context):
     if pg.kind == 'LAVA':
         col.prop(pg, 'glow')
     if ob is not None:
-        layout.operator('mch.omass_apply', text='Apply (Enter)', icon='CHECKMARK')
+        row = layout.row(align=True)
+        if conv:
+            o = row.operator('mch.omass_click', text='Back to Shape')
+            o.clear = True
+        row.operator('mch.omass_apply', text='Apply (Enter)', icon='CHECKMARK')
     col = layout.column(align=True)
-    for line in HELP:
+    for line in (HELP if getattr(context.scene, 'mch_omass_how', 'DRAW') == 'DRAW' else HELP_CLICK):
         col.label(text=line)
 
 
-HELP = ('Draw an outline: a lump of that matter in its shape',
+HELP = ('Draw an outline: a big form in that shape (flat bottom)',
         'Seen from where you drew: the outline is its outline',
         'Select a lump: its sliders lay it again;  Enter: keep')
+HELP_CLICK = ('Click a mesh you made: its surface becomes the matter',
+              'Its shape kept (Remesh off: a dense sculpt as it is)',
+              'Alt + click: back to its shape;  Enter: keep')
 
-CLASSES = (MCH_PG_OrganicMass, MCH_OT_omass_apply, MCH_OT_omass_kind)
+CLASSES = (MCH_PG_OrganicMass, MCH_OT_omass_apply, MCH_OT_omass_kind, MCH_OT_omass_click, MCH_OT_omass_surface)
 
 
 def register():
@@ -771,12 +1578,15 @@ def register():
         bpy.utils.register_class(c)
     bpy.types.Scene.mch_omass = PointerProperty(type=MCH_PG_OrganicMass)
     bpy.types.Object.mch_omass = PointerProperty(type=MCH_PG_OrganicMass)
+    bpy.types.Scene.mch_omass_how = EnumProperty(name='How', items=HOW, default='DRAW')
+    bpy.types.Scene.mch_omass_more = bpy.props.BoolProperty(name='More', default=False)
 
 
 def unregister():
-    for T in (bpy.types.Scene, bpy.types.Object):
-        if hasattr(T, 'mch_omass'):
-            delattr(T, 'mch_omass')
+    for T, attr in ((bpy.types.Scene, 'mch_omass'), (bpy.types.Object, 'mch_omass'), (bpy.types.Scene, 'mch_omass_how'),
+                    (bpy.types.Scene, 'mch_omass_more')):
+        if hasattr(T, attr):
+            delattr(T, attr)
     for c in reversed(CLASSES):
         try:
             bpy.utils.unregister_class(c)

@@ -91,7 +91,20 @@ def bark():
                                                                                               endpoint=False)]
 
 
+def tail():
+    top = [(x, 0.32 * (1 - (x + 1.0) / 2.0) ** 0.8 + 0.05 * math.sin(x * 3)) for x in np.linspace(-1.0, 1.0, 60)]
+    bot = [(x, -0.3 * (1 - (x + 1.0) / 2.0) ** 0.8 + 0.04 * math.sin(x * 3)) for x in np.linspace(1.0, -1.0, 60)]
+    return top + bot
+
+
 SHAPES = {
+    'BONEFLAKE': radial(lambda a: 0.75 * (1 + 0.18 * math.cos(a - 1.2) + 0.06 * math.sin(3 * a)), sz=0.8),
+    'KELOID': radial(lambda a: 0.72 * (1 + 0.08 * math.sin(3 * a) + 0.05 * math.cos(5 * a))),
+    'HIDE': radial(lambda a: 0.7 * (1 + 0.12 * math.sin(2 * a + 0.5) + 0.05 * math.sin(4 * a)), sx=1.1),
+    'WARTS': [(0.95 * math.cos(a) * (1 - 0.2 * math.sin(a)), 0.38 * math.sin(a) * (1 + 0.25 * math.cos(a)))
+              for a in np.linspace(0, 2 * math.pi, 120, endpoint=False)],
+    'SCALEROWS': tail(),
+    'POLYPS': radial(lambda a: 0.8 * (1 + 0.05 * math.sin(5 * a)), sz=0.7, floor=-0.25),
     'ROCK': radial(lambda a: 0.72 * (1 + 0.12 * math.sin(3 * a) + 0.06 * math.sin(5 * a + 1)), floor=-0.48),
     'SCALE': [(0.55 * math.sin(t) * (1 - 0.45 * math.cos(t)), 0.78 * math.cos(t)) for t in
               np.linspace(0, 2 * math.pi, 120, endpoint=False)],
@@ -168,14 +181,17 @@ else:
     S.render.resolution_x, S.render.resolution_y = 1600, 1000
     S.view_settings.exposure = -1.2
     lights()
-    cols = 4
-    for i, (kid, *_r) in enumerate(om.KINDS):
+    only = [k for k in os.environ.get('ONLY', '').split(',') if k]
+    kinds = [k[0] for k in om.KINDS if not only or k[0] in only]
+    cols = 4 if len(kinds) > 6 else 3
+    for i, kid in enumerate(kinds):
         x0 = (i % cols - (cols - 1) / 2) * 2.0
-        z0 = (1 - i // cols) * 2.0
+        z0 = ((len(kinds) - 1) // cols / 2.0 - i // cols) * 2.0
         ob = make(kid, x0, z0)
         dg = C.evaluated_depsgraph_get()
         print(kid, len(ob.evaluated_get(dg).data.polygons), flush=True)
-    camera((1.2, -11.5, 1.2), (0.0, 0.0, 0.0), lens=48)
+    rows = (len(kinds) + cols - 1) // cols
+    camera((1.2 * cols / 4, -11.5 * max(cols / 4, rows / 3), 1.2), (0.0, 0.0, 0.0), lens=48)
     WIRE = bpy.data.materials.new('Wire')
     pb = WIRE.node_tree.nodes['Principled BSDF']
     pb.inputs['Base Color'].default_value = (1.0, 0.45, 0.05, 1)
