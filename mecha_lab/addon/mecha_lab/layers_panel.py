@@ -12,8 +12,9 @@ Export and the ZBrush Bridge under them - drawn in the Mecha look like the side 
     > ZBRUSH BRIDGE [Send to ZBrush] [Import Back] [Open Folder], the folder, what was sent
     > UI SIZE       (Viewport Panels) (RMB Menu) (Tool Menu) (Panel Opacity) [Small] [Normal] [Large] [Huge]
 
-A click on a row selects the part (Shift: add / remove), on a group row the group handle; the eye hides / shows
-(a group: all its parts); [>] works inside the group (Enter / Exit, as in the Mecha Menu).  Groups fold with the
+A click on a row selects the part (0.24.177 Shift: every row from the one clicked before; Ctrl: add / take out),
+on a group row the group handle; the eye hides / shows (a group: all its parts; a folder: its parts too, their eyes
+closed with it); [>] works inside the group (Enter / Exit, as in the Mecha Menu).  Groups fold with the
 arrow.  0.24.95 the scene's collections are folder rows too (their collections, groups and parts under them; the eye
 hides the collection, a click selects its parts); group and collection rows have Origin and Mirror (a collection
 is made a group in place for them); a second click on a row soon after the first renames it.  The wheel scrolls a long list.  Export and the Bridge start folded; they share one set of options (the
@@ -150,13 +151,50 @@ def _hidden(context, ob):
     try:
         if isinstance(ob, bpy.types.Collection):
             lc = layer_coll(context, ob)
-            return lc is None or lc.exclude or lc.hide_viewport
+            if lc is None or lc.exclude or lc.hide_viewport:
+                return True
+            parts = _coll_parts(context, ob)              # 0.24.177 all its parts hidden: the folder is hidden
+            return bool(parts) and all(o.hide_get() for o in parts)
         if groups.is_group(ob):
             parts = [o for o in groups.members(ob) if o.type != 'EMPTY'] or [ob]
-            return all(o.hide_get() for o in parts)
-        return ob.hide_get()
+            return all(o.hide_get() or not o.visible_get() for o in parts)
+        return ob.hide_get() or not ob.visible_get()      # 0.24.177 (hidden by its folder too: its eye closed)
     except (RuntimeError, ReferenceError):
         return False
+
+
+def _coll_parts(context, c):
+    """The parts in collection ``c`` and in the collections under it (in this view layer)."""
+    from . import live_ref
+    vl = context.view_layer.objects
+    return [o for o in live_ref.deep_objects(c) if o.name in vl]
+
+
+def _shown_folders(context, ob):
+    """0.24.177 The folders hiding ``ob`` from the viewport opened, every other part in them closed (hidden) on its
+    own eye instead - the part shows, the rest stays as it looked."""
+    for c in list(ob.users_collection):
+        chain, cur = [], c
+        while cur is not None:                            # (the folder and the folders above it)
+            chain.append(cur)
+            cur = next((p for p in bpy.data.collections if cur.name in p.children), None)
+        for cc in chain:
+            lc = layer_coll(context, cc)
+            if lc is not None and lc.hide_viewport:
+                for o in _coll_parts(context, cc):
+                    if o != ob:
+                        try:
+                            o.hide_set(True)
+                        except RuntimeError:
+                            pass
+                lc.hide_viewport = False
+
+
+_ANCHOR = {'key': None}
+
+
+def _row_key(name, coll):
+    return ('C:' if coll else 'O:') + name
 
 
 def _icon(ob):
@@ -472,26 +510,56 @@ def double_click(key, now=None):
 
 
 class MCH_OT_layer_pick(bpy.types.Operator):
-    """Select this part (Shift: add / remove); a group row selects the group, a collection row every part in it.
-    Click twice: rename"""
+    """Select this part; a group row selects the group, a collection row every part in it.  Shift: every row from
+    the one clicked before to this one; Ctrl: this one added / taken out.  Click twice: rename"""
     bl_idname = 'mch.layer_pick'
     bl_label = 'Pick Layer'
     bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
     name: StringProperty()
     coll: BoolProperty(default=False, options={'SKIP_SAVE'})
-    extend: BoolProperty(default=False, options={'SKIP_SAVE'})
+    extend: BoolProperty(default=False, options={'SKIP_SAVE'})        # (Ctrl: add / take out this one)
+    range: BoolProperty(default=False, options={'SKIP_SAVE'})         # (Shift: from the row clicked before)
 
     def invoke(self, context, event):
-        self.extend = bool(event.shift)
-        twice = double_click(('C:' if self.coll else 'O:') + self.name) and not self.extend
+        # 0.24.177 (user: "쉬프트 누르고 처음 꺼 마지막 꺼 선택하면 그 영역 선택되게, 컨트롤 누르면 빠지고")
+        self.range = bool(event.shift)
+        self.extend = bool(event.ctrl) and not self.range
+        twice = double_click(_row_key(self.name, self.coll)) and not (self.extend or self.range)
         if twice and not bpy.app.background:   # (0.24.95 user: "레이어 이름도 바꿀 수 있게")
             bpy.ops.mch.layer_rename('INVOKE_DEFAULT', name=self.name, coll=self.coll)
             return {'CANCELLED'}                # (the dialog's own OK makes the undo step)
         return self.execute(context)
 
+    def _range(self, context):
+        """The rows from the one clicked before (the anchor) to this one, all selected (added to what is)."""
+        rows = tree(context, scan(context))
+        keys = [_row_key(r[0].name, r[4] == 'COLL') for r in rows]
+        here = _row_key(self.name, self.coll)
+        if _ANCHOR['key'] not in keys or here not in keys:
+            return False
+        i, j = sorted((keys.index(_ANCHOR['key']), keys.index(here)))
+        vl = context.view_layer.objects
+        for ob, _d, _g, _f, kind in rows[i:j + 1]:
+            obs = _coll_parts(context, ob) if kind == 'COLL' else [ob]
+            for o in obs:
+                if o.name in vl and o.visible_get():
+                    o.select_set(True)
+        last = rows[keys.index(here)][0]
+        if not isinstance(last, bpy.types.Collection) and last.name in vl and last.select_get():
+            context.view_layer.objects.active = last
+        return True
+
     def execute(self, context):
         if context.mode != 'OBJECT':
             return {'CANCELLED'}
+        if self.range:
+            try:
+                if self._range(context):
+                    return {'FINISHED'}
+            except RuntimeError:
+                return {'CANCELLED'}
+            self.range = False                 # (no row clicked before: a plain click)
+        _ANCHOR['key'] = _row_key(self.name, self.coll)
         if self.coll:
             c = bpy.data.collections.get(self.name)
             if c is None:
@@ -502,6 +570,10 @@ class MCH_OT_layer_pick(bpy.types.Operator):
             if not obs:
                 return {'CANCELLED'}
             try:
+                if self.extend and all(o.select_get() for o in obs):      # (Ctrl on a picked folder: taken out)
+                    for o in obs:
+                        o.select_set(False)
+                    return {'FINISHED'}
                 if not self.extend:
                     for o in context.selected_objects:
                         o.select_set(False)
@@ -543,6 +615,8 @@ class MCH_OT_layer_eye(bpy.types.Operator):
     def execute(self, context):
         from . import groups
         if self.coll:
+            # 0.24.177 (user: "그룹 된 거 내가 눈 감게 하면 내부에 메쉬들도 같이 눈 감겨서 하이드 되어야지"): the folder's
+            # parts hidden / shown on their own eyes too (their rows' eyes closed with it)
             c = bpy.data.collections.get(self.name)
             lc = layer_coll(context, c) if c is not None else None
             if lc is None:
@@ -550,8 +624,20 @@ class MCH_OT_layer_eye(bpy.types.Operator):
             if lc.exclude:
                 lc.exclude = False
                 lc.hide_viewport = False
+                hide = False
             else:
-                lc.hide_viewport = not lc.hide_viewport
+                hide = not _hidden(context, c)
+            if not hide:
+                lc.hide_viewport = False
+                for cc in c.children_recursive:
+                    lcc = layer_coll(context, cc)
+                    if lcc is not None and lcc.hide_viewport:
+                        lcc.hide_viewport = False
+            for o in _coll_parts(context, c):
+                try:
+                    o.hide_set(hide)
+                except RuntimeError:
+                    pass
             return {'FINISHED'}
         ob = bpy.data.objects.get(self.name)
         if ob is None or ob.name not in context.view_layer.objects:
@@ -562,6 +648,8 @@ class MCH_OT_layer_eye(bpy.types.Operator):
             if o.name in context.view_layer.objects:
                 try:
                     o.hide_set(hide)
+                    if not hide and not o.visible_get():   # (hidden by its folder: that opened, the rest kept hidden)
+                        _shown_folders(context, o)
                 except RuntimeError:
                     pass
         return {'FINISHED'}

@@ -411,19 +411,60 @@ class MCH_OT_flip_object(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.mode in {'OBJECT', 'SCULPT'} and any(o.type in {'MESH', 'CURVES'} for o in context.selected_objects)
+        from . import groups
+        return context.mode in {'OBJECT', 'SCULPT'} and any(o.type in {'MESH', 'CURVES'} or groups.is_group(o)
+                                                            for o in context.selected_objects)
 
     def execute(self, context):
         sculpt = context.mode == 'SCULPT'
         if sculpt:
             bpy.ops.object.mode_set(mode='OBJECT')
         try:
-            n = flip_objects(context, list(context.selected_objects), 'XYZ'.index(self.axis))
+            n = flip_with_groups(context, list(context.selected_objects), 'XYZ'.index(self.axis))
         finally:
             if sculpt:
                 bpy.ops.object.mode_set(mode='SCULPT')
         self.report({'INFO'}, f'Flip {self.axis}: {n} object(s)')
         return {'FINISHED'}
+
+
+def flip_with_groups(context, obs, axis=0):
+    """0.24.177 (user: "왜 그룹은 뒤집기가 안 돼?"): a group picked (its handle) - every part in it flipped (nested
+    groups too; a live repeat's copies are left to follow), its handle moved across too, the parts staying where they
+    were flipped to.  Returns the number of parts flipped."""
+    from . import groups
+    handles = []
+    for o in obs:
+        if groups.is_group(o):
+            handles.append(o)
+            handles += [m for m in groups.members(o) if groups.is_group(m)]
+    handles = list(dict.fromkeys(handles))
+    parts = [o for o in obs if not groups.is_group(o)]
+    for h in handles:
+        parts += [m for m in groups.members(h) if not groups.is_group(m)]
+    parts = [o for o in dict.fromkeys(parts) if groups.CARRIER_KEY not in o]
+    targets = {}
+    for h in handles:                                  # (where each handle goes: from where it is now)
+        W = h.matrix_world.copy()
+        t = W.translation.copy()
+        t[axis] = -t[axis]
+        W.translation = t
+        targets[h.name] = W
+    n = flip_objects(context, parts, axis)
+    if handles:
+        keep = {o.name: o.matrix_world.copy() for o in parts}
+        for h in sorted(handles, key=_parent_depth):  # (outer ones first)
+            h.matrix_world = targets[h.name]
+        for o in parts:                                # (the parts where they were flipped to)
+            o.matrix_world = keep[o.name]
+    return n
+
+
+def _parent_depth(ob):
+    d, p = 0, ob.parent
+    while p is not None:
+        d, p = d + 1, p.parent
+    return d
 
 
 def clean_materials(ob, mode='ONE'):
