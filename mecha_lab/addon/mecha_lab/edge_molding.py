@@ -789,8 +789,8 @@ def draw(layout, context):
     ob = active_molding(context)
     p = ob.mch_molding if ob is not None else context.scene.mch_molding
     col = layout.column(align=True)
-    for line in ('Drag along a mesh: a molding on it (back to the start: a ring)',
-                 'Shift: a straight line;  click a part: along its edges'):
+    for line in ('Drag along a mesh: a molding on it', 'Back to the start: a ring;  Shift: straight',
+                 'Click a part: along its edges'):
         col.label(text=line)
     layout.prop(context.scene.mch_molding, 'edge_angle')
     col = layout.column(align=True)

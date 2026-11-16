@@ -10,6 +10,9 @@
   4. a folder's eye (user: "그룹 된 거 내가 눈 감게 하면 내부에 메쉬들도 같이 눈 감겨서 하이드 되어야지"): a REAL click -
      its parts hidden, their rows' eyes closed
   5. a group's row REALLY clicked, Flip (user: "왜 그룹은 뒤집기가 안 돼?") - its parts flipped
+  6. Edge Molding (user: "엣지 몰딩은 작동이 되긴 하는 거야?" - before: its buttons only said "Tab into Edit Mode", and
+     Tab goes to ZBrush in this tab): its tile, a REAL drag along a hull - a molding on it; a REAL drag on "Molding
+     Width" - wider; a REAL click on a box - a molding along its edges
 """
 import math
 import os
@@ -433,6 +436,60 @@ def flow():
     res['5 a group\'s row REALLY clicked, Flip: its parts flipped across the world'] = (
         grow is not None and picked and poll and fr == {'FINISHED'} and xs0 == xs1)
     shot('5_group_flip.png')
+    # 6 Edge Molding in Object Mode
+    from mecha_lab import edge_molding as em, tool_state as ts_
+    with C.temp_override(window=w, area=a, region=r):
+        for o in list(S.objects):
+            bpy.data.objects.remove(o)
+        bpy.ops.mesh.primitive_cube_add(size=2.0, location=(0, 0, 0))
+        hull = C.active_object
+        hull.name = 'Hull'
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.subdivide(number_cuts=5)
+        bpy.ops.object.mode_set(mode='OBJECT')
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(2.6, 0, 0))
+        box = C.active_object
+        box.name = 'Box'
+        rv = sp3.region_3d
+        rv.view_perspective = 'ORTHO'
+        rv.view_rotation = Euler((math.radians(75), 0.0, math.radians(-25))).to_quaternion()
+        rv.view_location = (1.2, 0.0, 0.0)
+        rv.view_distance = 7.0
+    S.mch_molding.width, S.mch_molding.height = 0.06, 0.03
+    set_tool('MOLDING')
+    yield 2.0
+    tool_id = ts_.native_tool_id(C)
+    yield from drag_path([(x, -1.0, 0.35 + 0.15 * math.sin(2.5 * x)) for x in np.linspace(-0.75, 0.75, 30)])
+    yield from wait_draws(2)
+    m1 = next((o for o in S.objects if o.mch_molding.is_molding and o.parent == hull), None)
+    P = np.array([tuple(m1.matrix_world @ v.co) for v in m1.data.vertices]) if m1 else np.zeros((1, 3))
+    on_face = m1 is not None and P[:, 1].max() < -1.0 + 1e-3 and P[:, 1].min() > -1.0 - 0.031
+    shot('6_molding_line.png')
+    z0 = float(np.ptp(P[:, 2]))
+    it6 = yield from scrolled_item('Molding Width')
+    if it6 is not None:
+        yield from slider_drag(it6, 0.1, 8, 12)
+    yield from wait_draws(2)
+    P2 = np.array([tuple(m1.matrix_world @ v.co) for v in m1.data.vertices]) if m1 else np.zeros((1, 3))
+    z1 = float(np.ptp(P2[:, 2]))
+    log('6 tool', tool_id, 'molding', m1 and m1.name, 'on the face', on_face, 'width', m1 and round(m1.mch_molding.width, 4),
+        'height on face', round(z0, 3), '->', round(z1, 3))
+    res['6 Edge Molding: its tile, a REAL drag along a hull - a molding on its face (it follows it); a REAL drag on '
+        '"Molding Width" - wider'] = (tool_id == 'mecha.edge_molding' and m1 is not None and on_face
+                                      and m1.mch_molding.width > 0.07 and z1 > z0 + 0.01)
+    shot('6_molding_width.png')
+    for o in C.selected_objects:
+        o.select_set(False)
+    x_, y_ = screen_xy((2.6, -0.5, 0.15))
+    xdo('mousemove', x_, y_)
+    yield 0.5
+    xdo('click', 1)
+    yield 3.0
+    m2 = next((o for o in S.objects if o.mch_molding.is_molding and o.parent == box), None)
+    n2 = len(__import__('json').loads(m2.mch_molding.chains)) if m2 else 0
+    log('7 box click', m2 and m2.name, 'pieces', n2)
+    res['7 Edge Molding: a REAL click on a box - a molding along its 12 edges'] = m2 is not None and n2 == 12
+    shot('7_molding_box_edges.png')
     bpy.types.SpaceView3D.draw_handler_remove(handle, 'WINDOW')
     for k_, v in res.items():
         log(('PASS ' if v else 'FAIL ') + k_)
