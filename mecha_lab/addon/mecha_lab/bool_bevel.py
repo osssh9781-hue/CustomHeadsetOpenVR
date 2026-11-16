@@ -517,6 +517,41 @@ def _reach_px(context, ob, loc, px=14.0):
     return (px / gs.px_per_world(context.region, context.region_data, loc)) / _mean_scale(ob)
 
 
+def screen_pick(context, ob, xy, px=16.0):
+    """0.24.179 the shown edge nearest the mouse on screen (within ``px``) - a bevelled edge is shown where it was,
+    off the part now (its corner cut away), so a click on it meets nothing: (run, a point on it (local)) or None."""
+    region, rv3d = context.region, context.region_data
+    if region is None or rv3d is None:
+        return None
+    from . import target_rules
+    if not target_rules.ok(context, ob):             # (the Target setting holds here too)
+        return None
+    runs = runs_for(ob)
+    if not runs.edges:
+        return None
+    ids = np.array(list(runs.edges), np.int64)
+    ab = np.array([runs.edges[int(e)] for e in ids], np.int64)
+    M = np.array(rv3d.perspective_matrix) @ np.array(ob.matrix_world)
+    H = np.c_[runs.co, np.ones(len(runs.co))] @ M.T
+    ok = H[:, 3] > 1e-9
+    W = np.where(ok, H[:, 3], 1.0)
+    X = (H[:, 0] / W + 1.0) * 0.5 * region.width
+    Y = (H[:, 1] / W + 1.0) * 0.5 * region.height
+    A = np.stack([X[ab[:, 0]], Y[ab[:, 0]]], axis=1)
+    B = np.stack([X[ab[:, 1]], Y[ab[:, 1]]], axis=1)
+    p = np.array(xy, float)
+    d = B - A
+    t = np.clip(((p - A) * d).sum(1) / np.maximum((d * d).sum(1), 1e-12), 0.0, 1.0)
+    dist = np.linalg.norm(A + d * t[:, None] - p, axis=1)
+    dist[~(ok[ab[:, 0]] & ok[ab[:, 1]])] = np.inf
+    k = int(np.argmin(dist))
+    if dist[k] > px:
+        return None
+    e = int(ids[k])
+    a, b = runs.edges[e]
+    return runs.run_of[e], runs.co[a] + (runs.co[b] - runs.co[a]) * float(t[k])
+
+
 def tool_on(context):
     from . import tool_state as ts
     try:
@@ -559,6 +594,11 @@ class MCH_OT_bool_bevel_hover(bpy.types.Operator):
         xy = (event.mouse_region_x, event.mouse_region_y)
         hit = _pick(context, xy)
         part, run = None, None
+        if hit is None and HOVER['part']:             # (off the part: a shown edge near the mouse, on screen)
+            ob = bpy.data.objects.get(HOVER['part'])
+            sp_ = screen_pick(context, ob, xy) if ob is not None and ob.type == 'MESH' else None
+            if sp_ is not None:
+                part, run = ob.name, sp_[0]
         if hit is not None:
             ob, loc, _n = hit
             part = ob.name
@@ -588,16 +628,26 @@ class MCH_OT_bool_bevel_draw(bpy.types.Operator):
         from . import geo_sculpt as gs
         xy = (event.mouse_region_x, event.mouse_region_y)
         hit = _pick(context, xy)
-        if hit is None:
-            return {'PASS_THROUGH'}
-        self.ob, loc, _n = hit
-        try:
-            self.caster = gs.SurfaceCaster(context, self.ob)
-        except (RuntimeError, AttributeError, ReferenceError):
-            return {'PASS_THROUGH'}
-        first = self.caster.cast(context, xy)
-        if first is None:
-            return {'PASS_THROUGH'}
+        first = None
+        if hit is not None:
+            self.ob, loc, _n = hit
+            try:
+                self.caster = gs.SurfaceCaster(context, self.ob)
+            except (RuntimeError, AttributeError, ReferenceError):
+                return {'PASS_THROUGH'}
+            first = self.caster.cast(context, xy)
+        if first is None:                             # (on a shown edge off the part - a bevelled one: still that edge)
+            ob = bpy.data.objects.get(HOVER['part']) if HOVER['part'] else None
+            sp_ = screen_pick(context, ob, xy) if ob is not None and ob.type == 'MESH' else None
+            if sp_ is None:
+                return {'PASS_THROUGH'}
+            self.ob = ob
+            loc = ob.matrix_world @ Vector(sp_[1])
+            try:
+                self.caster = gs.SurfaceCaster(context, self.ob)
+            except (RuntimeError, AttributeError, ReferenceError):
+                return {'PASS_THROUGH'}
+            first = (Vector(sp_[1]), Vector((0.0, 0.0, 1.0)))
         self.p0 = xy
         self.moved = 0.0
         self.pts = [tuple(first[0])]

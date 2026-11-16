@@ -516,6 +516,7 @@ def make(context, shape, body=None, starts=None):
     n = rebuild(ob, context)
     if p.hide_shape:
         shape.hide_set(True)
+        shape.hide_render = True
     for o in context.selected_objects:
         o.select_set(False)
     ob.select_set(True)
@@ -563,6 +564,7 @@ def _upd_hide(self, context):
     if isinstance(ob, bpy.types.Object) and is_hair(ob) and self.shape is not None:
         try:
             self.shape.hide_set(self.hide_shape)
+            self.shape.hide_render = self.hide_shape      # (in renders too: it would hide the hair inside it)
         except RuntimeError:
             pass
 
@@ -730,9 +732,15 @@ class MCH_OT_hair_from_shape(PickStarts, bpy.types.Operator):
         if not shapes:
             self.report({'WARNING'}, 'Select the hair shape you sculpted (a mesh of its own) first')
             return {'CANCELLED'}
-        if context.area is None or context.area.type != 'VIEW_3D':
-            return self.execute(context)
         self._body = body
+        if context.area is None or context.area.type != 'VIEW_3D':
+            # (from the Mecha window: its click comes without the view - picked in the biggest 3D View)
+            from . import workspace_ui
+            ov = workspace_ui._view3d_override(context)
+            if ov is None:
+                return self.execute(context)
+            with context.temp_override(**ov):
+                return self.begin(bpy.context, shapes)
         return self.begin(context, shapes)
 
     def go(self, context):
@@ -767,10 +775,17 @@ class MCH_OT_hair_shape_pick(PickStarts, bpy.types.Operator):
 
     def invoke(self, context, event):
         ob = context.active_object
-        if not is_hair(ob) or ob.mch_hshape.shape is None or context.area is None:
+        if not is_hair(ob) or ob.mch_hshape.shape is None:
             return {'CANCELLED'}
         self.hair = ob.name
         self.was_hidden = ob.mch_hshape.shape.hide_get()
+        if context.area is None or context.area.type != 'VIEW_3D':
+            from . import workspace_ui
+            ov = workspace_ui._view3d_override(context)
+            if ov is None:
+                return {'CANCELLED'}
+            with context.temp_override(**ov):
+                return self.begin(bpy.context, [ob.mch_hshape.shape])
         return self.begin(context, [ob.mch_hshape.shape])
 
     def cancelled(self, context):
@@ -795,6 +810,7 @@ class MCH_OT_hair_shape_pick(PickStarts, bpy.types.Operator):
             return {'CANCELLED'}
         if ob.mch_hshape.hide_shape and ob.mch_hshape.shape is not None:
             ob.mch_hshape.shape.hide_set(True)
+            ob.mch_hshape.shape.hide_render = True
         self.report({'INFO'}, f'{ob.name}: {n:,} strands, from ' + (f'the {len(starts)} start(s) you clicked' if starts
                                                                      else 'where the shape meets the body'))
         return {'FINISHED'}

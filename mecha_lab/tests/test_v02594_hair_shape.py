@@ -83,7 +83,7 @@ hair = next((o for o in S.objects if hs.is_hair(o)), None)
 check(f'Hair in the Selected Shape ({r}, {t_make:.1f} s): a hair object ({hair and hair.name}, '
       f'{hair and len(hair.data.curves):,} strands) on the head (found by itself: {hair and hair.mch_hshape.body and hair.mch_hshape.body.name}), '
       f'its child; the lock hidden', r == {'FINISHED'} and hair is not None and len(hair.data.curves) == 1200
-      and hair.mch_hshape.body == head and hair.parent == head and lock.hide_get())
+      and hair.mch_hshape.body == head and hair.parent == head and lock.hide_get() and lock.hide_render)
 
 
 def strands(ob):
@@ -125,7 +125,8 @@ check(f'live: Frizz (no tracing again: {t_frizz * 1000:.0f} ms) changes the stra
 hair.mch_hshape.hide_shape = False
 shown = not lock.hide_get()
 hair.mch_hshape.hide_shape = True
-check(f'Hide the Shape off: the lock shown ({shown}); on: hidden', shown and lock.hide_get())
+check(f'Hide the Shape off: the lock shown ({shown}); on: hidden - in renders too ({lock.hide_render})',
+      shown and lock.hide_get() and lock.hide_render)
 # the start clicked (0.24.179 "결 시작 부분은 내가 찍어 주는 게 낫지 않나?"): at the lock's far end - the hair runs from there
 S.mch_hshape.count = 400
 ob_c, msg_c = hs.make(C, lock, None, starts=[tuple(C_[-1])])

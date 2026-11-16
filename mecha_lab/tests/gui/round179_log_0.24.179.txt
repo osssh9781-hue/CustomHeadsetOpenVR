@@ -1,0 +1,15 @@
+shot 1_bevels_meet.png True
+1 meet 0.25 cuts 2 alt: round 0.0 chamfer 0.25
+shot 1_alt_off.png True
+2 selected only: block untouched True
+shot 3_start_clicked.png True
+3 hair Lock Hair 600 roots from the clicked end 0.04
+shot 3_hair.png True
+shot 4_face_pop.png True
+4 face pop: click 1 drag 3 alt 2 modifier True
+shot 4_face_pop_alt.png True
+PASS 1 Boolean Bevel: a REAL click rounds one edge, a REAL click chamfers the one beside it - they meet at the corner; Alt + a REAL click - the round off, the chamfer kept
+PASS 2 Target Selected: the block not selected is passed by (a REAL click on its edge: nothing)
+PASS 3 Hair: a REAL click on "Hair in the Selected Shape", a REAL click where it starts, a REAL Enter - hair from there
+PASS 4 Face Pop: a REAL click on a face - out; a REAL drag over two more - out; Alt + a REAL click - that one off
+4/4 passed
