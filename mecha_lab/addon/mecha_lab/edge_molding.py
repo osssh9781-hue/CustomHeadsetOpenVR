@@ -1,7 +1,13 @@
 """Edge Molding: a profile swept along edge chains, as a SEPARATE object.
 
 Sources: boundary of the selected faces, selected edges (Edit Mode), the
-boundary of an Extract / Armor part, or the Armor Sculpt centre line.  The
+boundary of an Extract / Armor part, or the Armor Sculpt centre line.
+
+0.24.177 (user: "엣지 몰딩은 작동이 되긴 하는 거야?"): in the MECHA LAB tab it could not be used - its buttons wanted
+Edit Mode, but Tab goes to ZBrush there and the window is hidden in Edit Mode, so a click gave only "Tab into Edit
+Mode".  Now in Object Mode, with the tool: drag along a mesh - a molding along the line, laid on its surface (back to
+where you started: a ring; Shift: straight); click a part - one along its edges (its open rim, else its sharp edges).
+"From Selected Faces / Edges" also take what was selected in Edit Mode once back in Object Mode.  The
 chains (points + surface normals) are stored on the molding object, so width,
 height, slope, chamfer, bevel, profile and offset rebuild it live, and the
 original edges are never changed.  The profile is oriented by the surface
@@ -15,7 +21,7 @@ import math
 import bmesh
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty, StringProperty
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 COLL_MOLD = 'Edge Moldings'
 
@@ -61,6 +67,10 @@ class MCH_PG_Molding(bpy.types.PropertyGroup):
         ('CENTER', 'Centered', 'Centred on the edge'), ('INSIDE', 'Inside', 'Inside the boundary'),
         ('OUTSIDE', 'Outside', 'Outside the boundary')], default='CENTER')
     smooth_shading: _p(BoolProperty, name='Smooth Shading', default=True)
+    edge_angle: FloatProperty(name='Edge Angle', default=math.radians(30.0), min=math.radians(1.0),
+                              max=math.radians(179.0), subtype='ANGLE',
+                              description='Click a part (no open rim): a molding along every edge whose faces meet at '
+                                          'more than this')
 
 
 # =============================================================================
@@ -356,6 +366,318 @@ def _part_centerline(part, samples=48):
     return json.dumps(out)
 
 
+# =============================================================================
+# 0.24.177 Object Mode: drag along a mesh / click a part
+# =============================================================================
+
+
+class MoldingError(Exception):
+    pass
+
+
+def _not_target(ob):
+    return ob.type != 'MESH' or bool(getattr(ob, 'mch_molding', None) and ob.mch_molding.is_molding)
+
+
+def _cast(context, dg, o, d):
+    """The first mesh along the ray that is not a molding: (world location, world normal, object) or None."""
+    from . import target_rules
+    oo, dd = Vector(o), Vector(d).normalized()
+    hit, loc, nrm, _i, ob, _m = target_rules.scene_ray(context, dg, oo, dd)
+    if not hit or ob is None:
+        return None
+    real = bpy.data.objects.get(ob.name) or ob
+    if not _not_target(real):
+        return Vector(loc), Vector(nrm).normalized(), real
+    # a molding in front: the meshes one by one (stepping through it would step past the face it sits on)
+    names = target_rules.allowed(context)
+    best = None
+    for cand in context.visible_objects:
+        if _not_target(cand) or (names is not None and not target_rules.ok(context, cand, names)):
+            continue
+        inv = cand.matrix_world.inverted_safe()
+        try:
+            ok, lo, no, _f = cand.ray_cast(inv @ oo, (inv.to_3x3() @ dd).normalized(), depsgraph=dg)
+        except (RuntimeError, TypeError, ValueError):
+            continue
+        if ok:
+            w = cand.matrix_world @ lo
+            t = (w - oo).length
+            if best is None or t < best[0]:
+                best = (t, w, (inv.transposed().to_3x3() @ no).normalized(), cand)
+    return None if best is None else best[1:]
+
+
+def _screen_samples(path, step=3.0, closed=False):
+    """The drawn path every ``step`` pixels, its hand wobble smoothed out (a moving average)."""
+    pts = [tuple(map(float, q)) for q in path]
+    if closed:
+        pts = pts + [pts[0]]
+    out = [pts[0]]
+    for a, b in zip(pts[:-1], pts[1:]):
+        L = math.dist(a, b)
+        n = max(int(L // step), 1)
+        for k in range(1, n + 1):
+            f = k / n
+            out.append((a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f))
+    if closed:
+        out.pop()
+    if len(out) < 5:
+        return out
+    k = 2
+    sm = []
+    m = len(out)
+    for i in range(m):
+        if not closed and (i < k or i >= m - k):
+            sm.append(out[i])
+            continue
+        win = [out[(i + j) % m] for j in range(-k, k + 1)]
+        sm.append((sum(q[0] for q in win) / len(win), sum(q[1] for q in win) / len(win)))
+    return sm
+
+
+def line_chains(context, path, projector, closed=False):
+    """A line drawn over meshes -> chains laid on their surface (world): ([{'pts', 'nrm', 'closed'}], the mesh most of it
+    is on).  The line breaks where it leaves the meshes or jumps (over a silhouette onto what is behind).  Heavy parts:
+    their own surface, not their Light Copy."""
+    from . import light_copies as lc
+    xy = _screen_samples(path, closed=closed)
+    if len(xy) < 2:
+        raise MoldingError('Drag a longer line along the mesh')
+    dg = context.evaluated_depsgraph_get()
+    rays = [projector.ray(q) for q in xy]
+    seen = {}
+    for o, d in rays[::max(len(rays) // 40, 1)] + rays[-1:]:
+        h = _cast(context, dg, o, d)
+        if h is not None:
+            seen[h[2].name] = h[2]
+    if not seen:
+        raise MoldingError('The line is not on a mesh: drag along a mesh')
+    for ob in seen.values():
+        if lc._mod(ob) is not None:
+            lc.full(ob, dg)
+    hits = []
+    for q, (o, d) in zip(xy, rays):
+        h = _cast(context, dg, o, d)
+        for jx, jy in ((0.37, 0.21), (-0.29, -0.43)):       # (a ray right on an edge can slip between its faces)
+            if h is not None:
+                break
+            h = _cast(context, dg, *projector.ray((q[0] + jx, q[1] + jy)))
+        hits.append(h)
+    steps = [(a[0] - b[0]).length for a, b in zip(hits[:-1], hits[1:]) if a is not None and b is not None]
+    typical = sorted(steps)[len(steps) // 2] if steps else 0.0
+    runs, cur = [], []
+    for i, h in enumerate(hits):
+        if h is None:
+            if cur:
+                runs.append(cur)
+            cur = []
+            continue
+        if cur and typical > 0 and (h[0] - cur[-1][0]).length > max(typical * 8.0, 1e-5):
+            runs.append(cur)
+            cur = []
+        if cur and (h[0] - cur[-1][0]).length < 1e-7:
+            continue
+        cur.append(h)
+    if cur:
+        runs.append(cur)
+    whole = closed and len(runs) == 1 and all(h is not None for h in hits)
+    if closed and not whole and len(runs) > 1 and hits[0] is not None and hits[-1] is not None \
+            and (hits[0][0] - hits[-1][0]).length <= max(typical * 8.0, 1e-5):
+        runs[0] = runs.pop() + runs[0]                       # (a ring broken once: its two ends are one piece)
+    runs = [r for r in runs if len(r) >= 2]
+    if not runs:
+        raise MoldingError('The line is not on a mesh: drag along a mesh')
+    count = {}
+    for r in runs:
+        for h in r:
+            count[h[2].name] = count.get(h[2].name, 0) + 1
+    host = bpy.data.objects[max(count, key=count.get)]
+    chains = [{'pts': [tuple(h[0]) for h in r], 'nrm': [tuple(h[1]) for h in r], 'closed': bool(whole and len(r) >= 3)}
+              for r in runs]
+    return chains, host
+
+
+def edge_chains(context, ob, angle):
+    """A part's own edges (world): its open rim if it has one, else its sharp edges (faces meeting at more than
+    ``angle``).  ([{'pts', 'nrm', 'closed'}], 'rim' / 'sharp edges')."""
+    from . import light_copies as lc
+    dg = context.evaluated_depsgraph_get()
+    ev = lc.full(ob, dg)
+    me = ev.to_mesh()
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+    finally:
+        ev.to_mesh_clear()
+    try:
+        bm.transform(ob.matrix_world)
+        bm.normal_update()
+        edges = [e for e in bm.edges if len(e.link_faces) == 1]
+        what = 'rim'
+        if not edges:
+            edges = [e for e in bm.edges if len(e.link_faces) == 2 and e.calc_face_angle(0.0) > angle]
+            what = 'sharp edges'
+        if not edges:
+            raise MoldingError(f'"{ob.name}" has no open rim and no edges sharper than {math.degrees(angle):.0f} '
+                               f'degrees: lower Edge Angle, or drag a line along it')
+        if len(edges) > 40000:
+            raise MoldingError(f'"{ob.name}": {len(edges):,} edges sharper than {math.degrees(angle):.0f} degrees - '
+                               f'raise Edge Angle, or drag a line along it')
+        out = []
+        for verts, closed in chains_from_edges(edges):
+            n = len(verts)
+            own = [bm.edges.get((verts[i], verts[(i + 1) % n])) for i in range(n if closed else n - 1)]
+            nrm = []
+            for i, v in enumerate(verts):          # (between the faces of this chain's own edges there: a box's
+                acc = Vector()                     # corner is not the three edges' meeting point)
+                for e in (own[i - 1] if (closed or i > 0) else None, own[i] if i < len(own) else None):
+                    if e is not None:
+                        for f in e.link_faces:
+                            acc += f.normal
+                nrm.append(tuple(acc.normalized() if acc.length > 1e-9 else v.normal))
+            out.append({'pts': [tuple(v.co) for v in verts], 'nrm': nrm, 'closed': closed})
+        return out, what
+    finally:
+        bm.free()
+
+
+def _follow(ob, host):
+    """The molding moves with the mesh it is on (its child, staying where it is now)."""
+    if host is None or host == ob:
+        return
+    mw = ob.matrix_world.copy()
+    ob.parent = host
+    ob.matrix_parent_inverse = host.matrix_world.inverted_safe()
+    ob.matrix_world = mw
+
+
+def _pick(context, ob):
+    for o in context.selected_objects:
+        o.select_set(False)
+    ob.select_set(True)
+    context.view_layer.objects.active = ob
+    context.scene.mch_molding_last = ob
+
+
+def perform_line(context, path, projector, closed=False):
+    """Drag along a mesh: a molding along the line, on its surface.  (molding object, message)."""
+    chains, host = line_chains(context, path, projector, closed)
+    ob = create_molding(context, json.dumps(chains), Matrix.Identity(4), host.name + '_Molding', host, 'LINE')
+    _follow(ob, host)
+    _pick(context, ob)
+    ring = ' (a ring)' if any(c['closed'] for c in chains) else ''
+    pieces = f' in {len(chains)} pieces' if len(chains) > 1 else ''
+    return ob, f'Edge Molding along the line on "{host.name}"{ring}{pieces} - it follows it; its values in the window'
+
+
+def perform_click(context, xy, projector):
+    """Click a part: a molding along its edges - an Extract / Armor part: its boundary on the hull; else its open
+    rim, or its sharp edges.  (molding object, message)."""
+    o, d = projector.ray(xy)
+    h = _cast(context, context.evaluated_depsgraph_get(), o, d)
+    if h is None:
+        raise MoldingError('Click a part (a molding along its edges), or drag along a mesh (along the line)')
+    part = h[2]
+    ex = getattr(part, 'mch_extract', None)
+    if ex is not None and ex.is_part and ex.region is not None:
+        data = _part_boundary(part)
+        if json.loads(data):
+            ob = create_molding(context, data, part.matrix_world, part.name + '_Molding', part, 'PART')
+            _follow(ob, part)
+            _pick(context, ob)
+            return ob, f'Edge Molding round the panel "{part.name}" - its values in the window'
+    chains, what = edge_chains(context, part, context.scene.mch_molding.edge_angle)
+    ob = create_molding(context, json.dumps(chains), Matrix.Identity(4), part.name + '_Molding', part, 'EDGES_OF')
+    _follow(ob, part)
+    _pick(context, ob)
+    return ob, (f'Edge Molding along the {what} of "{part.name}" ({len(chains)} piece{"s" if len(chains) != 1 else ""}) '
+                f'- it follows it; its values in the window')
+
+
+_LIVE = {'path': None, 'region': None}
+
+
+def _draw_live():
+    path, region = _LIVE['path'], _LIVE['region']
+    try:
+        if not path or len(path) < 2 or bpy.context.region != region:
+            return
+        from . import ui_gpu as ug
+        ug.polyline(path, (1.0, 0.55, 0.1, 0.9), 2.0)
+    except (ReferenceError, AttributeError, RuntimeError):
+        pass
+
+
+class MCH_OT_molding_draw(bpy.types.Operator):
+    """Edge Molding: drag along a mesh - a molding along the line you draw, on its surface (back to where you started:
+    a ring; Shift: a straight line).  Click a part: one along its edges (its open rim, else its sharp edges)"""
+    bl_idname = 'mch.molding_draw'
+    bl_label = 'Edge Molding'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.area is not None and context.area.type == 'VIEW_3D' and context.mode == 'OBJECT'
+
+    def invoke(self, context, event):
+        self.p0 = (event.mouse_region_x, event.mouse_region_y)
+        self.path = [self.p0]
+        self.straight = bool(event.shift)
+        self.moved = 0.0
+        _LIVE['path'], _LIVE['region'] = [self.p0, self.p0], context.region
+        self._h = bpy.types.SpaceView3D.draw_handler_add(_draw_live, (), 'WINDOW', 'POST_PIXEL')
+        context.window_manager.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
+
+    def _end(self, context):
+        _LIVE['path'] = None
+        try:
+            bpy.types.SpaceView3D.draw_handler_remove(self._h, 'WINDOW')
+        except (ValueError, RuntimeError, AttributeError):
+            pass
+        context.area.tag_redraw()
+
+    def modal(self, context, event):
+        xy = (event.mouse_region_x, event.mouse_region_y)
+        if event.type in {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE', 'LEFT_SHIFT', 'RIGHT_SHIFT'}:
+            self.straight = self.straight or event.shift
+            self.moved = max(self.moved, math.dist(self.p0, xy))
+            if self.straight:
+                from .print3d import _snap_line
+                _LIVE['path'] = [self.p0, _snap_line(self.p0, xy) if event.shift else xy]
+            else:
+                if math.dist(self.path[-1], xy) >= 3.0:
+                    self.path.append(xy)
+                _LIVE['path'] = self.path + [xy]
+            context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+        if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+            path = list(_LIVE['path'] or [])
+            self._end(context)
+            from . import cut_engine as ce
+            projector = ce.make_projector(context.region, context.region_data)
+            try:
+                if self.moved < 6.0:
+                    _ob, msg = perform_click(context, self.p0, projector)
+                else:
+                    length = sum(math.dist(a, b) for a, b in zip(path[:-1], path[1:]))
+                    closed = (not self.straight and len(path) > 8 and math.dist(path[0], path[-1]) < 20.0
+                              and length > 120.0)
+                    if closed:
+                        path = path[:-1]
+                    _ob, msg = perform_line(context, path, projector, closed)
+            except MoldingError as ex:
+                self.report({'WARNING'}, str(ex))
+                return {'CANCELLED'}
+            self.report({'INFO'}, msg)
+            return {'FINISHED'}
+        if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
+            self._end(context)
+            return {'CANCELLED'}
+        return {'RUNNING_MODAL'}
+
+
 class MCH_OT_molding_create(bpy.types.Operator):
     bl_idname = 'mch.molding_create'
     bl_label = 'Create Edge Molding'
@@ -375,22 +697,38 @@ class MCH_OT_molding_create(bpy.types.Operator):
     def execute(self, context):
         made = []
         if self.source in {'FACES', 'EDGES'}:
-            if context.mode != 'EDIT_MESH':
-                self.report({'WARNING'}, 'Tab into Edit Mode and select faces / edges first')
-                return {'CANCELLED'}
-            for ob in [o for o in (context.objects_in_mode or [context.active_object]) if o and o.type == 'MESH']:
-                ob.update_from_editmode()
-                bm = bmesh.from_edit_mesh(ob.data)
-                bm.normal_update()
-                if self.source == 'FACES':
-                    edges = boundary_edges_of_faces([f for f in bm.faces if f.select])
+            edit = context.mode == 'EDIT_MESH'
+            if edit:
+                obs = [o for o in (context.objects_in_mode or [context.active_object]) if o and o.type == 'MESH']
+            else:          # 0.24.177 what was selected in Edit Mode, back in Object Mode (the window is hidden there)
+                obs = [o for o in [context.active_object] + list(context.selected_objects)
+                       if o is not None and not _not_target(o)]
+                obs = list(dict.fromkeys(obs))
+            for ob in obs:
+                if edit:
+                    ob.update_from_editmode()
+                    bm = bmesh.from_edit_mesh(ob.data)
                 else:
-                    edges = [e for e in bm.edges if e.select]
-                if not edges:
+                    bm = bmesh.new()
+                    bm.from_mesh(ob.data)
+                try:
+                    bm.normal_update()
+                    if self.source == 'FACES':
+                        sel = [f for f in bm.faces if f.select]
+                        if not edit and len(sel) == len(bm.faces):
+                            sel = []           # (all of it, as a new mesh is: not a choice made in Edit Mode)
+                        edges = boundary_edges_of_faces(sel)
+                    else:
+                        edges = [e for e in bm.edges if e.select]
+                        if not edit and len(edges) == len(bm.edges):
+                            edges = []
+                    data = serialize(chains_from_edges(edges)) if edges else None
+                finally:
+                    if not edit:
+                        bm.free()
+                if data is None:
                     continue
-                chains = chains_from_edges(edges)
-                made.append(create_molding(context, serialize(chains), ob.matrix_world, ob.name + '_Molding', ob,
-                                           self.source))
+                made.append(create_molding(context, data, ob.matrix_world, ob.name + '_Molding', ob, self.source))
         else:
             parts = [o for o in context.selected_objects if getattr(o, 'mch_extract', None) and o.mch_extract.is_part]
             from .face_extract import active_part
@@ -409,7 +747,11 @@ class MCH_OT_molding_create(bpy.types.Operator):
                 if json.loads(data):
                     made.append(create_molding(context, data, part.matrix_world, name, part, self.source))
         if not made:
-            self.report({'WARNING'}, 'Nothing to follow: select faces / edges, or an Extract / Armor part')
+            if self.source in {'FACES', 'EDGES'} and context.mode != 'EDIT_MESH':
+                self.report({'WARNING'}, 'No faces / edges picked in Edit Mode on the selected mesh. In Object Mode: '
+                                         'drag along a mesh (a molding on it) or click a part (along its edges)')
+            else:
+                self.report({'WARNING'}, 'Nothing to follow: select faces / edges, or an Extract / Armor part')
             return {'CANCELLED'}
         context.scene.mch_molding_last = made[-1]
         self.report({'INFO'}, f'{len(made)} molding object(s) created')
@@ -447,6 +789,11 @@ def draw(layout, context):
     ob = active_molding(context)
     p = ob.mch_molding if ob is not None else context.scene.mch_molding
     col = layout.column(align=True)
+    for line in ('Drag along a mesh: a molding on it (back to the start: a ring)',
+                 'Shift: a straight line;  click a part: along its edges'):
+        col.label(text=line)
+    layout.prop(context.scene.mch_molding, 'edge_angle')
+    col = layout.column(align=True)
     col.scale_y = 1.3
     for src, label, icon in (('FACES', 'From Selected Faces (outline)', 'FACESEL'),
                              ('EDGES', 'From Selected Edges', 'EDGESEL'),
@@ -476,18 +823,50 @@ def draw(layout, context):
         layout.operator('mch.molding_apply', icon='CHECKMARK')
 
 
-CLASSES = (MCH_PG_Molding, MCH_OT_molding_create, MCH_OT_molding_apply)
+def _tool_settings(context, layout, tool):
+    region = getattr(context, 'region', None)
+    if region is not None and region.type == 'TOOL_HEADER':
+        return
+    draw(layout, context)
+
+
+class MCH_TOOL_edge_molding(bpy.types.WorkSpaceTool):
+    """0.24.177 the tool in Object Mode (before: none - its buttons wanted Edit Mode)"""
+    bl_space_type = 'VIEW_3D'
+    bl_context_mode = 'OBJECT'
+    bl_idname = 'mecha.edge_molding'
+    bl_label = 'Mecha Edge Molding'
+    bl_description = ('Drag along a mesh: a molding along the line, on its surface (back to the start: a ring; '
+                      'Shift: straight).\nClick a part: a molding along its edges (its open rim, else its sharp edges)')
+    bl_icon = 'ops.generic.select_box'
+    bl_widget = None
+    bl_keymap = (('mch.molding_draw', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, None),
+                 ('mch.molding_draw', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'shift': True}, None),
+                 ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None))
+    draw_settings = staticmethod(_tool_settings)
+
+
+CLASSES = (MCH_PG_Molding, MCH_OT_molding_create, MCH_OT_molding_apply, MCH_OT_molding_draw)
 
 
 def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
+    try:
+        bpy.utils.register_tool(MCH_TOOL_edge_molding, separator=False, group=False)
+    except (ValueError, RuntimeError, KeyError):
+        pass
     bpy.types.Object.mch_molding = PointerProperty(type=MCH_PG_Molding)
     bpy.types.Scene.mch_molding = PointerProperty(type=MCH_PG_Molding)
     bpy.types.Scene.mch_molding_last = PointerProperty(type=bpy.types.Object)
 
 
 def unregister():
+    try:
+        bpy.utils.unregister_tool(MCH_TOOL_edge_molding)
+    except (ValueError, RuntimeError, KeyError):
+        pass
+    _LIVE['path'] = None
     for owner, name in ((bpy.types.Scene, 'mch_molding_last'), (bpy.types.Scene, 'mch_molding'),
                         (bpy.types.Object, 'mch_molding')):
         if hasattr(owner, name):

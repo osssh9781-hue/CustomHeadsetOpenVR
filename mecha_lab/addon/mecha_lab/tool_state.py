@@ -182,8 +182,9 @@ TOOLS = (
     ('EXTRACT', 'Face Extract', 'Edit Mode: selected faces -> a separate part. Basic Extract (height, thickness, '
      'chamfer width / angle / depth, bevel, outer edge) or Armor Sculpt (N/E/S/W thickness and edges, centre ridge)',
      'extract', 'FACESEL', None, 'OK'),
-    ('MOLDING', 'Edge Molding', 'Molding profile along face boundaries, edges, part outlines or the Armor centre line',
-     'molding', 'MOD_CURVE', None, 'OK'),
+    ('MOLDING', 'Edge Molding', 'Drag along a mesh: a molding profile along the line, on its surface; click a part: '
+     'along its edges (rim or sharp edges); also face outlines / edges picked in Edit Mode, panel outlines, the Armor '
+     'centre line', 'molding', 'MOD_CURVE', 'mecha.edge_molding', 'OK'),
     ('HOLLOW', 'Hollow / Shell', 'Hollow shell with wall thickness, direction, rim and openings (live Solidify)',
      'hollow', 'MOD_SOLIDIFY', None, 'OK'),
     ('ALONG', 'Mesh Along Curve', 'Curve Deform and Curve Array (rigid / deform), Free or World X/Y/Z curve base line',

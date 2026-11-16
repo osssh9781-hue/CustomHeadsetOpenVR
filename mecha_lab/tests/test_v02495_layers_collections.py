@@ -65,8 +65,11 @@ side_panel.toggle_fold('LAYERS:coll:Robot', False)
 # the eye and the click
 bpy.ops.mch.layer_eye(name='Arms', coll=True)
 lc = lp.layer_coll(C, arms)
-check('The eye on a collection: the collection hidden (its parts not drawn), the row says so',
-      lc.hide_viewport and not arm_l.visible_get() and torso.visible_get() and lp._hidden(C, arms))
+# 0.24.177 (user: "그룹 된 거 내가 눈 감게 하면 내부에 메쉬들도 같이 눈 감겨서 하이드 되어야지"): its parts hidden on
+# their own eyes (their rows' eyes closed with it), not the collection itself
+check('The eye on a collection: its parts hidden on their own eyes (not drawn), the row says so',
+      arm_l.hide_get() and not arm_l.visible_get() and lp._hidden(C, arm_l) and torso.visible_get()
+      and lp._hidden(C, arms))
 bpy.ops.mch.layer_eye(name='Arms', coll=True)
 check('... again: shown', not lc.hide_viewport and arm_l.visible_get() and not lp._hidden(C, arms))
 rock.select_set(True)

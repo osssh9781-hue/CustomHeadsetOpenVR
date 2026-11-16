@@ -1130,7 +1130,7 @@ _SKETCH = {'strokes': [], 'straight': [], 'proj': None, 'world': []}
 
 
 def sketch_on(context):
-    return bool(getattr(getattr(context.scene, 'mch_brush', None), 'sketch_first', False))
+    return bool(getattr(getattr(context.scene, 'mch_print', None), 'sketch', False))
 
 
 def sketch_count():
@@ -1410,6 +1410,9 @@ def _redraw(self, context):
 
 
 class MCH_PG_Print(bpy.types.PropertyGroup):
+    sketch: BoolProperty(name='Sketch', default=False,         # 0.24.177 the cut line in pieces (its own: the top
+                         description='Draw the cut line in pieces: each drag adds one, Enter cuts along them all, '
+                                     'Backspace takes the last off, Esc clears')    # bar's Sketch is not shown here)
     unit: EnumProperty(name='Unit', items=UNITS, default='MM', update=_redraw)
     show_measures: BoolProperty(name='Show Measures', default=True, update=_redraw)
     build_x: FloatProperty(name='Bed X', default=220.0, min=1.0, soft_max=1000.0, description='Build volume width (mm)')
@@ -1504,9 +1507,7 @@ def draw_cut(layout, context):
     col.operator('mch.print_keys', icon='MOD_BOOLEAN')
     col.label(text='(select the 2 halves of any Split)')
     col = layout.column(align=True)                       # 0.24.177 the line in pieces
-    br = getattr(context.scene, 'mch_brush', None)
-    if br is not None:
-        col.prop(br, 'sketch_first', text='Sketch (draw the line in pieces)', toggle=True)
+    col.prop(pg, 'sketch', text='Sketch (draw the line in pieces)', toggle=True)
     if sketch_count():
         col.label(text=f'Sketch: {sketch_count()} piece(s) - Enter cuts')
         row = col.row(align=True)
