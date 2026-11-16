@@ -67,6 +67,7 @@ CONTAINER_ATTRS = {'active', 'enabled', 'alert', 'scale_y', 'scale_x', 'use_prop
 
 class Recorder:
     """The stand-in for ``bpy.types.UILayout``."""
+    is_mecha_window = True                    # 0.24.177 (a real UILayout has no such attribute)
 
     def __init__(self, node):
         object.__setattr__(self, '_node', node)
@@ -147,6 +148,26 @@ class Recorder:
 
     def template_icon(self, icon_value=0, **_k):          # (its size is the sidebar's business)
         self._child('icon', icon_value=icon_value)
+
+    def mch_tiles(self, tiles, columns=4):
+        self._child('tiles', tiles=list(tiles), columns=columns)
+
+
+def tiles(layout, entries, columns=4, scale=3.4):
+    """0.24.177 picture tiles (user: "프레스 컷에서 스탬프 썸넬 보기가 쉽지가 않삼"; "썸네일도 좀 만들어 줘"):
+    ``entries`` = [(label, png path or '', icon_value or 0, on, operator idname, {props})].  The Mecha window draws them
+    as picture tiles (the picked one blue); Blender's own panels as pictures over buttons."""
+    if getattr(layout, 'is_mecha_window', False):
+        layout.mch_tiles(entries, columns)
+        return
+    grid = layout.grid_flow(row_major=True, columns=columns, even_columns=True, even_rows=True, align=False)
+    for label, _path, icon_value, on, idname, props in entries:
+        col = grid.column(align=True)
+        if icon_value:
+            col.template_icon(icon_value=icon_value, scale=scale)
+        op = col.operator(idname, text=label, depress=on)
+        for k, v in props.items():
+            setattr(op, k, v)
 
 
 def capture(drawer, context):

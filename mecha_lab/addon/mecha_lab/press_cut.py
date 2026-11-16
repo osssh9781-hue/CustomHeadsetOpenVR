@@ -2477,7 +2477,7 @@ class MCH_OT_press_shape_grid(bpy.types.Operator):
     bl_options = {'INTERNAL'}
 
     def invoke(self, context, event):
-        return context.window_manager.invoke_popup(self, width=760)
+        return context.window_manager.invoke_popup(self, width=900)      # (0.24.177 bigger pictures, 8 a row)
 
     def execute(self, context):
         return {'FINISHED'}
@@ -2487,13 +2487,13 @@ class MCH_OT_press_shape_grid(bpy.types.Operator):
         st = context.scene.mch_press
         layout = self.layout
         layout.label(text='Stamp  (Shift + draw: your own)', icon='IMAGE_DATA')
-        grid = layout.grid_flow(row_major=True, columns=10, even_columns=True, even_rows=True, align=False)
+        grid = layout.grid_flow(row_major=True, columns=8, even_columns=True, even_rows=True, align=False)
         for stem, name, _desc, icon, _i in cut_presets.preset_items(st, context):
             if stem == 'NONE':
                 continue
             col = grid.column(align=True)
             if icon:
-                col.template_icon(icon_value=icon, scale=2.6)
+                col.template_icon(icon_value=icon, scale=3.6)
             op = col.operator('mch.press_pick_shape', text=name.split(' (')[0][:12],
                               depress=(stem == st.shape and not st.drawn))
             op.stem = stem
@@ -2553,7 +2553,16 @@ def draw(layout, context):
     row.label(text='Plate')                  #  stamp's section along the surface, Lasso = that plate tool's lasso)
     row.prop_enum(st, 'result', 'PLATE', text='Armor')
     row.prop_enum(st, 'result', 'CPLATE', text='Creature')
-    col.template_icon_view(st, 'shape', show_labels=True, scale=4.0, scale_popup=3.0)   # (light: 64 px pictures)
+    # 0.24.177 (user: "프레스 컷에서 스탬프 썸넬 보기가 쉽지가 않삼"): the stamps as picture tiles in the window (it
+    # drew none - its list was a Blender picture menu the window cannot show; only the top bar's small grid had them)
+    box = layout.box()
+    box.label(text='Stamp')
+    from .panel_capture import tiles
+    tiles(box, [(name.split(' (')[0], cut_presets.thumb_path(stem), icon, stem == st.shape and not st.drawn,
+                 'mch.press_pick_shape', {'stem': stem})
+                for stem, name, _desc, icon, _i in cut_presets.preset_items(st, context) if stem != 'NONE'],
+          columns=4)
+    col = layout.column(align=True)
     if st.drawn and DRAWN[0]:
         row = col.row(align=True)
         row.label(text='Using the shape you drew', icon='GREASEPENCIL')

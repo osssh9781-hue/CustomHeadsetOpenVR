@@ -351,9 +351,10 @@ for stem in mech:
         bad.append((stem[14:], round(v0 - vol(p), 5), non_manifold(p), pr.message[:40]))
 import os  # noqa: E402
 icons = [os.path.join(os.path.dirname(pc.__file__), 'icons', 'shape_' + st[12:].lower() + '.png') for st in mech]
+# (0.24.177, user: "프레스 컷에서 스탬프 썸넬 보기가 쉽지가 않삼": 128 px, solid - still a few kB each)
 check('50 mech form-blocking stamps: each pressed into a box cuts it, a closed solid; each with a light picture '
-      '(64 px, a few kB)', len(mech) == 50 and not bad and all(os.path.isfile(i) and os.path.getsize(i) < 6000
-                                                              for i in icons), bad)
+      '(128 px, a few kB)', len(mech) == 50 and not bad and all(os.path.isfile(i) and os.path.getsize(i) < 10000
+                                                               for i in icons), bad)
 
 
 

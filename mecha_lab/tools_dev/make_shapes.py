@@ -261,17 +261,26 @@ def build_json():
 
 
 def build_icons():
-    """0.24.95 light thumbnails (user: "썸네일도 보이게 그치만 가볍게"): a soft pale silhouette on clear, 64 px."""
-    from PIL import Image, ImageDraw
-    S, OUT = 256, 64
+    """0.24.95 light thumbnails (user: "썸네일도 보이게 그치만 가볍게"): a pale silhouette on clear.
+    0.24.177 (user: "프레스 컷에서 스탬프 썸넬 보기가 쉽지가 않삼"): 128 px, the silhouette solid (it was 60 % see-through -
+    grey on the dark panels) with a bright rim; holes left open (even-odd)."""
+    from PIL import Image, ImageChops, ImageDraw
+    S, OUT = 512, 128
     d = json.loads(OUT_JSON.read_text(encoding='utf-8'))
     for sh in d['shapes']:
-        img = Image.new('RGBA', (S, S), (0, 0, 0, 0))
-        dr = ImageDraw.Draw(img)
+        mask = Image.new('1', (S, S), 0)
+        rims = []
         for lp in sh['loops']:
-            pts = [(S / 2 + x * S * 0.8, S / 2 - y * S * 0.8) for x, y in lp]
-            dr.polygon(pts, fill=(206, 212, 222, 150))
-            dr.line(pts + [pts[0]], fill=(236, 240, 246, 235), width=7, joint='curve')
+            pts = [(S / 2 + x * S * 0.84, S / 2 - y * S * 0.84) for x, y in lp]
+            one = Image.new('1', (S, S), 0)
+            ImageDraw.Draw(one).polygon(pts, fill=1)
+            mask = ImageChops.logical_xor(mask, one)
+            rims.append(pts)
+        img = Image.new('RGBA', (S, S), (0, 0, 0, 0))
+        img.paste((214, 221, 232, 255), (0, 0), mask.convert('L'))
+        dr = ImageDraw.Draw(img)
+        for pts in rims:
+            dr.line(pts + [pts[0]], fill=(250, 252, 255, 255), width=14, joint='curve')
         path = ADDON / 'icons' / f'shape_{sh["stem"].lower()}.png'
         img.resize((OUT, OUT), Image.LANCZOS).save(path, optimize=True)
         print('icon', path.name)

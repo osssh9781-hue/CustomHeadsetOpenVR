@@ -16,6 +16,8 @@
   8. Mirror on a Plate Detail 4 (user: "플레이트 디테일4 할 때나 다른 것도 종종 미러가 개무거운데 좀 더 가볍고 빠르게"): a
      REAL lasso - a rough detail; a REAL Alt+X, REAL leans, a REAL Enter - its mirror live, the same as before; each
      lean change timed (to the next viewport draw), against the way it was (a REAL Alt+X, the same leans, a REAL Esc)
+  9. Press Cut stamps (user: "프레스 컷에서 스탬프 썸넬 보기가 쉽지가 않삼"): the window shows them as picture tiles;
+     a REAL click on the "Arch" tile - the stamp is Arch
 """
 import math
 import os
@@ -572,6 +574,25 @@ def flow():
         det is not None and n_det > 50_000 and gone and bool(mid) and m8 is not None and min(xs) < -0.2
         and max(xs) > 0.2 and not det.hide_viewport and not [o for o in S.objects if o.get(mt.PREVIEW_KEY)]
         and sum(over_new) < sum(over_old) * 0.5)
+    # 9 Press Cut stamp tiles
+    set_tool('PRESS')
+    yield 2.0
+    it9 = yield from scrolled_item('Arch')
+    w, a, r = view3d()
+    with C.temp_override(window=w, area=a, region=r):
+        from mecha_lab import side_panel as side9          # (``sp`` is the spikes object here)
+        tiles9 = [i for i in side9.items(C, r.width, r.height, ui_factor(C, r)) if i.kind == 'mtile']
+    shot('9_press_tiles_before.png')
+    if it9 is not None:
+        yield from press(it9)
+    picked9 = S.mch_press.shape
+    yield from wait_draws(2)
+    shot('9_press_tiles.png')
+    log('9 tiles in sight', len(tiles9), 'with pictures', sum(1 for i in tiles9 if i.icon.startswith('file:')),
+        'Arch tile', it9 is not None, it9 and round(it9.w), 'picked', picked9)
+    res['9 Press Cut: the stamps as picture tiles in the window; a REAL click on "Arch" picks it'] = (
+        len(tiles9) >= 8 and all(i.icon.startswith('file:') for i in tiles9) and it9 is not None
+        and picked9.endswith('M_ARCH'))
     bpy.types.SpaceView3D.draw_handler_remove(handle, 'WINDOW')
     for k_, v in res.items():
         log(('PASS ' if v else 'FAIL ') + k_)

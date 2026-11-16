@@ -322,6 +322,8 @@ class Builder:
             self.place_row(rest, x, w, columns=cols or None)
         elif node.kind == 'sep':
             self.gap(float(node.opts.get('factor', 1.0)))
+        elif node.kind == 'tiles':
+            self.tiles(node, x, w)
         else:
             cells = _cells(node, self.tool)
             for c in cells:
@@ -334,6 +336,23 @@ class Builder:
             segs = [c for c in cells if c[0] == 'seg' and c[3] and c[3][0] == 'enum']
             if segs:
                 self.place_row(segs, x, w)
+
+    def tiles(self, node, x, w):
+        """0.24.177 picture tiles (stamps, presets): rows of ``columns``, the picture over its name, the picked one
+        blue; a click runs its operator."""
+        k = self.k
+        cols = max(1, int(node.opts.get('columns') or 4))
+        gap = 5 * k
+        tw = (w - (cols - 1) * gap) / cols
+        th = tw + 15 * k
+        active = node.state('active') and node.state('enabled')
+        for i, (label, path, _icon_value, on, idname, props) in enumerate(node.opts.get('tiles', ())):
+            if i % cols == 0:
+                self.y -= th + (gap if i else 0)
+            self.out.append(self.Item('mtile', x + (i % cols) * (tw + gap), self.y, tw, th, label,
+                                      ('file:' + path) if path else '', bool(on), bool(active),
+                                      ('op', idname, dict(props))))
+        self.y -= GAP * k
 
     def section(self, node, x, w, title=None, start_folded=False):
         k = self.k

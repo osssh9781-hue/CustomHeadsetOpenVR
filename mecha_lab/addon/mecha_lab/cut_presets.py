@@ -455,6 +455,23 @@ def _refresh_previews():
     _preview_collection = previews.new()
 
 
+def thumb_path(stem):
+    """0.24.177 the list picture of a shape (a file path; '' when there is none)."""
+    if is_builtin(stem):
+        p = _ADDON_DIR / 'icons' / ('shape_' + stem[len(BUILTIN_PREFIX):].lower() + '.png')
+        return str(p) if p.is_file() else ''
+    info = _INDEX.get(stem)
+    if info is None:
+        return ''
+    key = _THUMBS.get(stem)
+    if key is None:
+        thumb = _small_thumb(preset_folder() / info[2])
+        if thumb is None:
+            return ''
+        key = _THUMBS[stem] = str(thumb)
+    return key
+
+
 def preset_icon(stem):
     if previews is None:
         return 0
