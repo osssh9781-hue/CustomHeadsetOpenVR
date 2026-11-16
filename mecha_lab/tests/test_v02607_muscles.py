@@ -115,11 +115,29 @@ S.mch_muscle.my_shape = ''
 S.mch_mmuscle.my_shape = ''
 pod0 = build_with('MMUSCLE', [A, B], preset='SPINDLE', style='BAND', shape='SCULPT', sculpt='SINGLE', strands=1, band_rim=0.0)
 pod1 = build_with('MMUSCLE', [A, B], preset='SPINDLE', style='BAND', shape='SCULPT', sculpt='SINGLE', strands=1, band_rim=0.8)
-lipf = sum(1 for p_ in pod1.data.polygons if p_.material_index == 2 and len(p_.vertices) == 4)
-capf = sum(1 for p_ in pod0.data.polygons if p_.material_index == 2)
-check(f'Pods, Outline Lip: a strip of faces along its outline, both sides, in the fittings\' material ({lipf - capf} '
-      f'faces; none at 0)', lipf - capf >= 2 * (mg.clean_rings(pod1.mch_muscle) - 1) and
-      len(pod1.data.polygons) > len(pod0.data.polygons))
+cnt = lambda ob, m: sum(1 for p_ in ob.data.polygons if p_.material_index == m)   # noqa: E731
+check(f'Pods, Outline Lip: extra strips of faces along its outline and on its top face, in the pod\'s own material '
+      f'({len(pod0.data.polygons)} -> {len(pod1.data.polygons)} faces; the fittings\' material only on the end rings)',
+      len(pod1.data.polygons) > len(pod0.data.polygons) + 4 * (mg.clean_rings(pod1.mch_muscle) - 1) and
+      cnt(pod1, 2) == cnt(pod0, 2))
+pod2 = build_with('MMUSCLE', [A, B], preset='SPINDLE', style='BAND', shape='SCULPT', sculpt='SINGLE', strands=1,
+                  band_rim=0.0, band_parts=0)
+pod3 = build_with('MMUSCLE', [A, B], preset='SPINDLE', style='BAND', shape='SCULPT', sculpt='SINGLE', strands=1,
+                  band_rim=0.0, band_parts=3, band_part='STRIPE')
+check(f'Plain Parts: parts without the pattern on the pod, their own material ({cnt(pod3, 1)} faces; none at 0)',
+      cnt(pod2, 1) == 0 and cnt(pod3, 1) > 30)
+mg.MY_PART_DIR[0] = os.path.join(TMP, 'parts')
+for o in C.selected_objects:
+    o.select_set(False)
+bpy.ops.mesh.primitive_cube_add(size=1.0, location=(8, 0, 0))
+cube = C.active_object
+cube.scale = (1.0, 0.2, 0.05)
+r = bpy.ops.mch.muscle_part_save(name='My Bar', tool='MMUSCLE')
+pod4 = build_with('MMUSCLE', [A, B], preset='SPINDLE', style='BAND', shape='SCULPT', sculpt='SINGLE', strands=1,
+                  band_rim=0.0, band_parts=2, band_part='TONGUE')
+check('Save Selected as My Plain Part: your mesh in place of the built-in ones (2 from each end: 4 x its 6 faces)',
+      r == {'FINISHED'} and S.mch_mmuscle.my_part == 'My Bar' and cnt(pod4, 1) == 4 * 6)
+S.mch_mmuscle.my_part = ''
 c1 = build_with('MMUSCLE', [A, B], preset='SPINDLE', style='CABLE', cable_count=7, cable_spread=0.0, cable_ties=0)
 c2 = build_with('MMUSCLE', [A, B], preset='SPINDLE', style='CABLE', cable_count=7, cable_spread=1.0, cable_ties=0)
 

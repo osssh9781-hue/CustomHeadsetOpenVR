@@ -764,7 +764,7 @@ def clean_count(pg):
     return (clean_rings(pg) - 1) * CLEAN_SIDES + 2
 
 
-def clean_line(tp, K, S=CLEAN_SIDES, rim=0.0, rim_width=0.5):
+def clean_line(tp, K, S=CLEAN_SIDES, rim=0.0, rim_width=0.5, parts=None):
     """A clean mesh after a LINE shape: ``K`` rings of ``S`` points - at each ring, how far the shape reaches from its
     middle there in each direction (smoothed round and along it); quads between the rings, a cap at each end."""
     A = tp['A']
@@ -807,18 +807,21 @@ def clean_line(tp, K, S=CLEAN_SIDES, rim=0.0, rim_width=0.5):
         Cn = (Pc[:-2] + Pc[1:-1] * 2 + Pc[2:]) / 4.0
     ease = np.minimum(1.0, (np.minimum(tk, 1.0 - tk) / 0.09) ** 0.6 * 0.85 + 0.15)   # (its ends drawn in to a tip)
     R = R * ease[:, None]
+    R0, ang0 = R.copy(), ang.copy()                   # (the plain parts sit on the pod as it is without its lip)
     rim_cols = set()
     if rim > 0:
         # 0.24.185 (user: "각 외곽 라인에 디테일 플레이트 외곽에 라인 잡았던 것처럼 ... 라인 잘 보이게"): a lip along its outline
         # (where it is widest, both sides): two extra columns either side of each, the strip between them standing out
         dw = math.radians(4.0 + 10.0 * rim_width)
-        extra = [c + k_ for c in (0.0, math.pi) for k_ in (-dw * 1.25, -dw, dw, dw * 1.25)]
-        ang2 = np.sort(np.concatenate([ang[(np.abs(np.sin(ang)) > math.sin(dw * 1.6))],
+        centres = (0.0, math.pi, math.radians(42.0), math.radians(138.0))   # (its outline, and inside it on its top face)
+        extra = [c + k_ for c in centres for k_ in (-dw * 1.25, -dw, dw, dw * 1.25)]
+        def off(a_):                                  # (how far from the nearest lip line)
+            return np.min([np.abs((np.asarray(a_) - c + math.pi) % (2 * math.pi) - math.pi) for c in centres], axis=0)
+        ang2 = np.sort(np.concatenate([ang[off(ang) > dw * 1.6],
                                        [(a_ + math.pi) % (2 * math.pi) - math.pi for a_ in extra]]))
         ext = np.concatenate([ang - 2 * math.pi, ang, ang + 2 * math.pi])
         R = np.stack([np.interp(ang2, ext, np.tile(R[i], 3)) for i in range(K)])
-        near = np.minimum(np.abs(np.sin(ang2)), 1.0)
-        lip = np.abs(np.sin(ang2)) <= math.sin(dw) + 1e-9
+        lip = off(ang2) <= dw + 1e-9
         grow = 1.0 + rim * 0.35 * np.sin(math.pi * tk) ** 0.5
         R = np.where(lip[None, :], R * grow[:, None], R)
         ang, S = ang2, len(ang2)
@@ -833,25 +836,192 @@ def clean_line(tp, K, S=CLEAN_SIDES, rim=0.0, rim_width=0.5):
             j2 = (j + 1) % S
             N.append(4)
             L += [i * S + j, i * S + j2, (i + 1) * S + j2, (i + 1) * S + j]
-            Mf.append(2 if j in rim_cols else 0)
+            Mf.append(0)                              # (the lip in the pod's own colour: user)
     N.append(S)
     L += list(range(S - 1, -1, -1))
     N.append(S)
     L += [(K - 1) * S + j for j in range(S)]
     Mf += [0, 0]
+    A_all = pts.reshape(-1, 3)
+    if parts and parts.get('count', 0) > 0:
+        # 0.24.185 (user: "중간중간 내가 프리셋으로 바꿀 수 있게 사이에 무늬가 없는 파츠를 만들어 줘"): plain parts on the
+        # pod's back - no pattern on them (their own material), each a mesh of its own design or yours
+        ext_a = np.concatenate([ang0 - 2 * math.pi, ang0, ang0 + 2 * math.pi])
+
+        def surf(t_, th_, up_):
+            t_ = np.clip(t_, 0.0, 1.0)
+            f = t_ * (K - 1)
+            i0 = np.clip(f.astype(int), 0, K - 2)
+            w = f - i0
+            r0 = np.array([np.interp(th_[q], ext_a, np.tile(R0[i0[q]], 3)) for q in range(len(t_))])
+            r1 = np.array([np.interp(th_[q], ext_a, np.tile(R0[i0[q] + 1], 3)) for q in range(len(t_))])
+            r_ = r0 * (1 - w) + r1 * w + up_
+            c_ = Cn[i0] * (1 - w)[:, None] + Cn[i0 + 1] * w[:, None]
+            return np.stack([t_, c_[:, 0] + r_ * np.cos(th_), c_[:, 1] + r_ * np.sin(th_)], 1), r_
+        a_, b_, c_, fN, fL = part_mesh(parts)
+        n = int(parts['count'])
+        ln = float(parts['length'])
+        back = math.pi / 2
+        places = []
+        if parts['design'] == 'STRIPE' and not parts.get('mine'):
+            for i in range(n):                        # bands across it, evenly along it
+                places.append(((i + 1) / (n + 1), back, True, 1.0))
+        else:
+            span = math.radians(100.0)
+            for i in range(n):                        # tongues from each end pointing in, side by side, interleaved
+                th = back + (((i + 0.5) / n) - 0.5) * span
+                places.append((0.14, th, False, 1.0))
+                places.append((0.86, back + (((i + 1.0) / n) - 0.5) * span if n > 1 else back, False, -1.0))
+        base = len(A_all)
+        addV = []
+        for t0, th0, across, dirn in places:
+            rmid = max(float(np.interp(th0, ext_a, np.tile(R0[int(round(min(max(t0, 0), 1) * (K - 1)))], 3))), 1e-6)
+            if across:
+                th_ = th0 + (a_ - 0.5) * math.radians(150.0)
+                t_ = t0 + b_ * ln * 0.25
+                up = c_ * ln * 0.25
+            else:
+                t_ = t0 + dirn * a_ * ln
+                fi = np.clip(t_, 0.0, 1.0) * (K - 1)          # (across: by how thick the pod is there)
+                i0_ = np.clip(fi.astype(int), 0, K - 2)
+                rr = R0.mean(1)
+                r_t = rr[i0_] * (1 - (fi - i0_)) + rr[i0_ + 1] * (fi - i0_)
+                th_ = th0 + b_ * ln / np.maximum(r_t, max(rmid, ln * 0.12)) * dirn
+                up = c_ * ln
+            P_, _r = surf(t_, th_, up)
+            addV.append(P_)
+            flip = (dirn < 0)
+            k_ = 0
+            for nn in fN:
+                f_ = fL[k_:k_ + nn]
+                N.append(int(nn))
+                L += [int(x) + base for x in (f_[::-1] if flip else f_)]
+                Mf.append(1)
+                k_ += nn
+            base += len(P_)
+        A_all = np.concatenate([A_all] + addV)
     lo = (Cn[:, 1] - R[:, np.argmin(np.abs(ang + math.pi / 2))])
     lo = np.interp(np.linspace(0, 1, 41), tk, np.minimum(pts[:, :, 2].min(1), lo))
-    return dict(tp, A=pts.reshape(-1, 3), N=np.array(N), L=np.array(L), lo=lo, **({'M': np.array(Mf)} if rim > 0 else {}))
+    return dict(tp, A=A_all, N=np.array(N), L=np.array(L), lo=lo,
+                **({'M': np.array(Mf)} if (rim > 0 or len(A_all) > K * S) else {}))
+
+
+PART_DESIGNS = (('TONGUE', 'Tongues', 'Plain tapered tongues from each end pointing in, side by side'),
+                ('ZIG', 'Zigzags', 'Plain zigzag strips from each end'),
+                ('STRIPE', 'Bands', 'Plain bands across it, evenly along it'))
+MY_PART_DIR = [None]
+_MYP = {}
+
+
+def my_part_dir():
+    if MY_PART_DIR[0]:
+        return MY_PART_DIR[0]
+    return os.path.join(bpy.utils.user_resource('CONFIG', path='mecha_lab', create=False), 'muscle_parts')
+
+
+def my_parts():
+    """{name: (a, b, c, N, L)} of the plain parts you saved: along 0 .. 1, across and up over its length."""
+    d = my_part_dir()
+    try:
+        key = (d, tuple(sorted((f, os.path.getmtime(os.path.join(d, f))) for f in os.listdir(d) if f.endswith('.npz'))))
+    except OSError:
+        return {}
+    if _MYP.get('key') != key:
+        out = {}
+        for f, _m in key[1]:
+            try:
+                with np.load(os.path.join(d, f), allow_pickle=False) as z:
+                    out[f[:-4]] = (z['a'].astype(float), z['b'].astype(float), z['c'].astype(float),
+                                   np.array(z['N']), np.array(z['L']))
+            except (OSError, KeyError, ValueError):
+                continue
+        _MYP['key'], _MYP['data'] = key, out
+    return _MYP['data']
+
+
+def save_my_part(context, srcs, name):
+    """The selected meshes kept as your plain part: its longest way along the pod, its flattest way up."""
+    Vs, Ns, Ls, off = [], [], [], 0
+    dg = context.evaluated_depsgraph_get()
+    for src in srcs:
+        ev = src.evaluated_get(dg)
+        me = ev.to_mesh()
+        V = np.empty(len(me.vertices) * 3)
+        me.vertices.foreach_get('co', V)
+        M = np.array(src.matrix_world)
+        Vs.append(V.reshape(-1, 3) @ M[:3, :3].T + M[:3, 3])
+        Ns.append(np.array([len(p.vertices) for p in me.polygons], np.int32))
+        Lp = np.empty(len(me.loops), np.int32)
+        me.loops.foreach_get('vertex_index', Lp)
+        Ls.append(Lp + off)
+        off += len(Vs[-1])
+        ev.to_mesh_clear()
+    V = np.concatenate(Vs)
+    if len(V) < 4:
+        raise RuntimeError('Pick a mesh')
+    A, _lo, _L = line_shape(V)
+    a, b, c = A[:, 0], A[:, 1], A[:, 2] - A[:, 2].min()
+    d = my_part_dir()
+    os.makedirs(d, exist_ok=True)
+    safe = ''.join(ch for ch in name if ch.isalnum() or ch in ' _-').strip() or 'Part'
+    np.savez_compressed(os.path.join(d, safe + '.npz'), a=a.astype(np.float32), b=b.astype(np.float32),
+                        c=c.astype(np.float32), N=np.concatenate(Ns), L=np.concatenate(Ls))
+    _MYP.clear()
+    return safe
+
+
+def part_mesh(parts):
+    """One plain part: (a along 0 .. 1, b across, c up - over its length; face sizes, corners)."""
+    mine = parts.get('mine')
+    if mine and mine in my_parts():
+        a, b, c, N, L = my_parts()[mine]
+        return a, b * float(parts['width']) / 0.6, c * float(parts['height']) / 0.5, N, L
+    design = parts['design']
+    na = 13
+    aa = np.linspace(0.0, 1.0, na)
+    w = 0.065 * float(parts['width']) / 0.6
+    h = 0.014 * float(parts['height']) / 0.5
+    if design == 'STRIPE':
+        half = np.full(na, w * 0.5)
+        mid = np.zeros(na)
+    else:
+        half = w * (1.0 - 0.82 * aa ** 1.4)                      # (tapering to its tip)
+        mid = (w * 0.55 * (np.abs(((aa * 2.0) % 1.0) - 0.5) * 2 - 0.5)) if design == 'ZIG' else np.zeros(na)
+    a, b, c = [], [], []
+    for i in range(na):                               # per station: left / right, top and (sunk) bottom
+        for sgn in (-1.0, 1.0):
+            for up in (h, -h * 0.5):
+                a.append(aa[i])
+                b.append(mid[i] + sgn * half[i])
+                c.append(up)
+    N, L = [], []
+    for i in range(na - 1):
+        o, p = i * 4, (i + 1) * 4                     # (left top, left bottom, right top, right bottom)
+        for f in ((o, o + 2, p + 2, p), (o + 1, o, p, p + 1), (o + 2, o + 3, p + 3, p + 2)):
+            N.append(4)
+            L += list(f)
+    N += [4, 4]
+    L += [0, 1, 3, 2]
+    e = (na - 1) * 4
+    L += [e, e + 2, e + 3, e + 1]
+    return np.array(a), np.array(b), np.array(c), np.array(N), np.array(L)
 
 
 def clean_shape(sid, tp, pg):
     K = clean_rings(pg)
     rim = float(pg.band_rim) if pg.style == 'BAND' else 0.0
-    key = (sid, K, len(tp['A']), float(tp['A'][:, 1:].sum()), round(rim, 4), round(float(pg.band_rim_width), 4))
+    parts = None
+    if pg.style == 'BAND' and int(pg.band_parts) > 0:
+        parts = {'count': int(pg.band_parts), 'design': pg.band_part, 'length': float(pg.band_part_len),
+                 'width': float(pg.band_part_width), 'height': float(pg.band_part_height), 'mine': pg.my_part}
+        if pg.my_part in my_parts():
+            parts['stamp'] = len(my_parts()[pg.my_part][0])
+    key = (sid, K, len(tp['A']), float(tp['A'][:, 1:].sum()), round(rim, 4), round(float(pg.band_rim_width), 4),
+           json.dumps(parts, sort_keys=True))
     if key not in _CLEAN:
         if len(_CLEAN) > 64:
             _CLEAN.clear()
-        _CLEAN[key] = clean_line(tp, K, rim=rim, rim_width=float(pg.band_rim_width))
+        _CLEAN[key] = clean_line(tp, K, rim=rim, rim_width=float(pg.band_rim_width), parts=parts)
     return _CLEAN[key]
 
 
@@ -1293,8 +1463,8 @@ def build_mesh(context, ob):
                 cylinder(mesh, ctr[k_], T[k_], Rb * 1.12, max(L * 0.025, r1 * 1.2), mat=2, r_in=Rb * 0.98, sides=20,
                          side=side[k_])
             for end, sgn in ((0, -1.0), (K - 1, 1.0)):
-                cap(mesh, pg.cap, ctr[end], T[end] * sgn, nrm[end], Rb * 1.15, L * float(pg.cap_length) * 0.6,
-                    float(pg.cap_size), mat=2)
+                cap(mesh, pg.cap, ctr[end], T[end] * sgn, nrm[end], Rb * 0.82, L * float(pg.cap_length) * 0.3,
+                    float(pg.cap_size), mat=2)                # (a slim ring round the bundle: user "너무 크다")
         else:                                         # ARTIFICIAL: core, sleeve, caps
             R = np.maximum(W, H) * 0.5 + 1e-6
             Ra, Rb = np.maximum(W * 0.5, 1e-6), np.maximum(H * 0.5, 1e-6)
@@ -1598,7 +1768,8 @@ LIVE = ('preset', 'shape', 'sculpt', 'my_shape', 'style', 'strands', 'twist', 's
         'segments', 'sink', 'fibers', 'fiber_scale', 'smooth', 'resolution', 'remesh', 'color', 'tendon_color', 'core',
         'core_count', 'core_size', 'core_color', 'holes', 'hole_size', 'hole_cells', 'sleeve_thick', 'sleeve_color',
         'cap', 'cap_size', 'cap_length', 'cap_color', 'cable_radius', 'cable_count', 'cable_ties', 'cable_twist', 'cable_spread',
-        'band_surface', 'band_rim', 'band_rim_width', 'band_teeth', 'band_weave', 'band_weave_scale', 'band_color')
+        'band_surface', 'band_rim', 'band_rim_width', 'band_parts', 'band_part', 'my_part',
+        'band_part_len', 'band_part_width', 'band_part_height', 'band_teeth', 'band_weave', 'band_weave_scale', 'band_color')
 
 
 def make(context, tool, pts):
@@ -1897,8 +2068,18 @@ class MCH_PG_Muscle(bpy.types.PropertyGroup):
     cable_radius: FloatProperty(name='Cable Thickness', default=0.2, min=0.05, max=1.0, update=_upd)
     band_surface: EnumProperty(name='Surface', items=SURFACES, default='SCALES', update=_upd_surface)
     band_rim: FloatProperty(name='Outline Lip', default=0.5, min=0.0, max=2.0, update=_upd,
-                            description='A raised line along the pod\'s outline, in the fittings\' colour (0: none)')
+                            description='A raised line along the pod\'s outline (both sides) and along its top, in its own '
+                                        'colour (0: none)')
     band_rim_width: FloatProperty(name='Lip Width', default=0.3, min=0.0, max=1.0, update=_upd)
+    band_parts: IntProperty(name='Plain Parts', default=2, min=0, max=8, update=_upd,
+                            description='Parts without the pattern on the pod (0: none) - Tongues / Zigzags: that many '
+                                        'from each end; Bands: that many across')
+    band_part: EnumProperty(name='Plain Part', items=PART_DESIGNS, default='TONGUE', update=_upd)
+    my_part: StringProperty(name='My Plain Part', default='', update=_upd,
+                            description='Your own saved plain part in place of the built-in ones')
+    band_part_len: FloatProperty(name='Part Length', default=0.35, min=0.05, max=0.9, update=_upd)
+    band_part_width: FloatProperty(name='Part Width', default=0.6, min=0.1, max=3.0, update=_upd)
+    band_part_height: FloatProperty(name='Part Height', default=0.5, min=0.05, max=3.0, update=_upd)
     band_teeth: IntProperty(name='Tabs', default=4, min=0, max=12, update=_upd,
                             description='Toothed tabs where each band starts (0: none)')
     band_weave: FloatProperty(name='Weave', default=0.6, min=0.0, max=1.0, update=_upd,
@@ -2225,6 +2406,57 @@ class MCH_OT_muscle_shape_delete(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_muscle_part_save(bpy.types.Operator):
+    bl_idname = 'mch.muscle_part_save'
+    bl_label = 'Save Selected as My Plain Part'
+    bl_description = ('The selected meshes kept as your plain part (there in every file): put on the pods in place of '
+                      'the built-in tongues - its longest way along the pod')
+    bl_options = {'REGISTER', 'UNDO'}
+    tool: StringProperty(default='MMUSCLE')
+    name: StringProperty(name='Name', default='My Part')
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.active_object
+        return ob is not None and ob.type == 'MESH' and not is_muscle(ob) and not is_skin(ob)
+
+    def invoke(self, context, event):
+        self.name = context.active_object.name
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        group = [o for o in context.selected_objects if o.type == 'MESH' and not is_muscle(o) and not is_skin(o)]
+        if context.active_object not in group:
+            group.append(context.active_object)
+        try:
+            name = save_my_part(context, group, self.name)
+        except RuntimeError as ex:
+            self.report({'WARNING'}, str(ex))
+            return {'CANCELLED'}
+        settings(context, self.tool).my_part = name
+        self.report({'INFO'}, f'My plain part "{name}" - picked')
+        return {'FINISHED'}
+
+
+class MCH_OT_muscle_part_delete(bpy.types.Operator):
+    bl_idname = 'mch.muscle_part_delete'
+    bl_label = 'Delete My Plain Part'
+    bl_description = 'Take this saved plain part away (the pods go back to the built-in ones)'
+    bl_options = {'REGISTER'}
+    name: StringProperty(default='')
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_confirm(self, event)
+
+    def execute(self, context):
+        try:
+            os.remove(os.path.join(my_part_dir(), self.name + '.npz'))
+        except OSError:
+            pass
+        _MYP.clear()
+        return {'FINISHED'}
+
+
 class MCH_OT_muscle_set(bpy.types.Operator):
     """Pick this (the selected muscle too)"""
     bl_idname = 'mch.muscle_set'
@@ -2361,6 +2593,18 @@ def draw(layout, context, tool='MUSCLE'):
         for k in ('band_weave', 'band_weave_scale', 'band_rim', 'band_rim_width', 'band_teeth'):
             col.prop(pg, k)
         col.prop(pg, 'band_color')
+        col = layout.column(align=True)
+        col.label(text='Plain Parts (no pattern)')
+        col.prop(pg, 'band_parts')
+        col.row(align=True).prop(pg, 'band_part', expand=True)
+        for k in ('band_part_len', 'band_part_width', 'band_part_height', 'sleeve_color'):
+            col.prop(pg, k)
+        for nm in sorted(my_parts()):
+            r = col.row(align=True)
+            o = r.operator('mch.muscle_set', text='My: ' + nm, depress=pg.my_part == nm)
+            o.tool, o.prop, o.value = tool, 'my_part', ('' if pg.my_part == nm else nm)
+            r.operator('mch.muscle_part_delete', text='', icon='X').name = nm
+        col.operator('mch.muscle_part_save', icon='ADD').tool = tool
         _draw_caps(layout, pg, tool)
     elif style == 'CABLE':
         col = layout.column(align=True)
@@ -2494,7 +2738,8 @@ class MCH_TOOL_mecha_muscle(bpy.types.WorkSpaceTool):
 
 CLASSES = (MCH_PG_Muscle, MCH_PG_MuscleSkin, MCH_OT_muscle_click, MCH_OT_muscle_back, MCH_OT_muscle_finish,
            MCH_OT_muscle_esc, MCH_OT_muscle_my_save, MCH_OT_muscle_my_apply, MCH_OT_muscle_my_delete,
-           MCH_OT_muscle_shape_save, MCH_OT_muscle_shape_delete, MCH_OT_muscle_set, MCH_OT_muscle_apply, MCH_OT_muscle_skin)
+           MCH_OT_muscle_shape_save, MCH_OT_muscle_shape_delete, MCH_OT_muscle_part_save, MCH_OT_muscle_part_delete,
+           MCH_OT_muscle_set, MCH_OT_muscle_apply, MCH_OT_muscle_skin)
 _HANDLE = [None]
 
 
