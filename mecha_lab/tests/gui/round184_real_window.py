@@ -414,7 +414,7 @@ def flow():
     new = [o for o in mus2 if o not in mus]
     log('2 muscles', n0, '->', len(mus2), [o.name for o in new])
     res['2 Muscle: two REAL clicks on the torso - a muscle between them (the user\'s one-belly shape)'] = (
-        len(new) == 1 and len(new[0].data.polygons) == len(mg.templates()['SINGLE']['N']))
+        len(new) == 1 and len(new[0].data.polygons) == mg.clean_count(new[0].mch_muscle))
     shot('2_muscle_clicks.png')
     # 3 Creature Base Mesh 2 (off to the side, nothing under it)
     with C.temp_override(window=w, area=a, region=r):

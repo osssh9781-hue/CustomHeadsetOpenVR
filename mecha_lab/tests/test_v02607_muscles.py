@@ -63,9 +63,9 @@ V1 = np.array([v.co[:] for v in m1.data.vertices])
 check('Thickness: it stands higher off the body', np.linalg.norm(V1, axis=1).max() > np.linalg.norm(V0, axis=1).max() + 0.01)
 m2 = build_with('MUSCLE', [A, B], preset='SPINDLE', shape='SCULPT', strands=1)
 check('Your Sculpts: the user\'s one-belly muscle laid between the points',
-      len(m2.data.polygons) == len(mg.templates()['SINGLE']['N']))
+      len(m2.data.polygons) == mg.clean_count(m2.mch_muscle))
 m2.mch_muscle.strands = 2
-check('... Strands 2: the user\'s two-belly muscle', len(m2.data.polygons) == len(mg.templates()['DOUBLE']['N']))
+check('... Strands 2: the user\'s two-belly muscle (a clean mesh after it: rings of quads)', len(m2.data.polygons) == mg.clean_count(m2.mch_muscle) and mg.sculpt_of(m2.mch_muscle, 'LINE') == 'DOUBLE' and sum(1 for p_ in m2.data.polygons if len(p_.vertices) == 4) == len(m2.data.polygons) - 2)
 # mecha
 P3 = [pt(0.6, -math.pi / 2 - 0.5), pt(0.1, -math.pi / 2 - 0.5), pt(0.2, -math.pi / 2 + 0.6)]
 for core in ('BUNDLE', 'SMOOTH', 'RIBBED', 'PISTON'):
@@ -91,8 +91,9 @@ check('Save Selected Mesh as My Muscle: kept (a scratch folder), picked', r == {
 m3 = build_with('MUSCLE', [A, B], preset='SPINDLE', shape='SCULPT', style='CREATURE')
 V3 = np.array([m3.matrix_world @ v.co for v in m3.data.vertices])
 ends = [float(np.min(np.linalg.norm(V3 - np.array(q[1]), axis=1))) for q in (A, B)]
-check(f'... a muscle between two points is that mesh ({nfm} faces), from point to point ({ends[0]:.3f}, {ends[1]:.3f})',
-      len(m3.data.polygons) == nfm and max(ends) < 0.15)
+check(f'... a muscle between two points after that mesh - a clean one ({len(m3.data.polygons)} faces, quads), from '
+      f'point to point ({ends[0]:.3f}, {ends[1]:.3f})', len(m3.data.polygons) == mg.clean_count(m3.mch_muscle) and
+      max(ends) < 0.15)
 S.mch_muscle.my_shape = ''
 c1 = build_with('MMUSCLE', [A, B], preset='SPINDLE', style='CABLE', cable_count=7, cable_spread=0.0, cable_ties=0)
 c2 = build_with('MMUSCLE', [A, B], preset='SPINDLE', style='CABLE', cable_count=7, cable_spread=1.0, cable_ties=0)

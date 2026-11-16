@@ -191,7 +191,7 @@ check(f'Muscles on the thigh: front, back, inner, outer on both thighs (Symmetry
       names)
 quad = next(o for o in mus if o.name == 'Thigh Quads.L')
 check('the front one laid with the user\'s triceps shape (heads into a tendon): its faces, its points on the thigh',
-      len(quad.data.polygons) == len(tp['TRICEPS']['N']) and mg.sculpt_of(quad.mch_muscle, 'LINE') == 'TRICEPS')
+      len(quad.data.polygons) == mg.clean_count(quad.mch_muscle) and mg.sculpt_of(quad.mch_muscle, 'LINE') == 'TRICEPS')
 from mathutils.bvhtree import BVHTree  # noqa: E402
 TV = ev_verts([th])
 QV = ev_verts([quad])
@@ -232,7 +232,7 @@ st.shape = 'STRANDS'
 st.preset = 'SPINDLE'
 sp, _m = mg.make(C, 'MUSCLE', [(ball.name, tuple(P3[0]), (0, -1, 0)), (ball.name, tuple(P3[2]), (0, -1, 0))])
 check('Shape Strands: built from strands as before', mg.sculpt_of(sp.mch_muscle, 'LINE') is None and
-      len(sp.data.polygons) != len(tp['SINGLE']['N']))
+      len(sp.data.polygons) != mg.clean_count(sp.mch_muscle))
 
 # --- 4. join ------------------------------------------------------------------------------------------------------------
 C.view_layer.objects.active = H

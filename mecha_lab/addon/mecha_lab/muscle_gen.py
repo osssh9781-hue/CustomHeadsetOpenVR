@@ -710,6 +710,93 @@ def save_my_shape(context, src, name, faces=3000):
     return safe, len(N)
 
 
+# 0.24.185 (user: "그대로 만들지 말고 그걸 참고해서 깔끔한 메쉬로 만들어"): a long shape is not laid as its own mesh - a
+# clean one is built after it: rings of quads along it, each ring the shape's outline there
+CLEAN_SIDES = 24
+_CLEAN = {}
+
+
+def clean_rings(pg):
+    return int(min(max(int(pg.resolution) // 2 + 4, 12), 96))
+
+
+def clean_count(pg):
+    """The faces of one clean long muscle."""
+    return (clean_rings(pg) - 1) * CLEAN_SIDES + 2
+
+
+def clean_line(tp, K, S=CLEAN_SIDES):
+    """A clean mesh after a LINE shape: ``K`` rings of ``S`` points - at each ring, how far the shape reaches from its
+    middle there in each direction (smoothed round and along it); quads between the rings, a cap at each end."""
+    A = tp['A']
+    t, sx, v = A[:, 0], A[:, 1], A[:, 2]
+    tk = np.linspace(0.0, 1.0, K)
+    ang = (np.arange(S) + 0.5) / S * 2 * math.pi - math.pi
+    R = np.full((K, S), np.nan)
+    Cn = np.full((K, 2), np.nan)
+    half = 0.55 / (K - 1)
+    for i in range(K):
+        m = np.abs(t - tk[i]) <= half
+        if m.sum() < 3:
+            continue
+        cs = (sx[m].min() + sx[m].max()) * 0.5
+        cv = (v[m].min() + v[m].max()) * 0.5
+        Cn[i] = (cs, cv)
+        a_ = np.arctan2(v[m] - cv, sx[m] - cs)
+        d_ = np.hypot(sx[m] - cs, v[m] - cv)
+        b_ = np.clip(((a_ + math.pi) / (2 * math.pi) * S).astype(int), 0, S - 1)
+        for j in range(S):
+            q = d_[b_ == j]
+            if len(q):
+                R[i, j] = q.max()
+        row = R[i]
+        ok = ~np.isnan(row)
+        if ok.any():                                  # (a direction with nothing in it: from its neighbours, round)
+            idx = np.arange(S)
+            R[i] = np.interp(idx, np.concatenate([idx[ok] - S, idx[ok], idx[ok] + S]), np.tile(row[ok], 3))
+    have = ~np.isnan(R[:, 0])
+    ii = np.arange(K)
+    for j in range(S):                                # (a ring with nothing: from the rings beside it)
+        R[:, j] = np.interp(ii, ii[have], R[have, j])
+    for c in range(2):
+        Cn[:, c] = np.interp(ii, ii[have], Cn[have, c])
+    R = (np.roll(R, 1, axis=1) + R * 6 + np.roll(R, -1, axis=1)) / 8.0     # smooth: a little round each ring
+    for _ in range(2):                                # ... and along the muscle
+        P_ = np.pad(R, ((1, 1), (0, 0)), mode='edge')
+        R = (P_[:-2] + P_[1:-1] * 2 + P_[2:]) / 4.0
+        Pc = np.pad(Cn, ((1, 1), (0, 0)), mode='edge')
+        Cn = (Pc[:-2] + Pc[1:-1] * 2 + Pc[2:]) / 4.0
+    ease = np.minimum(1.0, (np.minimum(tk, 1.0 - tk) / 0.09) ** 0.6 * 0.85 + 0.15)   # (its ends drawn in to a tip)
+    R = R * ease[:, None]
+    pts = np.empty((K, S, 3))
+    pts[:, :, 0] = tk[:, None]
+    pts[:, :, 1] = Cn[:, 0:1] + R * np.cos(ang)[None, :]
+    pts[:, :, 2] = Cn[:, 1:2] + R * np.sin(ang)[None, :]
+    N, L = [], []
+    for i in range(K - 1):
+        for j in range(S):
+            j2 = (j + 1) % S
+            N.append(4)
+            L += [i * S + j, i * S + j2, (i + 1) * S + j2, (i + 1) * S + j]
+    N.append(S)
+    L += list(range(S - 1, -1, -1))
+    N.append(S)
+    L += [(K - 1) * S + j for j in range(S)]
+    lo = (Cn[:, 1] - R[:, np.argmin(np.abs(ang + math.pi / 2))])
+    lo = np.interp(np.linspace(0, 1, 41), tk, np.minimum(pts[:, :, 2].min(1), lo))
+    return dict(tp, A=pts.reshape(-1, 3), N=np.array(N), L=np.array(L), lo=lo)
+
+
+def clean_shape(sid, tp, pg):
+    K = clean_rings(pg)
+    key = (sid, K, len(tp['A']), float(tp['A'][:, 1:].sum()))
+    if key not in _CLEAN:
+        if len(_CLEAN) > 64:
+            _CLEAN.clear()
+        _CLEAN[key] = clean_line(tp, K)
+    return _CLEAN[key]
+
+
 def sculpt_of(pg, kind):
     """The sculpted shape a muscle is laid with - None: strands (another look, no shape for it, the file gone)."""
     if pg.style not in {'CREATURE', 'BAND'} or pg.shape != 'SCULPT' or kind == 'SHEET':
@@ -883,6 +970,7 @@ def sculpt_mesh(context, ob, sid):
             axis = (Cc - mid) / max(np.linalg.norm(Cc - mid), 1e-9)
             cap(mesh, pg.cap, Cc + nC * Lb * 0.02, axis, nC, Lb * 0.03, Lb * 0.05, float(pg.cap_size), mat=2)
         return mesh, Lb
+    tp = clean_shape(sid, tp, pg)                     # (a clean mesh after the shape, not the shape's own)
     n = int(pg.strands)
     many = sid == 'SINGLE' and n >= 3
     paths = paths_of(context, ob, strands=None if many else 1)
