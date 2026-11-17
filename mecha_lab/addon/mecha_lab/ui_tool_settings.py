@@ -860,6 +860,12 @@ def draw_zbrush(layout, context):
     col = layout.column(align=True)
     col.prop(s, 'exchange_dir')
     col.prop(s, 'zbrush_exe')
+    found = zbrush_bridge.zbrush_path(s)                # 0.24.194 found by itself
+    row = col.row(align=True)
+    row.operator('mch.zbrush_find', icon='VIEWZOOM')
+    row.prop(s, 'launch', toggle=True)
+    col.label(text=('ZBrush: ' + found) if found else 'ZBrush: not found (pick ZBrush.exe above)',
+              icon='CHECKMARK' if found else 'ERROR')
     col.prop(s, 'scale')
     row = col.row(align=True)
     row.prop(s, 'forward_axis')

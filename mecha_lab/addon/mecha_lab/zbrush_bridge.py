@@ -48,6 +48,9 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
                                  description='Where OBJ files are written (empty = Blender user config folder)')
     zbrush_exe: StringProperty(name='ZBrush Executable', subtype='FILE_PATH', default='',
                                description='Optional: launch ZBrush after sending (Windows: ZBrush.exe)')
+    launch: BoolProperty(name='Open ZBrush on Send', default=True,
+                         description='After sending, start ZBrush when it is not running yet (found by itself when '
+                                     'the path above is empty)')
     scale: FloatProperty(name='Scale', default=1.0, min=0.0001, soft_max=1000.0,
                          description='Export multiplies by this, import divides by it')
     forward_axis: EnumProperty(name='Forward', items=AXES, default='NEGATIVE_Z')
@@ -87,6 +90,153 @@ def exchange_folder(settings):
 
 def detect_goz():
     return next((p for p in GOZ_PATHS if os.path.isdir(p)), None)
+
+
+# 0.24.194 (user: "에드온에서 지브러시 알아서 찾아 주는 거 못 만들어?"): ZBrush found on this computer ----------------
+EXE_NAMES = ('ZBrush.exe', 'ZBrush.app')
+FOUND = {}                       # (the answer kept for this Blender run: the search reads the disk / the registry)
+
+
+def _version_key(path):
+    """Newest first: the numbers in the folder name (ZBrush 2024.0.4 > ZBrush 2022), then the file's date."""
+    nums = tuple(int(x) for x in re.findall(r'\d+', os.path.basename(os.path.dirname(path)))[:4])
+    try:
+        when = os.path.getmtime(path)
+    except OSError:
+        when = 0.0
+    return (nums, when)
+
+
+def _registry_exes():
+    """Windows: where the installer wrote ZBrush down (App Paths, the uninstall list).  Read only."""
+    out = []
+    try:
+        import winreg
+    except ImportError:
+        return out
+    for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+        try:
+            with winreg.OpenKey(hive, r'SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\ZBrush.exe') as k:
+                out.append(str(winreg.QueryValue(k, None)).strip('"'))
+        except OSError:
+            pass
+        for base in (r'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+                     r'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'):
+            try:
+                with winreg.OpenKey(hive, base) as k:
+                    for i in range(winreg.QueryInfoKey(k)[0]):
+                        try:
+                            with winreg.OpenKey(k, winreg.EnumKey(k, i)) as sub:
+                                name = str(winreg.QueryValueEx(sub, 'DisplayName')[0])
+                                if 'zbrush' not in name.lower():
+                                    continue
+                                where = str(winreg.QueryValueEx(sub, 'InstallLocation')[0]).strip('"')
+                                if where:
+                                    out.append(os.path.join(where, 'ZBrush.exe'))
+                        except OSError:
+                            continue
+            except OSError:
+                pass
+    return out
+
+
+def zbrush_roots():
+    """The folders ZBrush installs into (Windows: Program Files on every drive; macOS: Applications)."""
+    roots = []
+    for key in ('ProgramW6432', 'ProgramFiles', 'ProgramFiles(x86)'):
+        v = os.environ.get(key)
+        if v:
+            roots.append(v)
+    if os.name == 'nt':
+        for d in 'CDEFGHIJ':
+            for sub in ('Program Files', 'Program Files (x86)', ''):
+                roots.append(f'{d}:\\{sub}' if sub else f'{d}:\\')
+    roots += ['/Applications', os.path.expanduser('~/Applications')]
+    seen, out = set(), []
+    for r in roots:
+        if r not in seen and os.path.isdir(r):
+            seen.add(r)
+            out.append(r)
+    return out
+
+
+def find_zbrush(roots=None, registry=True, fresh=False):
+    """The newest ZBrush on this computer ('' when none): the registry (Windows), then folders named *ZBrush* in the
+    install folders (also one level down: Maxon / Pixologic)."""
+    key = tuple(roots) if roots is not None else None
+    if not fresh and key in FOUND and (not FOUND[key] or os.path.exists(FOUND[key])):
+        return FOUND[key]
+    cands = [p for p in (_registry_exes() if registry and roots is None else []) if os.path.exists(p)]
+    for root in (roots if roots is not None else zbrush_roots()):
+        try:
+            level1 = [os.path.join(root, n) for n in os.listdir(root)]
+        except OSError:
+            continue
+        dirs = [d for d in level1 if os.path.isdir(d) and 'zbrush' in os.path.basename(d).lower()]
+        for d in level1:                              # (Maxon\ZBrush 2024, Pixologic\ZBrush 2022)
+            if os.path.isdir(d) and os.path.basename(d).lower() in {'maxon', 'pixologic'}:
+                try:
+                    dirs += [os.path.join(d, n) for n in os.listdir(d) if 'zbrush' in n.lower()]
+                except OSError:
+                    pass
+        for d in dirs:
+            for exe in EXE_NAMES:
+                p = os.path.join(d, exe)
+                if os.path.exists(p):
+                    cands.append(p)
+    cands = sorted(set(cands), key=_version_key, reverse=True)
+    FOUND[key] = cands[0] if cands else ''
+    return FOUND[key]
+
+
+def zbrush_path(settings):
+    """The ZBrush to start: the path typed in, else the one found."""
+    exe = bpy.path.abspath(settings.zbrush_exe) if settings.zbrush_exe else ''
+    return exe if exe and os.path.exists(exe) else find_zbrush()
+
+
+def zbrush_running():
+    """Is a ZBrush already open?  (None = could not tell.)"""
+    try:
+        if os.name == 'nt':
+            r = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq ZBrush.exe', '/NH'], capture_output=True, text=True,
+                               timeout=6, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+            return 'zbrush.exe' in r.stdout.lower()
+        r = subprocess.run(['pgrep', '-x', 'ZBrush'], capture_output=True, text=True, timeout=6)
+        return r.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def launch_zbrush(settings):
+    """ZBrush started when it is not open yet.  Returns a short note for the report."""
+    exe = zbrush_path(settings)
+    if not exe:
+        return 'ZBrush not found on this computer (set ZBrush Executable)'
+    if zbrush_running():
+        return 'ZBrush is already open'
+    try:
+        subprocess.Popen(['open', exe] if exe.endswith('.app') else [exe], cwd=os.path.dirname(exe))
+    except OSError as ex:
+        return f'could not start ZBrush: {ex}'
+    return f'ZBrush started ({os.path.basename(os.path.dirname(exe))})'
+
+
+class MCH_OT_zbrush_find(bpy.types.Operator):
+    """Look for ZBrush on this computer (the registry, Program Files / Applications) and fill in its path"""
+    bl_idname = 'mch.zbrush_find'
+    bl_label = 'Find ZBrush'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        exe = find_zbrush(fresh=True)
+        if not exe:
+            self.report({'WARNING'}, 'ZBrush not found in the usual places (Program Files / Applications): pick '
+                                     'ZBrush.exe by hand in ZBrush Executable')
+            return {'CANCELLED'}
+        context.scene.mch_zbrush.zbrush_exe = exe
+        self.report({'INFO'}, f'ZBrush found: {exe}')
+        return {'FINISHED'}
 
 
 def read_manifest(folder):
@@ -585,14 +735,19 @@ class MCH_OT_zbrush_send(bpy.types.Operator):
         except (RuntimeError, OSError) as ex:
             self.report({'ERROR'}, f'Send failed: {ex}')
             return {'CANCELLED'}
-        exe = bpy.path.abspath(s.zbrush_exe) if s.zbrush_exe else ''
-        if exe:
-            try:
-                subprocess.Popen([exe])
-            except OSError as ex:
-                self.report({'WARNING'}, f'Could not launch ZBrush: {ex}')
+        note = launch_zbrush(s) if s.launch else ''
         pts = SEND_POINTS[0]
         msg = f'Sent {len(sent)} object(s), {pts:,} points, to {folder}'
+        try:                                   # (the first file's path on the clipboard: paste it in ZBrush's
+            ents = read_manifest(folder).get('objects', {}).values()      # Tool > Import file window)
+            name = next((e['file'] for e in ents if e.get('object') == sent[0]), None)
+            if name:
+                context.window_manager.clipboard = str(Path(folder) / name)
+                msg += ' (file path copied: paste it in Tool > Import)'
+        except (IndexError, AttributeError, TypeError, KeyError):
+            pass
+        if note:
+            msg += ' | ' + note
         if SEND_NOTES:
             msg += ' | ' + '; '.join(SEND_NOTES[:3])
         if pts > HEAVY_POINTS and not int(getattr(s, 'send_max_points', 0) or 0):
@@ -807,7 +962,7 @@ class MCH_OT_export_mesh(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_PG_ZBrush, MCH_OT_zbrush_send, MCH_OT_zbrush_import, MCH_OT_zbrush_open_folder, MCH_OT_export_mesh)
+CLASSES = (MCH_PG_ZBrush, MCH_OT_zbrush_find, MCH_OT_zbrush_send, MCH_OT_zbrush_import, MCH_OT_zbrush_open_folder, MCH_OT_export_mesh)
 
 
 def register():

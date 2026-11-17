@@ -1,0 +1,5 @@
+found '' send {'FINISHED'} clipboard /tmp/claude-0/-home-user-CustomHeadsetOpenVR/7e2bc25f-fcd2-5c43-817f-f359a797ad9a/scratchpad/gui_clean/cfg/mecha_lab/zbrush_bridge/Cube__26b7ffdb50e5.obj note ZBrush not found on this computer (set ZBrush Executable)
+PASS 1 this machine has no ZBrush: the search finds none, Send still finishes
+PASS 2 the sent OBJ path is on the clipboard (an existing file)
+PASS 3 the report says ZBrush was not found
+3/3 passed
