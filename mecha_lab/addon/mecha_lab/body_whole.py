@@ -7,7 +7,8 @@ bends at the joints (no seams between parts), the same sliders as the Body Kit:
 * The joint picked (a list): Scale (it and all after it), Length, Width, Bend / Twist / Side - the other side the same.
 * Poses (the Body Kit's) and your own saved ones.
 
-The bones are the part-split human kit's joints (the same sculpt); each point follows the bones nearest it (weights
+The bones are the part-split human kit's joints (the same sculpt) - and a neck under the head, a shoulder (collarbone)
+before each upper arm; each point follows the bones nearest it (weights
 worked out here - no operators), smoothed over the mesh so the skin bends softly.  Everything is live (an Armature
 modifier and the bones' pose); Apply: Blender's own (the Armature modifier).
 """
@@ -26,12 +27,15 @@ FILE = os.path.join(os.path.dirname(__file__), 'body_kits', 'human_whole.npz')
 KEY = 'mch_bodywhole'                    # on the body mesh and its bones object: json {'rig': name, 'body': name}
 ARM_MOD = 'MCH Body Bones'
 # (bone, slot, parent, from, to) - "from" / "to": a kit part's pivot / end, a midpoint, or a point
-BONES = (('Pelvis', 'Pelvis', None), ('Torso', 'Torso', 'Pelvis'), ('Head', 'Head', 'Torso'),
-         ('UpperArm', 'UpperArm', 'Torso'), ('Forearm', 'Forearm', 'UpperArm'), ('Hand', 'Hand', 'Forearm'),
+BONES = (('Pelvis', 'Pelvis', None), ('Waist', 'Waist', 'Pelvis'), ('Chest', 'Chest', 'Waist'),   # (user: "허리도 두 단계로")
+         ('Neck', 'Neck', 'Chest'), ('Head', 'Head', 'Neck'), ('Shoulder', 'Shoulder', 'Chest'),           # 0.24.187 (user: "머리랑 목도 나눠 주고 어깨랑 윗팔도 나눠 주라")
+         ('UpperArm', 'UpperArm', 'Shoulder'), ('Forearm', 'Forearm', 'UpperArm'), ('Hand', 'Hand', 'Forearm'),
          ('Thigh', 'Thigh', 'Pelvis'), ('Shin', 'Shin', 'Thigh'), ('Foot', 'Foot', 'Shin'))
-SIDED = {'UpperArm', 'Forearm', 'Hand', 'Thigh', 'Shin', 'Foot'}
+SIDED = {'Shoulder', 'UpperArm', 'Forearm', 'Hand', 'Thigh', 'Shin', 'Foot'}
+WAIST_AT = 0.45                          # where the waist ends and the chest starts (share of the torso)
+HEAD_BASE = 0.868                        # where the head sits on the neck (the body 1 tall)
 LEGS, ARMS = {'Thigh', 'Shin'}, {'UpperArm', 'Forearm'}
-GIRTH = {'Torso', 'Pelvis', 'Thigh', 'Shin', 'UpperArm', 'Forearm'}
+GIRTH = {'Waist', 'Chest', 'Pelvis', 'Thigh', 'Shin', 'UpperArm', 'Forearm'}
 REGION = {'UpperArm': 'arm_size', 'Thigh': 'leg_size', 'Head': 'head', 'Hand': 'hands', 'Foot': 'feet'}
 JOINT_KEYS = ('scale', 'length', 'width', 'bend', 'twist', 'side')
 _BUSY = [False]
@@ -54,9 +58,21 @@ def load():
     for base, slot, par in BONES:
         for side in (('L', 'R') if base in SIDED else ('',)):
             sfx = f'.{side}' if side else ''
-            if base == 'Head':
+            if base in ('Waist', 'Chest'):            # (the torso in two: the waist below its middle, the chest above)
+                lo_, hi_ = P('Torso', 'pivot'), P('Torso', 'end')
+                mid_ = lo_ + (hi_ - lo_) * WAIST_AT
+                head, tail = (lo_, mid_) if base == 'Waist' else (mid_, hi_)
+            elif base == 'Neck':
                 head = P('Torso', 'end')
-                tail = np.array([0.0, head[1] - 0.01, V[:, 2].max() - 0.01])
+                tail = np.array([0.0, head[1] - 0.008, HEAD_BASE])
+            elif base == 'Head':
+                nb = P('Torso', 'end')
+                head = np.array([0.0, nb[1] - 0.008, HEAD_BASE])
+                tail = np.array([0.0, nb[1] - 0.02, V[:, 2].max() - 0.01])
+            elif base == 'Shoulder':                  # (the collarbone: from beside the neck's base to the arm's joint)
+                arm = P('UpperArm' + sfx, 'pivot')
+                head = np.array([arm[0] * 0.22, arm[1] - 0.01, arm[2] + 0.012])
+                tail = arm
             elif base == 'Thigh':                     # (the kit's knee part: the joint in its middle)
                 head, tail = P('Thigh' + sfx, 'pivot'), (P('Knee' + sfx, 'pivot') + P('Knee' + sfx, 'end')) * 0.5
             elif base == 'Shin':
@@ -89,7 +105,7 @@ def weights(V, bones):
     kd.balance()
     names = list(bones)
     col = {n: j for j, n in enumerate(names)}
-    neck = bones['Head'][0][2]
+    neck = bones['Neck'][0][2]
     W = np.zeros((len(V), len(names)))
     for i, v in enumerate(V):
         part = labels[kd.find(v)[1]]
@@ -99,8 +115,19 @@ def weights(V, bones):
             mid = bones['Shin' + sfx][0]
             ax = bones['Shin' + sfx][1] - mid
             base = 'Shin' if float((v - mid) @ ax) > 0 else 'Thigh'
-        if base == 'Torso' and v[2] > neck:
+        if base == 'Torso' and v[2] > HEAD_BASE:
             base = 'Head'
+        elif base == 'Torso' and v[2] > neck:
+            base = 'Neck'
+        elif base == 'Torso' and abs(v[0]) > 0.03 and v[2] > neck - 0.085:
+            sd = 'L' if v[0] > 0 else 'R'             # (the torso's top corners: the shoulder's, by how near its bone)
+            a_, b_ = bones['Shoulder.' + sd][0], bones['Shoulder.' + sd][1]
+            ab = b_ - a_
+            tt = min(max(float((v - a_) @ ab) / float(ab @ ab), 0.0), 1.0)
+            if float(np.linalg.norm(v - (a_ + ab * tt))) < 0.062 and tt > 0.25:
+                base, sfx = 'Shoulder', '.' + sd
+        if base == 'Torso':
+            base = 'Chest' if v[2] > bones['Chest'][0][2] else 'Waist'
         W[i, col[base + sfx]] = 1.0
     return W, names
 
@@ -236,7 +263,7 @@ def refresh(context, rig):
         v = val(pb.name)
         own = v['scale'] * (getattr(kp, REGION[slot]) if slot in REGION else 1.0)
         size[pb.name] = own * (size[pb.parent.name] if pb.parent else 1.0)
-        ln = v['length'] * (kp.legs if slot in LEGS else kp.arms if slot in ARMS else kp.torso if slot == 'Torso' else 1.0)
+        ln = v['length'] * (kp.legs if slot in LEGS else kp.arms if slot in ARMS else kp.torso if slot in ('Waist', 'Chest') else 1.0)
         g = v['width'] * (kp.build if slot in GIRTH else 1.0)
         s = size[pb.name]
         pb.scale = (g * s, ln * s, g * s)
@@ -258,6 +285,12 @@ def refresh(context, rig):
             M = np.array(ev.matrix_world)
             low = float((co.reshape(-1, 3) @ M[2, :3] + M[2, 3]).min())
             ev.to_mesh_clear()
+            for o in rig.children:                    # (swapped feet stand on the floor too)
+                if str(o.get(END_KEY, '')).startswith('Foot'):
+                    c2 = np.empty(len(o.data.vertices) * 3)
+                    o.data.vertices.foreach_get('co', c2)
+                    M2 = np.array(o.matrix_world)
+                    low = min(low, float((c2.reshape(-1, 3) @ M2[2, :3] + M2[2, 3]).min()))
             rig.location.z += kp.floor - low
 
 
@@ -346,12 +379,118 @@ def set_pose(context, rig, vals):
     for pb in rig.pose.bones:
         slot = pb.name.split('.')[0]
         b, t, s_ = vals.get(pb.name, vals.get(slot, vals.get('Knee' if slot == 'Shin' else slot, (0, 0, 0))))
+        if slot in ('Waist', 'Chest') and slot not in vals and 'Torso' in vals:
+            b, t, s_ = (x * 0.5 for x in vals['Torso'])   # (a kit pose's torso: half at the waist, half at the chest)
         rec = dict(joint(rig, pb.name))
         rec.update(bend=math.radians(b), twist=math.radians(t), side=math.radians(s_))
         J[pb.name] = rec
     rig['mch_joints'] = json.dumps(J)
     _upd_pick(rig.mch_bodywhole, context)
     refresh(context, rig)
+
+
+# ---- hands and feet swapped (0.24.187, user: "손이랑 발은 프리셋을 바꿀 수가 있나? 크리쳐 손이나 발의 종류를 다양하게") ----
+END_KEY = 'mch_bodywhole_end'            # on a swapped hand / foot: its slot and side
+
+
+def end_variants(slot):
+    """[(id, label)] of what a hand / foot can be: the body's own, the kits' (your creature's), your saved parts."""
+    from . import body_kit as bk
+    out = [('own', 'Own (the body\'s)')]
+    for vid, label in bk.variants(slot):
+        if not vid.startswith('human:'):
+            out.append((vid, label))
+    return out
+
+
+def set_end(context, rig, slot, vid):
+    """Both hands (feet) swapped for a variant: the body's own hidden there (a Mask on its points), the other one hung
+    on the bone (it follows the pose and the sizes).  'own': back as it was."""
+    from . import body_kit as bk
+    body, _r = pair(rig)
+    for side in ('L', 'R'):
+        bone = f'{slot}.{side}'
+        for o in [o for o in rig.children if o.get(END_KEY) == bone]:
+            me = o.data
+            bpy.data.objects.remove(o)
+            if me.users == 0:
+                bpy.data.meshes.remove(me)
+        mk = body.modifiers.get('MCH Hide ' + bone)
+        if vid == 'own':
+            if mk is not None:
+                body.modifiers.remove(mk)
+            continue
+        if mk is None:
+            mk = body.modifiers.new('MCH Hide ' + bone, 'MASK')
+        mk.vertex_group = bone
+        mk.invert_vertex_group = True
+        mk.threshold = 0.5
+        if vid.startswith('mine:'):
+            path = os.path.join(bk.my_dir(), slot, vid[5:] + '.npz')
+            with np.load(path, allow_pickle=False) as z:
+                A, N, L = z['A'].astype(np.float64), np.array(z['N']), np.array(z['L'])
+                vside = str(z['side']) if 'side' in z else ''
+        else:
+            kit, n = vid.split(':', 1)
+            parts = bk.load(kit)
+            pp = parts.get(n[:-1] + side, parts[n])
+            fr_ = bk.frame(pp['pivot'], pp['end'])
+            A = bk._local(pp['V'], fr_)
+            N, L, vside = pp['N'], pp['L'], pp['side']
+            own_len = fr_[4]                          # (its own size beside the body: both are kept 1 tall)
+        if vside and vside != side:
+            A = A * (1.0, -1.0, 1.0)
+            L = bk._flip(N, L)
+        pb = rig.pose.bones[bone]
+        ln = pb.bone.length
+        # (along, side, front) over its length -> the bone's own space: Y along it, Z its front, X = -side
+        V = np.stack([-A[:, 1], A[:, 0], A[:, 2]], 1) * (ln if vid.startswith('mine:') else own_len)
+        me = bk._mesh(f'Body {bone}', {'V': V, 'N': N, 'L': L})
+        for m in body.data.materials:
+            me.materials.append(m)
+        ob = bpy.data.objects.new(f'Body {bone}', me)
+        (body.users_collection[0] if body.users_collection else context.scene.collection).objects.link(ob)
+        ob.parent = rig
+        ob.parent_type = 'BONE'
+        ob.parent_bone = bone
+        ob.location = (0.0, -ln, 0.0)                 # (a bone's children hang on its end: back to its start)
+        ob[END_KEY] = bone
+    d = json.loads(rig.get('mch_ends', '{}'))
+    d[slot] = vid
+    rig['mch_ends'] = json.dumps(d)
+    refresh(context, rig)
+
+
+def _end_items(self, context):
+    items = [(vid, label, '') for vid, label in end_variants(self.slot)]
+    _END_ITEMS[:] = items
+    return _END_ITEMS
+
+
+_END_ITEMS = []
+
+
+class MCH_OT_bodywhole_end(bpy.types.Operator):
+    bl_idname = 'mch.bodywhole_end'
+    bl_label = 'Swap Hands / Feet'
+    bl_description = ('Both hands (or feet) swapped for another kind - your creature\'s, or a part you saved (Body Kit: '
+                      'Use Selected Mesh); they follow the pose and the Hands / Feet size.  Own: the body\'s again')
+    bl_options = {'REGISTER', 'UNDO'}
+    bl_property = 'variant'
+    slot: StringProperty(default='Hand')
+    variant: EnumProperty(name='Kind', items=_end_items)
+
+    @classmethod
+    def poll(cls, context):
+        return _rig_of(context) is not None
+
+    def execute(self, context):
+        try:
+            set_end(context, _rig_of(context), self.slot, self.variant)
+        except (OSError, KeyError, ValueError) as e:
+            self.report({'WARNING'}, f'Swap: {e}')
+            return {'CANCELLED'}
+        return {'FINISHED'}
 
 
 class MCH_OT_bodywhole_add(bpy.types.Operator):
@@ -421,6 +560,13 @@ def draw(layout, context):
     col.prop(kp, 'joint', text='')
     for k in JOINT_KEYS:
         col.prop(kp, 'j_' + k, slider=True)
+    col = layout.column(align=True)
+    col.label(text='Hands / Feet (swap)')
+    ends = json.loads(rig.get('mch_ends', '{}'))
+    for slot, label in (('Hand', 'Hands'), ('Foot', 'Feet')):
+        now = dict(end_variants(slot)).get(ends.get(slot, 'own'), 'Own')
+        op = col.operator_menu_enum('mch.bodywhole_end', 'variant', text=f'{label}: {now}')
+        op.slot = slot
     from . import body_kit as bk
     col = layout.column(align=True)
     col.label(text='Poses')
@@ -431,7 +577,7 @@ def draw(layout, context):
     return True
 
 
-CLASSES = (MCH_PG_BodyWhole, MCH_OT_bodywhole_add, MCH_OT_bodywhole_pose)
+CLASSES = (MCH_PG_BodyWhole, MCH_OT_bodywhole_end, MCH_OT_bodywhole_add, MCH_OT_bodywhole_pose)
 
 
 def register():

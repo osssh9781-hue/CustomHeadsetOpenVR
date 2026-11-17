@@ -32,9 +32,9 @@ def tip(n):
 
 
 V0 = verts()
-check(f'Add One-Piece Human: ONE mesh ({len(body.data.polygons)} faces, light) on bones (15), standing on the cursor, '
+check(f'Add One-Piece Human: ONE mesh ({len(body.data.polygons)} faces, light) on bones (19: the waist and the chest, the neck and the head, a shoulder before each upper arm), standing on the cursor, '
       f'1.8 tall ({V0[:, 2].min():.3f} .. {V0[:, 2].max():.3f})', r == {'FINISHED'} and body.type == 'MESH' and
-      rig.type == 'ARMATURE' and len(rig.pose.bones) == 15 and len(body.data.polygons) < 45000 and
+      rig.type == 'ARMATURE' and len(rig.pose.bones) == 19 and {'Waist', 'Chest', 'Neck', 'Head', 'Shoulder.L', 'UpperArm.L'} <= set(rig.pose.bones.keys()) and len(body.data.polygons) < 45000 and
       abs(V0[:, 2].min()) < 1e-3 and abs(V0[:, 2].max() - 1.8) < 0.01)
 W = np.zeros(len(body.data.vertices))
 for v in body.data.vertices:
@@ -73,6 +73,35 @@ ratio = L2 / np.maximum(L0, 1e-9)
 check(f'the skin bends at the joints, nothing torn or pulled into strands (99 % of the edges stretched under '
       f'x{np.quantile(ratio, 0.99):.2f}, the longest - inside the bent knee - x{ratio.max():.1f})',
       np.quantile(ratio, 0.99) < 2.5 and ratio.max() < 12.0)
+# 0.24.187 the neck / the shoulder / the waist on their own; hands and feet swapped
+bpy.ops.mch.bodywhole_pose(pose='__RESET__')
+h0, n0 = tip('Head'), tip('Neck')
+kp.joint = 'Head'
+kp.j_bend = math.radians(40)
+check('Head Bend: the head nods, the neck stays', np.linalg.norm(tip('Head') - h0) > 0.03 and
+      np.linalg.norm(tip('Neck') - n0) < 1e-4)
+kp.j_bend = 0.0
+e0, hd0 = tip('UpperArm.L'), tip('Hand.L')
+kp.joint = 'Shoulder.L'
+kp.j_side = math.radians(25)
+check('Shoulder Side: the whole arm lifts from the collarbone', tip('UpperArm.L')[2] > e0[2] + 0.03 and
+      tip('Hand.L')[2] > hd0[2] + 0.03)
+kp.j_side = 0.0
+c0, w0 = tip('Chest'), tip('Waist')
+kp.joint = 'Chest'
+kp.j_bend = math.radians(30)
+check('Chest Bend: the chest leans, the waist under it stays', tip('Chest')[1] < c0[1] - 0.03 and
+      np.linalg.norm(tip('Waist') - w0) < 1e-4)
+kp.j_bend = 0.0
+n_before = len(verts())
+r = bpy.ops.mch.bodywhole_end(slot='Hand', variant='creature:Hand.L')
+ends = [o for o in rig.children if o.get(bw.END_KEY)]
+check('Swap Hands -> the creature\'s: a hand hung on each hand bone, the body\'s own hidden there',
+      r == {'FINISHED'} and sorted(o[bw.END_KEY] for o in ends) == ['Hand.L', 'Hand.R'] and len(verts()) < n_before and
+      all(o.parent_bone == o[bw.END_KEY] for o in ends))
+r = bpy.ops.mch.bodywhole_end(slot='Hand', variant='own')
+check('... Own: back as it was', r == {'FINISHED'} and not [o for o in rig.children if o.get(bw.END_KEY)] and
+      len(verts()) == n_before)
 r = bpy.ops.mch.bodywhole_pose(pose='__RESET__')
 V3 = verts()
 check('Reset Pose: as it stood', np.abs(V3 - V0).max() < 1e-3)
