@@ -1,0 +1,19 @@
+Lasso cell True
+after a REAL click on Lasso: mode SCULPT painting True mode ['LASSO'] tool builtin.lasso_mask ZBrush screen False
+shot 1_lasso_masked.png True
+lasso drawn, then a REAL click on Drape Mask: masked points 699 cloth Cloth Drape running False frame after 4 s 0 mode OBJECT
+shot 2_laid_waiting.png True
+Draw Lines cell True clickable True
+after a REAL click on Draw Lines: tool WLINES cloth hidden True | a REAL drag on the body: lines 0 -> 1
+shot 3_line_drawn.png True
+Cloth Drape picked again: cloth hidden False stitched points 42
+shot 4_back_with_seam.png True
+after Space: frame 8 tool CDRAPE active Cloth Drape selected ['Cloth Drape'] modal True
+after a REAL Space: running / done True False frame 8
+PASS 1 a REAL click on Lasso: masking is on (Sculpt Mode underneath, the MECHA LAB screen kept) with the lasso mask tool
+PASS 2 a REAL lasso on the ball masked an area
+PASS 3 Drape Mask: the cloth is laid and waits - not draping 4 s later (frame 0)
+PASS 3b a REAL click on Draw Lines (the cloth laid): the Wrinkle Lines tool, the cloth aside; a REAL drag on the body draws a line
+PASS 3c Cloth Drape picked again: the cloth is back with the seam (stitched points)
+PASS 4 Space (REAL key), once: now it drapes
+6/6 passed

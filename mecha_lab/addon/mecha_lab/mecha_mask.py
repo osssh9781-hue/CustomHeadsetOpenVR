@@ -12,6 +12,8 @@ import numpy as np
 from bpy.props import EnumProperty
 
 ON = [False]
+MODE = ['BRUSH']                 # how the mask is put on: the brush, a lasso, a box (0.24.209)
+MASK_TOOLS = {'LASSO': 'builtin.lasso_mask', 'BOX': 'builtin.box_mask'}
 SHELF = {}                       # 3D views whose brush shelf this hid: put back when the painting ends
 MASK = '.sculpt_mask'
 
@@ -81,13 +83,26 @@ def begin(context):
     except RuntimeError as ex:
         ON[0] = False
         return str(ex).splitlines()[0]
-    msg = zs.activate(context, 'MaskPen')
+    msg = use_mode(context, MODE[0])
     hide_shelf()
     if not bpy.app.timers.is_registered(_hide_again):  # (Blender shows the shelf again on the first Sculpt redraw)
         TRIES[0] = 0
         bpy.app.timers.register(_hide_again, first_interval=0.15)
     _bump()
     return msg or ''
+
+
+def use_mode(context, mode):
+    """The mask tool while painting: the Mask brush, or Blender's lasso / box mask (drag = mask, Ctrl + drag = clear)."""
+    from . import zb_sculpt as zs
+    MODE[0] = mode if mode in MASK_TOOLS else 'BRUSH'
+    if MODE[0] == 'BRUSH':
+        return zs.activate(context, 'MaskPen') or ''
+    try:
+        bpy.ops.wm.tool_set_by_id(name=MASK_TOOLS[MODE[0]])
+    except (RuntimeError, TypeError) as ex:
+        return str(ex).splitlines()[0]
+    return ''
 
 
 def end(context):
@@ -139,7 +154,8 @@ class MCH_OT_mecha_mask(bpy.types.Operator):
     bl_label = 'Mask'
     bl_options = {'REGISTER', 'UNDO'}
     action: EnumProperty(items=[('PAINT', 'Paint Mask', ''), ('CLEAR', 'Clear', ''), ('INVERT', 'Invert', ''),
-                                ('EXTRACT', 'Extract', '')], default='PAINT')
+                                ('EXTRACT', 'Extract', ''), ('BRUSH', 'Brush', ''), ('LASSO', 'Lasso', ''),
+                                ('BOX', 'Box', '')], default='PAINT')
 
     @classmethod
     def poll(cls, context):
@@ -148,6 +164,19 @@ class MCH_OT_mecha_mask(bpy.types.Operator):
 
     def execute(self, context):
         ob = context.view_layer.objects.active
+        if self.action in {'BRUSH', 'LASSO', 'BOX'}:        # 0.24.209 (user: "왜 메카랩에서는 라쏘로 그리는 게 안 돼?")
+            if on(context):
+                msg = use_mode(context, self.action)
+            else:
+                MODE[0] = self.action
+                msg = begin(context)
+                if not ON[0]:
+                    self.report({'WARNING'}, msg)
+                    return {'CANCELLED'}
+            _bump()
+            how = {'BRUSH': 'drag = mask', 'LASSO': 'draw round an area = mask', 'BOX': 'drag a box = mask'}[self.action]
+            self.report({'INFO'}, f'Mask {self.action.title()}: {how}, Ctrl = erase' + (f' ({msg})' if msg else ''))
+            return {'FINISHED'}
         if self.action == 'PAINT':
             if on(context):
                 end(context)
@@ -191,6 +220,9 @@ def draw(layout, context):
                depress=on(context)).action = 'PAINT'
     r.operator('mch.mecha_mask', text='Clear').action = 'CLEAR'
     r.operator('mch.mecha_mask', text='Invert').action = 'INVERT'
+    r = box.row(align=True)                                  # 0.24.209 how: the brush, a lasso, a box
+    for mode, label in (('BRUSH', 'Brush'), ('LASSO', 'Lasso'), ('BOX', 'Box')):
+        r.operator('mch.mecha_mask', text=label, depress=on(context) and MODE[0] == mode).action = mode
     r = box.row(align=True)
     r.operator('mch.mecha_mask', text='Extract (mask -> shell)', icon='MOD_SOLIDIFY').action = 'EXTRACT'
     r.prop(zb, 'thick')

@@ -2571,13 +2571,9 @@ class MCH_OT_cdrape_mask(bpy.types.Operator):
         return {'FINISHED'}
 
     def invoke(self, context, event):
-        r = self.execute(context)
-        if 'FINISHED' in r and context.area is not None and context.area.type == 'VIEW_3D':
-            try:
-                bpy.ops.mch.cdrape_sim('INVOKE_DEFAULT')       # start draping right away (any tool: the modal has the keys)
-            except RuntimeError:
-                pass
-        return r
+        # 0.24.209 (user: "마스크로 하는 것도 처음에 누르면 스티치 그릴 수 있게 바로 시뮬 안 됐으면 좋겠어"): the cloth is laid
+        # and waits - draw the stitch lines, set the sliders - Space (or the Drape button) starts it
+        return self.execute(context)
 
 
 class MCH_OT_cdrape_wrap(bpy.types.Operator):
@@ -2639,7 +2635,8 @@ def lines_back(context):
     context.view_layer.objects.active = cloth
     wl._CACHE.pop(SIM.get('target', ''), None)
     restart(context)
-    return True
+    SIM['running'] = False             # (laid again with the lines, and waiting: Space starts it - restart() alone
+    return True                        #  left it "running" with no drape going, and the first Space only paused it)
 
 
 def _lines_back():
@@ -2830,8 +2827,8 @@ def draw(layout, context):
     r = box.row(align=True)
     r.prop(st, 'use_lines', text=f'Use Lines ({n_lines})', toggle=True)
     rr = r.row()
-    rr.enabled = not live
-    rr.operator('mch.cdrape_lines', text='Draw Lines', icon='GREASEPENCIL')
+    rr.enabled = not live or not SIM.get('running')      # (0.24.209 also on a cloth laid and waiting: it was greyed
+    rr.operator('mch.cdrape_lines', text='Draw Lines', icon='GREASEPENCIL')   # out - the lines could not be drawn)
     if st.use_lines:                                     # 0.24.208 what the lines are: tubes, or seams in the cloth
         box.row(align=True).prop(st, 'line_mode', expand=True)
         if st.line_mode == 'STITCH':
