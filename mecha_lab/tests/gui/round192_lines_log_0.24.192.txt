@@ -1,0 +1,18 @@
+tool CGREEBLE top bar target cells [True, True, True] targets AUTO
+auto: line Scale Line on Left
+shot 1_auto_wire.png True
+after a REAL click on Selected: targets SELECTED selected ['Right']
+selected = Right, drag on Left: new lines []
+selected = Right, drag on Right: line Scale Line.001 on Right selected now ['Scale Line.001']
+again (the new line is the selection now): line Scale Line.002 on Right
+shot 2_selected_wire.png True
+parts in the selected line 5 -> 3 (two unticked, by the list operator)
+shot 3_live_parts_wire.png True
+PASS 1 Scale Line on: the top bar shows Target - Auto / Selected / Active
+PASS 2 Auto: a REAL drag on the left cube lays a Scale Line on it
+PASS 3 a REAL click on Selected in the top bar: Targets = Selected
+PASS 4 Selected (the right cube): a REAL drag on the left cube lays nothing
+PASS 5 ... a REAL drag on the right cube lays a Scale Line on it
+PASS 6 ... and again with the new line selected: the next stroke still lands on the right cube
+PASS 7 two parts unticked in the list (operator call): the selected line has two fewer at once
+7/7 passed

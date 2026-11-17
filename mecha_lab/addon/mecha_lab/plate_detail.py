@@ -666,6 +666,17 @@ def _rough_props():
                                    update=_rough_changed,
                                    description='Layered Cliff: the lines\' direction - 0 = along the rise (down the '
                                                'cliff), 90 = across it')
+    # 0.24.192 ridges / edges across the face
+    for prop, _s, label, desc, lo, hi in _pr.LINE_MIX:
+        ann[prop] = FloatProperty(name=label, default=0.0, min=lo, max=hi, update=_rough_changed, description=desc)
+    for prop, _s, label, desc, soft in _pr.LINE_LENGTHS:
+        ann[prop] = FloatProperty(name=label, default=0.01, min=0.0, soft_max=soft, unit='LENGTH', precision=4,
+                                  update=_rough_changed, description=desc)
+    ann['r_line_wander'] = FloatProperty(name='Wander', default=0.6, min=0.0, max=1.0, update=_rough_changed,
+                                         description='How much the ridges / edges wander (0 = straight and even)')
+    ann['r_line_net'] = FloatProperty(name='Net', default=0.0, min=0.0, max=1.0, update=_rough_changed,
+                                      description='0 = lines across the face, 1 = a net of plates (crests / grooves '
+                                                  'round each, each at its own height)')
     ann['r_cell'] = FloatProperty(default=0.0, options={'HIDDEN'})          # (mean face edge of the base patch)
     return ann
 
@@ -1237,6 +1248,17 @@ def _draw_rough(box, p):
     col.label(text='Texture Mix')
     for prop, *_r in _pr.MIX_PROPS:
         col.prop(p, prop)
+    col = box.column(align=True)                      # 0.24.192
+    col.label(text='Ridges / Edges (across the face)')
+    for prop, *_r in _pr.LINE_MIX:
+        col.prop(p, prop, slider=True)
+    col.prop(p, 'r_line_height', text='Line Height (strength)')
+    col.prop(p, 'r_line_space')
+    row = col.row(align=True)
+    row.prop(p, 'r_line_wander', slider=True)
+    row.prop(p, 'r_line_net', slider=True)
+    _draw_compass(box, p)                             # (which way the lines run)
+    box.prop(p, 'r_lturn')
     col = box.column(align=True)
     row = col.row(align=True)
     row.prop(p, 'r_seed')

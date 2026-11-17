@@ -28,7 +28,7 @@ from .creature_fur import _B, _socket
 
 MOD = 'MCH Rough Rim'
 TREE = 'MCH Rough Rim'
-TREE_VERSION = 13
+TREE_VERSION = 14
 D_ATTR = 'mch_rd'              # distance to the outline (object units)
 TOP_ATTR = 'mch_rtop'          # 1 on the top layer, 0 on the bottom layer
 UP_ATTR = 'mch_rup'            # the surface normal under the point
@@ -62,6 +62,20 @@ MIX_PROPS = (
     ('r_pits', 'Pits', 'Pits', 'Holes (concrete air pockets, lava pores); minus = warts', -1.0, 1.0),
     ('r_grain', 'Grain', 'Grain', 'Fine grain all over', -1.0, 1.0),
 )
+
+# 0.24.192 (user: "플레이트 디테일에 아머 플레이트 릿지 같은 거랑 그 면 위를 지나는 엣지 같은 거 좀 오가닉하게 넣을 수 있는 옵션이랑
+# 프리셋 ... 강도 조절 가능하게"): lines ACROSS the plate's face - not the rim's texture: ridges (crests) and edges (the
+# face in overlapping bands, a step from one to the next), wandering; as lines or as a net of plates
+LINE_MIX = (
+    ('r_ridges', 'Ridges', 'Ridges', 'Crests running across the face, like an armour plate\'s ridge - wandering, '
+                                     'never quite even (minus: grooves)', -1.0, 1.0),
+    ('r_edges', 'Edges', 'Edges', 'Edges across the face: it lies in overlapping bands, each stepping down to the next '
+                                  '(minus: stepping the other way)', -1.0, 1.0),
+)
+LINE_LENGTHS = (('r_line_height', 'Line Height', 'Line Height', 'How high the ridges stand / how big the edges\' steps '
+                                                                'are - their strength', 0.1),
+                ('r_line_space', 'Line Spacing', 'Line Spacing', 'How far apart the ridges / edges are', 0.5))
+LINE_OFF = dict(r_ridges=0.0, r_edges=0.0)      # (a preset that says nothing of them: none)
 
 # Presets: lengths as FRACTIONS of the drawn size, the rest as they are
 PRESETS = (
@@ -186,25 +200,59 @@ PRESETS = (
      dict(r_height=0.035, r_ramp=0.05, r_profile='DOME', r_rim=0.3, r_center=0.8, r_strength=0.018,
           r_feature=0.03, r_bumps=0.5, r_cells=0.4, r_cracks=0.0, r_wrinkles=0.0, r_pits=1.0, r_grain=0.3,
           r_chips=0.2)),
+    # 0.24.192 ridges and edges across the face
+    ('RIDGED', 'Ridged Shell', 'A domed shell with crests wandering across it',
+     dict(r_height=0.03, r_ramp=0.05, r_profile='DOME', r_rim=0.2, r_center=0.3, r_strength=0.005,
+          r_feature=0.03, r_bumps=0.3, r_cells=0.0, r_cracks=0.0, r_wrinkles=0.0, r_pits=0.0, r_grain=0.3,
+          r_chips=0.0, r_ridges=1.0, r_edges=0.0, r_line_height=0.016, r_line_space=0.12, r_line_wander=0.7,
+          r_line_net=0.0)),
+    ('ARMORRIDGE', 'Armor Ridges', 'A few big crests across a firm plate (an armour plate\'s ridges, grown)',
+     dict(r_height=0.028, r_ramp=0.02, r_profile='ROUND', r_rim=0.15, r_center=0.15, r_strength=0.004,
+          r_feature=0.03, r_bumps=0.2, r_cells=0.0, r_cracks=0.0, r_wrinkles=0.0, r_pits=0.0, r_grain=0.3,
+          r_chips=0.0, r_ridges=1.0, r_edges=0.0, r_line_height=0.03, r_line_space=0.3, r_line_wander=0.35,
+          r_line_net=0.0)),
+    ('SEGMENTS', 'Segmented Plates', 'Overlapping bands, an edge where each steps down to the next (a tail, a belly)',
+     dict(r_height=0.03, r_ramp=0.03, r_profile='ROUND', r_rim=0.15, r_center=0.2, r_strength=0.004,
+          r_feature=0.03, r_bumps=0.2, r_cells=0.0, r_cracks=0.0, r_wrinkles=0.0, r_pits=0.0, r_grain=0.3,
+          r_chips=0.0, r_ridges=0.15, r_edges=1.0, r_line_height=0.02, r_line_space=0.16, r_line_wander=0.45,
+          r_line_net=0.0)),
+    ('SCUTES', 'Scute Shell', 'Plates side by side at slightly different heights, grooves between them (a turtle)',
+     dict(r_height=0.03, r_ramp=0.04, r_profile='DOME', r_rim=0.2, r_center=0.3, r_strength=0.004,
+          r_feature=0.03, r_bumps=0.25, r_cells=0.0, r_cracks=0.0, r_wrinkles=0.0, r_pits=0.0, r_grain=0.3,
+          r_chips=0.0, r_ridges=-0.8, r_edges=0.6, r_line_height=0.014, r_line_space=0.18, r_line_wander=0.5,
+          r_line_net=1.0)),
+    ('CRESTNET', 'Crest Net', 'A raised net of crests over the face (veins, keloid, a leaf)',
+     dict(r_height=0.025, r_ramp=0.05, r_profile='DOME', r_rim=0.2, r_center=0.3, r_strength=0.004,
+          r_feature=0.03, r_bumps=0.25, r_cells=0.0, r_cracks=0.0, r_wrinkles=0.0, r_pits=0.0, r_grain=0.25,
+          r_chips=0.0, r_ridges=1.0, r_edges=0.0, r_line_height=0.012, r_line_space=0.15, r_line_wander=0.6,
+          r_line_net=1.0)),
+    ('GROOVED', 'Grooved Hide', 'Close grooves wandering across thick skin',
+     dict(r_height=0.025, r_ramp=0.05, r_profile='DOME', r_rim=0.25, r_center=0.3, r_strength=0.006,
+          r_feature=0.03, r_bumps=0.3, r_cells=0.0, r_cracks=0.0, r_wrinkles=0.3, r_pits=0.0, r_grain=0.35,
+          r_chips=0.0, r_ridges=-0.9, r_edges=0.0, r_line_height=0.01, r_line_space=0.085, r_line_wander=0.85,
+          r_line_net=0.0)),
 )
 PRESET_IDS = tuple(p[0] for p in PRESETS)
-COLUMN_LENGTHS = ('r_gap', 'r_round', 'r_layer', 'r_depth')   # (0.24.163 Basalt's / the Cliff's lengths)
+COLUMN_LENGTHS = ('r_gap', 'r_round', 'r_layer', 'r_depth', 'r_line_height', 'r_line_space')   # (0.24.163 Basalt's / the Cliff's lengths; 0.24.192 the lines')
 LENGTHS = tuple(p[0] for p in LENGTH_PROPS) + COLUMN_LENGTHS
 PLAIN = ('r_profile', 'r_center', 'r_chips', 'r_seed', 'r_detail', 'r_preset', 'r_style', 'r_slope', 'r_hrand', 'r_tilt',
-         'r_compass', 'r_lip', 'r_dome', 'r_ridge', 'r_dip', 'r_wave', 'r_lturn') + tuple(p[0] for p in MIX_PROPS)
+         'r_compass', 'r_lip', 'r_dome', 'r_ridge', 'r_dip', 'r_wave', 'r_lturn', 'r_ridges', 'r_edges', 'r_line_wander',
+         'r_line_net') + tuple(p[0] for p in MIX_PROPS)
 COLUMN_DEFAULT = dict(next(p[3] for p in PRESETS if p[0] == 'BASALT'))
 DEFAULT = {}
 for _d in (COLUMN_DEFAULT, next(p[3] for p in PRESETS if p[0] == 'CLIFF'), next(p[3] for p in PRESETS if p[0] == 'CARAPACE'),
            PRESETS[0][3]):
     DEFAULT.update(_d)
 DEFAULT.update(r_style='ROUGH', r_seed=0, r_detail=6.0, r_preset='CONCRETE', r_compass=math.radians(90.0), r_ridge=0.0,
-               r_lip=0.45, r_dome=1.2, r_wave=0.5, r_lturn=0.0)
+               r_lip=0.45, r_dome=1.2, r_wave=0.5, r_lturn=0.0, r_ridges=0.0, r_edges=0.0, r_line_height=0.016,
+               r_line_space=0.14, r_line_wander=0.6, r_line_net=0.0)
 COMPASS = (('N', 'N', 0.0), ('E', 'E', 90.0), ('S', 'S', 180.0), ('W', 'W', 270.0))
 
 
 def preset_values(pid):
     """Every value a preset sets (a rough one: style Rough; Columnar Basalt: style Columns)."""
-    return dict({'r_style': 'ROUGH'}, **next((p[3] for p in PRESETS if p[0] == pid), PRESETS[0][3]), r_preset=pid)
+    return dict(dict(LINE_OFF, r_style='ROUGH'), **next((p[3] for p in PRESETS if p[0] == pid), PRESETS[0][3]),
+                r_preset=pid)
 
 
 # -----------------------------------------------------------------------------
@@ -510,6 +558,12 @@ def _inputs(ng):
     _socket(ng, 'Strata Angle', 'FLOAT', 0.7, -10.0, 10.0)
     _socket(ng, 'Depth', 'FLOAT', 0.01, 0.0, 100.0)
     _socket(ng, 'Wave', 'FLOAT', 0.5, 0.0, 1.0)               # (0.24.165 the strata lines wander)
+    for _p, sock, _l, _d, lo, hi in LINE_MIX:                 # (0.24.192 ridges / edges across the face)
+        _socket(ng, sock, 'FLOAT', 0.0, lo, hi)
+    for _p, sock, *_r in LINE_LENGTHS:
+        _socket(ng, sock, 'FLOAT', 0.01, 0.0, 100.0)
+    _socket(ng, 'Line Wander', 'FLOAT', 0.6, 0.0, 1.0)
+    _socket(ng, 'Line Net', 'FLOAT', 0.0, 0.0, 1.0)
     ng.interface.new_socket('Geometry', in_out='OUTPUT', socket_type='NodeSocketGeometry')
 
 
@@ -633,6 +687,38 @@ def _strata(b, I, pos, d2, ramp):
     return b.math('MULTIPLY', b.math('ADD', b.math('ADD', band, lean), lines), calm)
 
 
+def _lines(b, I, pos, d2, ramp, seed):
+    """0.24.192 ridges and edges ACROSS the face (their height in object units): as wandering lines (across the
+    plate's Across direction) or as a net of plates (Line Net), each a crest (Ridges) and a step (Edges)."""
+    sp = b.math('MAXIMUM', I['Line Spacing'], 1e-6)
+    qs = b.vec('SCALE', pos, scale=b.math('DIVIDE', 1.0, sp))        # (1 = one spacing)
+    # how much the lines wander: a slow noise, up to more than a spacing
+    wn = _noise(b, qs, _seed(b, seed, 21), 0.4, 3.0, 0.5).outputs['Factor']
+    wob = b.math('MULTIPLY', b.math('SUBTRACT', wn, 0.5), b.math('MULTIPLY', I['Line Wander'], 2.6))
+    v = b.math('ADD', b.vec('DOT_PRODUCT', qs, I['Across']), wob)
+    f = b.math('FRACT', v)
+    tent = b.math('SUBTRACT', 1.0, b.math('ABSOLUTE', b.math('SUBTRACT', b.math('MULTIPLY', f, 2.0), 1.0)))
+    ridge_l = b.math('POWER', tent, 2.6)                             # (a narrow crest, soft flanks)
+    edge_l = b.math('SUBTRACT', b.math('POWER', f, 0.8), 0.5)        # (a band rising to its edge, then the drop)
+    # the net: plates side by side (warped cells) - crests / grooves along their borders, each at its own height
+    wc = _noise(b, qs, _seed(b, seed, 22), 0.6, 2.0, 0.5).outputs['Color']
+    qn = b.vec('ADD', b.vec('SCALE', qs, scale=0.8), b.vec('SCALE', b.vec('SUBTRACT', wc, (0.5, 0.5, 0.5)),
+                                                        scale=b.math('MULTIPLY', I['Line Wander'], 0.9)))
+    de = _voronoi(b, qn, _seed(b, seed, 23), 1.0, 'DISTANCE_TO_EDGE').outputs['Distance']
+    ridge_n = b.math('POWER', b.math('SUBTRACT', 1.0, _clamp01(b, b.math('DIVIDE', de, 0.22))), 2.0)
+    cell = _rgb(b, _voronoi(b, qn, _seed(b, seed, 23), 1.0).outputs['Color'])
+    edge_n = b.math('SUBTRACT', cell[0], 0.5)                        # (each plate a little higher / lower)
+    net = I['Line Net']
+    ridge = b.math('ADD', b.math('MULTIPLY', ridge_l, b.math('SUBTRACT', 1.0, net)), b.math('MULTIPLY', ridge_n, net))
+    edge = b.math('ADD', b.math('MULTIPLY', edge_l, b.math('SUBTRACT', 1.0, net)), b.math('MULTIPLY', edge_n, net))
+    # a crest is not even along its way: stronger here, fainter there
+    am = b.math('ADD', 0.55, b.math('MULTIPLY', _noise(b, qs, _seed(b, seed, 24), 0.3, 2.0, 0.5).outputs['Factor'], 0.9))
+    lines = b.math('ADD', b.math('MULTIPLY', b.math('MULTIPLY', ridge, _clamp01(b, am)), I['Ridges']),
+                   b.math('MULTIPLY', edge, I['Edges']))
+    fade = _map(b, d2, 0.0, b.math('MULTIPLY', ramp, 1.2), 0.0, 1.0, 'SMOOTHSTEP')       # (none at the outline's foot)
+    return b.math('MULTIPLY', b.math('MULTIPLY', lines, I['Line Height']), fade)
+
+
 def _store_sel(b, geo, name, value, sel):
     n = b.node('GeometryNodeStoreNamedAttribute', data_type='FLOAT', domain='POINT')
     b.feed(n.inputs['Geometry'], geo)
@@ -726,7 +812,10 @@ def _build(b, I):
     b.feed(dstat.inputs['Attribute'], d)
     shape = b.math('MULTIPLY', _profile(b, I, d2, dstat.outputs['Max']), rise)
     shape = b.math('ADD', shape, _when(b, I['Strata'], b.math('MULTIPLY', _strata(b, I, pos, d2, ramp), I['Strata'])))
-    h = b.math('MAXIMUM', b.math('ADD', shape, b.math('MULTIPLY', rough, I['Strength'])), 0.0)
+    h = b.math('ADD', shape, b.math('MULTIPLY', rough, I['Strength']))
+    h = b.math('MAXIMUM', b.math('ADD', h, _when(b, b.math('ADD', b.math('ABSOLUTE', I['Ridges']),
+                                                          b.math('ABSOLUTE', I['Edges'])),
+                                                 _lines(b, I, pos, d2, ramp, seed))), 0.0)
     low = b.math('MAXIMUM', b.math('MULTIPLY', I['Height'], 0.03), 1e-7)
     h = b.math('ADD', h, b.math('MULTIPLY', I['Sink'], b.math('SUBTRACT', _clamp01(b, b.math('DIVIDE', h, low)), 1.0)))
     sp = b.node('GeometryNodeSetPosition')
@@ -797,6 +886,10 @@ def values(p, faces):
         v[sock] = float(getattr(p, prop))
     for prop, sock, *_r in MIX_PROPS:
         v[sock] = float(getattr(p, prop))
+    for prop, sock, *_r in LINE_MIX + LINE_LENGTHS:           # (0.24.192)
+        v[sock] = float(getattr(p, prop, 0.0))
+    v['Line Wander'] = float(getattr(p, 'r_line_wander', 0.6))
+    v['Line Net'] = float(getattr(p, 'r_line_net', 0.0))
     return v
 
 

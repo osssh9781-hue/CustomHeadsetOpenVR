@@ -19,7 +19,7 @@ S = C.scene
 new = ('CROC', 'TURTLE', 'RHINO', 'ELEPHANT', 'LIZARD', 'SNAKE', 'CHITIN', 'SHARK', 'BONE', 'BARNACLE', 'DRAGON', 'FROG',
        'SCAR', 'ARMADILLO', 'CORAL')
 check(f'Plate Detail 4: {len(pr.PRESETS)} presets - the 15 creature ones in ({all(p in pr.PRESET_IDS for p in new)})',
-      len(pr.PRESETS) == 28 and all(p in pr.PRESET_IDS for p in new))
+      len(pr.PRESETS) == 34 and all(p in pr.PRESET_IDS for p in new))
 
 
 def png_size(path):
@@ -37,7 +37,7 @@ for kind, ids in (('rough', pr.PRESET_IDS), ('feather', [f[0] for f in cs.FEATHE
             continue
         sizes.add(png_size(path))
         total += os.path.getsize(path)
-check(f'a picture for every preset / feather / scale ({28 + len(cs.FEATHERS) + len(cs.SCALES)}; missing {missing}), '
+check(f'a picture for every preset / feather / scale ({34 + len(cs.FEATHERS) + len(cs.SCALES)}; missing {missing}), '
       f'128 px ({sizes}), small ({total // 1024} KB all)', not missing and sizes == {(128, 128)} and total < 900 * 1024)
 
 
@@ -52,7 +52,7 @@ def tiles_of(drawer):
 t = tiles_of(lambda l_, c_: pd._draw_rough_presets(l_, 'CROC'))
 check(f'Plate Detail 4\'s window: the presets as picture tiles ({len(t)}, each with its picture: '
       f'{all(e[1] for e in t)}; the one in use lit: {[e[0] for e in t if e[3]]})',
-      len(t) == 28 and all(e[1] for e in t) and [e[0] for e in t if e[3]] == ['Croc Osteoderm']
+      len(t) == 34 and all(e[1] for e in t) and [e[0] for e in t if e[3]] == ['Croc Osteoderm']
       and all(e[4] == 'mch.pdetail_rough_preset' for e in t))
 S.mch_cover.grow = 'FEATHERS'
 tf = tiles_of(sc.draw)

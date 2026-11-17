@@ -1292,7 +1292,14 @@ def pick_surface(context, xy):
         ob = getattr(ob, 'original', ob)
         if skip is None:
             skip = _greeble_sources(context)
-        if ob.type == 'MESH' and not is_line(ob) and ob not in skip and not ob.get('mch_geo_part'):
+            from . import target_rules                # 0.24.192 Auto / Selected / Active: the others looked through
+            names = target_rules.allowed(context)
+            if names is not None:                     # (a selected line stands for the mesh it lies on: after a line
+                picked_ = list(context.selected_objects) + [context.view_layer.objects.active]   # is drawn it is the
+                names = set(names) | {o.parent.name for o in picked_           # selection, the next stroke still lands)
+                                      if o is not None and is_line(o) and o.parent is not None}
+        if ob.type == 'MESH' and not is_line(ob) and ob not in skip and not ob.get('mch_geo_part') and \
+                (names is None or target_rules.ok(context, ob, names)):
             return (ob, loc, nrm), first
         # on through it: a bigger step whenever the ray met the same point again (a face hit twice)
         step = step * 4.0 if last is not None and (loc - last).length < step else 1e-4
@@ -1571,6 +1578,13 @@ class MCH_OT_greeble_parts(bpy.types.Operator):
             it = st.parts[self.index]
             it.use = not it.use
             msg = f'Greeble part {it.ob.name if it.ob else ""}: {"used" if it.use else "not used"} in the next line'
+            # 0.24.192 (user: "실시간으로 내가 선택한 메쉬 바뀌는 거"): the selected line takes the ticked parts at once
+            ln = active_line(context)
+            parts = picked(st)
+            if ln is not None and ln.mch_greeble_line.kind == self.kind and parts:
+                ln.mch_greeble_line.parts_json = json.dumps([p.name for p in parts])
+                rebuild(ln, context)
+                msg = f'{ln.name}: {len(parts)} part(s) now (and the next line)'
         elif self.action == 'CLEAR':
             st.parts.clear()
             msg = 'Greeble parts: the list cleared (the meshes kept)'

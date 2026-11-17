@@ -32,7 +32,7 @@ check('the tool: Plate Detail 4 in Surface detail (after Detail 3), its icon, wi
       and pd.KINDS['DETAIL4'] == 'ROUGH')
 check(f'ten rough presets, each its own mix (+ Columnar Basalt, Layered Cliff, Creature Carapace - 0.24.163; + 15 '
       f'creature presets - 0.24.181: {len(pr.PRESETS)})',
-      len(pr.PRESETS) == 28 and len({tuple(sorted((k, str(v)) for k, v in p[3].items())) for p in pr.PRESETS}) == 28,
+      len(pr.PRESETS) == 34 and len({tuple(sorted((k, str(v)) for k, v in p[3].items())) for p in pr.PRESETS}) == 34,
       [p[1] for p in pr.PRESETS])
 
 
