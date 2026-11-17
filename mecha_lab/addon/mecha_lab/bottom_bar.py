@@ -49,7 +49,12 @@ def _pref(name, default=True):
 
 
 def ui_active(context):
-    return (ts.is_mecha_workspace(getattr(context, 'workspace', None)) and context.mode == 'OBJECT')
+    if not ts.is_mecha_workspace(getattr(context, 'workspace', None)):
+        return False
+    if context.mode == 'OBJECT':
+        return True
+    from . import mecha_mask                         # 0.24.200 Paint Mask: Sculpt Mode under the same screen
+    return mecha_mask.on(context)
 
 
 MIN_BUTTON = 22.0          # 0.24.49 smallest button (px at UI scale 1) before the bar goes to two rows

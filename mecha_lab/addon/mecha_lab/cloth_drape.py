@@ -2688,6 +2688,8 @@ def draw(layout, context):
     r = box.row()
     r.enabled = not live
     r.operator('mch.cdrape_mesh', text='Drape This Mesh (on the other selected / its tack pins)', icon='MOD_CLOTH')
+    from . import mecha_mask                              # 0.24.200 paint the mask right here (the screen stays)
+    mecha_mask.draw(box, context)
     r = box.row()
     r.enabled = not live
     r.operator('mch.cdrape_mask', text='Drape Mask (masked faces lift off as the cloth)', icon='MOD_MASK')

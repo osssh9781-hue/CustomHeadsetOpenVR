@@ -1,0 +1,14 @@
+tool CDRAPE Paint Mask cell True
+after a REAL click on Paint Mask: mode SCULPT on True brush Mask ZBrush screen False MECHA lit / tool tiles kept: True True
+brush shelf shown while painting: False
+shot 1_painting_screen.png True
+shot 2_painted.png True
+after a REAL click on Drape Mask: mode OBJECT painting False masked points 247 cloth Cloth Drape 281
+brush shelf back after: True
+shot 3_cloth.png True
+PASS 1b Blender's brush shelf is hidden while painting (it lay over the tool menu)
+PASS 1 a REAL click on Paint Mask: Sculpt Mode underneath, the Mask brush, the MECHA LAB screen kept (no ZBrush screen)
+PASS 3b ... and back after
+PASS 2 REAL drags on the ball painted a mask
+PASS 3 a REAL click on Drape Mask: the painting ended (Object Mode) and the cloth of the masked part is there
+5/5 passed

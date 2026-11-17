@@ -521,6 +521,10 @@ def run(context, item):
     a = item.action
     kind = a[0]
     msg = ''
+    from . import mecha_mask                         # 0.24.200 Paint Mask: any other button ends it first (back to
+    if mecha_mask.ON[0] and not (kind in {'number', 'bool', 'enum'}              # Object Mode), then does its job
+                                 or (kind == 'op' and a[1] == 'mch.mecha_mask')):
+        mecha_mask.end(context)
     try:
         if kind in {'bar', 'tool'}:
             bpy.ops.mch.bar_tool(tool=a[1])

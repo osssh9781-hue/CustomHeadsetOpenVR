@@ -112,6 +112,9 @@ def mecha_tab(context):
 
 def mecha_sculpt(context):
     """Sculpt Mode in the MECHA LAB tab (either style - the corner card shows)."""
+    from . import mecha_mask                         # 0.24.200 Paint Mask in MECHA LAB: Sculpt Mode, the Mecha screen
+    if mecha_mask.ON[0]:
+        return False
     return getattr(context, 'mode', '') == 'SCULPT' and mecha_tab(context)
 
 

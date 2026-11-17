@@ -902,7 +902,8 @@ def corner_box(context, region_w, region_h, k):
     """(x, y, w, h) of the MECHA LAB / ZBRUSH card in the top right corner (left of Blender's navigation gizmo
     and an overlapping sidebar)."""
     from . import ui_bars
-    rows = 2 if getattr(context, 'mode', '') == 'SCULPT' else 4       # 0.24.77 + VIEW Wire | Solo on MECHA LAB; 0.24.124 + 3D MOUSE
+    from . import mecha_mask
+    rows = 2 if getattr(context, 'mode', '') == 'SCULPT' and not mecha_mask.ON[0] else 4       # 0.24.77 + VIEW Wire | Solo on MECHA LAB; 0.24.124 + 3D MOUSE
     if zs.style() == 'ZBRUSH':
         rows += 1                                                      # 0.24.79 + NAV ZBrush | Blender
     rows += 1                                                          # 0.24.198 + GOZ Send | Import
@@ -937,7 +938,8 @@ def corner_items(context, region_w, region_h, k=1.0):
     """0.24.60 MECHA LAB | ZBRUSH (Object / Sculpt Mode) and STYLE ZBrush | Blender."""
     from .mecha_menu import Item
     x0, y0, w, h = corner_box(context, region_w, region_h, k)
-    sculpt = getattr(context, 'mode', '') == 'SCULPT'
+    from . import mecha_mask                         # (0.24.200 Paint Mask: the card stays on MECHA)
+    sculpt = getattr(context, 'mode', '') == 'SCULPT' and not mecha_mask.ON[0]
     st = zs.style()
     out = [Item('card', x0, y0, w, h)]
     y = y0 + h - PAD * k - ROW * k
