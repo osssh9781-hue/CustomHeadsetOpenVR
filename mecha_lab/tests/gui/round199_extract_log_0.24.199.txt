@@ -1,0 +1,9 @@
+mode SCULPT Extract button True cells ['thick', 'extract_offset']
+shot 1_zbrush_screen.png True
+after a REAL click on Extract: Sphere_Extract ['SOLIDIFY']
+Offset 0 -> 0.15 (the value set, not dragged): outer radius 1.0 -> 1.15
+shot 2_offset.png True
+PASS 1 ZBRUSH screen: the SubTool card has the Extract button and the Thick / Offset cells
+PASS 2 a REAL click on Extract: a shell of the masked cap
+PASS 3 Offset 0.15: the shell moves off the ball at once
+3/3 passed

@@ -132,6 +132,8 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
     gravity: FloatProperty(name='Gravity', description='How hard the cloth drops (world down); below 0 it floats UP instead (0.24.95)', default=200.0, min=-600.0, max=600.0, subtype='PERCENTAGE')
     stick: FloatProperty(name='Stickiness', description='Friction against the body: 0 slides, 100 sticks where it lands',
                          default=30.0, min=0.0, max=100.0, subtype='PERCENTAGE')
+    stretch: FloatProperty(name='Stretch', description='How much the cloth gives when pulled: 0 = cloth (keeps its length), 100 = rubber', default=0.0, min=0.0, max=100.0, subtype='PERCENTAGE')
+    self_collide: BoolProperty(name='Self Collision', description='The cloth does not pass through itself (folds lying on each other, a piece falling onto itself). Slower', default=False)
     keep: FloatProperty(name='Silhouette Keep', description='A soft spring back to the laid patch', default=5.0, min=0.0, max=100.0, subtype='PERCENTAGE')
     gap: FloatProperty(name='Gap', description='How far above the body the cloth rests, as % of the outline size',
                        default=0.6, min=0.0, max=5.0, subtype='PERCENTAGE')
@@ -401,6 +403,10 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
     cloth = cloth_pbd.Cloth(cloth_co, vi, start, tot, bend=bend, keep=st.keep / 100.0 * KEEP_SCALE, pin=pin)
     cloth.sor = SOR
     cloth.smooth = smooth
+    cloth.stretch_k = 1.0 - 0.92 * float(getattr(st, 'stretch', 0.0)) / 100.0          # 0.24.199
+    if getattr(st, 'self_collide', False):
+        cloth.self_d = spacing * 0.9                      # (closer than a face's middle is to its corners: no point
+        cloth.self_far = spacing * 2.6                    #  slips through a face; neighbours on the cloth left alone)
     if far_scale > 0:                                     # 0.24.93 wide bending: folds a few cells wide, not cell noise
         cloth.set_far()
         cloth.far_scale = far_scale
@@ -1954,7 +1960,7 @@ def _snapshot(st):
                                           'wrap_tight', 'use_lines', 'stop_at_pins', 'two_sides', 'puff', 'wrinkles',
                                           'padding', 'pad_pattern', 'pad_size', 'pad_puff', 'trim', 'trim_width',
                                           'collide_with', 'use_proxy', 'proxy_faces',
-                                          'cape_length', 'cape_flare', 'cape_gather', 'cape_pleats', 'cape_folds', 'cape_heading', 'cape_sides', 'spacing', 'neck_style', 'neck_pin_top', 'neck_bottom', 'neck_top', 'mask_free', 'mask_points', 'offset'))
+                                          'cape_length', 'cape_flare', 'cape_gather', 'cape_pleats', 'cape_folds', 'cape_heading', 'cape_sides', 'spacing', 'neck_style', 'neck_pin_top', 'neck_bottom', 'neck_top', 'mask_free', 'stretch', 'self_collide', 'mask_points', 'offset'))
 
 
 def restart(context):
@@ -2721,6 +2727,8 @@ def draw(layout, context):
     col.prop(st, 'stick', slider=True)
     col.prop(st, 'wrinkles', slider=True)
     col.prop(st, 'keep', slider=True)
+    col.prop(st, 'stretch', slider=True)
+    col.prop(st, 'self_collide', toggle=True, icon='MOD_PHYSICS')
     col = box.column(align=True)
     col.prop(st, 'gap', slider=True)
     col.prop(st, 'offset', slider=True)

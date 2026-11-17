@@ -1291,6 +1291,10 @@ def _cav_set(self, v):
 _cav = (_cav_get, _cav_set)
 
 
+def _extract_update(self, context):
+    extract_live(context)                 # (Extract's Thick / Offset: the last extract follows)
+
+
 def _he_update(self, context):
     from . import hard_edges
     hard_edges.live_update(self, context)
@@ -1476,7 +1480,12 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
     inflate: IntProperty(name='Inflate', default=10, min=-100, max=100,
                          description='Deformation: how far Inflate pushes the surface out (minus = in)')
     thick: FloatProperty(name='Thick', default=0.02, min=0.0, soft_max=0.5, precision=3,
-                         description='Extract: thickness of the new shell')
+                         description='Extract: thickness of the new shell (the last extract follows the slider)',
+                         update=_extract_update)
+    extract_offset: FloatProperty(name='Offset', default=0.0, soft_min=-0.2, soft_max=0.5, precision=3,
+                                  description='Extract: how far the new shell sits off the surface (minus = sunk '
+                                              'in); the last extract follows the slider',
+                                  update=_extract_update)
     blur: IntProperty(name='Blur', default=2, min=0, max=20, description='Mask By Cavity: how often it is blurred')
     cavity_int: IntProperty(name='Intensity', default=50, min=0, max=100,
                             description='Mask By Cavity: how deep a dent has to be to get masked (Blender Factor)')
@@ -1952,6 +1961,42 @@ def _edited():
     safety_save.note_edit()
 
 
+EXTRACT_KEY = 'mch_extract'        # on an extracted shell: the name of the mesh it came from
+EXTRACT_OFFSET = 'MCH Extract Offset'
+LAST_EXTRACT = ['']
+
+
+def extract_set(o, thick, offset):
+    """An extracted shell's thickness (its Solidify) and its distance off the surface (0.24.199, user: "익스트랙트도
+    오프셋 조정 가능하게 해 줘": a Displace along the normals, before the Solidify)."""
+    sol = next((m for m in o.modifiers if m.type == 'SOLIDIFY'), None)
+    if sol is not None:
+        sol.thickness = thick
+    dis = o.modifiers.get(EXTRACT_OFFSET)
+    if dis is None and abs(offset) > 1e-9:
+        dis = o.modifiers.new(EXTRACT_OFFSET, 'DISPLACE')
+        dis.direction = 'NORMAL'
+        dis.mid_level = 0.0
+        if sol is not None:                       # (off the surface first, then the thickness)
+            names = [m.name for m in o.modifiers]
+            o.modifiers.move(names.index(dis.name), names.index(sol.name))
+    if dis is not None:
+        dis.strength = offset
+
+
+def extract_live(context):
+    """Thick / Offset moved: the selected extracted shells follow, else the one made last."""
+    zb = getattr(context.scene, 'mch_zb', None)
+    if zb is None:
+        return
+    picked = [o for o in context.selected_objects if o.get(EXTRACT_KEY)]
+    if not picked:
+        last = bpy.data.objects.get(LAST_EXTRACT[0])
+        picked = [last] if last is not None and last.get(EXTRACT_KEY) else []
+    for o in picked:
+        extract_set(o, zb.thick, zb.extract_offset)
+
+
 def extract(context, ob, thick):
     """ZBrush Extract: the masked part as a new SubTool (Blender Mask Extract), ``thick`` thick (its Solidify).
     0.24.69 Blender's operator has no thickness setting (0.24.60 passed one: Extract always failed) - the
@@ -1964,11 +2009,12 @@ def extract(context, ob, thick):
     new = [o for o in bpy.data.objects if o not in before]
     if 'FINISHED' not in r or not new:
         return 'Extract: nothing came out (a mask above half strength is needed)'
+    zb_ = getattr(context.scene, 'mch_zb', None)
     for o in new:
         o.name = ob.name + '_Extract'
-        for m in o.modifiers:
-            if m.type == 'SOLIDIFY':
-                m.thickness = thick
+        o[EXTRACT_KEY] = ob.name
+        extract_set(o, thick, float(getattr(zb_, 'extract_offset', 0.0)) if zb_ is not None else 0.0)
+        LAST_EXTRACT[0] = o.name
     switch_to(context, ob)                          # ZBrush: the SubTool you were on stays the one sculpted
     _mode(context, 'SCULPT')
     return f'Extract: {new[0].name}'

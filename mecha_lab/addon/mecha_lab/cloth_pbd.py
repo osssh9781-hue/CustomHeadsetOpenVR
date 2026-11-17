@@ -258,6 +258,68 @@ class Cloth:
             idx, w, tgt = self.hold
             self.co[idx] = self.co[idx] * (1.0 - w)[:, None] + tgt * w[:, None]
 
+    # 0.24.199 (user: "떨어지는 거 할 때 천끼리 콜리전이랑 탄성 조절" / "일단 넣고") ----------------------------------
+    stretch_k = 1.0      # how hard an edge (and the wide bending) keeps its length: 1 = cloth, lower = rubber
+    self_d = 0.0         # self collision: two points of the cloth that are not neighbours on it come no closer than
+    #                      this (0 = off: the cloth passes through itself)
+    self_far = 0.0       # ... "not neighbours": farther apart than this on the laid cloth
+    self_pairs = None
+
+    def find_self_pairs(self):
+        """The point pairs within 1.5 x ``self_d`` of each other now that were farther than ``self_far`` apart on
+        the laid cloth (a grid of cells ``1.5 self_d`` wide, the 27 cells round each point)"""
+        d = self.self_d * 1.5
+        co = self.co
+        cell = np.floor((co - co.min(0)) / d).astype(np.int64) + 1
+        m = int(cell.max()) + 3
+        key = (cell[:, 0] * m + cell[:, 1]) * m + cell[:, 2]
+        order = np.argsort(key, kind='stable')
+        ks = key[order]
+        out_i, out_j = [], []
+        idx = np.arange(self.n)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for dz in (-1, 0, 1):
+                    want = key + (dx * m + dy) * m + dz
+                    lo = np.searchsorted(ks, want, 'left')
+                    cnt = np.searchsorted(ks, want, 'right') - lo
+                    tot = int(cnt.sum())
+                    if not tot:
+                        continue
+                    i = np.repeat(idx, cnt)
+                    off = np.arange(tot) - np.repeat(np.cumsum(cnt) - cnt, cnt)
+                    j = order[np.repeat(lo, cnt) + off]
+                    ok = i < j
+                    out_i.append(i[ok])
+                    out_j.append(j[ok])
+        if not out_i:
+            return np.zeros((0, 2), np.int64)
+        i, j = np.concatenate(out_i), np.concatenate(out_j)
+        near = np.einsum('ij,ij->i', co[i] - co[j], co[i] - co[j]) < d * d
+        i, j = i[near], j[near]
+        apart = np.einsum('ij,ij->i', self.init[i] - self.init[j], self.init[i] - self.init[j]) > self.self_far ** 2
+        return np.stack([i[apart], j[apart]], 1)
+
+    def apply_self(self):
+        p = self.self_pairs
+        if p is None or not len(p):
+            return
+        a, b = p[:, 0], p[:, 1]
+        dv = self.co[b] - self.co[a]
+        ln = np.linalg.norm(dv, axis=1)
+        hit = ln < self.self_d
+        if not np.any(hit):
+            return
+        a, b, dv, ln = a[hit], b[hit], dv[hit], np.maximum(ln[hit], 1e-9)
+        push = dv * ((self.self_d - ln) / ln)[:, None]
+        wa, wb = 1.0 - self.pin[a], 1.0 - self.pin[b]
+        ws = np.maximum(wa + wb, 1e-9)                    # (a held point does not give: the other takes it all)
+        acc = np.zeros_like(self.co)
+        np.add.at(acc, a, -push * (wa / ws)[:, None])
+        np.add.at(acc, b, push * (wb / ws)[:, None])
+        cnt = np.bincount(a, minlength=self.n) + np.bincount(b, minlength=self.n)
+        self.co += acc / np.maximum(cnt, 1)[:, None] ** 0.5
+
     def step(self, force=None, gravity=None, damping=0.1, iterations=5, keep_rate=0.3):
         """One frame: velocity + forces, then the constraint passes.  ``force`` (N, 3) a per-point push for this
         step (a filter), ``gravity`` (3,) per step.  Pinned points are put back by their pin weight."""
@@ -274,14 +336,16 @@ class Cloth:
             self.co += np.asarray(gravity, np.float64)[None, :]
         if force is not None:
             self.co += force
+        if self.self_d > 0:
+            self.self_pairs = self.find_self_pairs()
         for _ in range(iterations):
-            self._project(self.edges, self.rest_e * self.scale_e, 1.0)
+            self._project(self.edges, self.rest_e * self.scale_e, self.stretch_k)
             if self.bend > 0 and len(self.bends):
                 self._project(self.bends, self.rest_b * self.scale_b, self.bend)
             if self.far and self.far_scale > 0:
                 sc = float(np.mean(self.scale_e)) if np.ndim(self.scale_e) else float(self.scale_e)
                 for pairs, rest, strength in self.far:
-                    self._project(pairs, rest * sc, strength * self.far_scale)
+                    self._project(pairs, rest * sc, strength * self.far_scale * self.stretch_k)
             if self.sew is not None and len(self.sew) and self.sew_strength > 0 and self.sew_pbd:
                 self._project(self.sew, np.zeros(len(self.sew)), self.sew_strength,
                               max_move=self.max_step * 0.5 if self.max_step > 0 else None)
@@ -294,6 +358,8 @@ class Cloth:
             self.apply_hold()
             self.apply_tack()
             self.apply_tether()
+            if self.self_d > 0:
+                self.apply_self()
             if self.collide is not None:
                 self.collide(self)
                 self.tack_follow()

@@ -63,6 +63,7 @@ def draw_tool_shelf(layout, context):
     r = box.row()
     ops(r, ('Extract', 'EXTRACT'), ('Shell', 'SHELL'))
     r.prop(zb, 'thick')
+    r.prop(zb, 'extract_offset')
     box = layout.box()
     box.label(text='Geometry')
     ops(box.row(), ('Del Lower', 'DEL_LOWER'), ('Del Higher', 'DEL_HIGHER'))
@@ -565,6 +566,13 @@ def subtool_list(context, region_w, k, Item, top, floor):
             out.append(Item('tbtn', ix + i * (cw + GAP * k), y, cw, ROW * k, label, '', False, True,
                             ('op', 'mch.zb_action', {'action': action})))
         y -= GAP * k
+    # 0.24.199 Extract's Thick and Offset (user: "익스트랙트도 오프셋 조정 가능하게 해 줘"): the last extract follows
+    zb = context.scene.mch_zb
+    y -= ROW * k
+    cw = (iw - GAP * k) / 2
+    for i, prp in enumerate(('thick', 'extract_offset')):
+        out.append(Item('mini', ix + i * (cw + GAP * k), y, cw, ROW * k, '', '', False, True, ('number',), zb, prp))
+    y -= GAP * k
     h = top - y + PAD * k
     return [Item('card', x0, top - h, w, h)] + out
 
