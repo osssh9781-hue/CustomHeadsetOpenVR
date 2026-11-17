@@ -162,6 +162,117 @@ def summary(kids, tool, most=3):
     return i18n.raw(' · '.join(out))
 
 
+AUTO_COLOURS = '54263718'    # the big titles' colours in turn (STRIP_COLOR_0n) for a window that names none
+CONTROLS = {'prop', 'prop_enum', 'op', 'menu', 'tiles'}
+
+
+def _has_controls(node):
+    return any(n.kind in CONTROLS for n in pc.walk(node))
+
+
+def _heading(node):
+    """The label a loose block starts with: a bare label, or a column of nothing but labels (not the help block)
+    - (title, the other label nodes), else None."""
+    if node.kind == 'label' and node.opts.get('text'):
+        return node, []
+    if node.kind in {'column', 'row'} and node.children and not _is_help(node) \
+            and all(c.kind == 'label' for c in node.children) and node.children[0].opts.get('text'):
+        return node.children[0], list(node.children[1:])
+    return None
+
+
+def _titled(node):
+    """A block of the panel that starts with its own name: a column, a label first, controls after it."""
+    return (node.kind == 'column' and bool(node.children) and node.children[0].kind == 'label'
+            and bool(node.children[0].opts.get('text')) and _has_controls(node))
+
+
+def auto_sections(tree, tool):
+    """0.24.215 (user: "다른 툴들도 클로스 드레이프처럼 정리 - 공통 기능은 묶어 주고 목록 구별해 주고, 기능이나 이상은 없게"):
+    every tool's window as big titled sections, made from what its panel already is - nothing is added, taken away
+    or put in another order:
+
+    * a box keeps its title, now big and coloured;
+    * a block that starts with a label ("Strands", then its sliders) is a section named by that label;
+    * what stands loose before / between them is a section "Settings" (or "Actions": only buttons).
+
+    Returns a root Node to lay out (the nodes themselves are the panel's own: their enabled / active state is
+    read from where they really are)."""
+    top = tree.children
+    while len(top) == 1 and top[0].kind in {'column', 'other'} and not _is_help(top[0]) and top[0].children \
+            and not (top[0].children[0].kind == 'label' and _has_controls(top[0])):
+        top = top[0].children
+    if not any(_has_controls(n) for n in top):
+        return tree
+    out = pc.Node('root')
+    out.opts.update(tree.opts)
+    count = [0]
+
+    def colour():
+        c = AUTO_COLOURS[count[0] % len(AUTO_COLOURS)]
+        count[0] += 1
+        return f'STRIP_COLOR_0{c}'
+
+    def new_box(title_node=None, title=''):
+        box = pc.Node('box')
+        lab = pc.Node('label', box, text=title_node.opts['text'] if title_node is not None else title, icon=colour())
+        box.children.append(lab)
+        out.children.append(box)
+        return box
+    used = set()
+    cur = None                    # the open section loose nodes go into
+    cur_auto = False              # ... made here (not a titled column of the panel)
+    i = 0
+    while i < len(top):
+        n = top[i]
+        nxt = top[i + 1] if i + 1 < len(top) else None
+        if _is_help(n) or n.kind == 'sep' and cur is None:
+            out.children.append(n)
+        elif n.kind == 'box':
+            first = n.children[0] if n.children else None
+            if first is not None and first.kind == 'label' and first.opts.get('text') and _has_controls(n):
+                if not str(first.opts.get('icon') or '').startswith('STRIP_COLOR_0'):
+                    first.opts['icon'] = colour()
+                else:
+                    count[0] += 1
+            out.children.append(n)
+            cur = None
+        elif _titled(n):
+            box = new_box(n.children[0])
+            box.children += n.children[1:]
+            cur, cur_auto = None, False
+        elif _heading(n) is not None and nxt is not None and nxt.kind != 'box' and _heading(nxt) is None \
+                and not _is_help(nxt) and not _titled(nxt):
+            lab, notes = _heading(n)
+            cur = new_box(lab)
+            cur.children += notes
+            cur_auto = True
+        else:
+            if cur is None:
+                rest = []
+                j = i
+                while j < len(top) and top[j].kind != 'box' and not _is_help(top[j]) and not _titled(top[j]):
+                    rest.append(top[j])
+                    j += 1
+                only_ops = all(x.kind in {'op', 'label', 'sep'} for r in rest for x in pc.walk(r)
+                               if x.kind in CONTROLS | {'label'}) and any(_has_controls(r) for r in rest)
+                if not _has_controls(n) and not any(_has_controls(r) for r in rest[:3]):
+                    out.children.append(n)                  # (a loose note with nothing under it: as it was)
+                    i += 1
+                    continue
+                name = 'Actions' if only_ops else 'Settings'
+                if name in used:                           # (a second one further down: its own fold)
+                    name = 'More ' + name
+                    while name in used:
+                        name += ' +'
+                used.add(name)
+                cur = new_box(title=name)
+                cur_auto = True
+            cur.children.append(n)
+        i += 1
+    return out
+
+
 def folded(tool, title, default=False):
     key = f'{tool}:{title}'
     return (key not in OPENED) if default else (key in FOLDED)
@@ -392,13 +503,12 @@ class Builder:
                                       ('op', idname, dict(props))))
         self.y -= GAP * k
 
-    def section(self, node, x, w, title=None, start_folded=False):
+    def section(self, node, x, w, title=None, start_folded=False, big=''):
         k = self.k
         if _moved_away(node, self.tool):
             return
         kids = list(node.children)
         head_cells = []
-        big = ''
         if title is None and kids and kids[0].kind == 'label' and kids[0].opts.get('text'):
             icon = str(kids[0].opts.get('icon') or '')
             if icon.startswith('STRIP_COLOR_0'):      # 0.24.213 a big part of the window: its colour
@@ -499,19 +609,19 @@ def content(context, tool, x, width, k):
     if tree is not None:
         if tree.opts.get('error'):
             b.note(('note', 'Open the sidebar (N) for this tool', True, None, None, None, True), x, width)
-        b.node(tree, x, width)
+        b.node(auto_sections(tree, tool) if not tree.opts.get('error') else tree, x, width)
     if lt is not None and lt.children:
-        b.section(lt, x, width, 'Lasso', start_folded=True)
+        b.section(lt, x, width, 'Lasso', start_folded=True, big='9')
     from . import tool_presets                       # 0.24.65 the tool's presets (yours, kept for every file)
     pt = pc.capture(lambda layout, ctx: tool_presets.draw_presets(layout, ctx, tool), context)
     if pt is not None and pt.children and not pt.opts.get('error'):
-        b.section(pt, x, width, 'Presets', start_folded=True)
+        b.section(pt, x, width, 'Presets', start_folded=True, big='9')
     if b.help:
         hn = pc.Node('box')
         for line in b.help:
             hn.children.append(pc.Node('label', hn, text=line, icon='NONE'))
         b.help = []
-        b.section(hn, x, width, 'Help', start_folded=True)
+        b.section(hn, x, width, 'Help', start_folded=True, big='9')
     return b.out, -b.y
 
 

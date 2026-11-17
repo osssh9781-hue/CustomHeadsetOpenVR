@@ -4907,6 +4907,8 @@ KO = {
     'Moonlight': '달빛',
     'More': '더보기',
     'More = smoother AO, slower': '높을수록 AO가 부드럽고 느립니다',
+    'More Actions': '액션 더',
+    'More Settings': '설정 더',
     'More Where Thin': '얇은 곳에 더 많이',
     'More clicks: into the selected piece; New Pop: another': '추가 클릭: 선택한 조각 안으로, 새 팝: 다른 조각',
     'More cross veins and smaller cells': '가로 혈관이 많고 셀이 작아집니다',

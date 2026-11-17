@@ -1,0 +1,15 @@
+shot 01_FUR.png True
+shot 02_SPIKE.png True
+shot 03_GREEBLE.png True
+shot 04_MUSCLE.png True
+shot 05_PLATE.png True
+shot 06_CUT.png True
+A1 big section titles on screen (first screenful): {'FUR': 3, 'SPIKE': 2, 'GREEBLE': 3, 'MUSCLE': 2, 'PLATE': 1, 'CUT': 3}
+A2 REAL click on the Strands title: folded True
+A3 opened again; REAL drag on Density (in Strands): 40000.0 -> 52238.859375
+A4 REAL click on Dome (Greeble, in its Stamp section): CHAMFER -> DOME
+PASS A1 six tools: big coloured section titles on screen
+PASS A2 a REAL click on a made section's title folds it
+PASS A3 a slider inside a made section answers a REAL drag (Fur: Density)
+PASS A4 a button inside a made section answers a REAL click (Greeble: Dome stamp)
+4/4 passed
