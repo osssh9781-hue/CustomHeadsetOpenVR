@@ -84,7 +84,7 @@ def handle_scale():
 # saved (Auto-Save Preferences off): they are kept in the add-on's own small
 # file in the user config folder.  Blender's own preference file is untouched.
 SIZE_KEYS = ('icon_scale', 'toolbar_scale', 'handle_scale', 'mecha_ui_size', 'menu_size', 'strip_scale',
-             'panel_opacity', 'wheel_opacity', 'wheel_size', 'menu_folded', 'korean')   # 0.24.59 + tool tiles, panel opacity; 0.24.202 the Tool Wheel's
+             'panel_opacity', 'wheel_opacity', 'wheel_size', 'menu_folded', 'korean', 'bar_sections')   # 0.24.59 + tool tiles, panel opacity; 0.24.202 the Tool Wheel's
 _SIZE_MUTE = [False]
 
 
@@ -2157,6 +2157,8 @@ def draw_icon_sizes(layout, p):
         col.prop(p, 'wheel_opacity', slider=True)        # 0.24.202 the Tool Wheel's own
     if hasattr(p, 'korean'):
         col.prop(p, 'korean')                            # 0.24.212 한글 / English
+    if hasattr(p, 'bar_sections'):
+        col.prop(p, 'bar_sections')                      # 0.24.217
     if hasattr(p, 'menu_folded'):
         col.prop(p, 'menu_folded')                       # 0.24.207
     if hasattr(p, 'wheel_size'):
@@ -2574,6 +2576,10 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
     korean: BoolProperty(name='한글 (Korean)', default=True, update=_language_changed,
                          description='The Mecha Lab screen in Korean (off: English). 메카 랩 화면의 글자를 한글로 '
                                      '보여 줍니다 - 끄면 영어')
+    bar_sections: BoolProperty(name='Top Bar Sections', default=False, update=_sizes_changed,
+                               description='The top bar as sections side by side like the tool menu (a title on top, '
+                                           'two rows of cells) even when they need more than two bands - a higher '
+                                           'bar. Off: sections only while they fit two bands, else plain rows')
     menu_folded: BoolProperty(name='Tool Menu Folded', default=True, update=_sizes_changed,
                               description='The bottom tool menu folded to a small tab (click the tab to open it; the '
                                           'Tool Wheel - V or Alt + right click - has every tool too)')

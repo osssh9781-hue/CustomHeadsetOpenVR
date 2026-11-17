@@ -159,6 +159,24 @@ for w_ in (1800, 1300):
 check(f'a narrower view: the fixed places take more rows ({rows_at}) - how they are split depends on the width alone, '
       f'so they are still the same for every tool ({same_narrow})', all(same_narrow.values())
       and rows_at[1300] >= rows_at[1800] >= rows_at[2560])
+# 0.24.217 the look: sections side by side (a title on top, two rows of cells, a rule between) while they fit two bands
+its = at(2560, 'CUT')
+res_cell = next(i for i in its if i.kind == 'mini' and i.label == 'Res')
+res_title = next(i for i in its if i.kind == 'glabel' and i.label == 'RESOLUTION')
+apply_cell = next(i for i in its if i.label == 'Apply to Parts')
+names = [i.label for i in its if i.kind == 'glabel']
+check(f'a wide view (2560 px): sections like the tool menu - the title above its cells (Resolution over Res), the '
+      f'section\'s cells in two rows (Apply to Parts under Res), rules between; sections: {names}',
+      res_title.y > res_cell.y and abs(res_title.x - res_cell.x) < 1.0 and apply_cell.y < res_cell.y
+      and abs(apply_cell.x - res_cell.x) < 1.0 and any(i.kind == 'vrule' for i in its)
+      and tb.fixed_layout(2560 - 60, 1.0)[0] <= tb.SECTION_BANDS and 'OPTIONS' in names)
+its = at(1000, 'CUT')
+res_cell = next(i for i in its if i.kind == 'mini' and i.label == 'Res')
+res_title = next(i for i in its if i.kind == 'glabel' and i.label == 'RESOLUTION')
+check(f'a view where the sections would need more than {tb.SECTION_BANDS} bands (1000 px: '
+      f'{tb.fixed_layout(1000 - 60, 1.0)[0]}): the same fixed places as rows, the name beside its cells - a lower bar '
+      f'({at(1000, "CUT")[0].h:.0f} px)', abs(res_title.y - res_cell.y) < 1.0 and res_title.x < res_cell.x
+      and tb.fixed_layout(1000 - 60, 1.0)[0] > tb.SECTION_BANDS)
 wide, narrow = at(2560, 'BASE'), at(500, 'BASE')
 check('a view too narrow for a single place (500 px): the groups are packed as before, nothing lost',
       sorted((i.kind, i.label) for i in narrow if i.kind not in {'card', 'vrule', 'glabel'}) ==

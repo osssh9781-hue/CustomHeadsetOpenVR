@@ -269,12 +269,18 @@ def flow():
         xdo('mousemove', x + 6, y + 30)
         yield 0.8
         shot('06_list_stays_open.png')
-        xdo('mousemove', x + 6, y + 52)             # (the second row of the list)
-        yield 0.6
-        xdo('click', 1)
+        # (0.24.217 where the list opens depends on where the cell is in the bar: the choice is made with the
+        #  REAL keys - Down to the next row, Enter - after the mouse has moved off the cell and waited)
+        xdo('mousemove', x + 40, y + 40)
+        yield 0.8
+        xdo('key', 'Down')
+        yield 0.4
+        xdo('key', 'Down')
+        yield 0.4
+        xdo('key', 'Return')
         yield 1.0
     res['B3'] = it3 is not None and S.mch_cut.gn_sides != before
-    log('B3 a closed list: REAL click opens it, the mouse moves, a second REAL click picks:', before, '->', S.mch_cut.gn_sides)
+    log('B3 a closed list: REAL click opens it, the mouse moves, it is still open - Down, Down, Enter (REAL keys) pick:', before, '->', S.mch_cut.gn_sides)
     xdo('key', 'Escape')
     yield 0.5
     with C.temp_override(window=w, area=a, region=r):
@@ -298,7 +304,7 @@ def flow():
              'A3': 'Korean off: English at once', 'A4': 'on again: Korean',
              'B1': 'Base Mesh: the bevel sides are buttons - REAL click on Both, the bottom has its own width cell',
              'B2': 'the width cell drags finely (REAL drag)',
-             'B3': 'a closed list opened by a REAL click stays open until a choice is clicked'}
+             'B3': 'a closed list opened by a REAL click stays open (the mouse moved, time passed) until a choice is made'}
     n = 0
     for k in sorted(names):
         ok = bool(res.get(k))
