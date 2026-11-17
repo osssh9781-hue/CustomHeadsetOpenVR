@@ -1,8 +1,10 @@
 """0.24.214 (user: "상단 바도 매번 배치랑 구성이 달라지고 헷갈린단 말이야 - 모든 툴 공통으로 배치 유지해 놓고 툴마다 달라지는
-설정만 추가로 아래에다가 배치" / "기능이나 이상은 없게"): the top bar's first row is the same for every tool (Shape,
-Draw, Target, Depth, Auto Apply, Ortho - in the same places; what a tool has not is greyed), the tool's own settings in
-the rows under it - and every cell the bar had in 0.24.213 (data/top_bar_cells_0.24.213.json: 80 tools x 10 states)
-is still there, the same."""
+설정만 추가로 아래에다가 배치" / "기능이나 이상은 없게"), 0.24.216 ("해상도 표시 위치가 다 다르잖아 - 사용 안 하는 게 있으면
+거기를 그냥 블랭크로 비워 놓고 모든 위치는 똑같이 만들어 줘, 계속 찾아야 되잖아"): every group that more than one tool
+shows has one place in the top bar, the same for every tool and state (Shape, Draw, Target, Depth, Auto Apply, Ortho,
+Resolution, Corners, Surface / Through, Lasso); a place a tool does not use is empty; the tool's own groups come after,
+from the left - and every cell the bar had in 0.24.213 (data/top_bar_cells_0.24.213.json: 80 tools x 10 states) is
+still there, the same."""
 import collections
 import json
 import os
@@ -75,39 +77,52 @@ check(f'every cell of 0.24.213 is still in the bar, the same (kind, name, on / o
       f'{n_before:,} checked over {len(before)} tool states, {len(gone)} gone',
       not gone and set(states) == set(before), gone[:4])
 kinds = {json.loads(k)[0] for k in new}
-check(f'the only new things are group names shown a second time ({sorted(json.loads(k)[1] for k in new)}): a group '
-      f'whose common part is in the first row and whose own extras are below', kinds <= {'glabel'})
-B.shape = 'LASSO'; B.outline_corner = 'NONE'
-S.mch_base.profile = 'FLAT'
+check(f'the only new things are group names shown a second time ({sorted(set(json.loads(k)[1] for k in new))}: Press Cut\'s '
+      f'own Line / Lasso switch stays with the tool\'s own groups)', kinds <= {'glabel'})
+
+# one place per cell: over every tool and every state it is shown in
+FIXED = {}
+for title, sources, specs in tb.common_slots():
+    if isinstance(specs, list):
+        for label, kind, _icon, _w, match in specs:
+            FIXED[(kind, label)] = match
+where = collections.defaultdict(set)
+seen = collections.Counter()
 
 
-def first_row(tool):
-    TOOL[0] = tool
-    its = tb.items(C, 2560, 1440, 1.0, left=0.0, right=2560.0)
-    top = max(i.y for i in its if i.kind not in {'card'})
-    return [(i.kind, '' if i.kind == 'glabel' else i.label, round(i.x, 2), round(i.w, 2)) for i in its
-            if abs(i.y - top) < 1e-6 and i.kind != 'vrule'], its
+def cell_of(i):
+    return dict(kind=i.kind, label=i.label, action=i.action, prop=i.prop, data=i.data, on=i.on, icon=i.icon, width=None)
 
 
-ref, _its = first_row('CUT')
-same = [t for t in tools if first_row(t)[0] == ref]
-check(f'the first row is the same cells in the same places for every tool ({len(same)} of {len(tools)} tools equal to '
-      f'Cut\'s: {[c[1] for c in ref if c[0] != "glabel"]})', len(same) == len(tools),
-      [t for t in tools if t not in same][:6])
-row, its = first_row('SMART')
-off = [i.label for i in its if not i.enabled and i.action is None and i.kind in {'seg', 'ibtn'}]
-check(f'what a tool does not have is greyed and does nothing (Smart Move: {len(off)} greyed - {off[:4]} ...), never '
-      f'clickable', len(off) > 5 and all(not i.clickable() for i in its if not i.enabled))
-row, its = first_row('BASE')
-top = max(i.y for i in its if i.kind != 'card')
-lower = sorted({i.label for i in its if i.y < top - 1 and i.kind == 'glabel'})
-check(f'the tool\'s own settings are in the rows under it (Base Mesh: {lower})',
-      'EDGE' in lower and 'CORNERS' in lower and 'RESOLUTION' in lower)
-def rows_of_bar(its):
-    ys = sorted({round(i.y, 2) for i in its if i.kind not in {'card', 'vrule'}}, reverse=True)
-    # (a group's name is not compared: the shapes are called SHIFT+DRAW on three tools - same place, same cells)
-    return [[(i.kind, '' if i.kind == 'glabel' else i.label, round(i.x, 2), round(i.w, 2)) for i in its
-             if round(i.y, 2) == y and i.kind != 'vrule'] for y in ys]
+def record(tag):
+    for t in tools:
+        TOOL[0] = t
+        its = tb.items(C, 2560, 1440, 1.0, left=0.0, right=2560.0)
+        card = its[0]
+        for i in its:
+            key = (i.kind, i.label)
+            if key in FIXED and i.enabled and FIXED[key](cell_of(i)):
+                where[key].add((round(i.x - card.x, 2), round(card.y + card.h - i.y, 2), round(i.w, 2)))
+                seen[key] += 1
+
+
+B.shape = 'LASSO'; B.outline_corner = 'NONE'; B.stab_enable = False; cut.depth_mode = 'THROUGH'; B.surface_mode = False
+record('default')
+B.stab_enable = True; cut.depth_mode = 'SURFACE'; B.outline_corner = 'ROUND'; B.surface_mode = True; B.through_mode = True
+record('everything on')
+for sh in ('CIRCLE', 'STROKE', 'RECT'):
+    B.shape = sh
+    record(sh)
+B.shape = 'LASSO'; B.stab_enable = False; cut.depth_mode = 'THROUGH'; B.outline_corner = 'NONE'; B.surface_mode = False
+B.through_mode = False
+moved = {k: v for k, v in where.items() if len(v) != 1}
+check(f'every fixed cell is at ONE place - the same for all {len(tools)} tools and 5 states it was looked at in '
+      f'({len(where)} cells, e.g. Res seen {seen[("mini", "Res")]} times at {sorted(where[("mini", "Res")])}); '
+      f'{len(moved)} move', not moved and len(where) >= 30 and seen[('mini', 'Res')] > 100, moved)
+check('... also the ones that come and go: Slow Line\'s Strength / Radius, the Depth value and floor, the corner Width / '
+      'Segments, Surface\'s Gap', all(k in where for k in (('mini', 'Strength'), ('mini', 'Radius'), ('mini', 'Depth'),
+                                                            ('seg', 'Follow'), ('mini', 'Width'), ('mini', 'Segments'),
+                                                            ('mini', 'Gap'))))
 
 
 def at(width, tool):
@@ -115,16 +130,37 @@ def at(width, tool):
     return tb.items(C, width, 1000, 1.0, left=0.0, right=float(width))
 
 
-mid = {t: rows_of_bar(at(1300, t))[:2] for t in tools}
-check(f'a view too narrow for one common row (1300 px): two common rows, split at the same place, still the same for '
-      f'every tool ({[c[1] for c in mid["CUT"][0] if c[0] != "glabel"][:3]} ... | '
-      f'{[c[1] for c in mid["CUT"][1] if c[0] != "glabel"]})',
-      all(v == mid['CUT'] for v in mid.values()) and any(c[1] == 'Ortho' for c in mid['CUT'][1])
-      and any(c[1] == 'Slow Line' for c in mid['CUT'][0]))
+its = at(2560, 'SMART')
+labels = {i.label for i in its if i.kind in {'seg', 'ibtn', 'mini'}}
+check(f'a place the tool does not use is EMPTY, nothing greyed, nothing moved in (Smart Move: no shapes, no Res; it '
+      f'has {len(labels)} cells), and every cell shown can be clicked',
+      'Lasso' not in labels and 'Res' not in labels and 'Sketch' not in labels and 'Ortho' in labels
+      and all(i.enabled for i in its))
+hs = {t: at(2560, t)[0].h for t in tools}
+check(f'the bar hangs from the top; the rows under the last place a tool uses are left out, so a tool with few '
+      f'settings has a small bar (Smart Move {hs["SMART"]:.0f} px, Cut {hs["CUT"]:.0f} px) - the places above keep '
+      f'their distance from the top (the check before)', hs['SMART'] <= hs['CUT'] and len({round(at(2560, t)[0].y + at(2560, t)[0].h, 2) for t in tools}) == 1)
 its = at(2560, 'BASE')
-narrow = at(600, 'BASE')
-check('a view too narrow even for that (600 px): the rows are packed as before, nothing lost',
-      sorted((i.kind, i.label) for i in narrow if i.kind not in {'card', 'vrule', 'glabel'} and i.enabled) ==
-      sorted((i.kind, i.label) for i in its if i.kind not in {'card', 'vrule', 'glabel'} and i.enabled)
-      and not any(not i.enabled for i in narrow))
+card = its[0]
+own = [i for i in its if i.kind == 'glabel' and i.label in {'EDGE', 'SIDES'}]
+fixed_bottom = min(i.y for i in its if (i.kind, i.label) in FIXED and FIXED[(i.kind, i.label)](cell_of(i)))
+check('the tool\'s own groups (Base Mesh: Edge) are under the fixed rows, from the left',
+      bool(own) and all(i.y < fixed_bottom for i in own) and min(i.x for i in own) - card.x < 20)
+rows_at = {w_: len({round(i.y, 1) for i in at(w_, 'CUT') if (i.kind, i.label) in FIXED}) for w_ in (2560, 1800, 1300)}
+same_narrow = {}
+for w_ in (1800, 1300):
+    pos = collections.defaultdict(set)
+    for t in tools:
+        its_ = at(w_, t)
+        for i in its_:
+            if (i.kind, i.label) in FIXED and FIXED[(i.kind, i.label)](cell_of(i)):
+                pos[(i.kind, i.label)].add((round(i.x - its_[0].x, 1), round(its_[0].y + its_[0].h - i.y, 1)))
+    same_narrow[w_] = all(len(v) == 1 for v in pos.values())
+check(f'a narrower view: the fixed places take more rows ({rows_at}) - how they are split depends on the width alone, '
+      f'so they are still the same for every tool ({same_narrow})', all(same_narrow.values())
+      and rows_at[1300] >= rows_at[1800] >= rows_at[2560])
+wide, narrow = at(2560, 'BASE'), at(500, 'BASE')
+check('a view too narrow for a single place (500 px): the groups are packed as before, nothing lost',
+      sorted((i.kind, i.label) for i in narrow if i.kind not in {'card', 'vrule', 'glabel'}) ==
+      sorted((i.kind, i.label) for i in wide if i.kind not in {'card', 'vrule', 'glabel'}))
 summary()

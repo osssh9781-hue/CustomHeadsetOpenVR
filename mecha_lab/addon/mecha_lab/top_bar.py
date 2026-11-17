@@ -15,6 +15,8 @@ side panel is too narrow.  The tool's own settings are in the side panel (``side
 """
 from __future__ import annotations
 
+import math
+
 from . import i18n
 from . import tool_state as ts
 
@@ -400,54 +402,89 @@ def room(context, region_w, k):
     return left, region_w - right
 
 
-# --- 0.24.214 the common row -------------------------------------------------------------------------------------
-# (user: "상단 바도 매번 배치랑 구성이 달라지고 헷갈린단 말이야, 모든 툴 공통으로 배치 유지해 놓고 툴마다 달라지는 설정만
-#  추가로 아래에다가 배치"): the first row is the same for every tool - the same cells in the same places; what a tool
-# does not have is greyed, not taken away, so nothing moves.  What only this tool has goes in the rows under it.
+# --- 0.24.216 every group in its own fixed place -----------------------------------------------------------------
+# (user 0.24.214: "모든 툴 공통으로 배치 유지해 놓고 툴마다 달라지는 설정만 추가로 아래에다가"; 0.24.216: "해상도 표시 위치가
+#  다 다르잖아 - 사용 안 하는 게 있으면 거기를 그냥 블랭크로 비워 놓고 모든 위치는 똑같이 만들어 줘, 계속 찾아야 되잖아"):
+# every group that more than one tool shows has ONE place in the bar, the same for every tool, and inside it every cell
+# its own place.  A place the tool in use does not need stays empty - nothing moves into it.  Only what a single tool
+# has (Edge, GN Edge, Press, 3D Mouse ...) comes after them, from the left.
 
 def _is_mode(c, key):
     return c['action'] == ('mode', key)
 
 
 def _is_prop(prop):
-    return lambda c: c['prop'] == prop and c['action'] in {('bool',), None}
+    return lambda c: c['prop'] == prop and c['action'] in {('bool',), ('number',), None}
 
 
 def _is_enum(prop, ident):
     return lambda c: c['prop'] == prop and c['action'] == ('enum', ident)
 
 
+def _is_op(idname):
+    return lambda c: bool(c['action']) and c['action'][0] == 'op' and c['action'][1] == idname
+
+
+def _seg_w(label):
+    return i18n.vlen(label) * 7.0 + 24.0
+
+
+LASSO_ROOM = 560.0            # the Lasso group's place: as wide as its longest set (Free Draw: four numbers)
+
+
 def common_slots():
-    """[(title, source group titles, [(label, kind, icon, width, match(cell))])] - the fixed first row."""
+    """The fixed places: [(title, source group titles, cells)] with cells = [(label, kind, icon, width, match)],
+    or cells = a number: a free place that many px wide - the group's own cells from its left edge (Lasso: they
+    change with the shape)."""
     shapes = [(label, 'ibtn', 'png:' + stem, ICON, (lambda sid: lambda c: c['action'] == ('shape', sid))(sid))
               for sid, label, _d, stem, _f in ts.SHAPES]
+
+    def seg(label, match):
+        return (label, 'seg', '', None, match)
+
+    def mini(label, prop, width):
+        return (label, 'mini', '', width, _is_prop(prop))
     return [
         ('Shape', ('Shape', 'Shift+Draw'), shapes),
-        ('Draw', ('Draw',), [('Line', 'seg', '', None, lambda c: _is_mode(c, 'line')),
-                             ('Sketch', 'seg', '', None, lambda c: _is_mode(c, 'sketch')),
-                             ('Slow Line', 'seg', '', None, _is_prop('stab_enable'))]),
-        ('Target', ('Target',), [('Auto', 'seg', '', None, _is_enum('targets', 'AUTO')),
-                                 ('Selected', 'seg', '', None, _is_enum('targets', 'SELECTED')),
-                                 ('Active', 'seg', '', None, _is_enum('targets', 'ACTIVE'))]),
-        ('Depth', ('Depth',), [('Through All', 'seg', '', None, _is_enum('depth_mode', 'THROUGH')),
-                               ('From Surface', 'seg', '', None, _is_enum('depth_mode', 'SURFACE'))]),
-        ('', ('',), [('Auto Apply', 'seg', '', None, _is_prop('auto_apply')),
-                     ('Ortho', 'seg', '', None, lambda c: c['action'] == ('op', 'mch.ortho_lock', {}))]),
+        ('Draw', ('Draw',), [seg('Line', lambda c: _is_mode(c, 'line')), seg('Sketch', lambda c: _is_mode(c, 'sketch')),
+                             seg('Slow Line', _is_prop('stab_enable')), mini('Strength', 'stab_strength', 150),
+                             mini('Radius', 'stab_radius', 130)]),
+        ('Target', ('Target',), [seg('Auto', _is_enum('targets', 'AUTO')), seg('Selected', _is_enum('targets', 'SELECTED')),
+                                 seg('Active', _is_enum('targets', 'ACTIVE'))]),
+        ('Depth', ('Depth',), [seg('Through All', _is_enum('depth_mode', 'THROUGH')),
+                               seg('From Surface', _is_enum('depth_mode', 'SURFACE')), mini('Depth', 'depth', 130),
+                               seg('Follow', _is_enum('depth_floor', 'FOLLOW')), seg('Level', _is_enum('depth_floor', 'LEVEL')),
+                               seg('Flat', _is_enum('depth_floor', 'FLAT'))]),
+        ('', ('',), [seg('Auto Apply', _is_prop('auto_apply')), seg('Ortho', _is_op('mch.ortho_lock'))]),
+        ('Resolution', ('Resolution',), [mini('Res', 'geo_res', 120), seg('Apply to Parts', _is_op('mch.apply_resolution'))]),
+        ('Corners', ('Corners',), [seg('Sharp', _is_enum('outline_corner', 'NONE')), seg('Round', _is_enum('outline_corner', 'ROUND')),
+                                   seg('Chamfer', _is_enum('outline_corner', 'CHAMFER')), mini('Width', 'outline_radius', 130),
+                                   mini('Segments', 'outline_segments', 140)]),
+        ('', ('',), [seg('Surface', _is_prop('surface_mode')), mini('Gap', 'surface_gap', 110),
+                     seg('Through', _is_prop('through_mode')), mini('Crease', 'through_crease', 120)]),
+        ('Lasso', ('Lasso',), LASSO_ROOM),
     ]
 
 
 def split_common(gs):
-    """``groups()`` as (the common row, the tool's own groups).  The common row: [(title, [cells])] with every
-    slot of ``common_slots`` - a cell the tool has, or a greyed stand-in (``off``: no action).  Every cell of
-    ``gs`` is in exactly one of the two."""
+    """``groups()`` as (the fixed places, the tool's own groups).  The fixed places: [(title, cells)] for every
+    slot of ``common_slots`` - each cell the tool's own cell, or None (an empty place); a free slot: its cells as
+    they are.  Every cell of ``gs`` is in exactly one of the two."""
     rest = [(t, list(c)) for t, c in gs]
     row = []
     for title, sources, slots in common_slots():
         shown = title
+        if not isinstance(slots, list):                 # a free place: the whole group
+            gi = next((i for i, (t, cs) in enumerate(rest) if t in sources and cs), None)
+            cells = rest[gi][1][:] if gi is not None else []
+            if gi is not None:
+                del rest[gi][1][:]
+            row.append((shown, cells))
+            continue
         cells = []
-        for label, kind, icon, width, match in slots:
+        for _label, _kind, _icon, _width, match in slots:
             hit = None
-            for gi, (t, cs) in enumerate(rest):
+            for t, cs in rest:
                 if t not in sources:
                     continue
                 ci = next((i for i, c in enumerate(cs) if match(c)), None)
@@ -456,8 +493,6 @@ def split_common(gs):
                     if t:
                         shown = t                       # (Shift+Draw: the title the tool gives it)
                     break
-            if hit is None:
-                hit = dict(_cell(kind, label, False, None, None, '', width, icon), off=True)
             cells.append(hit)
         row.append((shown, cells))
     return row, [(t, c) for t, c in rest if c]
@@ -467,26 +502,73 @@ def _slot_title_w(title, sources, k):
     return max((i18n.vlen(t) * 7.0 + 8.0) * k + GAP * k for t in sources if t) if any(sources) else 0.0
 
 
-COMMON_SPLIT = 2                 # a view too narrow for one common row: Shape + Draw | Target + Depth + the rest
+def _spec_w(spec, k):
+    """The width a fixed cell's place has (the same whether the cell is there or not)."""
+    label, kind, _icon, width, _match = spec
+    return (width if width else _seg_w(label)) * k
 
 
-def _common_width(pairs, k):
-    """The width of common-row slots ``pairs`` = [((title, cells), slot)]."""
+def _slot_width(slot, k):
+    _title, sources, specs = slot
+    body = specs * k if not isinstance(specs, list) else \
+        sum(_spec_w(sp_, k) for sp_ in specs) + GAP * k * (len(specs) - 1)
+    return body + _slot_title_w(_title, sources, k)
+
+
+def fixed_layout(room_w, k):
+    """Where every fixed place is, for a bar ``room_w`` px wide - from the width alone, never from the tool:
+    (rows, [per slot: dict(title=(row, x, w), rule=(row, x) or None, cells=[(row, x, w)]) or, a free slot,
+    dict(title=..., rule=..., free=(row, x, room, rows))]), x from the bar's inner left edge.  A slot that does not
+    fit the rest of a row starts the next one; one too wide for a whole row breaks between its cells.  None when
+    the bar is too narrow even for that."""
     sep = 14.0 * k
-    w = 0.0
-    for (title, cells), (_t, sources, _s) in pairs:
-        w += sum(_width(c, k) for c in cells) + GAP * k * (len(cells) - 1) + _slot_title_w(title, sources, k)
-    return w + sep * (len(pairs) - 1)
-
-
-def common_rows(common, room_w, k):
-    """The common slots as fixed rows that fit ``room_w``: one row, or two, or three (always split at the same
-    places), or None when even those do not fit.  [[((title, cells), slot)]]."""
-    pairs = list(zip(common, common_slots()))
-    for rows in ([pairs], [pairs[:COMMON_SPLIT], pairs[COMMON_SPLIT:]], [pairs[:1], pairs[1:3], pairs[3:]]):
-        if all(_common_width(r, k) <= room_w for r in rows):
-            return rows
-    return None
+    x, row = 0.0, 0
+    out = []
+    for title, sources, specs in common_slots():
+        tw = _slot_title_w(title, sources, k)
+        if isinstance(specs, list):
+            ws = [_spec_w(sp_, k) for sp_ in specs]
+            total = tw + sum(ws) + GAP * k * (len(ws) - 1)
+            if max(ws) + tw > room_w:
+                return None
+        else:
+            ws = None
+            total = tw + min(specs * k, room_w - tw)
+            if room_w - tw < 150.0 * k:
+                return None
+        rule = None
+        if x > 0 and x + sep + total > room_w:
+            row += 1
+            x = 0.0
+        elif x > 0:
+            rule = (row, x)
+            x += sep
+        place = dict(title=(row, x, tw), rule=rule)
+        x += tw
+        if ws is None:
+            free = min(specs * k, room_w - x)
+            if free < 150.0 * k:                      # (hardly any room left in this row: its own row)
+                row += 1
+                x = tw
+                place['title'] = (row, 0.0, tw)
+                place['rule'] = None
+                free = min(specs * k, room_w - x)
+            rows_needed = max(1, math.ceil(specs * k / free - 1e-6))
+            place['free'] = (row, x, free, rows_needed)
+            row += rows_needed - 1
+            x += free
+        else:
+            cells = []
+            for w in ws:
+                if x + w > room_w and x > tw + 1e-6:
+                    row += 1
+                    x = tw                              # (under its own cells, the title's width left free)
+                cells.append((row, x, w))
+                x += w + GAP * k
+            x -= GAP * k
+            place['cells'] = cells
+        out.append(place)
+    return row + 1, out
 
 
 def items(context, region_w, region_h, k=1.0, left=None, right=None):
@@ -516,60 +598,104 @@ def items(context, region_w, region_h, k=1.0, left=None, right=None):
     except (ImportError, AttributeError, TypeError, ReferenceError):
         pass
     common, own = split_common(gs)
-    # the common rows are laid out for the band between the tool strip and the side panel - whatever the tool's own
-    # rows need (those may use the whole width above the side panel): so they are in the same place for every tool
+    # the fixed places are laid out for the band between the tool strip and the side panel - whatever the tool:
+    # so they are in the same place for every tool
     band_l, band_r = left, min(right, region_w - corner)
     band = max(300.0 * k, band_r - band_l - 24 * k)
-    fixed = common_rows(common, band - 2 * PAD * k, k)         # (None, a very narrow view: the old way, all packed)
-    cws = [_common_width(r, k) for r in fixed] if fixed else []
+    inner = band - 2 * PAD * k
+    fixed = fixed_layout(inner, k)                  # (None, a very narrow view: the old way, all packed)
+    if fixed:
+        n_fixed, places = fixed
+        # the rows under the last place this tool uses are left out (its own groups follow at once); an empty
+        # place above or between used ones stays empty - nothing ever moves sideways or up into it
+        last = -1
+        for (title, cells), place in zip(common, places):
+            if 'cells' in place:
+                last = max([last] + [pr for c, (pr, _x, _w) in zip(cells, place['cells']) if c is not None])
+            elif cells:
+                fr, fx, froom, _n = place['free']
+                cx, cr = fx, fr
+                for c in cells:
+                    w = _width(c, k)
+                    if cx + w > fx + froom + 1e-6 and cx > fx:
+                        cr += 1
+                        cx = fx
+                    cx += w + GAP * k
+                last = max(last, cr)
+        n_fixed = last + 1
+        # the tool's own groups: under the fixed rows, from the same left edge, in the same width
+        rows = rows_of(own, inner, k) if own else []
+        n_rows = n_fixed + len(rows)
+        width = band
+        height = n_rows * ROW * k + (n_rows - 1) * GAP * k + 2 * PAD * k
+        y0 = region_h - TOP * k - inset - height
+        x0 = max(band_l + 8 * k, min((region_w - width) / 2.0, band_r - 8 * k - width))
+        out = [Item('card', x0, y0, width, height)]
+        top = y0 + height - PAD * k - ROW * k
+        left_x = x0 + PAD * k
+
+        def ry(row):
+            return top - row * (ROW * k + GAP * k)
+        for (title, cells), place, (_t, sources, specs) in zip(common, places, common_slots()):
+            used = any(c is not None for c in cells)
+            if place['rule'] is not None and used:
+                rr, rx = place['rule']
+                out.append(Item('vrule', left_x + rx + sep / 2 - 0.5 * k, ry(rr) + 6 * k, 1.0 * k, ROW * k - 12 * k))
+            tr_, tx, tw = place['title']
+            if tw and used:
+                out.append(Item('glabel', left_x + tx, ry(tr_), tw - GAP * k, ROW * k, title.upper()))
+            if 'cells' in place:
+                for c, (cr, cx, cw) in zip(cells, place['cells']):
+                    if c is not None:               # (else: its place stays empty)
+                        out.append(Item(c['kind'], left_x + cx, ry(cr), cw, ROW * k, c['label'], c['icon'], c['on'],
+                                        True, c['action'], c['data'], c['prop']))
+            else:
+                fr, fx, froom, _n = place['free']
+                cx, cr = fx, fr
+                for c in cells:
+                    w = _width(c, k)
+                    if cx + w > fx + froom + 1e-6 and cx > fx:
+                        cr += 1
+                        cx = fx
+                    out.append(Item(c['kind'], left_x + cx, ry(cr), w, ROW * k, c['label'], c['icon'], c['on'], True,
+                                    c['action'], c['data'], c['prop']))
+                    cx += w + GAP * k
+        y = ry(n_fixed)
+        for r in rows:
+            x = left_x                              # (from the left: a group does not move when another comes or goes)
+            for gi, (title, cells) in enumerate(r):
+                if gi:
+                    out.append(Item('vrule', x + sep / 2 - 0.5 * k, y + 6 * k, 1.0 * k, ROW * k - 12 * k))
+                    x += sep
+                if title:
+                    tw = (i18n.vlen(title) * 7.0 + 8.0) * k
+                    out.append(Item('glabel', x, y, tw, ROW * k, title.upper()))
+                    x += tw + GAP * k
+                for c in cells:
+                    w = _width(c, k)
+                    out.append(Item(c['kind'], x, y, w, ROW * k, c['label'], c['icon'], c['on'], True, c['action'],
+                                    c['data'], c['prop']))
+                    x += w + GAP * k
+                x -= GAP * k
+            y -= ROW * k + GAP * k
+        return out
+    # a view too narrow for the fixed places: the groups packed into rows (as before 0.24.214)
     for full in ((True, False) if panel_top is not None else (False,)):
         r_edge = (region_w - corner) if full else min(right, region_w - corner)
         l_edge = l_low if full else left
         avail = max(300.0 * k, r_edge - l_edge - 24 * k)
-        rows = (rows_of(own, avail - 2 * PAD * k, k) if own else []) if fixed else rows_of(gs, avail - 2 * PAD * k, k)
+        rows = rows_of(gs, avail - 2 * PAD * k, k)
         widths = [sum(_group_width(t, c, k) for t, c in r) + sep * (len(r) - 1) for r in rows]
-        width = max(widths + cws) + 2 * PAD * k
-        n_rows = len(rows) + len(cws)
-        height = n_rows * ROW * k + (n_rows - 1) * GAP * k + 2 * PAD * k
+        width = max(widths) + 2 * PAD * k
+        height = len(rows) * ROW * k + (len(rows) - 1) * GAP * k + 2 * PAD * k
         y0 = region_h - TOP * k - inset - height
         if not full or y0 >= panel_top + 6 * k:
             break
-    # 0.24.59 centred in the viewport (like the main menu below), moved only as far as the strip / panel need
-
-    def start(w):
-        return max(l_edge + 8 * k, min((region_w - w) / 2.0, r_edge - 8 * k - w))
-    def start_band(w):
-        return max(band_l + 8 * k, min((region_w - w) / 2.0, band_r - 8 * k - w))
-    x0 = start(width)
-    own_x0, own_w = x0, width                       # (where the tool's own rows are centred)
-    if fixed:                                       # (the card holds the common rows too, wherever its own rows sit)
-        cx = min(start_band(cw + 2 * PAD * k) for cw in cws)
-        x1 = max(x0 + width, max(start_band(cw + 2 * PAD * k) + cw + 2 * PAD * k for cw in cws))
-        x0 = min(x0, cx)
-        width = x1 - x0
+    x0 = max(l_edge + 8 * k, min((region_w - width) / 2.0, r_edge - 8 * k - width))
     out = [Item('card', x0, y0, width, height)]
     y = y0 + height - PAD * k - ROW * k
-    for crow, cw in zip(fixed or [], cws):
-        # a common row: placed by its own width alone, so it is where it was whatever the tool adds below
-        x = start_band(cw + 2 * PAD * k) + PAD * k
-        for gi, ((title, cells), (_t, sources, _s)) in enumerate(crow):
-            if gi:
-                out.append(Item('vrule', x + sep / 2 - 0.5 * k, y + 6 * k, 1.0 * k, ROW * k - 12 * k))
-                x += sep
-            tw = _slot_title_w(title, sources, k)
-            if tw:
-                live = any(not c.get('off') for c in cells)
-                out.append(Item('glabel', x, y, tw - GAP * k, ROW * k, title.upper(), '', False, live))
-                x += tw
-            for c in cells:
-                w = _width(c, k)
-                out.append(Item(c['kind'], x, y, w, ROW * k, c['label'], c['icon'], c['on'], not c.get('off'),
-                                c['action'], c['data'], c['prop']))
-                x += w + GAP * k
-            x -= GAP * k
-        y -= ROW * k + GAP * k
     for r, rw in zip(rows, widths):
-        x = own_x0 + (own_w - rw) / 2.0
+        x = x0 + (width - rw) / 2.0
         for gi, (title, cells) in enumerate(r):
             if gi:
                 out.append(Item('vrule', x + sep / 2 - 0.5 * k, y + 6 * k, 1.0 * k, ROW * k - 12 * k))

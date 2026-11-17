@@ -66,10 +66,7 @@ check('... Line / Sketch / Slow Line, Target, Depth, Auto Apply, Surface, Ortho 
 TOOL[0] = 'BASE'
 bar_b = tb.items(CTX, W, H, 1.0)
 lb = {i.label for i in bar_b if i.kind == 'seg'}
-# 0.24.214 the common row: they keep their place on every tool, greyed and dead where they are not the tool's
-check('Base Mesh: Depth / Auto Apply are not its settings - there (the common row) but greyed, a click does nothing',
-      all(not i.enabled and not i.clickable() for i in bar_b if i.kind == 'seg' and i.label in {'Through All', 'Auto Apply'})
-      and {'Through All', 'Auto Apply'} <= lb)
+check('Base Mesh: no Depth / Auto Apply (not its settings)', 'Through All' not in lb and 'Auto Apply' not in lb)
 S.mch_brush.line_mode = True
 bar_b = tb.items(CTX, W, H, 1.0)
 check('... Line on: its width, caps, Taper, Pressure, Attach Ends join the bar', any(i.kind == 'mini' and

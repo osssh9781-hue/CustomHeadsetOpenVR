@@ -1,6 +1,6 @@
-"""Real window 0.24.214: the top bar's first row is the same for every tool - screenshots of five tools, the cells'
-positions compared in the real viewport; a REAL click on a first-row cell (Selected) and on a tool's own cell below
-(Base Mesh: Chamfer) lands; a greyed cell does nothing."""
+"""Real window 0.24.216: every shared group of the top bar has one place for every tool (a place not used stays
+empty) - screenshots of six tools, the cells' positions compared in the real viewport; a REAL click on a fixed cell
+(Selected) and on a tool's own cell below (Base Mesh: Chamfer) lands; a click on an empty place does nothing."""
 import os
 import subprocess
 import sys
@@ -180,17 +180,29 @@ def flow():
         with C.temp_override(window=w, area=a, region=r):
             return top_bar.items(C, r.width, r.height, ui_factor(C, r))
 
-    def bar_rows(its):
-        ys = sorted({round(i.y, 1) for i in its if i.kind not in {'card', 'vrule'}}, reverse=True)
-        return [[(i.kind, i.label, round(i.x, 1), round(i.w, 1)) for i in its
-                 if round(i.y, 1) == y and i.kind not in {'card', 'vrule'}] for y in ys]
-    rows = {}
-    for n, tool in enumerate(('CUT', 'BASE', 'CDRAPE', 'SMART', 'PLATE')):
+    import collections
+    FIXED = {}
+    for _title, _sources, specs in top_bar.common_slots():
+        if isinstance(specs, list):
+            for label, kind, _icon, _w, match in specs:
+                FIXED[(kind, label)] = match
+    where = collections.defaultdict(set)
+    shown = {}
+
+    def record(tag):
+        its = bar()
+        shown[tag] = 0
+        for i in its:
+            key = (i.kind, i.label)
+            if key in FIXED and FIXED[key](dict(action=i.action, prop=i.prop)):
+                where[key].add((round(i.x, 1), round(i.y, 1), round(i.w, 1)))
+                shown[tag] += 1
+    for n, tool in enumerate(('CUT', 'BASE', 'CDRAPE', 'SMART', 'PLATE', 'FUR')):
         with C.temp_override(window=w, area=a, region=r):
             bpy.ops.mch.bar_tool(tool=tool)
         yield 1.5
         yield from wait_draws(3)
-        rows[tool] = bar_rows(bar())
+        record(tool)
         shot(f'0{n + 1}_bar_{tool}.png')
     # ... also when the tool's own rows make the bar tall (Base Mesh: Bevel on both sides, each its own width)
     with C.temp_override(window=w, area=a, region=r):
@@ -199,16 +211,13 @@ def flow():
         d0.profile, d0.bevel_sides, d0.bevel_link = 'BEVEL', 'BOTH', False
     yield 1.5
     yield from wait_draws(3)
-    rows['BASE tall'] = bar_rows(bar())
+    record('BASE tall')
     shot('07_bar_BASE_tall.png')
     d0.profile, d0.bevel_sides, d0.bevel_link = 'FLAT', 'TOP', True
-    n_common = 0
-    while n_common < min(len(v) for v in rows.values()) and all(v[n_common] == rows['CUT'][n_common] for v in rows.values()):
-        n_common += 1
-    labels = [c[1] for row_ in rows['CUT'][:n_common] for c in row_]
-    res['A1'] = n_common >= 1 and all(x in labels for x in ('Lasso', 'Sketch', 'Slow Line', 'Selected', 'From Surface',
-                                                            'Auto Apply', 'Ortho'))
-    log('A1 the common rows in the real viewport (5 tools):', n_common, 'row(s) the same |', len(labels), 'cells | region', r.width)
+    moved = {k: v for k, v in where.items() if len(v) != 1}
+    res['A1'] = not moved and len(where) >= 15 and ('mini', 'Res') in where
+    log('A1 fixed cells in the real viewport:', shown, '| cells', len(where), '| Res at', sorted(where.get(('mini', 'Res'), [])),
+        '| moved', moved, '| region', r.width)
     # a first-row cell: Selected (Target) on Cut
     with C.temp_override(window=w, area=a, region=r):
         bpy.ops.mch.bar_tool(tool='CUT')
@@ -222,20 +231,23 @@ def flow():
     res['A2'] = it is not None and S.mch_cut.targets == 'SELECTED'
     log('A2 REAL click on Selected (first row):', S.mch_cut.targets)
     S.mch_cut.targets = 'AUTO'
-    # a greyed cell on Smart Move does nothing
+    # Smart Move has no shapes: their place is empty, a REAL click there does nothing
     with C.temp_override(window=w, area=a, region=r):
         bpy.ops.mch.bar_tool(tool='SMART')
     yield 1.5
     yield from wait_draws(3)
-    shape0, tool0 = S.mch_brush.shape, None
     from mecha_lab import tool_state as ts
-    tool0 = ts.effective_tool(C)
-    it = next((i for i in bar() if i.kind == 'ibtn' and not i.enabled), None)
-    if it is not None:
-        yield from press(it)
+    shape0 = S.mch_brush.shape
+    its = bar()
+    px = sorted(where[('ibtn', 'Circle')])[0]
+    res['A3'] = not any(i.kind == 'ibtn' for i in its) and not any(not i.enabled for i in its)
+    xdo('mousemove', int(r.x + px[0] + px[2] / 2), int(w.height - (r.y + px[1] + 15)))
+    yield 0.5
+    xdo('click', 1)
     yield 0.8
-    res['A3'] = it is not None and S.mch_brush.shape == shape0 and ts.effective_tool(C) == tool0 == 'SMART'
-    log('A3 REAL click on a greyed shape (Smart Move): shape', shape0, '->', S.mch_brush.shape, '| tool', ts.effective_tool(C))
+    res['A3'] = res['A3'] and S.mch_brush.shape == shape0 and ts.effective_tool(C) == 'SMART'
+    log('A3 Smart Move: no shape cells, nothing greyed; a REAL click on the empty place: shape', shape0, '->',
+        S.mch_brush.shape, '| tool', ts.effective_tool(C))
     # the tool's own row: Base Mesh, Chamfer
     with C.temp_override(window=w, area=a, region=r):
         bpy.ops.mch.bar_tool(tool='BASE')
@@ -251,9 +263,9 @@ def flow():
     log('A4 REAL click on Chamfer (Base Mesh, its own row):', d.profile)
     shot('06_bar_BASE_chamfer.png')
     i18n.force(None)
-    names = {'A1': 'the common row(s): the same cells at the same places for 5 tools in the real viewport',
+    names = {'A1': 'every fixed cell (Res, the shapes, Target ...) at one place for 6 tools + a tall bar, in the real viewport',
              'A2': 'a REAL click on a first-row cell lands (Target: Selected)',
-             'A3': 'a greyed cell does nothing', 'A4': 'a REAL click on the tool\'s own row lands (Base Mesh: Chamfer)'}
+             'A3': 'a place the tool does not use is empty; a click there does nothing', 'A4': 'a REAL click on the tool\'s own row lands (Base Mesh: Chamfer)'}
     n = 0
     for k in sorted(names):
         ok = bool(res.get(k))

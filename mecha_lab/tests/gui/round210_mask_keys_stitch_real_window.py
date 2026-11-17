@@ -220,7 +220,7 @@ def flow():
     if sx1:
         xdo('key', 'x')
         yield 0.6
-    xdo('mousemove', *screen_xy((0.6, 2.0, 1.25)))            # (empty canvas, up right of the ball)
+    xdo('mousemove', *screen_xy((1.5, -0.6, -0.15)))           # (empty canvas, right of the ball - 0.24.216: under the top bar it was the bar)
     yield 0.5
     xdo('keydown', 'ctrl')
     yield 0.2
