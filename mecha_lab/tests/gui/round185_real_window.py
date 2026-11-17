@@ -508,8 +508,10 @@ def flow():
         len(pieces) >= 2 and pc.hide_get())
     shot('5_print_cut.png')
     # 3b (0.24.190) the form's Height slider dragged for REAL: quick while dragged, the light mesh again once it rests.
-    # LAST in the run: found while adding it - after a real drag of this slider the Print Cut lasso of step 5 did
-    # nothing (so also with the slider's old, slow way: not this change's) - not understood yet, kept out of 5's way
+    # LAST in the run: with it before step 5, step 5's big lasso (it starts at the very top of the view) did nothing.
+    # Checked on its own (0.24.191): Print Cut works after this slider drag when the lasso is drawn clear of the
+    # panels over the view - and fails WITHOUT any drag when it starts under one.  So: this test's own lasso, not
+    # the tool.  Kept last so step 5's layout is as it always was.
     with C.temp_override(window=w, area=a, region=r):
         view((math.radians(90), 0.0, 0.0), (6.0, 0.0, 1.0), 3.0)
         for o in C.selected_objects:
