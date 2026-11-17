@@ -1,10 +1,10 @@
 """0.24.187 one-piece bodies (user: "크리쳐 바디 하나 더 보낼 테니까 그것도 아까 인물 한 것처럼 리깅해서 넣어 줘, 그리고 기존에 보낸
 크리쳐도 리깅해 주고"): each body made light and stored whole WITH its bones and each point's bone.
 
-    <blender python> body_whole_build.py human <body02.fbx>
-    <blender python> body_whole_build.py creature <body06.fbx>          (no parts: the joints and the wrists / ankles found)
-    <blender python> body_whole_build.py creature2 <body4.fbx> <hand.fbx>   (no parts: the joints found on the mesh;
-                                                                          hand.fbx: its palms / soles mark wrists, ankles)
+    <blender python> body_whole_build.py human <body044.fbx> 2
+    <blender python> body_whole_build.py creature <body033.fbx> 2
+    <blender python> body_whole_build.py creature2 <bpy055.fbx> 4
+    (the last number: how many un-subdivide steps make it light)
 
 writes addon/mecha_lab/body_kits/<kind>_whole.npz: Body_Q / Body_box (16-bit points), Body_N, Body_L, Body_B (each
 point's bone, an index into the bones), 'meta' (JSON: the bones - name, slot, side, parent, head, tail).
@@ -208,6 +208,8 @@ def found_bones(V, N, L, marks):
     tt = (lg - hip) @ ax / np.linalg.norm(ankle - hip)
     ok = (tt > 0.4) & (tt < 0.75)
     knee = lg[ok][np.argmax(off[ok])]
+    if 'knee' in marks:                               # (found along the leg's own middle line: where it bends)
+        knee = np.array(marks['knee'], float)
     # the arm: the shoulder joint inside the body's top corner over the armpit, the elbow as the knee
     top = V[(V[:, 0] > 0) & (V[:, 2] > armpit) & (V[:, 2] < armpit + 0.1)]
     xq = float(np.quantile(top[:, 0], 0.9))
@@ -222,6 +224,8 @@ def found_bones(V, N, L, marks):
     tt = (ar - sh) @ ax / np.linalg.norm(wrist - sh)
     ok = (tt > 0.3) & (tt < 0.7)
     elbow = ar[ok][np.argmax(off[ok])] if ok.any() else (sh + wrist) * 0.5
+    if 'elbow' in marks:
+        elbow = np.array(marks['elbow'], float)
     # the body: its middle line up from the pelvis; the neck where it is narrowest above the shoulders
     cen = np.array([[0.0, P[:, 1].mean(), z] for z, P, _c in body])
     wid = np.array([np.ptp(P[:, 0]) for _z, P, _c in body])
@@ -229,18 +233,70 @@ def found_bones(V, N, L, marks):
     up = zb > sh[2] + 0.02
     i_n = np.nonzero(up)[0][np.argmin(wid[up][:max(3, int(up.sum() * 0.6))])]
     neck_mid = cen[i_n]
-    pel = np.array([0.0, np.interp(crotch + 0.035, zb, cen[:, 1]), crotch + 0.035])
-    chest_top = np.array([0.0, np.interp(sh[2] + 0.02, zb, cen[:, 1]), sh[2] + 0.02])
-    waist_top = pel + (chest_top - pel) * 0.5
-    waist_top[1] = np.interp(waist_top[2], zb, cen[:, 1])
-    head_base = neck_mid + (neck_mid - chest_top) * 0.35
-    Hd = V[V[:, 2] > head_base[2] - 0.01]
-    far = Hd[np.argmax(np.linalg.norm(Hd - head_base, axis=1))]
+    # the body in three (user: the chest down to under the ribs, the waist, the pelvis like briefs - its edge the
+    # groin's V): heights between the crotch and the shoulders
+    def mid_at(z):
+        return np.array([0.0, float(np.interp(z, zb, cen[:, 1])), z])
+    span = sh[2] - crotch
+    pel_lo, pel = mid_at(crotch - 0.02), mid_at(crotch + 0.36 * span)
+    pel_lo[1] = pel[1]
+    waist_top = mid_at(crotch + 0.6 * span)
+    chest_top = mid_at(sh[2] + 0.02)
+    # the groin's line (front view): from the crotch up and out to the hip's side - above it the pelvis, below the leg
+    zB = crotch + 0.6 * (pel[2] - crotch)
+    wB = float(min(body, key=lambda b_: abs(b_[0] - zB))[1][:, 0].max())
+    gA = np.array([0.015, 0.0, crotch])
+    gu = np.array([wB - 0.015, 0.0, zB - crotch])
+    gu /= np.linalg.norm(gu)
+    gN = np.array([gu[2], 0.0, -gu[0]])               # (down and out: the leg's side)
+    near = V[(V[:, 0] > 0.01) & (V[:, 0] < wB + 0.01) & (V[:, 2] < zB + 0.03) & (V[:, 2] > crotch - 0.08) &
+             (np.abs((V - gA) @ gN) < 0.012)]
+    if len(near) > 8:
+        hip = near.mean(0)
+    # the head: ALL of it (user: the back of the skull and the jaw too) - cut from under the chin back up to the nape.
+    # The side outline down the body's middle: the front falls back sharply under the chin; the back is most hollow
+    # at the nape.
+    ztop = float(V[:, 2].max())
+    Cn = V[np.abs(V[:, 0]) < 0.03]
+    prof = []
+    for z in np.arange(ztop - 0.003, chest_top[2] - 0.12, -0.006):
+        m = np.abs(Cn[:, 2] - z) < 0.004
+        if m.sum() >= 3:
+            prof.append((z, float(Cn[m, 1].min()), float(Cn[m, 1].max())))
+    prof = np.array(prof)
+    n_hd = int((prof[:, 0] > chest_top[2]).sum())
+    i_sn = int(np.argmin(prof[:max(3, int(n_hd * 0.75)), 1]))   # (the face's most forward point)
+    fw = -prof[:, 1] - prof[:, 0]                     # (how far forward-and-down each slice's front reaches)
+    i_ch = i_sn                                       # (the chin: the face's lowest forward point - after it the
+    for i in range(i_sn + 1, len(prof)):              #  outline falls back to the throat)
+        if fw[i] >= fw[i_ch]:
+            i_ch = i
+        elif fw[i] < fw[i_ch] - 0.012:
+            break
+    chin = np.array([0.0, prof[i_ch, 1], prof[i_ch, 0] - 0.003])
+    # the cut runs on a slant (user: "대각선으로"): from under the chin UP to the skull's base at the back - under its
+    # backmost point by a bit over half of what lies above that point
+    z_np = chin[2] + 0.45 * (ztop - chin[2])
+    i_np = int(np.argmin(np.abs(prof[:, 0] - z_np)))
+    nape = np.array([0.0, prof[i_np, 2], prof[i_np, 0]])
+    Hc = V[V[:, 2] > min(chin[2], nape[2]) + 0.4 * (ztop - min(chin[2], nape[2]))].mean(0)
+    Hc[0] = 0.0
+    e_ = nape - chin
+    hN = np.array([0.0, -e_[2], e_[1]])
+    hN /= np.linalg.norm(hN)
+    head_base = (chin + nape) * 0.5
+    if float((Hc - head_base) @ hN) < 0:
+        hN = -hN
+    Hd = V[(V[:, 2] > min(chin[2], nape[2]) - 0.03) & ((V - head_base) @ hN > 0)]
+    head_end = head_base + hN * float(((Hd - head_base) @ hN).max()) * 0.95
+    print('head: chin', np.round(chin, 3), 'nape', np.round(nape, 3), 'top', round(ztop, 3))
     fingers = V[(V[:, 0] > 0) & (np.linalg.norm(V - wrist, axis=1) < 0.2) & (V[:, 2] < wrist[2])]
     tip = fingers[np.argmax(np.linalg.norm(fingers - wrist, axis=1))] if len(fingers) else wrist - (0, 0, 0.08)
+    if 'tip' in marks:                                # (the longest finger's end, found along the skin)
+        tip = np.array(marks['tip'], float)
     hand_end = wrist + (tip - wrist) * 0.6
-    L_ = {'Pelvis': (pel - (0, 0, 0.05), pel), 'Waist': (pel, waist_top), 'Chest': (waist_top, chest_top),
-          'Neck': (chest_top, head_base), 'Head': (head_base, head_base + (far - head_base) * 0.9),
+    L_ = {'Pelvis': (pel_lo, pel), 'Waist': (pel, waist_top), 'Chest': (waist_top, chest_top),
+          'Neck': (chest_top, head_base), 'Head': (head_base, head_end),
           'Shoulder.L': (np.array([sh[0] * 0.25, sh[1] - 0.005, sh[2] + 0.01]), sh), 'UpperArm.L': (sh, elbow),
           'Forearm.L': (elbow, wrist), 'Hand.L': (wrist, hand_end), 'Thigh.L': (hip, knee), 'Shin.L': (knee, ankle),
           'Foot.L': (ankle, toe)}
@@ -361,31 +417,231 @@ def found_bones(V, N, L, marks):
                 own[vi] = 'arm' + sd
                 moved[1] += 1
     print('at the thigh: skin given back to the leg', moved[0], ', to the hand', moved[1])
+    def along_chain(v, names_):
+        """Which bone of a chain: past each joint in turn - a cut ACROSS the limb there (square to the two bones'
+        middle direction), so a boundary lies at the joint all the way round."""
+        k_ = 0
+        for j in range(len(names_) - 1):
+            a1, b1 = bones[names_[j]]
+            a2, b2 = bones[names_[j + 1]]
+            nrm = (b1 - a1) / np.linalg.norm(b1 - a1) + (b2 - a2) / np.linalg.norm(b2 - a2)
+            if float((v - b1) @ nrm) > 0:
+                k_ = j + 1
+            else:
+                break
+        return names_[k_]
     out = []
     counts = {}
     for vi, v in enumerate(V):
         cn = own.get(vi, 'trunk')
-        if cn.startswith('leg'):                      # (before the limb's first joint: the body's)
-            a_, b_ = bones[chains[cn][0]]
-            if float((v - a_) @ (b_ - a_)) < 0:
-                cn = 'trunk'
+        sx = 1.0 if v[0] > 0 else -1.0
+        side_g = float((v - gA * (sx, 1, 1)) @ (gN * (sx, 1, 1)))      # (which side of the groin's line)
+        if cn.startswith('leg') and side_g < 0:
+            cn = 'trunk'
+        elif cn == 'trunk' and side_g > 0 and v[2] < zB and abs(v[0]) > 0.015:
+            cn = 'legL' if v[0] > 0 else 'legR'
         elif cn.startswith('arm'):                    # (the arm: all that lies OUT from the shoulder joint - the
             a_, b_ = bones['Shoulder.' + cn[-1]]      #  shoulder muscle over it goes up with the arm, not the body)
             dr = (b_ - a_) / np.linalg.norm(b_ - a_)
-            if float((v - b_) @ dr) < -0.012:
+            if float((v - b_) @ dr) < -0.25 * rise:
                 cn = 'trunk'
-        best, bd = None, 1e9
-        for n in chains[cn]:
-            if (n.endswith('.L') and v[0] < -0.004) or (n.endswith('.R') and v[0] > 0.004):
-                continue
-            d_ = float(seg_d(v[None], n)[0][0])
-            if d_ < bd:
-                best, bd = n, d_
+        if cn == 'trunk' and abs(v[0]) > 0.02 and v[2] > armpit:    # (the shoulder's top out past its joint: the arm's)
+            a_, b_ = bones['Shoulder.L' if v[0] > 0 else 'Shoulder.R']
+            dr = (b_ - a_) / np.linalg.norm(b_ - a_)
+            if float((v - b_) @ dr) > -0.1 * rise:
+                cn = 'armL' if v[0] > 0 else 'armR'
+        if cn != 'trunk':
+            best = along_chain(v, chains[cn])
+        elif float((v - head_base) @ hN) > 0 and v[2] > min(chin[2], nape[2]) - 0.05 and \
+                float(np.linalg.norm(v - head_base)) < (ztop - min(chin[2], nape[2])) * 1.6:
+            best = 'Head'
+        else:
+            best = along_chain(v, ['Pelvis', 'Waist', 'Chest', 'Neck'])
+            if best in ('Chest', 'Neck') and abs(v[0]) > 0.004:    # (the shoulders' share of the chest's top)
+                sn = 'Shoulder.L' if v[0] > 0 else 'Shoulder.R'
+                if float(seg_d(v[None], sn)[0][0]) < float(seg_d(v[None], best)[0][0]):
+                    best = sn
         out.append(best)
         counts[cn] = counts.get(cn, 0) + 1
     print('limbs', counts)
     return bones, out
 
+
+def finger_tree(V, nb, region, src, minfrac):
+    """Over a patch of skin (``region``), how far each point is from ``src`` ALONG THE SKIN, and the pieces that
+    stand apart coming back from the far ends until they meet (fingers): ([{m, b, t, tip}], d, the farthest)."""
+    import heapq
+    d = {i: 0.0 for i in src}
+    hp = [(0.0, i) for i in src]
+    while hp:
+        da, a = heapq.heappop(hp)
+        if da > d.get(a, 1e9):
+            continue
+        for b in nb[a]:
+            if b in region:
+                db = da + float(np.linalg.norm(V[a] - V[b]))
+                if db < d.get(b, 1e9):
+                    d[b] = db
+                    heapq.heappush(hp, (db, b))
+    for i in region:
+        d.setdefault(i, 0.0)
+    dmax = max(d.values())
+    minlen = dmax * minfrac
+    par, comp, done, found = {}, {}, set(), []
+
+    def find(a):
+        while par[a] != a:
+            par[a] = par[par[a]]
+            a = par[a]
+        return a
+    for v in sorted(region, key=d.get, reverse=True):
+        par[v] = v
+        comp[v] = {'birth': d[v], 'tip': v, 'm': [v], 'trunk': False}
+        done.add(v)
+        for w in nb[v]:
+            if w not in done:
+                continue
+            ra, rb = find(v), find(w)
+            if ra == rb:
+                continue
+            A, B = comp[ra], comp[rb]
+            lv = d[v]
+            sa = (not A['trunk']) and A['birth'] - lv > minlen
+            sb = (not B['trunk']) and B['birth'] - lv > minlen
+            trunk = A['trunk'] or B['trunk']
+            for C, sc, other in ((A, sa, sb or B['trunk']), (B, sb, sa or A['trunk'])):
+                if sc and other:                  # (two fingers meet, or a finger meets the hand: it ends here)
+                    found.append({'m': list(C['m']), 'b': lv, 't': C['birth'], 'tip': C['tip']})
+                    trunk = True
+            if len(A['m']) < len(B['m']):
+                ra, rb, A, B = rb, ra, B, A
+            A['m'] += B['m']
+            if B['birth'] > A['birth']:
+                A['birth'], A['tip'] = B['birth'], B['tip']
+            A['trunk'] = trunk
+            par[rb] = ra
+            del comp[rb]
+    return found, d, dmax
+
+
+def middle_line(V, nb, region, src, nbins=70):
+    """A limb's middle line: the skin's rings at equal distances along it (from ``src``), each ring's centre."""
+    import heapq
+    d = {i: 0.0 for i in src}
+    hp = [(0.0, i) for i in src]
+    heapq.heapify(hp)
+    while hp:
+        da, a = heapq.heappop(hp)
+        if da > d.get(a, 1e9):
+            continue
+        for b in nb[a]:
+            if b in region:
+                db = da + float(np.linalg.norm(V[a] - V[b]))
+                if db < d.get(b, 1e9):
+                    d[b] = db
+                    heapq.heappush(hp, (db, b))
+    ids = np.array(sorted(d))
+    dv = np.array([d[i] for i in ids])
+    bins = np.minimum((dv / max(dv.max(), 1e-9) * nbins).astype(int), nbins - 1)
+    P = [V[ids[bins == q]].mean(0) for q in range(nbins) if (bins == q).sum() >= 4]
+    P = np.array(P)
+    out = P.copy()                                    # (smoothed a little)
+    for i in range(len(P)):
+        out[i] = P[max(0, i - 2):i + 3].mean(0)
+    return out
+
+
+def bend_at(P, i, k=6):
+    a, b = P[i] - P[max(0, i - k)], P[min(len(P) - 1, i + k)] - P[i]
+    c = float(a @ b) / max(float(np.linalg.norm(a) * np.linalg.norm(b)), 1e-12)
+    return float(np.degrees(np.arccos(min(max(c, -1.0), 1.0))))
+
+
+def refine_joints(V, N, L, bones, lab, marks):
+    """The knee, the ankle and the elbow where the limb really bends (user's marks: the boundaries at the joints):
+    along each limb's middle line the sharpest turn - a straight limb: its middle."""
+    nb = [[] for _ in V]
+    k = 0
+    for n_ in N:
+        n_ = int(n_)
+        f = [int(x) for x in L[k:k + n_]]
+        for a, b in zip(f, f[1:] + f[:1]):
+            nb[a].append(b)
+            nb[b].append(a)
+        k += n_
+    out = {}
+    # the leg: from the hip down to the toes
+    region = {i for i, x in enumerate(lab) if x in ('Thigh.L', 'Shin.L', 'Foot.L')}
+    a_, b_ = bones['Thigh.L']
+    dr = (b_ - a_) / np.linalg.norm(b_ - a_)
+    src = [i for i in region if float((V[i] - a_) @ dr) < 0.02]
+    if len(src) > 4:
+        P = middle_line(V, nb, region, src)
+        n = len(P)
+        rng = range(int(n * 0.55), int(n * 0.93))
+        top_b = max(bend_at(P, i, 4) for i in rng)
+        ia = next(i for i in rng if bend_at(P, i, 4) >= top_b * 0.6)   # (where the turn at the ankle BEGINS)
+        hi = max(int(n * 0.25) + 1, min(int(n * 0.6), ia - int(n * 0.15)))
+        ik = max(range(int(n * 0.25), hi), key=lambda i: bend_at(P, i) * (1.0 - 1.5 * abs(i / ia - 0.5)))
+        ka = bend_at(P, ik)
+        out['knee'], out['ankle'] = P[ik], P[ia]
+        if ka < 12.0:                                 # (a straight leg on a flat foot: the ankle a little under the
+            ank = np.array(marks['ankle'], float)     #  shin's narrowest, the knee half way from the hip to it)
+            i2 = int(np.argmin(np.abs(P[:, 2] - ank[2] * 0.75)))
+            out['ankle'] = P[i2]
+            ik = int(np.argmin(np.abs(P[:, 2] - (a_[2] + P[i2][2]) * 0.5)))
+            out['knee'] = P[ik]
+            ia = i2
+        print('leg: knee at', round(ik / n, 2), f'({ka:.0f} deg)', np.round(P[ik], 3), 'ankle at', round(ia / n, 2),
+              f'({bend_at(P, ia):.0f} deg)', np.round(P[ia], 3))
+    # the arm: from the shoulder down to the wrist
+    region = {i for i, x in enumerate(lab) if x in ('UpperArm.L', 'Forearm.L', 'Hand.L')}
+    a_, b_ = bones['UpperArm.L']
+    dr = (b_ - a_) / np.linalg.norm(b_ - a_)
+    src = [i for i in region if float((V[i] - a_) @ dr) < 0.02]
+    if len(src) > 4:
+        P = middle_line(V, nb, region, src)
+        iw = int(np.argmin(np.linalg.norm(P - np.array(marks['wrist'], float), axis=1)))
+        if iw > 12:
+            ie = max(range(int(iw * 0.3), int(iw * 0.7)), key=lambda i: bend_at(P, i, 5) * (1.0 - 1.5 * abs(i / iw - 0.5)))
+            ea = bend_at(P, ie, 5)
+            if ea < 30.0:                             # (no clear bend: half way)
+                ie = int(round(iw * 0.5))
+            out['elbow'] = P[ie]
+            print('arm: elbow at', round(ie / max(iw, 1), 2), f'({ea:.0f} deg)', np.round(P[ie], 3))
+    return out
+
+
+def refine_wrist(V, N, L, bones, lab):
+    """The wrist from the fingers: on the forearm + hand, the fingers found (where they part: the knuckles), and from
+    the knuckles back a palm's length (a palm about 1.3 x a finger) - there the ring of skin round the wrist."""
+    nb = [[] for _ in V]
+    k = 0
+    for n_ in N:
+        n_ = int(n_)
+        f = [int(x) for x in L[k:k + n_]]
+        for a, b in zip(f, f[1:] + f[:1]):
+            nb[a].append(b)
+            nb[b].append(a)
+        k += n_
+    region = {i for i, x in enumerate(lab) if x in ('Forearm.L', 'Hand.L')}
+    a_, b_ = bones['Forearm.L']
+    ab = b_ - a_
+    src = [i for i in region if float((V[i] - a_) @ ab) / float(ab @ ab) < 0.15]
+    if len(src) < 4:
+        return None
+    found, d, dmax = finger_tree(V, nb, region, src, 0.07)
+    found = sorted(found, key=lambda f: f['b'] - f['t'])[:6]
+    if len(found) < 2:
+        return None
+    knuckle = float(np.median([f['b'] for f in found]))
+    finger = float(np.median([f['t'] - f['b'] for f in found]))
+    w = max(knuckle - finger * 1.3, dmax * 0.2)
+    ring = [i for i in region if abs(d[i] - w) < 0.008]
+    print('wrist from the fingers:', len(found), 'fingers, about', round(finger, 3), 'long; knuckles at', round(knuckle, 3),
+          'of', round(dmax, 3), '-> wrist at', round(w, 3), 'ring', len(ring))
+    far = max(found, key=lambda f: f['t'])['tip']
+    return (V[ring].mean(0), V[far].copy()) if len(ring) > 5 else None
 
 def add_digits(V, N, L, bones, lab):
     """Fingers and toes (user: "손이나 발 쪽도 세부적으로 조절 가능하게 리깅을"): found on the mesh - over the hand (foot),
@@ -410,7 +666,7 @@ def add_digits(V, N, L, bones, lab):
         VN[f] += np.cross(V[f[1]] - V[f[0]], V[f[2]] - V[f[0]])
         k += n_
     recs = []
-    for slot, pre, nseg, minfrac, mindot in (('Hand', 'Finger', 3, 0.2, -0.3),):
+    for slot, pre, nseg, minfrac, mindot in (('Hand', 'Finger', 3, 0.11, -0.3),):
         name = slot + '.L'
         head, tail = bones[name]
         ln = float(np.linalg.norm(tail - head))
@@ -443,56 +699,7 @@ def add_digits(V, N, L, bones, lab):
                 lab[i] = name
         along = {i: float((V[i] - head) @ dirv) for i in region}
         src = [i for i in region if along[i] < 0.12 * ln] or sorted(region, key=along.get)[:max(4, len(region) // 20)]
-        d = {i: 0.0 for i in src}
-        hp = [(0.0, i) for i in src]
-        while hp:
-            da, a = heapq.heappop(hp)
-            if da > d.get(a, 1e9):
-                continue
-            for b in nb[a]:
-                if b in region:
-                    db = da + float(np.linalg.norm(V[a] - V[b]))
-                    if db < d.get(b, 1e9):
-                        d[b] = db
-                        heapq.heappush(hp, (db, b))
-        for i in region:
-            d.setdefault(i, 0.0)
-        dmax = max(d.values())
-        minlen = dmax * minfrac
-        par, comp, done, found = {}, {}, set(), []
-
-        def find(a):
-            while par[a] != a:
-                par[a] = par[par[a]]
-                a = par[a]
-            return a
-        for v in sorted(region, key=d.get, reverse=True):
-            par[v] = v
-            comp[v] = {'birth': d[v], 'tip': v, 'm': [v], 'trunk': False}
-            done.add(v)
-            for w in nb[v]:
-                if w not in done:
-                    continue
-                ra, rb = find(v), find(w)
-                if ra == rb:
-                    continue
-                A, B = comp[ra], comp[rb]
-                lv = d[v]
-                sa = (not A['trunk']) and A['birth'] - lv > minlen
-                sb = (not B['trunk']) and B['birth'] - lv > minlen
-                trunk = A['trunk'] or B['trunk']
-                for C, sc, other in ((A, sa, sb or B['trunk']), (B, sb, sa or A['trunk'])):
-                    if sc and other:                  # (two fingers meet, or a finger meets the hand: it ends here)
-                        found.append({'m': list(C['m']), 'b': lv, 't': C['birth'], 'tip': C['tip']})
-                        trunk = True
-                if len(A['m']) < len(B['m']):
-                    ra, rb, A, B = rb, ra, B, A
-                A['m'] += B['m']
-                if B['birth'] > A['birth']:
-                    A['birth'], A['tip'] = B['birth'], B['tip']
-                A['trunk'] = trunk
-                par[rb] = ra
-                del comp[rb]
+        found, d, dmax = finger_tree(V, nb, region, src, minfrac)
         print(slot, 'region', len(region), 'sources', len(src), 'far', round(dmax, 4), 'bone', round(ln, 4), 'pieces', [(round(f['t'] - f['b'], 3), len(f['m'])) for f in found])
         digits = []
         for f in found:
@@ -577,7 +784,7 @@ def add_digits(V, N, L, bones, lab):
     return recs
 
 
-def auto_marks(V):
+def auto_marks(V, ankle_z=(0.15, 0.32)):
     """The wrist, the ankle and the toes found on a whole body (no palm / sole parts to mark them): the arm's and the
     leg's narrowest slice near their ends, the foot's front on the floor."""
     R = V[V[:, 0] > 0]
@@ -607,36 +814,59 @@ def auto_marks(V):
         return best[1]
     az = [z for z, _p in arm]
     tip, top = min(az), max(az)
-    wrist = narrow(arm, tip + (top - tip) * 0.2, tip + (top - tip) * 0.6)
-    ankle = narrow(leg, 0.15, 0.32)
+    # the wrist: along the forearm's own line (an arm held out slants - level slices cut it askew), where it is
+    # thinnest before the hand widens
+    A = np.concatenate([P for _z, P in arm])
+    lowA = A[A[:, 2] < np.median(A[:, 2])]
+    c_ = lowA.mean(0)
+    _u, _s, vt = np.linalg.svd(lowA - c_, full_matrices=False)
+    axv = vt[0] * (-1.0 if vt[0][2] > 0 else 1.0)     # (toward the fingertips)
+    t_ = (lowA - c_) @ axv
+    t_ = (t_ - t_.min()) / np.ptp(t_)
+    rad_ = np.linalg.norm((lowA - c_) - np.outer((lowA - c_) @ axv, axv), axis=1)
+    prof = []                                         # (how WIDE it is along it: the forearm narrows to the wrist,
+    for q in np.arange(0.15, 0.86, 0.02):             #  then the palm widens)
+        m_ = np.abs(t_ - q) < 0.03
+        if m_.sum() > 8:
+            cen = lowA[m_].mean(0)
+            res = (lowA[m_] - cen) - np.outer((lowA[m_] - cen) @ axv, axv)
+            sv = np.linalg.svd(res, full_matrices=False)[1]
+            prof.append((float(q), float(sv[0] / np.sqrt(m_.sum())), cen))
+    best = None                                       # (from the fingers back: the palm's widest, then the
+    palm = [p_ for p_ in prof if 0.62 <= p_[0] <= 0.9]   #  narrowest before it - the wrist)
+    if palm:
+        pk = max(palm, key=lambda x: x[1])[0]
+        back = [p_ for p_ in prof if pk - 0.26 <= p_[0] < pk]
+        if back:
+            w_ = min(back, key=lambda x: x[1])
+            best = (w_[1], w_[2])
+    if best is None and prof:
+        mid = [p_ for p_ in prof if 0.3 <= p_[0] <= 0.7] or prof
+        best = min(((p_[1], p_[2]) for p_ in mid), key=lambda x: x[0])
+    wrist = best[1] if best is not None else narrow(arm, tip + (top - tip) * 0.2, tip + (top - tip) * 0.6)
+    ankle = narrow(leg, *ankle_z)
     low = R[(R[:, 2] < 0.04) & (R[:, 0] < wrist[0] + 0.05)]
     toe = low[low[:, 1] <= np.quantile(low[:, 1], 0.5)].mean(0)
     return {'wrist': wrist, 'ankle': ankle, 'toe': toe}
 
 
 def main(kind, path, extra=None):
-    V, N, L = read(path, unsub=int(extra) if kind == 'creature' and extra else 0)
+    """Each body: the user's all-quad retopo, one closed mesh - its own coarser levels taken (quads kept), its joints
+    found on it."""
+    V, N, L = read(path, unsub=int(extra or 0))
     print('faces', len(N), 'quads', int((N == 4).sum()))
     V, shift, H = normalise(V)
-    if kind == 'creature2':
-        Vh, _n, _l = read(extra, faces=10 ** 9)
-        Vh = (Vh - shift) / H                          # (the palms and soles: where the body's hands and feet are)
-        R = Vh[Vh[:, 0] > 0]
-        palm = R[R[:, 2] > 0.3]
-        sole = R[R[:, 2] < 0.2]
-        top = lambda P, q=0.9: P[P[:, 2] >= np.quantile(P[:, 2], q)].mean(0)     # noqa: E731
-        marks = {'wrist': top(palm), 'ankle': top(sole, 0.93),
-                 'toe': sole[sole[:, 2] <= np.quantile(sole[:, 2], 0.25)].mean(0)}
-        bones, lab = found_bones(V, N, L, marks)
-        meta_extra = {'marks': {k: [round(float(x), 5) for x in v] for k, v in marks.items()}}
-    elif kind == 'creature':                          # (body06.fbx: one mesh, no parts - its joints found on it)
-        marks = auto_marks(V)
+    marks = auto_marks(V, (0.03, 0.12) if kind == 'human' else (0.15, 0.32))
+    print('marks', {k: np.round(v, 3) for k, v in marks.items()})
+    bones, lab = found_bones(V, N, L, marks)
+    w2 = refine_wrist(V, N, L, bones, lab)
+    if w2 is not None:
+        marks['wrist'], marks['tip'] = w2
         print('marks', {k: np.round(v, 3) for k, v in marks.items()})
         bones, lab = found_bones(V, N, L, marks)
-        meta_extra = {'marks': {k: [round(float(x), 5) for x in v] for k, v in marks.items()}}
-    else:
-        bones, lab = kit_bones(kind, V)
-        meta_extra = {}
+    marks.update(refine_joints(V, N, L, bones, lab, marks))
+    bones, lab = found_bones(V, N, L, marks)
+    meta_extra = {'marks': {k: [round(float(x), 5) for x in v] for k, v in marks.items()}}
     names = []
     for base in ORDER:
         for sd in (('L', 'R') if base in SIDED else ('',)):

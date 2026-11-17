@@ -34,7 +34,7 @@ def tip(n):
 V0 = verts()
 check(f'Add One-Piece Human: ONE mesh ({len(body.data.polygons)} faces, light) on bones (51 - 19 of the body, 3 for each of the 10 fingers, the front of each foot: the waist and the chest, the neck and the head, a shoulder before each upper arm), standing on the cursor, '
       f'1.8 tall ({V0[:, 2].min():.3f} .. {V0[:, 2].max():.3f})', r == {'FINISHED'} and body.type == 'MESH' and
-      rig.type == 'ARMATURE' and len(rig.pose.bones) == 51 and {'Waist', 'Chest', 'Neck', 'Head', 'Shoulder.L', 'UpperArm.L'} <= set(rig.pose.bones.keys()) and len(body.data.polygons) < 45000 and
+      rig.type == 'ARMATURE' and len(rig.pose.bones) == 51 and {'Waist', 'Chest', 'Neck', 'Head', 'Shoulder.L', 'UpperArm.L'} <= set(rig.pose.bones.keys()) and len(body.data.polygons) < 60000 and
       abs(V0[:, 2].min()) < 1e-3 and abs(V0[:, 2].max() - 1.8) < 0.01)
 W = np.zeros(len(body.data.vertices))
 for v in body.data.vertices:
