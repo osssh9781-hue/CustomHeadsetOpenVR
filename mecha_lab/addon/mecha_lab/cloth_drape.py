@@ -132,6 +132,16 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
     gravity: FloatProperty(name='Gravity', description='How hard the cloth drops (world down); below 0 it floats UP instead (0.24.95)', default=200.0, min=-600.0, max=600.0, subtype='PERCENTAGE')
     stick: FloatProperty(name='Stickiness', description='Friction against the body: 0 slides, 100 sticks where it lands',
                          default=30.0, min=0.0, max=100.0, subtype='PERCENTAGE')
+    # 0.24.208 Stitches (user: "뽑은 메쉬 위에 내가 선으로 그리면 그쪽이 약간 박음질 같은 거 한 걸로 돼서 시뮬" / "몸에
+    # 박힌 거보다 천끼리만 조여지는 느낌, 근데 몸에 붙는 것도 옵션 있으면 좋긴 하겠다")
+    line_mode: EnumProperty(name='Lines', items=[
+        ('TUBES', 'Tubes', 'The drawn lines are tubes under the cloth: it catches and folds on them'),
+        ('STITCH', 'Stitches', 'The drawn lines are seams sewn into the cloth: it is gathered (pulled together) along them')],
+        default='TUBES')
+    stitch_tight: FloatProperty(name='Tighten', description='Stitches: how much the cloth is pulled together along a seam (0 = a seam with no gather)', default=35.0, min=0.0, max=80.0, subtype='PERCENTAGE')
+    stitch_width: FloatProperty(name='Seam Width', description='Stitches: how wide the gathered band along a line is, as % of the cloth\'s size', default=2.5, min=0.3, max=15.0, subtype='PERCENTAGE')
+    stitch_puff: FloatProperty(name='Puff', description='Stitches: how much the cloth between the seams swells out (the seams stay low: a quilted look); 0 = only the gather', default=40.0, min=0.0, max=200.0, subtype='PERCENTAGE')
+    stitch_stick: BoolProperty(name='Sewn to Body', description='Stitches: the seam is also held on the body where it was drawn (off: only the cloth is gathered, it moves freely)', default=False)
     stretch: FloatProperty(name='Stretch', description='How much the cloth gives when pulled: 0 = cloth (keeps its length), 100 = rubber', default=0.0, min=0.0, max=100.0, subtype='PERCENTAGE')
     self_collide: BoolProperty(name='Self Collision', description='The cloth does not pass through itself (folds lying on each other, a piece falling onto itself). Slower', default=False)
     keep: FloatProperty(name='Silhouette Keep', description='A soft spring back to the laid patch', default=5.0, min=0.0, max=100.0, subtype='PERCENTAGE')
@@ -352,6 +362,37 @@ def show_start(me, surface, size, st):
     me.update()
 
 
+SEAM_KEEP = 0.5                  # how firmly a cloth-only seam keeps its place (x the Silhouette Keep spring's full pull)
+
+
+def stitch(cloth, co, paths, width, tight, stick):
+    """Seams along ``paths`` (the cloth's space): the cloth's edges inside ``width`` of a line are shortened by up to
+    ``tight`` (most on the line, fading to its sides) - the fabric is gathered there; ``stick``: the points on the
+    line are held where they are (sewn to the body).  Returns how many cloth points a seam touches."""
+    s = wl.tube_field(co, paths, [1.0] * len(paths), width, fade=0.0, lift=0.0)
+    if not np.any(s > 0):
+        return 0
+    a, b = cloth.edges[:, 0], cloth.edges[:, 1]
+    se = (s[a] + s[b]) * 0.5
+    cloth.scale_e = np.broadcast_to(np.asarray(cloth.scale_e, np.float64), se.shape) * (1.0 - tight * se)
+    if len(cloth.bends):                              # (the bending and the wide bending keep distances too: they
+        ba, bb = cloth.bends[:, 0], cloth.bends[:, 1]                         # would hold the seam flat)
+        sb = (s[ba] + s[bb]) * 0.5
+        cloth.scale_b = np.broadcast_to(np.asarray(cloth.scale_b, np.float64), sb.shape) * (1.0 - tight * sb)
+    if cloth.far:
+        cloth.far = [(pairs, rest * (1.0 - tight * (s[pairs[:, 0]] + s[pairs[:, 1]]) * 0.5), strength)
+                     for pairs, rest, strength in cloth.far]
+    if stick:
+        on = s > 0.55
+        cloth.pin = np.asarray(cloth.pin, np.float64).copy()
+        cloth.pin[on] = 1.0
+    else:                                             # (cloth only: the seam is drawn back to where it lay, softly -
+        keep = np.broadcast_to(np.asarray(cloth.keep, np.float64), s.shape)   # it can still shift and sag)
+        cloth.keep = np.maximum(keep, s * SEAM_KEEP)
+    cloth.seam = s
+    return int(np.count_nonzero(s > 0))
+
+
 def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_ob=None, wrap=False, sew=None, pin_idx=None, puff=False,
           tether=False, tacks=None, offset_lift=False, no_slack=False, keep_rim=False, free=False):
     """The cloth + the collider for the mesh ``me``: a lasso patch (local space of ``target``, the first ``nb``
@@ -458,6 +499,16 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
     tn = wl._normals(body_me)
     tubes = 0
     lines = wl._lines_of(target) if st.use_lines else []
+    stitches = 0
+    if lines and getattr(st, 'line_mode', 'TUBES') == 'STITCH':     # 0.24.208 seams sewn into the cloth
+        tgt = wl.target_of(context, target)
+        paths = [np.array([list(p) for p in wl.line_path(tgt, ln)]) for ln in lines]
+        if to_cloth is not None:
+            M_ = np.array(to_cloth, np.float64)
+            paths = [p @ M_[:3, :3].T + M_[:3, 3] for p in paths]
+        stitches = stitch(cloth, co, paths, max(size * st.stitch_width / 100.0, spacing * 1.2),   # (``co``: on the body, as drawn)
+                          st.stitch_tight / 100.0, bool(st.stitch_stick))
+        lines = []
     if lines:                                         # the drawn lines as tubes on the body: the cloth catches on them
         wst = wl.settings(context)
         tgt = wl.target_of(context, target)
@@ -514,6 +565,7 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
         raise cg.CutError('The body is nowhere near the cloth')
     grid = cloth_pbd.GridCollider(sco - snrm * (gap - margin) if gap > margin else sco, snrm, cell=cell, band=GRID_BAND)
     sess = dict(cloth=cloth, grid=grid, margin=margin, friction=st.stick / 100.0, damping=damping, wrap=wrap, tubes=tubes,
+                stitches=stitches,
                 spacing=spacing,
                 sew=int(len(sew)) if sew is not None else 0,
                 puff=(size * 0.0015 * st.puff / 50.0) if puff else 0.0, puff_dir=nrm.copy() if puff else None,
@@ -522,6 +574,9 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
                 gdir=wl._gravity_dir(gdir_ob or target), size=size, frames=st.frames, frame=0, points=n, collider=int(len(sco)),
                 grid_time=time.perf_counter() - t, stage='run')
 
+    if stitches and not pad_on and getattr(st, 'stitch_puff', 0.0) > 0:      # 0.24.208 between the seams it swells
+        sess.update(puff=size * 0.0015 * st.stitch_puff / 50.0, puff_dir=nrm.copy(),
+                    puff_max=size * 0.05 * max(0.15, st.slack / 100.0) ** 0.5, seam=np.asarray(cloth.seam, np.float64))
     if pad_on:                                        # the padding's puff: the cells (or the whole area: Whole) blow up
         cell = st.pad_size / 100.0 if st.pad_pattern != 'NONE' else 1.0
         sess.update(puff=size * 0.0015 * st.pad_puff / 50.0, puff_dir=nrm.copy(),
@@ -589,7 +644,10 @@ def advance(sess, st):
     if sess.get('puff', 0.0) > 0 and sess.get('puff_dir') is not None:   # the sewn copy's pillow: away from the plate
         lift = ((cloth.co - cloth.init) * sess['puff_dir']).sum(1)            # how far off the plate already
         room = np.clip(1.0 - lift / max(sess['puff_max'], 1e-9), 0.0, 1.0)   # the extra fabric sets the height
-        f = sess['puff_dir'] * (sess['puff'] * room * (1.0 - cloth.pin))[:, None]
+        free = 1.0 - cloth.pin
+        if sess.get('seam') is not None:                                      # (a seam is not blown up)
+            free = free * (1.0 - np.clip(sess['seam'], 0.0, 1.0))
+        f = sess['puff_dir'] * (sess['puff'] * room * free)[:, None]
         force = f if force is None else force + f
     cloth.step(force=force, gravity=g, damping=sess['damping'], iterations=ITERATIONS,
                keep_rate=KEEP_RATE if st.keep > 0 else 0.0)
@@ -1960,7 +2018,7 @@ def _snapshot(st):
                                           'wrap_tight', 'use_lines', 'stop_at_pins', 'two_sides', 'puff', 'wrinkles',
                                           'padding', 'pad_pattern', 'pad_size', 'pad_puff', 'trim', 'trim_width',
                                           'collide_with', 'use_proxy', 'proxy_faces',
-                                          'cape_length', 'cape_flare', 'cape_gather', 'cape_pleats', 'cape_folds', 'cape_heading', 'cape_sides', 'spacing', 'neck_style', 'neck_pin_top', 'neck_bottom', 'neck_top', 'mask_free', 'stretch', 'self_collide', 'mask_points', 'offset'))
+                                          'cape_length', 'cape_flare', 'cape_gather', 'cape_pleats', 'cape_folds', 'cape_heading', 'cape_sides', 'spacing', 'neck_style', 'neck_pin_top', 'neck_bottom', 'neck_top', 'mask_free', 'stretch', 'self_collide', 'line_mode', 'stitch_tight', 'stitch_width', 'stitch_puff', 'stitch_stick', 'mask_points', 'offset'))
 
 
 def restart(context):
@@ -2564,6 +2622,52 @@ class MCH_OT_cdrape_sew_copy(bpy.types.Operator):
         return {'FINISHED'}
 
 
+LINES_BACK = {}
+
+
+def lines_back(context):
+    """The laid cloth shown again after Draw Lines, its session made again with the lines (tubes / stitches)."""
+    name = LINES_BACK.pop('cloth', None)
+    LINES_BACK.clear()
+    cloth = bpy.data.objects.get(name or '')
+    if cloth is None or not sim_active():
+        return False
+    cloth.hide_set(False)
+    for o in context.selected_objects:
+        o.select_set(False)
+    cloth.select_set(True)
+    context.view_layer.objects.active = cloth
+    wl._CACHE.pop(SIM.get('target', ''), None)
+    restart(context)
+    return True
+
+
+def _lines_back():
+    from . import tool_state as ts
+    if 'cloth' not in LINES_BACK:
+        return None
+    try:                                           # (a timer has no window of its own: look in the first one)
+        win = bpy.context.window_manager.windows[0]
+        with bpy.context.temp_override(window=win):
+            tool = ts.effective_tool(bpy.context)
+    except (AttributeError, KeyError, TypeError, IndexError, RuntimeError):
+        return 0.5
+    if tool == 'WLINES':
+        LINES_BACK['seen'] = True
+        return 0.5
+    if not LINES_BACK.get('seen'):                 # (the tool has not switched yet)
+        LINES_BACK['n'] = LINES_BACK.get('n', 0) + 1
+        if LINES_BACK['n'] < 6:
+            return 0.5
+    try:
+        win = bpy.context.window_manager.windows[0]
+        with bpy.context.temp_override(window=win):
+            lines_back(bpy.context)
+    except (RuntimeError, AttributeError, ReferenceError, IndexError):
+        LINES_BACK.clear()
+    return None
+
+
 class MCH_OT_cdrape_lines(bpy.types.Operator):
     """Draw wrinkle lines on the body (the Wrinkle Lines tool): they become tubes under the cloth. Pick the Cloth Drape tool again to drape"""
     bl_idname = 'mch.cdrape_lines'
@@ -2573,12 +2677,27 @@ class MCH_OT_cdrape_lines(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         ob = context.view_layer.objects.active
-        return ob is not None and ob.type == 'MESH' and context.mode == 'OBJECT' and not sim_active()
+        if ob is None or ob.type != 'MESH' or context.mode != 'OBJECT':
+            return False
+        return not sim_active() or not SIM.get('running')       # (0.24.208 also on a cloth laid but not draping)
 
     def execute(self, context):
         from . import workspace_ui
+        if sim_active():                       # 0.24.208 the cloth is laid: it steps aside, the lines go on the body
+            cloth, body = _ob(), bpy.data.objects.get(SIM.get('target', ''))       # under it, then it comes back
+            if cloth is None or body is None:
+                return {'CANCELLED'}
+            cloth.hide_set(True)
+            for o in context.selected_objects:
+                o.select_set(False)
+            body.select_set(True)
+            context.view_layer.objects.active = body
+            LINES_BACK.update(cloth=cloth.name, seen=False)
+            if not bpy.app.timers.is_registered(_lines_back):
+                bpy.app.timers.register(_lines_back, first_interval=0.5)
         workspace_ui.activate_mecha_tool(context, 'WLINES')
-        self.report({'INFO'}, 'Wrinkle Lines: drag lines on the body, then pick Cloth Drape again (the lines stay)')
+        self.report({'INFO'}, 'Draw lines on the body, then pick Cloth Drape again (the lines stay'
+                              + (', the cloth comes back with them)' if sim_active() else ')'))
         return {'FINISHED'}
 
 
@@ -2709,12 +2828,21 @@ def draw(layout, context):
     body = bpy.data.objects.get(SIM.get('target', '')) if live else ob
     n_lines = len(wl._lines_of(body)) if body is not None and body.type == 'MESH' else 0
     r = box.row(align=True)
-    r.prop(st, 'use_lines', text=f'Lines as Tubes ({n_lines})', toggle=True)
+    r.prop(st, 'use_lines', text=f'Use Lines ({n_lines})', toggle=True)
     rr = r.row()
     rr.enabled = not live
     rr.operator('mch.cdrape_lines', text='Draw Lines', icon='GREASEPENCIL')
+    if st.use_lines:                                     # 0.24.208 what the lines are: tubes, or seams in the cloth
+        box.row(align=True).prop(st, 'line_mode', expand=True)
+        if st.line_mode == 'STITCH':
+            r = box.row(align=True)
+            r.prop(st, 'stitch_tight', slider=True)
+            r.prop(st, 'stitch_width', slider=True)
+            r = box.row(align=True)
+            r.prop(st, 'stitch_puff', slider=True)
+            r.prop(st, 'stitch_stick', toggle=True, icon='PINNED')
     wst = wl.settings(context)
-    if wst is not None and st.use_lines:
+    if wst is not None and st.use_lines and st.line_mode == 'TUBES':
         r = box.row(align=True)
         r.prop(wst, 'size', text='Tube Size')
         r.prop(wst, 'fold', text='Height')

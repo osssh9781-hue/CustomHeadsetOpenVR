@@ -1,0 +1,7 @@
+laid: stitched points 0 | Draw Lines: {'FINISHED'} cloth hidden True tool WLINES active Grid
+2 s later, still drawing: cloth hidden True tool CUT
+Cloth Drape picked again: cloth hidden False active Cloth Drape stitched points 87
+PASS 1 Draw Lines on a laid cloth: the cloth steps aside, the Wrinkle Lines tool is on, the body is the active mesh
+PASS 1b ... and it stays aside while the lines are being drawn (2 s later)
+PASS 2 Cloth Drape picked again: the cloth is back (shown, active) and its session has the seam
+3/3 passed
