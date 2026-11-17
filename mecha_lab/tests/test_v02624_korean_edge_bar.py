@@ -39,8 +39,7 @@ d.profile, d.bevel_sides, d.bevel_link = 'BEVEL', 'TOP', True
 
 
 def edge_cells():
-    g = dict(top_bar.edge_groups(C, 'BASE'))
-    return g['Edge'] + g.get('Sides', [])
+    return [c for _t, cells in top_bar.edge_groups(C, 'BASE') for c in cells]
 
 
 cells = edge_cells()

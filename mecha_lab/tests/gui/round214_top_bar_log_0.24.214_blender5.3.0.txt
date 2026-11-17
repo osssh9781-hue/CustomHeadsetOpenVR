@@ -1,0 +1,16 @@
+shot 01_bar_CUT.png True
+shot 02_bar_BASE.png True
+shot 03_bar_CDRAPE.png True
+shot 04_bar_SMART.png True
+shot 05_bar_PLATE.png True
+shot 07_bar_BASE_tall.png True
+A1 the common rows in the real viewport (5 tools): 3 row(s) the same | 21 cells | region 1848
+A2 REAL click on Selected (first row): SELECTED
+A3 REAL click on a greyed shape (Smart Move): shape LASSO -> LASSO | tool SMART
+A4 REAL click on Chamfer (Base Mesh, its own row): CHAMFER
+shot 06_bar_BASE_chamfer.png True
+PASS A1 the common row(s): the same cells at the same places for 5 tools in the real viewport
+PASS A2 a REAL click on a first-row cell lands (Target: Selected)
+PASS A3 a greyed cell does nothing
+PASS A4 a REAL click on the tool's own row lands (Base Mesh: Chamfer)
+4/4 passed
