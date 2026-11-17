@@ -336,7 +336,7 @@ END_KEY = 'mch_bodywhole_end'            # on a swapped hand / foot: its slot an
 def end_variants(slot):
     """[(id, label)] of what a hand / foot can be: the body's own, the kits' (your creature's), your saved parts."""
     from . import body_kit as bk
-    out = [('own', 'Own (the body\'s)')]
+    out = [('own', 'Own (the body\'s)'), ('built', 'Built (palm + fingers - its own sliders)')]
     for vid, label in bk.variants(slot):
         if not vid.startswith('human:'):
             out.append((vid, label))
@@ -365,6 +365,20 @@ def set_end(context, rig, slot, vid):
         mk.vertex_group = bone
         mk.invert_vertex_group = True
         mk.threshold = 0.5
+        pb = rig.pose.bones[bone]
+        if vid == 'built':                            # (the hand / foot builder's: put together from your pieces)
+            from . import hand_kit as hk
+            ob = hk.make(context, 'Palm' if slot == 'Hand' else 'Sole', side, name=f'Body {bone}', slot=slot,
+                         link=False)
+            for m in body.data.materials:
+                ob.data.materials.append(m)
+            (body.users_collection[0] if body.users_collection else context.scene.collection).objects.link(ob)
+            ob.parent = rig
+            ob.parent_type = 'BONE'
+            ob.parent_bone = bone
+            ob.location = (0.0, -pb.bone.length, 0.0)
+            ob[END_KEY] = bone
+            continue
         if vid.startswith('mine:'):
             path = os.path.join(bk.my_dir(), slot, vid[5:] + '.npz')
             with np.load(path, allow_pickle=False) as z:
