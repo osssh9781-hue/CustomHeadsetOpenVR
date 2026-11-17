@@ -139,6 +139,35 @@ kp.ground = True
 V_f = verts()
 check('... all back: as it stood', np.abs(V_f - V0).max() < 1e-3)
 
+# 0.24.188 a part picked by a click (user: "내가 원하는 부분 클릭하면 옆에 슬라이더에서 바꿀 수 있게")
+from mathutils import Vector  # noqa: E402
+
+
+def hit_from(bone, t=0.5, off=(0.0, -1.0, 0.0)):
+    """A ray at the middle of a bone from in front (or ``off``): what the click's ray would hit."""
+    C.view_layer.update()
+    pb = rig.pose.bones[bone]
+    p = rig.matrix_world @ (pb.head.lerp(pb.tail, t))
+    o = p + Vector(off) * 2.0
+    ok, loc, _n, fi, ob, _m = S.ray_cast(C.evaluated_depsgraph_get(), o, (p - o).normalized())
+    return ok, loc, fi, ob
+
+
+got = {}
+for bone, off in (('Shin.L', (0, -1, 0)), ('Forearm.R', (-1, -0.3, 0)), ('Head', (0, -1, 0)), ('Chest', (0, -1, 0)),
+                  ('Thigh.R', (0, -1, 0))):
+    ok, loc, fi, ob = hit_from(bone, 0.5, off)
+    got[bone] = bw.joint_at(C, ob.original, fi, loc) if ok and ob is not None and bw.is_body(ob.original) else None
+check(f'a ray onto the shin, a forearm, the head, the chest, a thigh: each finds its own part {got}',
+      all(got[k] == k for k in got), got)
+bw.pick(C, rig, 'Forearm.R')
+kp.j_bend = math.radians(40)
+check('the part picked: the window\'s Joint sliders are its (Forearm, right - Bend moves that hand, the left too with '
+      'Symmetry)', kp.joint == 'Forearm.R' and abs(bw.joint(rig, 'Forearm.R')['bend'] - math.radians(40)) < 1e-6 and
+      abs(bw.joint(rig, 'Forearm.L')['bend'] - math.radians(40)) < 1e-6)
+kp.j_bend = 0.0
+bpy.ops.mch.bodywhole_pose(pose='__RESET__')
+
 # 0.24.187 the creatures on bones too (user: "기존에 보낸 크리쳐도 리깅해 주고 ... 크리쳐 바디 하나 더")
 for kind in ('creature', 'creature2'):
     r = bpy.ops.mch.bodywhole_add(kind=kind)

@@ -623,6 +623,113 @@ class MCH_OT_bodywhole_end(bpy.types.Operator):
         return {'FINISHED'}
 
 
+# ---- a part picked by a click (0.24.188, user: "조인트에서 바꾸는 게 너무 가시성이 안 좋으니까 내가 원하는 부분 클릭하면
+# 옆에 슬라이더에서 바꿀 수 있게") ----
+def joint_at(context, body, face_index, hit_world):
+    """The bone whose skin was hit: of the hit face's corner nearest the hit, the bone it follows most."""
+    ev = body.evaluated_get(context.evaluated_depsgraph_get())
+    me = ev.data
+    if not 0 <= face_index < len(me.polygons):
+        return None
+    loc = ev.matrix_world.inverted() @ Vector(hit_world)
+    vi = min(me.polygons[face_index].vertices, key=lambda i: (me.vertices[i].co - loc).length_squared)
+    best, bw_ = None, 0.0
+    for g in me.vertices[vi].groups:
+        n = ev.vertex_groups[g.group].name
+        if not n.startswith('MCH End') and g.weight > bw_:
+            best, bw_ = n, g.weight
+    return best
+
+
+def pick(context, rig, name):
+    """This joint picked: the window's sliders are its."""
+    if rig is None or name not in rig.pose.bones:
+        return False
+    rig.mch_bodywhole.joint = name
+    for a in context.screen.areas if context.screen else ():
+        a.tag_redraw()
+    return True
+
+
+class MCH_OT_bodywhole_click(bpy.types.Operator):
+    bl_idname = 'mch.bodywhole_click'
+    bl_label = 'Pick a Body Part'
+    bl_description = ('Click a part of a one-piece body (the head, a forearm, a finger ...): the window\'s Joint '
+                      'sliders are that part\'s.  Anything else: picked as usual')
+    bl_options = {'REGISTER', 'UNDO'}
+    toggle: BoolProperty(default=False)
+
+    def invoke(self, context, event):
+        from bpy_extras import view3d_utils
+        region, rv3d = context.region, context.region_data
+        hit = None
+        if region is not None and rv3d is not None:
+            xy = (event.mouse_region_x, event.mouse_region_y)
+            o = view3d_utils.region_2d_to_origin_3d(region, rv3d, xy)
+            d = view3d_utils.region_2d_to_vector_3d(region, rv3d, xy)
+            ok, loc, _n, fi, ob, _m = context.scene.ray_cast(context.evaluated_depsgraph_get(), o, d)
+            if ok and ob is not None:
+                hit = (ob.original, loc, fi)
+        if hit is not None and not self.toggle:
+            ob, loc, fi = hit
+            name, rig = None, None
+            if is_body(ob) and ob.type == 'MESH':
+                _b, rig = pair(ob)
+                name = joint_at(context, ob, fi, loc)
+                target = ob
+            elif ob.get(END_KEY) and ob.parent is not None and is_body(ob.parent):      # (a swapped hand / foot)
+                rig, name = ob.parent, ob[END_KEY]
+                target = pair(rig)[0]
+            if name and rig is not None and target is not None:
+                for o_ in context.selected_objects:
+                    o_.select_set(False)
+                target.select_set(True)
+                context.view_layer.objects.active = target
+                if pick(context, rig, name):
+                    self.report({'INFO'}, f'{_joint_label(name)} - its sliders in the window')
+                    return {'FINISHED'}
+        try:
+            return bpy.ops.view3d.select('INVOKE_DEFAULT', toggle=self.toggle)
+        except RuntimeError:
+            return {'PASS_THROUGH'}
+
+
+def _draw_picked():
+    """The picked joint shown on the body: its bone as a bright line (and its twin, dimmer, when Symmetry is on)."""
+    context = bpy.context
+    rig = _rig_of(context)
+    if rig is None:
+        return
+    try:
+        import gpu
+        from gpu_extras.batch import batch_for_shader
+    except ImportError:
+        return
+    kp = rig.mch_bodywhole
+    names = [(kp.joint, (1.0, 0.55, 0.05, 1.0))]
+    if kp.symmetry and kp.joint[-2:] in ('.L', '.R'):
+        names.append((kp.joint[:-1] + ('R' if kp.joint.endswith('L') else 'L'), (1.0, 0.55, 0.05, 0.45)))
+    sh = gpu.shader.from_builtin('POLYLINE_UNIFORM_COLOR')
+    gpu.state.depth_test_set('NONE')
+    gpu.state.blend_set('ALPHA')
+    region = context.region
+    for n, colr in names:
+        pb = rig.pose.bones.get(n)
+        if pb is None:
+            continue
+        a, b = rig.matrix_world @ pb.head, rig.matrix_world @ pb.tail
+        batch = batch_for_shader(sh, 'LINES', {'pos': [a[:], b[:]]})
+        sh.bind()
+        sh.uniform_float('viewportSize', (region.width, region.height) if region else (1920, 1080))
+        sh.uniform_float('lineWidth', 6.0)
+        sh.uniform_float('color', colr)
+        batch.draw(sh)
+    gpu.state.blend_set('NONE')
+
+
+_HANDLE = [None]
+
+
 class MCH_OT_bodywhole_add(bpy.types.Operator):
     bl_idname = 'mch.bodywhole_add'
     bl_label = 'Add One-Piece Body'
@@ -681,6 +788,12 @@ def draw(layout, context):
         return False
     kp = rig.mch_bodywhole
     col = layout.column(align=True)
+    col.label(text=f'Part: {_joint_label(kp.joint)}', icon='RESTRICT_SELECT_OFF')
+    col.label(text='(click a part on the body to pick it)')
+    col.prop(kp, 'joint', text='')
+    for k in JOINT_KEYS:
+        col.prop(kp, 'j_' + k, slider=True)
+    col = layout.column(align=True)
     col.label(text='One-Piece Body - sizes (scaled)')
     for k in ('height', 'head', 'arm_size', 'hands', 'leg_size', 'feet'):
         col.prop(kp, k, slider=k != 'height')
@@ -692,12 +805,7 @@ def draw(layout, context):
     row.prop(kp, 'symmetry', toggle=True, icon='MOD_MIRROR')
     row.prop(kp, 'ground', toggle=True, icon='SNAP_FACE')
     col = layout.column(align=True)
-    col.label(text='Joint')
-    col.prop(kp, 'joint', text='')
-    for k in JOINT_KEYS:
-        col.prop(kp, 'j_' + k, slider=True)
-    col = layout.column(align=True)
-    col.label(text='Fingers (all) - one finger: pick it in Joint')
+    col.label(text='Fingers (all) - one finger: click it on the body')
     for k in ('fingers_curl', 'fingers_spread', 'fingers_length', 'fingers_thick', 'toes_curl'):
         col.prop(kp, k, slider=True)
     col = layout.column(align=True)
@@ -717,16 +825,24 @@ def draw(layout, context):
     return True
 
 
-CLASSES = (MCH_PG_BodyWhole, MCH_OT_bodywhole_end, MCH_OT_bodywhole_add, MCH_OT_bodywhole_pose)
+CLASSES = (MCH_PG_BodyWhole, MCH_OT_bodywhole_end, MCH_OT_bodywhole_click, MCH_OT_bodywhole_add, MCH_OT_bodywhole_pose)
 
 
 def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
     bpy.types.Object.mch_bodywhole = PointerProperty(type=MCH_PG_BodyWhole)
+    if not bpy.app.background and _HANDLE[0] is None:
+        _HANDLE[0] = bpy.types.SpaceView3D.draw_handler_add(_draw_picked, (), 'WINDOW', 'POST_VIEW')
 
 
 def unregister():
+    if _HANDLE[0] is not None:
+        try:
+            bpy.types.SpaceView3D.draw_handler_remove(_HANDLE[0], 'WINDOW')
+        except (ValueError, RuntimeError):
+            pass
+        _HANDLE[0] = None
     if hasattr(bpy.types.Object, 'mch_bodywhole'):
         del bpy.types.Object.mch_bodywhole
     for c in reversed(CLASSES):

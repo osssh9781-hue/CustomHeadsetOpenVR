@@ -58,7 +58,7 @@ EXTRA = {
     'MOLDING': ['Drag along a mesh   a molding along the line, on its surface (back to the start: a ring)',
                 'Shift   the line straight;  click a part   along its edges (its rim, else its sharp edges)',
                 'The window   Profile, Width, Height, Offset, Chamfer, Bevel (live)'],
-    'BODYKIT': ['Click a part to pick it (Shift: more)   R: turn it at its joint   the window: Body Shape / Part sliders',
+    'BODYKIT': ['Click a part to pick it - on a one-piece body: the head, a forearm, a finger ... (Shift: more)   R: turn it at its joint   the window: Body Shape / Part sliders',
                 'Mirror Pose: the picked side onto the other   Join to One Mesh: one mesh as shaped'],
     'MUSCLE': ['Click the muscle\'s points in order (the window says which)   the last one makes it',
                'Backspace   the last point off;  Esc   cancel;  Enter   keep (Membrane: make it)',

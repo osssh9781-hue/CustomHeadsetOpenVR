@@ -1409,8 +1409,8 @@ class MCH_TOOL_body_kit(bpy.types.WorkSpaceTool):
                       'part on its own, turn the parts at their joints')
     bl_icon = 'ops.generic.select'
     bl_widget = None
-    bl_keymap = (('view3d.select', {'type': 'LEFTMOUSE', 'value': 'CLICK'}, None),
-                 ('view3d.select', {'type': 'LEFTMOUSE', 'value': 'CLICK', 'shift': True},
+    bl_keymap = (('mch.bodywhole_click', {'type': 'LEFTMOUSE', 'value': 'CLICK'}, None),      # (a one-piece body:
+                 ('mch.bodywhole_click', {'type': 'LEFTMOUSE', 'value': 'CLICK', 'shift': True},   #  the part clicked)
                   {'properties': [('toggle', True)]}))
 
     def draw_settings(context, layout, tool):

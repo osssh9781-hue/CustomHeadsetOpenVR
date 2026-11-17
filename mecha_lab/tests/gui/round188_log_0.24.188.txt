@@ -1,0 +1,12 @@
+1 body <bpy_struct, Object("Body") at 0x7f9456c94f08> <bpy_struct, Object("Body Bones") at 0x7f9456965608> 3.4 s
+shot 1_body.png True
+2 click Shin.L -> Shin.L active <bpy_struct, Object("Body") at 0x7f9456c94f08>
+2 click Head -> Head active <bpy_struct, Object("Body") at 0x7f9456c94f08>
+2 click UpperArm.R -> UpperArm.R active <bpy_struct, Object("Body") at 0x7f9456c94f08>
+shot 2_picked.png True
+3 bend 0.0 -> 3.1415927410125732 left 3.1415927410125732
+shot 3_bent.png True
+PASS 1 REAL click "Creature 2" (One-Piece Body): the body on its bones
+PASS 2 REAL clicks on the shin, the head, the right upper arm: the window's Part is each one {'Shin.L': 'Shin.L', 'Head': 'Head', 'UpperArm.R': 'UpperArm.R'}
+PASS 3 the Bend slider dragged for REAL: the picked upper arm bends, the left one too (Symmetry)
+3/3 passed
