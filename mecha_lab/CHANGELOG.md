@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## 0.24.196 — GoZ (실험): Send 때 ZBrush 가 꺼지던 것 — 불러오는 방식을 바꿈 (2026-11-17)
+
+- (사용자, ZBrush 2026 · Windows: "지브러시가 걍 꺼지는디" / "센드 누를 때 블렌더에서") 0.24.195 는 ZBrush 의 옛 도우미
+  (GoZBrushFromApp)를 불러 읽게 했음. 공개 애드온 GoB 는 그 도우미를 쓰지 않고, 작은 ZScript 로 ZBrush 의 일반 가져오기
+  (Tool > Import)를 실행함 — 같은 방식으로 바꿈. Send (GoZ) 가 GoZProjects\Default 에 **MechaLab_GoZ_Import.txt** (ZScript)를
+  쓰고 ZBrush.exe 를 그 스크립트와 함께 실행: 목록의 첫 메쉬는 새 툴, 나머지는 그 서브툴로 들어옴.
+- **Open in ZBrush** 버튼(기본 켬): 끄면 파일만 쓰고 ZBrush 는 부르지 않음.
+- .GoZ 파일 내용은 GoB 가 쓰는 것과 같은 것을 소스로 다시 확인함(바꾸지 않음).
+- 확인: test_v02616 13/13(스크립트가 써지고, 목록 경로와 Tool:Import 가 들어 있고, 글이 바뀌면 옛 컴파일본을 지움).
+- **확인 못 한 것**: 여전히 실제 ZBrush 로는 돌려 보지 못함. 이 방식으로 꺼짐이 없어지는지, ZBrush.exe 가 글(.txt) 스크립트를
+  바로 받는지(안 받으면 ZBrush 의 ZScript > Load 로 그 파일을 한 번 불러 주면 됨)는 사용자 컴퓨터에서 확인됨.
+  같은 메쉬를 다시 보내면 기존 서브툴이 바뀌지 않고 새 툴로 들어옴.
+
 ## 0.24.195 — GoZ (실험): ZBrush 로 바로 보내고 바로 받기 (2026-11-17)
 
 - (사용자: "GoZ 로 하면 안 되는 거야?" / "그렇게 하자") ZBrush 브릿지 창 아래 **GoZ (experimental)** 칸. OBJ 방식은 그대로 둠.

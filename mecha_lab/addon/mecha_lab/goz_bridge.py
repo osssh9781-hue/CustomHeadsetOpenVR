@@ -3,8 +3,9 @@
 ZBrush's own link between programs, next to the OBJ bridge (``zbrush_bridge``), which stays as it is:
 
 * **Send (GoZ)**: every selected mesh is written as ``<name>.GoZ`` into ZBrush's shared GoZ project folder
-  (``<Public>/Pixologic/GoZProjects/Default``), the list of them into ``GoZBrush/GoZ_ObjectList.txt``, then ZBrush's
-  own helper ``GoZBrush/GoZBrushFromApp`` is started: ZBrush loads the listed files.
+  (``<Public>/Pixologic/GoZProjects/Default``), the list of them into ``GoZBrush/GoZ_ObjectList.txt``, then ZBrush is
+  started with a small ZScript (``MechaLab_GoZ_Import``) that reads the listed files with Tool > Import - the way
+  the GoB add-on does it (0.24.196; ZBrush's old helper GoZBrushFromApp closed ZBrush 2026).
 * **Import (GoZ)**: the files ZBrush listed in ``GoZ_ObjectList.txt`` (its GoZ button writes them) are read back;
   an object sent from here gets its mesh replaced (found by name), anything else becomes a new object.  **Auto**
   watches the list and imports when ZBrush writes it.
@@ -112,6 +113,9 @@ class MCH_PG_GoZ(bpy.types.PropertyGroup):
                          description='ZBrush\'s shared GoZ folder (empty = the usual place: Public\\Pixologic on '
                                      'Windows, /Users/Shared/Pixologic on a Mac)')
     apply_modifiers: BoolProperty(name='Apply Modifiers', default=True)
+    tell: BoolProperty(name='Open in ZBrush', default=True,
+                       description='After writing the files, start ZBrush with the import script (off: only the '
+                                   'files are written - load them yourself with ZScript > Load or Tool > Import)')
     keep_backup: BoolProperty(name='Keep the Old Mesh', default=True,
                               description='The mesh an import replaces is kept as <name>_preZBrush')
 
@@ -259,20 +263,96 @@ def send(context, objects, settings):
     return folder, sent, points
 
 
-def call_zbrush(root):
-    """ZBrush's own helper that makes it load the listed files.  Returns a note for the report."""
-    exe = os.path.join(root, 'GoZBrush', 'GoZBrushFromApp.exe')
-    app = os.path.join(root, 'GoZBrush', 'GoZBrushFromApp.app')
+SCRIPT_NAME = 'MechaLab_GoZ_Import'
+ZSCRIPT = """//Mecha Lab - GoZ import (0.24.196): every mesh named in GoZ_ObjectList.txt is read with Tool > Import.
+//The first one becomes a new tool, the others its subtools.
+[VarDef,listFile,"@LIST@"]
+[VarDef,lineStr,""]
+[VarDef,objPath,""]
+[VarDef,offset,0]
+[VarDef,bytes,0]
+[VarDef,count,0]
+[If,[FileExists,listFile],
+	[MemCreateFromFile,MCH_GoZ_List,listFile]
+	[Loop,999,
+		[VarSet,bytes,[MemReadString,MCH_GoZ_List,lineStr,offset,1]]
+		[If,[StrLength,lineStr] > 0,
+			[VarSet,objPath,[StrMerge,lineStr,".GoZ"]]
+			[If,[FileExists,objPath],
+				[If,count == 0,
+					[IKeyPress,13,[IPress,Tool:Plane3D]]
+					[FileNameSetNext,objPath]
+					[IPress,Tool:Import]
+					[If,[IGet,Transform: Edit] == 0,
+						[CanvasClick,10,10,10,20]
+						[IPress,Transform: Edit]
+					]
+				,
+					[IPress,Tool:SubTool:Insert]
+					[IPress,PopUp:Cube3D]
+					[FileNameSetNext,objPath]
+					[IPress,Tool:Import]
+				]
+				[VarInc,count]
+			]
+		]
+		[VarSet,offset,offset+bytes]
+		[If,(bytes <= 0) || (offset >= [MemGetSize,MCH_GoZ_List]),
+			[LoopExit]
+		]
+	]
+	[MemDelete,MCH_GoZ_List]
+	[If,count > 0,
+		[IPress,Transform: Fit]
+	]
+,
+	[Note,"Mecha Lab GoZ: GoZ_ObjectList.txt was not found",,3]
+]
+"""
+
+
+def write_script(root):
+    """The small ZScript that makes ZBrush read the listed files (its text; ZBrush makes the .zsc from it the first
+    time it loads it).  Returns the path of the text file."""
+    folder = project_dir(root)
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, SCRIPT_NAME + '.txt')
+    text = ZSCRIPT.replace('@LIST@', list_path(root).replace('\\', '/'))
     try:
-        if os.path.isfile(exe):
-            subprocess.Popen([exe], cwd=os.path.dirname(exe))
-            return 'ZBrush told to load them'
-        if os.path.isdir(app):
-            subprocess.Popen(['open', '-a', app])
-            return 'ZBrush told to load them'
+        with open(path, encoding='utf-8') as f:
+            same = f.read() == text
+    except OSError:
+        same = False
+    if not same:
+        with open(path, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(text)
+        try:                                     # (the compiled one belongs to the old text)
+            os.remove(os.path.join(folder, SCRIPT_NAME + '.zsc'))
+        except OSError:
+            pass
+    return path
+
+
+def call_zbrush(root):
+    """ZBrush started with the import script (0.24.196: the way the GoB add-on does it - ZBrush's old helper
+    GoZBrushFromApp closed ZBrush 2026 on the user's computer).  Returns a note for the report."""
+    from . import zbrush_bridge as zb
+    try:
+        txt = write_script(root)
     except OSError as ex:
-        return f'could not start GoZBrushFromApp: {ex}'
-    return 'GoZBrushFromApp not found in GoZBrush: the files are written, ZBrush was not told'
+        return f'could not write the import script: {ex}'
+    zsc = txt[:-4] + '.zsc'
+    script = zsc if os.path.isfile(zsc) else txt
+    exe = zb.zbrush_path(bpy.context.scene.mch_zbrush)
+    how = f'in ZBrush: ZScript > Load > {txt}'
+    if not exe:
+        return 'ZBrush was not found - ' + how
+    try:
+        subprocess.Popen(['open', '-a', exe, script] if exe.endswith('.app') else [exe, script],
+                         cwd=os.path.dirname(exe))
+    except OSError as ex:
+        return f'could not start ZBrush ({ex}) - ' + how
+    return 'ZBrush asked to import them (if nothing comes in: ' + how + ')'
 
 
 # ---- ZBrush -> Blender ----------------------------------------------------------------------------------------------
@@ -422,7 +502,8 @@ class MCH_OT_goz_send(bpy.types.Operator):
         if not sent:
             self.report({'WARNING'}, 'Nothing with faces was selected')
             return {'CANCELLED'}
-        self.report({'INFO'}, f'GoZ: {len(sent)} object(s), {points:,} points -> {folder} | ' + call_zbrush(goz_root(st)))
+        self.report({'INFO'}, f'GoZ: {len(sent)} object(s), {points:,} points -> {folder} | '
+                    + (call_zbrush(goz_root(st)) if st.tell else 'files written only (Open in ZBrush is off)'))
         return {'FINISHED'}
 
 
@@ -482,6 +563,7 @@ def draw(layout, context):
               icon='CHECKMARK' if root else 'ERROR')
     row = box.row(align=True)
     row.prop(st, 'apply_modifiers', toggle=True)
+    row.prop(st, 'tell', toggle=True)
     row.prop(st, 'keep_backup', toggle=True)
 
 

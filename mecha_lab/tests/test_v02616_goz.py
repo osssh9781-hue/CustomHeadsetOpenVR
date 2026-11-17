@@ -92,5 +92,19 @@ cfg = os.path.join(root, 'GoZApps', 'Blender', 'GoZ_Config.txt')
 check('Set Up GoZ for Blender: GoZ_Info.txt and GoZ_Config.txt (this Blender\'s path) in GoZApps/Blender, nothing '
       'else', 'FINISHED' in r and 'NAME' in open(info).read() and bpy.app.binary_path.replace('\\', '/') in open(cfg).read()
       and sorted(os.listdir(os.path.join(root, 'GoZApps'))) == ['Blender'] and gz.registered(root))
-check('no GoZBrushFromApp here: Send says ZBrush was not told', 'not found' in gz.call_zbrush(root))
+note = gz.call_zbrush(root)
+txt = os.path.join(gz.project_dir(root), 'MechaLab_GoZ_Import.txt')
+body = open(txt).read()
+check('0.24.196 Send asks ZBrush with an import script (not GoZBrushFromApp): the script written beside the files, '
+      'the list path in it with forward slashes, Tool:Import in it; no ZBrush here: the note says how to load it by '
+      'hand', os.path.isfile(txt) and gz.list_path(root).replace('\\', '/') in body and '[IPress,Tool:Import]' in body
+      and body.count('[') == body.count(']') and 'ZScript > Load' in note and 'GoZBrushFromApp' not in body, note)
+open(txt[:-4] + '.zsc', 'w').close()
+gz.write_script(root)
+kept = os.path.isfile(txt[:-4] + '.zsc')
+with open(txt, 'a') as f:
+    f.write('// changed')
+gz.write_script(root)
+check('... the compiled script is kept while the text is the same, thrown away when the text changes',
+      kept and not os.path.isfile(txt[:-4] + '.zsc'))
 summary()
