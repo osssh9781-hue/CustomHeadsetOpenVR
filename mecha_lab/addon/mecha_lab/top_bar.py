@@ -519,7 +519,7 @@ def _slot_width(slot, k):
 # 0.24.217 (user, with a picture of the bottom tool menu: "우리 여기 밑에 나눴던 거처럼 위에 상단 막대도 그렇게 구다리로
 # 나눠서 보기 좋게 하는 건 어떨까?"): the bar as sections side by side, like the tool menu - a small title on top, the
 # section's cells in two rows under it, a rule between sections.  The places are still fixed (0.24.216).
-TITLE_H = 15.0                # a section's title line
+TITLE_H = 19.0                # a section's title line
 SPLIT_W = 230.0               # a section wider than this in one row puts its cells in two rows
 BAND_GAP = 22.0               # between two bands of sections (their cards: 6 px apart)
 SEP = 22.0                    # between two sections (their cards: 6 px apart)
@@ -577,43 +577,56 @@ def _flow_two(ws, room, k):
 
 
 def _title_w(title, k):
-    return (i18n.vlen(title) * 6.2 + 6.0) * k if title else 0.0
+    return (i18n.vlen(title) * 7.6 + 6.0) * k if title else 0.0
+
+
+OPTIONS_SLOT = 4              # Auto Apply / Ortho: at the bar's top right (0.24.219), out of the flow
+
+
+def _slot_size(si, slot, k):
+    """(place dict without its position, width) of fixed slot ``si``."""
+    title, sources, specs = slot
+    tw = max([_title_w(t, k) for t in sources] + [_title_w(SECTION_NAMES.get(si, ''), k)])
+    if isinstance(specs, list):
+        cells, xs = [], [0.0, 0.0]
+        for sp_ in specs:
+            row = 1 if (sp_[1], sp_[0]) in COND else 0
+            w = _spec_w(sp_, k)
+            cells.append((row, xs[row], w))
+            xs[row] += w + GAP * k
+        return dict(cells=cells), max(max(xs) - GAP * k, tw)
+    return dict(free=LASSO_SECTION * k), max(LASSO_SECTION * k, tw)
 
 
 def fixed_layout(room_w, k):
     """Where every fixed section is in a bar ``room_w`` px wide - from the width alone, never from the tool:
     (bands, [dict(band, x, w, rule, cells=[(row, x, w)] | free=room)]), x from the bar's inner left edge; row 0 =
-    the cells that are always there, row 1 = the ones that come and go (``COND``).  None when the bar is narrower
-    than a section."""
+    the cells that are always there, row 1 = the ones that come and go (``COND``).  The Options section
+    (0.24.219, user: "옵션은 오른쪽 위로 보내자") sits at the right end of the first band; the others fill the
+    bands from the left.  None when the bar is narrower than a section."""
+    slots = common_slots()
+    opt_place, opt_w = _slot_size(OPTIONS_SLOT, slots[OPTIONS_SLOT], k)
     x, band = 0.0, 0
-    out = []
-    for title, sources, specs in common_slots():
-        tw = max([_title_w(t, k) for t in sources] + [_title_w(SECTION_NAMES.get(len(out), ''), k)])
-        if isinstance(specs, list):
-            cells, xs = [], [0.0, 0.0]
-            for sp_ in specs:
-                row = 1 if (sp_[1], sp_[0]) in COND else 0
-                w = _spec_w(sp_, k)
-                cells.append((row, xs[row], w))
-                xs[row] += w + GAP * k
-            w = max(xs) - GAP * k
-            place = dict(cells=cells)
-        else:
-            w = LASSO_SECTION * k
-            place = dict(free=w)
-        w = max(w, tw)
-        if w > room_w:
+    out = [None] * len(slots)
+    for si, slot in enumerate(slots):
+        if si == OPTIONS_SLOT:
+            continue
+        place, w = _slot_size(si, slot, k)
+        room = room_w - (opt_w + SEP * k if band == 0 else 0.0)     # (the first band: Options is at its right)
+        if w > room_w - opt_w - SEP * k:
             return None
         rule = x > 0
-        if x > 0 and x + SEP * k + w > room_w:
+        if x > 0 and x + SEP * k + w > room:
             band += 1
             x = 0.0
             rule = False
         elif x > 0:
             x += SEP * k
         place.update(band=band, x=x, w=w, rule=rule)
-        out.append(place)
+        out[si] = place
         x += w
+    opt_place.update(band=0, x=room_w - opt_w, w=opt_w, rule=False)
+    out[OPTIONS_SLOT] = opt_place
     return band + 1, out
 
 
@@ -771,8 +784,8 @@ def items(context, region_w, region_h, k=1.0, left=None, right=None):
             cw_ = max([cx + cw for c, (cr, cx, cw) in zip(cells, spots_) if c is not None] + [_title_w(title, k)])
             out.append(Item('card', sx - CARD_PAD * k, by - bh(pl['band']) - CARD_PAD * k, cw_ + 2 * CARD_PAD * k,
                             bh(pl['band']) + 2 * CARD_PAD * k))
-            if title:
-                out.append(Item('glabel', sx, by - TITLE_H * k, pl['w'], TITLE_H * k, title.upper()))
+            if title:                               # (icon 'title': drawn bigger and bright - a section's name)
+                out.append(Item('glabel', sx, by - TITLE_H * k, pl['w'], TITLE_H * k, title.upper(), 'title'))
 
             def cy(row):
                 return by - TITLE_H * k - (row + 1) * ROW * k - row * GAP * k

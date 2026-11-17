@@ -37,7 +37,8 @@ def grab():
         if i.kind in {'card', 'vrule'}: continue
         if not getattr(i, 'enabled', True) and i.action is None: continue      # (a greyed place holder)
         d = i.data
-        out.append([i.kind, i.label, bool(i.on), jsonable(i.action), (type(d).__name__ if d is not None else '') + '.' + (i.prop or ''), i.icon])
+        out.append([i.kind, i.label, bool(i.on), jsonable(i.action), (type(d).__name__ if d is not None else '') + '.' + (i.prop or ''),
+                    '' if i.kind == 'glabel' else i.icon])       # (a group name's look is not a function)
     return out
 
 
@@ -201,6 +202,24 @@ check('Preferences > Top Bar Sections off: the plain rows of 0.24.216 (the name 
       abs(res_title.y - res_cell.y) < 1.0 and res_title.x < res_cell.x and tb.sections_wanted() is False)
 tb.FORCE_SECTIONS[0] = None
 check('... on by default', tb.sections_wanted() is True)
+# 0.24.219 Options at the bar's top right; the section names bright and bigger
+its = at(2560, 'CUT')
+cards = [i for i in its if i.kind == 'card']
+opt = next(i for i in its if i.kind == 'seg' and i.label == 'Ortho')
+opt_title = next(i for i in its if i.kind == 'glabel' and i.label == 'OPTIONS')
+top_band = max(i.y for i in its if i.kind in {'seg', 'ibtn', 'mini'})
+right_most = max(i.x + i.w for i in its if i.kind in {'seg', 'ibtn', 'mini'} and abs(i.y - top_band) < 1.0)
+check(f'Options (Auto Apply, Ortho) is at the top right of the bar: in the first band, the last cell at its right end '
+      f'(x {opt.x + opt.w:.0f} of {right_most:.0f})', abs(opt.y - top_band) < 1.0 and abs(opt.x + opt.w - right_most) < 1.0
+      and opt.x > 2560 * 0.5)
+pos = set()
+for t in tools:
+    for i in at(2560, t):
+        if i.kind == 'seg' and i.label == 'Ortho':
+            pos.add((round(i.x, 1), round(1000 - i.y, 1)))
+check(f'... the same place in every tool ({sorted(pos)})', len(pos) == 1)
+check('the section names are drawn as titles (bigger, bright) - every section of the bar',
+      all(i.icon == 'title' for i in its if i.kind == 'glabel') and tb.TITLE_H >= 18)
 wide, narrow = at(2560, 'BASE'), at(500, 'BASE')
 check('a view too narrow for a single place (500 px): the groups are packed as before, nothing lost',
       sorted((i.kind, i.label) for i in narrow if i.kind not in {'card', 'vrule', 'glabel'}) ==

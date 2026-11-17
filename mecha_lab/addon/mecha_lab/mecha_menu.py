@@ -881,6 +881,9 @@ def _draw_new(it, hot, S, white, dim):
     if k == 'vrule':
         G.rounded_rect(x, y, max(1.0, w), max(1.0, h), 0.5, (1.0, 1.0, 1.0, 0.14))
         return None
+    if k == 'glabel' and it.icon == 'title':     # 0.24.219 (user: "각 목록 이름은 잘 보이게 써 줘, 지금 너무 안 보인다")
+        G.text(x + 1 * S, y + h / 2, it.label, 12.5 * S, (0.96, 0.78, 0.36, 1.0))     # a top bar section's name
+        return None
     if k == 'glabel':
         G.text(x + 2 * S, y + h / 2, it.label, 10 * S, G.TEXT_DIM)
     return None

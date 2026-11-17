@@ -1,0 +1,15 @@
+shot 01_wide_CUT.png True
+shot 02_wide_BASE.png True
+shot 03_wide_SMART.png True
+shot 04_wide_FUR.png True
+shot 05_wide_PLATE.png True
+shot 06_wide_CUT_slow_line.png True
+A4 REAL click on Slow Line: True | Strength shown True | bar 409 -> 461 px | cells that moved sideways []
+A1 wide viewport 2560 px, interface x1.47: fixed cells 24 | moved {} | bar heights: sections {'CUT': 409, 'BASE': 305, 'SMART': 252, 'FUR': 305, 'PLATE': 305} rows {'CUT': 274, 'BASE': 222, 'SMART': 222, 'FUR': 222, 'PLATE': 222}
+A2 sections: the Resolution title is above its cell True
+A3 REAL click on Active (the Target section): ACTIVE
+PASS A1 a wide viewport: every fixed cell at one place for 5 tools
+PASS A2 the bar is sections: a title above its cells
+PASS A3 a REAL click on a cell in a section lands
+PASS A4 Slow Line on (REAL click): its numbers show in a row under the section, the bar grows down, no cell moves sideways
+4/4 passed
