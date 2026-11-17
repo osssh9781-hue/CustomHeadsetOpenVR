@@ -1,7 +1,7 @@
 """0.24.201 Tool Wheel (user: a radial menu at the cursor - click / hover / flick, slots with tools under them -
 "우리는 이미 이게 있잖아, 이렇게 분리해 놨으니까 이거 이용해서 하면 될 것 같아": the tool groups of the bottom menu).
 
-V (the Tool Pie key) opens a wheel at the mouse: the inner ring holds the tool groups (Block-out, Cut, Surface
+V (the Tool Pie key) or Alt + right click (0.24.206, in any tool) opens a wheel at the mouse: the inner ring holds the tool groups (Block-out, Cut, Surface
 detail ...), the group under the mouse fans its tools out beyond it.  Three ways to pick, with no mode to set:
 
 * **click**: tap the key - the wheel stays; click a group, then a tool; a click on the middle switches
@@ -307,7 +307,7 @@ class MCH_OT_radial_menu(bpy.types.Operator):
         if not STATE or context.area is None:
             _close(context)
             return {'CANCELLED'}
-        if event.type in {'ESC', 'RIGHTMOUSE'}:
+        if event.type == 'ESC' or (event.type == 'RIGHTMOUSE' and self.key != 'RIGHTMOUSE'):
             _close(context)
             return {'CANCELLED'}
         if event.type == 'MOUSEMOVE':
@@ -351,7 +351,7 @@ def click_wanted(context, event):
     try:
         from . import bottom_bar
         from .workspace_ui import object_under_mouse, pref
-        if not pref('wheel_click', True) or not bottom_bar.ui_active(context) or context.mode != 'OBJECT':
+        if not pref('wheel_click', False) or not bottom_bar.ui_active(context) or context.mode != 'OBJECT':
             return False
         if context.area is None or context.area.type != 'VIEW_3D' or not bottom_bar.in_select(context):
             return False
@@ -419,8 +419,18 @@ def register():
     wm = bpy.context.window_manager
     kc = wm.keyconfigs.addon if wm else None
     if kc is not None:                # (the Select tools take the left button before the 3D View keymap sees it)
+        # 0.24.206 Alt + right click opens it in ANY tool (user: "그냥 알트 우클릭으로 하는 게 나을 것 같다, 셀렉트에서만
+        # 되네 이러니까"): no Mecha tool, nor Blender's Object Mode, uses Alt + right button
+        for name, space in (('3D View', 'VIEW_3D'), ('Object Mode', 'EMPTY')):
+            km = kc.keymaps.new(name=name, space_type=space)
+            item = km.keymap_items.new('mch.radial_menu', 'RIGHTMOUSE', 'PRESS', alt=True)
+            item.properties.key = 'RIGHTMOUSE'
+            _keymaps.append((km, item))
         for name in SELECT_KEYMAPS:
             km = kc.keymaps.new(name=name, space_type='VIEW_3D', region_type='WINDOW')
+            item = km.keymap_items.new('mch.radial_menu', 'RIGHTMOUSE', 'PRESS', alt=True)
+            item.properties.key = 'RIGHTMOUSE'
+            _keymaps.append((km, item))
             # (PRESS, in the tool's own keymap: Blender's select there swallows a press on empty space, so neither a
             #  CLICK item nor the 3D View keymap ever saw it)
             item = km.keymap_items.new('mch.radial_click', 'LEFTMOUSE', 'PRESS')

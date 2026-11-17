@@ -268,6 +268,58 @@ def flow():
     log('Cut on; tap V + REAL click on the middle, twice: (select, tool on, wheel open) =', states)
     res['4b the middle: a REAL click switches Cut -> Select, again Select -> Cut (the wheel closes each time)'] = (
         states == [(True, False, False), (False, True, False)])
+    # 3b2. Alt + right click, with a tool on (Cut) and over the model: tap = it stays, then a click picks
+    with C.temp_override(window=w, area=a, region=r):
+        bpy.ops.mch.bar_tool(tool='CUT')
+    yield 1.0
+    xdo('mousemove', cxs, cys)
+    yield 0.5
+    xdo('keydown', 'alt')
+    yield 0.2
+    xdo('click', 3)
+    yield 0.3
+    xdo('keyup', 'alt')
+    yield 1.0
+    alt_open = rm.is_open()
+    alt_tool = None
+    if alt_open:
+        xdo('mousemove', *scr(bubble('group', 'Cut')))
+        yield 0.7
+        xdo('click', 1)
+        yield 0.6
+        b_ = bubble('tool', 'BOOLEAN')
+        if b_:
+            xdo('mousemove', *scr(b_))
+            yield 0.6
+            xdo('click', 1)
+            yield 1.2
+        alt_tool = ts.effective_tool(C)
+    # ... held: Alt + right button down, onto Cut -> Press Cut, let go
+    with C.temp_override(window=w, area=a, region=r):
+        bpy.ops.mch.bar_tool(tool='CUT')
+    yield 1.0
+    xdo('mousemove', cxs, cys)
+    yield 0.5
+    xdo('keydown', 'alt')
+    yield 0.2
+    xdo('mousedown', 3)
+    yield 0.6
+    held_tool = None
+    if rm.is_open():
+        xdo('mousemove', *scr(bubble('group', 'Cut')))
+        yield 0.7
+        b_ = bubble('tool', 'PRESS')
+        if b_:
+            xdo('mousemove', *scr(b_))
+            yield 0.7
+    xdo('mouseup', 3)
+    yield 0.3
+    xdo('keyup', 'alt')
+    yield 1.2
+    held_tool = ts.effective_tool(C)
+    log('Cut on - REAL Alt + right click: wheel', alt_open, '-> clicks pick', alt_tool, '| Alt + right button held, onto Press Cut, let go:', held_tool, 'open', rm.is_open())
+    res['4b2 Alt + REAL right click with the Cut tool on: the wheel opens and stays, clicks pick Boolean; held and let go on Press Cut picks it'] = (
+        alt_open and alt_tool == 'BOOLEAN' and held_tool == 'PRESS' and not rm.is_open())
     # 3c. a plain left click on empty space (Select on) opens it; a click on the cube does not; a drag does not
     with C.temp_override(window=w, area=a, region=r):
         bpy.ops.mch.select_move()
@@ -315,8 +367,8 @@ def flow():
         yield 0.5
     log('Select on - REAL left click on empty space: wheel', opened, 'at x', cx0, '| on the cube:', on_cube,
         '(selected', [o.name for o in C.selected_objects], ') | a drag:', on_drag)
-    res['4c a REAL plain left click on empty space (Select on) opens the wheel there; on the cube it selects, no wheel; a drag: no wheel'] = (
-        opened and not on_cube and not on_drag and cube.select_get())
+    res['4c a plain REAL left click (Tool Wheel on Click is off by default since 0.24.206): no wheel on empty space, on the cube, or after a drag'] = (
+        not opened and not on_cube and not on_drag)
     # 4. Esc closes, the tool unchanged
     xdo('mousemove', cxs, cys)
     yield 0.5

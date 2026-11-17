@@ -2554,7 +2554,7 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
     strip_names: BoolProperty(name='Tool Strip Names', default=True,
                               description='0.24.59 the tool strip shows each tool\'s name next to its icon (two '
                                           'columns); off = icons only')
-    wheel_click: BoolProperty(name='Tool Wheel on Click', default=True,
+    wheel_click: BoolProperty(name='Tool Wheel on Click', default=False,
                               description='A plain left click on empty space opens the Tool Wheel there (while '
                                           'Select / Move is on; a drag is still the box select, a click on a part '
                                           'still selects it). Off: only the V key opens it')
