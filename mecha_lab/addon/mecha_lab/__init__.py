@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
     "author": "OpenAI / ChatGPT, Claude Code",
-    "version": (0, 24, 200),
+    "version": (0, 24, 201),
     "blender": (4, 3, 0),
     "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
     "description": "Cut, Split, Base Mesh, Boolean, Face Extract, Armor Sculpt, Molding, Cable, Hollow, curve arrays, Mirror",
@@ -2063,6 +2063,8 @@ def _register():
     goz_bridge.register()
     from . import mecha_mask                         # 0.24.200 Paint Mask in MECHA LAB
     mecha_mask.register()
+    from . import radial_menu                        # 0.24.201 Tool Wheel (V)
+    radial_menu.register()
     subd_plane.register()
     deform_tools.register()
     primitive_tools.register()
@@ -2354,6 +2356,7 @@ def _unregister_steps():
         ('primitive_tools', primitive_tools.unregister),
         ('deform_tools', deform_tools.unregister),
         ('subd_plane', subd_plane.unregister),
+        ('radial_menu', __import__(__name__ + '.radial_menu', fromlist=['x']).unregister),
         ('mecha_mask', __import__(__name__ + '.mecha_mask', fromlist=['x']).unregister),
         ('goz_bridge', __import__(__name__ + '.goz_bridge', fromlist=['x']).unregister),
         ('zbrush_bridge', zbrush_bridge.unregister),

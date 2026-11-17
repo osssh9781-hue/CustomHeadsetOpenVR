@@ -180,6 +180,12 @@ class MCH_OT_tool_pie(bpy.types.Operator):
         return _pref('tool_pie') and ui_active(context) and context.area is not None and context.area.type == 'VIEW_3D'
 
     def invoke(self, context, event):
+        # 0.24.201 the Tool Wheel (the menu's groups in a ring, their tools fanned out) in place of Blender's pie
+        try:
+            if 'RUNNING_MODAL' in bpy.ops.mch.radial_menu('INVOKE_DEFAULT', key=event.type):
+                return {'FINISHED'}
+        except (RuntimeError, AttributeError):
+            pass
         bpy.ops.wm.call_menu_pie(name=MCH_MT_tool_pie.bl_idname)
         return {'FINISHED'}
 
