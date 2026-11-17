@@ -235,7 +235,7 @@ def flow():
         g0 = bubble('group', 'Block-out')
         st = rm.STATE
         ang = math.atan2(g0['y'] - st['cy'], g0['x'] - st['cx'])
-        for d in (60, 140, 230, 330):
+        for d in (60, 160, 270, 380):
             x, y = st['cx'] + math.cos(ang) * d * st['k'], st['cy'] + math.sin(ang) * d * st['k']
             xdo('mousemove', int(r.x + x), int(w.height - (r.y + y)))
             yield 0.12
@@ -248,6 +248,75 @@ def flow():
     res['4 flick: V held, a flick toward Block-out and on out, V let go - a Block-out tool is on (the nearest)'] = (
         want is not None and want[0] == 'tool' and ts.effective_tool(C) == want[1] and want[1] in block
         and not rm.is_open())
+    # 3b. the middle: Select <-> the tool
+    from mecha_lab import bottom_bar as bb
+    with C.temp_override(window=w, area=a, region=r):
+        bpy.ops.mch.bar_tool(tool='CUT')
+    yield 1.0
+    states = []
+    for _n in range(2):
+        xdo('mousemove', cxs, cys)
+        yield 0.5
+        xdo('key', 'v')
+        yield 0.9
+        if _n == 0:
+            shot('4_middle.png')
+        xdo('click', 1)
+        yield 1.2
+        with C.temp_override(window=w, area=a, region=r):
+            states.append((bb.in_select(C), bb.tool_live(C), rm.is_open()))
+    log('Cut on; tap V + REAL click on the middle, twice: (select, tool on, wheel open) =', states)
+    res['4b the middle: a REAL click switches Cut -> Select, again Select -> Cut (the wheel closes each time)'] = (
+        states == [(True, False, False), (False, True, False)])
+    # 3c. a plain left click on empty space (Select on) opens it; a click on the cube does not; a drag does not
+    with C.temp_override(window=w, area=a, region=r):
+        bpy.ops.mch.select_move()
+        for o in list(C.scene.objects):
+            if o.type == 'MESH':
+                bpy.data.objects.remove(o)
+        bpy.ops.mesh.primitive_cube_add()
+        cube = C.active_object
+        rv = a.spaces.active.region_3d
+        rv.view_location = (0, 0, 0)
+        rv.view_distance = 12.0
+        bpy.ops.mch.select_move()
+    yield 1.5
+    ex, ey = int(r.x + r.width * 0.62), int(w.height - (r.y + r.height * 0.36))   # (empty: right of and below the cube, clear of the cards)
+    cube_xy = screen_xy((0, 0, 0))
+    xdo('mousemove', *cube_xy)
+    yield 0.6
+    xdo('click', 1)
+    yield 1.2
+    on_cube = rm.is_open()
+    if on_cube:
+        xdo('key', 'Escape')
+        yield 0.5
+    log('empty spot (screen)', ex, ey, 'cube (screen)', cube_xy, 'region', r.x, r.y, r.width, r.height, 'window h', w.height)
+    xdo('mousemove', ex, ey)
+    yield 0.8
+    xdo('click', 1)
+    yield 1.5
+    opened = rm.is_open()
+    cx0 = rm.STATE.get('cx') if opened else None
+    shot('5_click_open.png')
+    xdo('key', 'Escape')
+    yield 0.8
+    xdo('mousemove', ex, ey)
+    yield 0.4
+    xdo('mousedown', 1)
+    yield 0.2
+    xdo('mousemove', ex + 120, ey - 60)
+    yield 0.3
+    xdo('mouseup', 1)
+    yield 1.0
+    on_drag = rm.is_open()
+    if on_drag:
+        xdo('key', 'Escape')
+        yield 0.5
+    log('Select on - REAL left click on empty space: wheel', opened, 'at x', cx0, '| on the cube:', on_cube,
+        '(selected', [o.name for o in C.selected_objects], ') | a drag:', on_drag)
+    res['4c a REAL plain left click on empty space (Select on) opens the wheel there; on the cube it selects, no wheel; a drag: no wheel'] = (
+        opened and not on_cube and not on_drag and cube.select_get())
     # 4. Esc closes, the tool unchanged
     xdo('mousemove', cxs, cys)
     yield 0.5

@@ -6,9 +6,16 @@ after the REAL click on Cloth Drape: tool CDRAPE wheel open False
 shot 3_hover_split.png True
 hold V, onto Cut, onto Split, let go: tool SPLIT wheel open False
 flick up toward Block-out and past its tools, let go: hover was ('tool', 'OMASS') tool OMASS
+shot 4_middle.png True
+Cut on; tap V + REAL click on the middle, twice: (select, tool on, wheel open) = [(True, False, False), (False, True, False)]
+empty spot (screen) 1399 944 cube (screen) (1178, 743) region 254 140 1848 1433 window h 1600
+shot 5_click_open.png True
+Select on - REAL left click on empty space: wheel True at x 1145 | on the cube: False (selected ['Cube'] ) | a drag: False
 PASS 1 a REAL tap on V: the wheel opens at the mouse with the eleven groups and stays
 PASS 2 click: a REAL click on the Cloth group, then on Cloth Drape - that tool is on, the wheel gone
 PASS 3 hover: V held, the mouse onto Cut then Split, V let go - Split is on
 PASS 4 flick: V held, a flick toward Block-out and on out, V let go - a Block-out tool is on (the nearest)
+PASS 4b the middle: a REAL click switches Cut -> Select, again Select -> Cut (the wheel closes each time)
+PASS 4c a REAL plain left click on empty space (Select on) opens the wheel there; on the cube it selects, no wheel; a drag: no wheel
 PASS 5 tap V then Esc: closed, the tool as it was
-5/5 passed
+7/7 passed

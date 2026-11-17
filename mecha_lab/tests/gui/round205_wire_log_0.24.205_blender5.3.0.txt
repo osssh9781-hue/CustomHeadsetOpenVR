@@ -1,0 +1,6 @@
+PolyF on: (True, True) | Wire pressed: (False, False, False, False) | Wire pressed again: (False, True, True, True) | PolyF off: (False, False, False, False)
+PASS 1 PolyF on in the ZBRUSH screen: MECHA LAB's Wire button shows it as on
+PASS 2 Wire pressed in MECHA LAB: the PolyF wireframe is off (PolyF reads off too)
+PASS 3 Wire pressed again: the part's wire on - and PolyF reads on in the ZBRUSH screen
+PASS 4 PolyF switched off in the ZBRUSH screen: the part's wire is off too
+4/4 passed

@@ -1211,8 +1211,16 @@ def _persp_set(self, v):
     _safe(lambda: setattr(space().region_3d, 'view_perspective', 'PERSP' if v else 'ORTHO'), None)
 
 
+def _part_wires(context=None):
+    """The meshes with their own wireframe on (MECHA LAB's Wire button)."""
+    context = context or bpy.context
+    return [o for o in context.view_layer.objects if o.type == 'MESH' and o.show_wire]
+
+
 def _polyf_get(self):
-    return _safe(lambda: bool(space().overlay.show_wireframes), False)
+    # 0.24.205 (user: "지브러시 탭에서 켠 폴리프레임을 메카닉랩 와이어에서 끌 수 있게, 반대도"): one wireframe for both
+    # screens - PolyF is lit when either the view's wireframe or a part's own (Wire) is on
+    return _safe(lambda: bool(space().overlay.show_wireframes) or bool(_part_wires()), False)
 
 
 def _polyf_set(self, v):
@@ -1221,6 +1229,9 @@ def _polyf_set(self, v):
         ov.show_wireframes = bool(v)
         if hasattr(ov, 'show_sculpt_face_sets'):
             ov.show_sculpt_face_sets = bool(v)
+        if not v:                                 # (off = off: the wire MECHA LAB's Wire button put on the parts too)
+            for o in _part_wires():
+                o.show_wire = False
     _safe(f, None)
 
 
@@ -3318,7 +3329,8 @@ def wire_targets(context):
 
 def wire_on(context):
     """Is the wireframe drawn over the parts (a Make Quad / Quad Remesh result shows it)?"""
-    return _safe(lambda: any(o.show_wire for o in wire_targets(context)), False)
+    return _safe(lambda: any(o.show_wire for o in wire_targets(context))
+                 or bool(space().overlay.show_wireframes), False)        # (0.24.205 + the ZBRUSH screen's PolyF)
 
 
 def solo_on(context):
@@ -3340,11 +3352,20 @@ class MCH_OT_view_toggle(bpy.types.Operator):
             if not obs:
                 self.report({'INFO'}, 'Wire: no mesh in the view')
                 return {'CANCELLED'}
-            new = not any(o.show_wire for o in obs)
+            new = not wire_on(context)
             for o in obs:
                 o.show_wire = new
                 if new:
                     o.show_all_edges = True
+            if not new:                             # 0.24.205 off = off: the ZBRUSH screen's PolyF (the view's own
+                def off():                          # wireframe) and every part's wire, not only the selected ones'
+                    ov = space().overlay
+                    ov.show_wireframes = False
+                    if hasattr(ov, 'show_sculpt_face_sets'):
+                        ov.show_sculpt_face_sets = False
+                _safe(off, None)
+                for o in _part_wires(context):
+                    o.show_wire = False
             self.report({'INFO'}, f'Wire {"on" if new else "off"} ({len(obs)} part{"s" * (len(obs) != 1)})')
         else:
             if not solo_on(context) and not context.selected_objects:

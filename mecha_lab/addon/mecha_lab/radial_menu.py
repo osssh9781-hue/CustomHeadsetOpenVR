@@ -4,7 +4,8 @@
 V (the Tool Pie key) opens a wheel at the mouse: the inner ring holds the tool groups (Block-out, Cut, Surface
 detail ...), the group under the mouse fans its tools out beyond it.  Three ways to pick, with no mode to set:
 
-* **click**: tap the key - the wheel stays; click a group, then a tool (click the middle / Esc / right click = close);
+* **click**: tap the key - the wheel stays; click a group, then a tool; a click on the middle switches
+  Select <-> the tool (0.24.205); Esc / right click / the key again = close;
 * **hover**: hold the key, move onto a group and on to a tool, let the key go;
 * **flick**: hold the key, flick toward a group and on outward - the tool nearest the mouse is taken when the key
   is let go, the mouse need not be on it.
@@ -19,13 +20,15 @@ from bpy.props import StringProperty
 
 from . import tool_state as ts
 
-R_GROUP = 118.0          # px at UI scale 1: the groups' ring
+R_GROUP = 152.0          # px at UI scale 1: the groups' ring (0.24.205: 118 -> 152, user: "거리가 좀 더 있으면
+#                          좋겠어, 지금 너무 몰려 있어서 가독성이 떨어져" - room between the bubbles and off the middle)
+R_CENTRE = 81.0          # the middle disc (as before)
 B_GROUP = 27.0           # a group bubble's radius
 B_TOOL = 23.0            # a tool bubble's radius
-R_TOOL = 212.0           # the first arc of tools
+R_TOOL = 250.0           # the first arc of tools
 ROW_STEP = 58.0          # the next arc
 PER_ROW = 7              # tools in one arc
-DEAD = 0.34              # x R_GROUP: nearer the middle than this = nothing picked
+DEAD = 0.30              # x R_GROUP: nearer the middle than this = nothing picked
 TAP = 0.28               # s: the key let go sooner than this (and the mouse still) = the wheel stays open
 BUBBLE = (0.095, 0.098, 0.11, 1.0)        # 0.24.204 (user: "조그만 원 색도 좀 더 진하게, 명도 낮춰 줘"): darker than
 BUBBLE_HOVER = (0.19, 0.2, 0.225, 1.0)    # the panels' buttons (0.18)
@@ -108,6 +111,15 @@ def _disc(g, x, y, r, color):
     g.rounded_rect(x - r, y - r, 2 * r, 2 * r, r, color)
 
 
+def wheel_size():
+    """Preferences > Tool Wheel Size (x the UI size)."""
+    try:
+        from .workspace_ui import pref
+        return max(0.5, min(2.5, float(pref('wheel_size', 1.0))))
+    except (TypeError, ValueError, ImportError):
+        return 1.0
+
+
 def opacity():
     """Preferences > Tool Wheel Opacity (0 .. 1)."""
     try:
@@ -115,6 +127,32 @@ def opacity():
         return max(0.0, min(1.0, float(pref('wheel_opacity', 0.92))))
     except (TypeError, ValueError, ImportError):
         return 0.92
+
+
+def centre_state(context):
+    """(tool id, its name, is it on now) - what the middle of the wheel switches: Select <-> this tool."""
+    from . import bottom_bar
+    try:
+        tid, t = bottom_bar.chosen_tool(context)
+        live = bottom_bar.tool_live(context)
+    except (AttributeError, KeyError, TypeError):
+        tid, t, live = '', None, False
+    if not t:
+        tid, t = 'CUT', ts.TOOL_BY_ID.get('CUT')
+    return tid, (t[1] if t else 'Tool'), bool(live)
+
+
+def centre_click(context):
+    """The middle clicked: the tool on -> Select; Select -> the tool again.  Returns what is on now."""
+    tid, label, live = centre_state(context)
+    try:
+        bpy.ops.mch.tool_active()
+    except RuntimeError:
+        if live:
+            bpy.ops.mch.select_move()
+        else:
+            bpy.ops.mch.bar_tool(tool=tid)
+    return 'Select' if live else label
 
 
 def _label(g, x, y, s, size, k, bright):
@@ -138,20 +176,32 @@ def _draw():
     except (AttributeError, KeyError):
         cur = ''
     # 0.24.203 Tool Wheel Opacity: the big disc in the middle only (user: "가운데에 제일 큰 원 말이야, 다른 건 냅둬")
-    _disc(g, cx, cy, (R_GROUP - B_GROUP - 10.0) * k, (0.085, 0.087, 0.095, opacity()))
-    title = grp[open_idx][0] if 0 <= open_idx < len(grp) else 'Tools'
-    g.text(cx, cy + 7 * k, title.upper(), 12 * k, g.TEXT, 'CENTER')
-    tool_name = ''
+    _disc(g, cx, cy, R_CENTRE * k, (0.085, 0.087, 0.095, opacity()))
+    # 0.24.205 the middle: Select <-> the tool by a click (user: "클릭으로 셀렉이랑 툴 번갈아 가면서 할 수 있게 그걸 중앙에다가
+    # 놔 줄래? 다른 걸로 커서 옮기면 그때는 그 툴 이름 뜨게")
     if hover is not None and hover[0] == 'tool':
         t = ts.TOOL_BY_ID.get(hover[1])
-        tool_name = t[1] if t else ''
-    g.text(cx, cy - 11 * k, tool_name or 'click here to close', (11 if tool_name else 9.5) * k,
-           g.TEXT if tool_name else g.TEXT_DIM, 'CENTER')
+        g.text(cx, cy + 7 * k, grp[open_idx][0].upper() if 0 <= open_idx < len(grp) else '', 10 * k, g.TEXT_DIM, 'CENTER')
+        g.text(cx, cy - 11 * k, t[1] if t else '', 13 * k, g.TEXT, 'CENTER')
+    elif hover is not None:
+        g.text(cx, cy, grp[hover[1]][0].upper(), 13 * k, g.TEXT, 'CENTER')
+    else:
+        tid, label, live = centre_state(bpy.context)
+        now, nxt = (label, 'Select') if live else ('Select', label)
+        rr = (R_CENTRE - 6.0) * k       # (a ring, not a second disc: Tool Wheel Opacity stays the disc's)
+        g.polyline(g.circle_pts(cx, cy, rr, 64), g.ACCENT if live else BUBBLE_HOVER, 3.0 * k, closed=True)
+        sz = 30.0 * k
+        if live and tid in ts.TOOL_BY_ID:
+            g.image(g.icon_path(ts.TOOL_BY_ID[tid][3]), cx - sz / 2, cy + 6.0 * k, sz)
+        else:
+            g.glyph('arrow', cx - sz / 2, cy + 6.0 * k, sz)
+        g.text(cx, cy - 6 * k, g.fit(now.upper(), 12 * k, rr * 1.8), 12 * k, g.TEXT, 'CENTER')
+        g.text(cx, cy - 24 * k, g.fit('click: ' + nxt, 9.5 * k, rr * 1.8), 9.5 * k, g.TEXT_DIM, 'CENTER')
     lines = []
     for it in items:
         if it['kind'] == 'group':
             a = math.atan2(it['y'] - cy, it['x'] - cx)
-            r0 = (R_GROUP - B_GROUP - 10.0) * k
+            r0 = R_CENTRE * k
             lines.append(((cx + math.cos(a) * r0, cy + math.sin(a) * r0),
                           (it['x'] - math.cos(a) * it['r'], it['y'] - math.sin(a) * it['r'])))
     if lines:
@@ -198,6 +248,7 @@ class MCH_OT_radial_menu(bpy.types.Operator):
     bl_label = 'Tool Wheel'
     bl_options = {'INTERNAL'}
     key: StringProperty(default='V')
+    held: bpy.props.BoolProperty(default=True)       # (False: opened by a click - it stays, click mode)
 
     @classmethod
     def poll(cls, context):
@@ -210,7 +261,7 @@ class MCH_OT_radial_menu(bpy.types.Operator):
             return {'CANCELLED'}
         from .ui_gpu import ui_factor
         region = context.region
-        k = ui_factor(context, region)
+        k = ui_factor(context, region) * wheel_size()
         grp = groups()
         if not grp:
             return {'CANCELLED'}
@@ -219,7 +270,7 @@ class MCH_OT_radial_menu(bpy.types.Operator):
         self.t0 = time.monotonic()
         self.start = (event.mouse_region_x, event.mouse_region_y)
         self.moved = False
-        self.held = True
+        self.held = bool(self.properties.held) if self.properties.is_property_set('held') else True
         self.region = region
         STATE['handle'] = bpy.types.SpaceView3D.draw_handler_add(_draw, (), 'WINDOW', 'POST_PIXEL')
         context.window_manager.modal_handler_add(self)
@@ -278,9 +329,10 @@ class MCH_OT_radial_menu(bpy.types.Operator):
             return {'CANCELLED'}
         if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
             h = self._hover(context, event)
-            if h is None:
+            if h is None:                                     # the middle: Select <-> the tool
                 _close(context)
-                return {'CANCELLED'}
+                self.report({'INFO'}, centre_click(context))
+                return {'FINISHED'}
             if h[0] == 'tool':
                 return self._run(context, h[1])
             return {'RUNNING_MODAL'}
@@ -289,8 +341,91 @@ class MCH_OT_radial_menu(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
 
+# ---- 0.24.205 a plain left click on empty space opens it (user: "좌클릭으로 그냥 해 줘" / "더블클릭이 아니라 그냥 클릭") ---
+def click_wanted(context, event):
+    """A left press that may become the wheel: Select / Move is on (a tool's own clicks are the tool's), no Ctrl /
+    Shift / Alt, nothing under the mouse, the wheel not open, the setting on."""
+    if STATE or event.type != 'LEFTMOUSE' or event.value not in {'PRESS', 'CLICK'} or event.ctrl or event.shift \
+            or event.alt:
+        return False
+    try:
+        from . import bottom_bar
+        from .workspace_ui import object_under_mouse, pref
+        if not pref('wheel_click', True) or not bottom_bar.ui_active(context) or context.mode != 'OBJECT':
+            return False
+        if context.area is None or context.area.type != 'VIEW_3D' or not bottom_bar.in_select(context):
+            return False
+        from . import ui_bars
+        from . import ui_bars
+        if ui_bars.hit(context, event.mouse_region_x, event.mouse_region_y)[0]:      # (on a card: the card's)
+            return False
+        return object_under_mouse(context, event) is None
+    except (AttributeError, KeyError, TypeError, ReferenceError, RuntimeError, ImportError):
+        return False
+
+
+def click_start(context, event):
+    """(from the press handler, the press not on any card) watch this press: let go without a drag = the wheel."""
+    if not click_wanted(context, event):
+        return False
+    try:
+        return 'RUNNING_MODAL' in bpy.ops.mch.radial_click('INVOKE_DEFAULT')
+    except RuntimeError:
+        return False
+
+
+class MCH_OT_radial_click(bpy.types.Operator):
+    """A left click on empty space (Select / Move on): the Tool Wheel opens there; a drag stays Blender's box select"""
+    bl_idname = 'mch.radial_click'
+    bl_label = 'Tool Wheel (click)'
+    bl_options = {'INTERNAL'}
+
+    direct: bpy.props.BoolProperty(default=False)     # (from the Select tool's own keymap: the click is complete)
+
+    def invoke(self, context, event):
+        if self.direct and not click_wanted(context, event):
+            return {'PASS_THROUGH'}
+        self.start = (event.mouse_x, event.mouse_y)
+        self.t0 = time.monotonic()
+        context.window_manager.modal_handler_add(self)
+        # (the press goes on: Blender's own click on empty space - deselect - and its box-select drag still work)
+        return {'RUNNING_MODAL', 'PASS_THROUGH'} if self.direct else {'RUNNING_MODAL'}
+
+    def modal(self, context, event):
+        if event.type == 'MOUSEMOVE':
+            if math.hypot(event.mouse_x - self.start[0], event.mouse_y - self.start[1]) > 6.0:
+                return {'CANCELLED', 'PASS_THROUGH'}          # a drag: Blender's box select
+            return {'PASS_THROUGH'}
+        if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+            if time.monotonic() - self.t0 < 0.6 and not STATE:
+                try:
+                    bpy.ops.mch.radial_menu('INVOKE_DEFAULT', held=False)
+                except RuntimeError:
+                    pass
+            return {'FINISHED', 'PASS_THROUGH'}
+        if event.type in {'ESC', 'RIGHTMOUSE'}:
+            return {'CANCELLED', 'PASS_THROUGH'}
+        return {'PASS_THROUGH'}
+
+
+_keymaps = []
+SELECT_KEYMAPS = ('3D View Tool: Select Box', '3D View Tool: Tweak', '3D View Tool: Select Circle',
+                  '3D View Tool: Select Lasso')
+
+
 def register():
     bpy.utils.register_class(MCH_OT_radial_menu)
+    bpy.utils.register_class(MCH_OT_radial_click)
+    wm = bpy.context.window_manager
+    kc = wm.keyconfigs.addon if wm else None
+    if kc is not None:                # (the Select tools take the left button before the 3D View keymap sees it)
+        for name in SELECT_KEYMAPS:
+            km = kc.keymaps.new(name=name, space_type='VIEW_3D', region_type='WINDOW')
+            # (PRESS, in the tool's own keymap: Blender's select there swallows a press on empty space, so neither a
+            #  CLICK item nor the 3D View keymap ever saw it)
+            item = km.keymap_items.new('mch.radial_click', 'LEFTMOUSE', 'PRESS')
+            item.properties.direct = True
+            _keymaps.append((km, item))
 
 
 def unregister():
@@ -298,4 +433,11 @@ def unregister():
         _close(bpy.context)
     except (AttributeError, ReferenceError):
         STATE.clear()
+    for km, item in _keymaps:
+        try:
+            km.keymap_items.remove(item)
+        except (RuntimeError, ReferenceError):
+            pass
+    _keymaps.clear()
+    bpy.utils.unregister_class(MCH_OT_radial_click)
     bpy.utils.unregister_class(MCH_OT_radial_menu)

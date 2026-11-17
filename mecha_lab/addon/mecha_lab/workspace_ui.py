@@ -84,7 +84,7 @@ def handle_scale():
 # saved (Auto-Save Preferences off): they are kept in the add-on's own small
 # file in the user config folder.  Blender's own preference file is untouched.
 SIZE_KEYS = ('icon_scale', 'toolbar_scale', 'handle_scale', 'mecha_ui_size', 'menu_size', 'strip_scale',
-             'panel_opacity', 'wheel_opacity')   # 0.24.59 + tool tiles, panel opacity; 0.24.202 the Tool Wheel's
+             'panel_opacity', 'wheel_opacity', 'wheel_size')   # 0.24.59 + tool tiles, panel opacity; 0.24.202 the Tool Wheel's
 _SIZE_MUTE = [False]
 
 
@@ -2142,6 +2142,10 @@ def draw_icon_sizes(layout, p):
         col.prop(p, 'panel_opacity', slider=True)        # 0.24.59 the cards' background only
     if hasattr(p, 'wheel_opacity'):
         col.prop(p, 'wheel_opacity', slider=True)        # 0.24.202 the Tool Wheel's own
+    if hasattr(p, 'wheel_size'):
+        col.prop(p, 'wheel_size', slider=True)           # 0.24.205
+    if hasattr(p, 'wheel_click'):
+        col.prop(p, 'wheel_click')                       # 0.24.205
     if hasattr(p, 'dial_flip'):
         layout.prop(p, 'dial_flip')
     if hasattr(p, 'bottom_toolbar'):
@@ -2550,6 +2554,13 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
     strip_names: BoolProperty(name='Tool Strip Names', default=True,
                               description='0.24.59 the tool strip shows each tool\'s name next to its icon (two '
                                           'columns); off = icons only')
+    wheel_click: BoolProperty(name='Tool Wheel on Click', default=True,
+                              description='A plain left click on empty space opens the Tool Wheel there (while '
+                                          'Select / Move is on; a drag is still the box select, a click on a part '
+                                          'still selects it). Off: only the V key opens it')
+    wheel_size: FloatProperty(name='Tool Wheel Size', default=1.0, min=0.5, max=2.5, subtype='FACTOR',
+                              update=_sizes_changed,
+                              description='How big the Tool Wheel is (V / a click on empty space): x the UI size')
     wheel_opacity: FloatProperty(name='Tool Wheel Opacity', default=0.92, min=0.0, max=1.0, subtype='FACTOR',
                                  update=_sizes_changed,
                                  description='How solid the big disc in the middle of the Tool Wheel is (V): 1 = the '

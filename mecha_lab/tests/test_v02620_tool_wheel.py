@@ -42,7 +42,7 @@ check('pick: the middle = nothing; on a group bubble = that group; on a tool bub
       and rm.pick(500, 500, k, grp, -1, g_cut['x'], g_cut['y']) == ('group', ci)
       and rm.pick(500, 500, k, grp, ci, t_split['x'], t_split['y']) == ('tool', 'SPLIT'))
 a = math.atan2(g_cut['y'] - 500, g_cut['x'] - 500)
-between = (500 + math.cos(a) * 70, 500 + math.sin(a) * 70)             # (short of the ring, toward Cut)
+between = (500 + math.cos(a) * 90, 500 + math.sin(a) * 90)             # (short of the ring, toward Cut)
 far = (t_split['x'] + math.cos(a) * 160, t_split['y'] + math.sin(a) * 160)   # (flicked well past the tools)
 other = (500 - math.cos(a) * 300, 500 - math.sin(a) * 300)             # (the other way, far out)
 check('flick: toward a group short of its bubble = that group; far past the open group\'s tools = the nearest tool; '
@@ -55,6 +55,14 @@ check('near a region edge the wheel moves in so the ring shows; in the open it i
       and rm.fit_centre(900, 500, 1920, 1080, 1.0) == (900, 500))
 check('V (the Tool Pie key) is the wheel: the operator exists and the key item is still there',
       hasattr(bpy.types, 'MCH_OT_radial_menu') and hasattr(bpy.types, 'MCH_OT_tool_pie'))
+tid, label, live = rm.centre_state(bpy.context)
+check('0.24.205 the middle shows what it switches: a tool and its name (Cut when none was chosen yet)',
+      tid in ts.TOOL_BY_ID and label == ts.TOOL_BY_ID[tid][1] and live in (True, False))
+check('0.24.205 the ring stands off the middle disc (a gap of more than a bubble), bubbles a third of one apart',
+      rm.R_GROUP - rm.B_GROUP - rm.R_CENTRE > rm.B_GROUP * 1.4
+      and 2 * rm.R_GROUP * math.sin(math.pi / 11) - 2 * rm.B_GROUP > rm.B_GROUP * 0.6)
+check('a plain click opens it: the watcher exists, and a click with Ctrl / on the wheel itself is not wanted',
+      hasattr(bpy.types, 'MCH_OT_radial_click') and callable(rm.click_wanted))
 from mecha_lab import workspace_ui as wu
 p_ = wu.prefs()
 ok = abs(rm.opacity() - 0.92) < 1e-6 and 'wheel_opacity' in wu.SIZE_KEYS and hasattr(wu.MCH_AddonPreferences if hasattr(wu, 'MCH_AddonPreferences') else type('x', (), {'wheel_opacity': 1}), '__name__')

@@ -400,6 +400,11 @@ class MCH_OT_quick_hud_press(bpy.types.Operator):
         except (AttributeError, KeyError, TypeError, ReferenceError):
             h = None
         if h is None:
+            try:                                        # 0.24.205 a plain click on empty space (Select on): the
+                from . import radial_menu               # Tool Wheel - watched from here, the press itself goes on
+                radial_menu.click_start(context, event)
+            except (ImportError, AttributeError, RuntimeError):
+                pass
             return {'PASS_THROUGH'}
         self.kind, self.index = h
         self.x0, self.y0 = event.mouse_region_x, event.mouse_region_y
