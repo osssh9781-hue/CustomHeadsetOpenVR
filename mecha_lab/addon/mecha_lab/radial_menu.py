@@ -27,6 +27,9 @@ ROW_STEP = 58.0          # the next arc
 PER_ROW = 7              # tools in one arc
 DEAD = 0.34              # x R_GROUP: nearer the middle than this = nothing picked
 TAP = 0.28               # s: the key let go sooner than this (and the mouse still) = the wheel stays open
+BUBBLE = (0.095, 0.098, 0.11, 1.0)        # 0.24.204 (user: "조그만 원 색도 좀 더 진하게, 명도 낮춰 줘"): darker than
+BUBBLE_HOVER = (0.19, 0.2, 0.225, 1.0)    # the panels' buttons (0.18)
+BUBBLE_EDGE = (0.17, 0.175, 0.195, 1.0)
 STATE = {}               # the open wheel: centre, k, groups, open, hover, handle, area
 
 
@@ -159,8 +162,8 @@ def _draw():
         opened = is_group and it['index'] == open_idx
         using = (not is_group) and it['id'] == cur
         r = it['r'] * (1.1 if lit else 1.0)
-        _disc(g, it['x'], it['y'], r + 2.0 * k, g.ACCENT if (lit or opened) else (g.ORANGE if using else g.CARD_EDGE))
-        _disc(g, it['x'], it['y'], r, g.BTN_HOVER if lit else g.BTN)
+        _disc(g, it['x'], it['y'], r + 2.0 * k, g.ACCENT if (lit or opened) else (g.ORANGE if using else BUBBLE_EDGE))
+        _disc(g, it['x'], it['y'], r, BUBBLE_HOVER if lit else BUBBLE)
         s = r * 1.18
         g.image(g.icon_path(it['icon']), it['x'] - s / 2, it['y'] - s / 2 + 2.0 * k, s)
         if is_group:                 # (the groups keep their names; a tool's name shows when the mouse is on it -
