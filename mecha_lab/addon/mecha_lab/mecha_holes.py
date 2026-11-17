@@ -256,6 +256,13 @@ def target_bvh(context, target, frame_inv):
     key = (target.name, len(target.data.vertices), tuple(round(x, 5) for r in frame_inv for x in r))
     if _BVH.get('key') == key:
         return _BVH['bvh']
+    # 0.24.207 the part WITHOUT the pockets the recessed panels cut into it (a panel must lie on the surface that was
+    # there, not on its own pocket's floor)
+    cuts = [m for m in target.modifiers if m.name.startswith(CUT_MOD) and m.show_viewport]
+    for m in cuts:
+        m.show_viewport = False
+    if cuts:
+        dg.update()
     ev = target.evaluated_get(dg)
     me = ev.to_mesh()
     try:
@@ -269,8 +276,133 @@ def target_bvh(context, target, frame_inv):
         bvh = BVHTree.FromPolygons(co.tolist(), tri.reshape(-1, 3).tolist())
     finally:
         ev.to_mesh_clear()
+        for m in cuts:
+            m.show_viewport = True
     _BVH.update(key=key, bvh=bvh)
     return bvh
+
+
+# ---- 0.24.207 Recess (user: "내가 지정한 영역을 파서 안으로 들어가서, 홀이 생긴 메쉬가 원래 있던 메쉬보다 조금 안쪽에
+# 들어가면 좋겠어"): the panel sunk below the surface, the part cut open for it (a pocket) ----------------------------
+CUT_MOD = 'MCH Holes Cut'
+CUT_KEY = 'mch_mholes_cut'
+
+
+def _in_poly(P, Q):
+    """Which of the points ``Q`` (m, 2) are inside the polygon ``P`` (n, 2)."""
+    x, y = Q[:, 0][:, None], Q[:, 1][:, None]
+    x0, y0 = P[:, 0][None, :], P[:, 1][None, :]
+    x1, y1 = np.roll(P[:, 0], -1)[None, :], np.roll(P[:, 1], -1)[None, :]
+    cross = ((y0 > y) != (y1 > y)) & (x < (x1 - x0) * (y - y0) / np.where(y1 == y0, 1e-30, y1 - y0) + x0)
+    return cross.sum(1) % 2 == 1
+
+
+def pocket_mesh(P2, size, bvh, depth):
+    """(verts, faces) of the block that cuts the pocket: the outline's area, its top well above the surface, its
+    bottom ``depth`` (and the panel's own thickness) below it, following the surface."""
+    from mathutils import geometry
+    step = size / 18.0
+    ring = []
+    for i in range(len(P2)):
+        a, b = P2[i], P2[(i + 1) % len(P2)]
+        n = max(1, int(math.ceil(np.linalg.norm(b - a) / step)))
+        ring += [a + (b - a) * t / n for t in range(n)]
+    ring = np.array(ring)
+    lo, hi = ring.min(0), ring.max(0)
+    gx, gy = np.meshgrid(np.arange(lo[0] + step / 2, hi[0], step), np.arange(lo[1] + step / 2, hi[1], step))
+    G = np.c_[gx.ravel(), gy.ravel()]
+    if len(G):
+        G = G[_in_poly(ring, G)]
+        if len(G):                                    # (not on the outline itself)
+            dmin = np.sqrt(((G[:, None, :] - ring[None, :, :]) ** 2).sum(2)).min(1)
+            G = G[dmin > step * 0.45]
+    pts = np.concatenate([ring, G]) if len(G) else ring
+    nr = len(ring)
+    edges = [(i, (i + 1) % nr) for i in range(nr)]
+    res = geometry.delaunay_2d_cdt([Vector(p) for p in pts.tolist()], edges, [], 1, step * 1e-4)
+    V2 = np.array([tuple(v) for v in res[0]])
+    T = [tuple(f) for f in res[2] if len(f) == 3]
+    n = len(V2)
+    top, bot = np.zeros((n, 3)), np.zeros((n, 3))
+    for i, (x, y) in enumerate(V2):
+        loc, nrm, _i, _d = bvh.ray_cast(Vector((x, y, size)), Vector((0.0, 0.0, -1.0)), size * 4)
+        if loc is None:
+            loc, nrm, _i, _d = bvh.find_nearest(Vector((x, y, 0.0)))
+        if loc is None:
+            loc, nrm = Vector((x, y, 0.0)), Vector((0.0, 0.0, 1.0))
+        if nrm.z < 0:
+            nrm = -nrm
+        top[i] = loc + Vector((0.0, 0.0, 1.0)) * size * 0.3
+        bot[i] = loc - nrm * (depth + size * 0.006)
+    from collections import Counter
+    cnt = Counter()
+    for a, b, c in T:
+        for e in ((a, b), (b, c), (c, a)):
+            cnt[(min(e), max(e))] += 1
+    faces = [t for t in T] + [tuple(n + i for i in t[::-1]) for t in T]
+    for a, b, c in T:
+        for x, y in ((a, b), (b, c), (c, a)):
+            if cnt[(min(x, y), max(x, y))] == 1:
+                faces.append((y, x, n + x, n + y))
+    return np.concatenate([top, bot]), faces
+
+
+def cutter_of(ob):
+    return bpy.data.objects.get(ob.get(CUT_KEY, '')) if ob is not None else None
+
+
+def drop_pocket(ob, target=None):
+    """The pocket's cut taken off the part again (the panel back on top, or the panel gone)."""
+    cut = cutter_of(ob)
+    target = target or bpy.data.objects.get(data(ob).get('target', '')) or (ob.parent if ob is not None else None)
+    if target is not None:
+        for m in list(target.modifiers):
+            if m.type == 'BOOLEAN' and m.name.startswith(CUT_MOD) and (m.object is None or m.object == cut):
+                target.modifiers.remove(m)
+    if cut is not None:
+        me = cut.data
+        bpy.data.objects.remove(cut, do_unlink=True)
+        if me is not None and me.users == 0:
+            bpy.data.meshes.remove(me)
+    if ob is not None and CUT_KEY in ob:
+        del ob[CUT_KEY]
+
+
+def lay_pocket(ob, context, target, P2, size, bvh, depth):
+    """The pocket for a recessed panel: its cutting block made (or made again) and the Boolean on the part."""
+    if depth <= 0.0:
+        drop_pocket(ob, target)
+        return None
+    V, faces = pocket_mesh(P2, size, bvh, depth)
+    cut = cutter_of(ob)
+    if cut is None:
+        cut = bpy.data.objects.new('Mecha Holes Cut', bpy.data.meshes.new('Mecha Holes Cut'))
+        for coll in (ob.users_collection or [context.scene.collection]):
+            coll.objects.link(cut)
+        cut.parent = ob
+        cut.display_type = 'WIRE'
+        cut.hide_render = True
+        cut.hide_select = True
+        ob[CUT_KEY] = cut.name
+    me = cut.data
+    me.clear_geometry()
+    me.from_pydata(V.tolist(), [], faces)
+    me.validate()
+    me.update()
+    try:
+        cut.hide_set(True)
+    except RuntimeError:
+        pass
+    mod = next((m for m in target.modifiers if m.type == 'BOOLEAN' and m.name.startswith(CUT_MOD)
+                and m.object == cut), None)
+    if mod is None:
+        mod = target.modifiers.new(CUT_MOD, 'BOOLEAN')
+        mod.operation = 'DIFFERENCE'
+        mod.object = cut
+        solvers = {i.identifier for i in mod.bl_rna.properties['solver'].enum_items}
+        mod.solver = 'EXACT' if 'EXACT' in solvers else mod.solver
+    target.update_tag()
+    return cut
 
 
 def build(ob, context=None):
@@ -290,6 +422,8 @@ def build(ob, context=None):
     n = len(V2)
     top, bot = np.zeros((n, 3)), np.zeros((n, 3))
     lift = size * 0.0005
+    deep = max(0.0, float(getattr(pg, 'recess', 0.0))) * size      # 0.24.207 sunk this far below the surface
+    lay_pocket(ob, context, target, P2, size, bvh, deep)
     for i, (x, y) in enumerate(V2):
         o = Vector((x, y, size))
         loc, nrm, _i, _dd = bvh.ray_cast(o, Vector((0.0, 0.0, -1.0)), size * 4)
@@ -299,8 +433,8 @@ def build(ob, context=None):
             loc, nrm = Vector((x, y, 0.0)), Vector((0.0, 0.0, 1.0))
         if nrm.z < 0:
             nrm = -nrm
-        top[i] = loc + nrm * (z[i] + lift)
-        bot[i] = loc - nrm * size * 0.004
+        top[i] = loc + nrm * (z[i] + lift - deep)
+        bot[i] = loc - nrm * (size * 0.004 + deep)
     V = np.concatenate([top, bot])
     Fc = [tuple(t) for t in T] + [tuple(n + t[::-1]) for t in T]
     from collections import Counter
@@ -382,7 +516,8 @@ def _upd(self, context):
                 _BUSY[0] = False
 
 
-LIVE = ('pattern', 'cell', 'hole_size', 'angle', 'frame_width', 'frame_height', 'floor_height', 'color', 'hole_color')
+LIVE = ('pattern', 'cell', 'hole_size', 'angle', 'frame_width', 'frame_height', 'floor_height', 'recess', 'color',
+        'hole_color')
 
 
 class MCH_PG_MechaHoles(bpy.types.PropertyGroup):
@@ -396,6 +531,9 @@ class MCH_PG_MechaHoles(bpy.types.PropertyGroup):
     frame_width: FloatProperty(name='Frame Width', default=0.06, min=0.0, max=0.4, update=_upd,
                                description='The finishing frame round the outline (a share of its size)')
     frame_height: FloatProperty(name='Frame Height', default=0.025, min=0.0, max=0.2, update=_upd)
+    recess: FloatProperty(name='Recess', default=0.035, min=0.0, max=0.3, update=_upd,
+                          description='How far the panel is sunk into the part (x the outline size): the part is cut '
+                                      'open for it, the panel sits a little below the surface. 0 = lying on top, no cut')
     floor_height: FloatProperty(name='Floor Height', default=0.012, min=0.002, max=0.2, update=_upd,
                                 description='The floor inside the frame (lower than the frame: recessed)')
     color: FloatVectorProperty(name='Panel', subtype='COLOR', size=3, min=0.0, max=1.0, default=(0.42, 0.43, 0.4),
@@ -464,6 +602,31 @@ def perform(context, loops, projector):
     return f'{ob.name} on "{target.name}" ({nf:,} faces) - live: its sliders lay it again; Enter: keep'
 
 
+def keep_pocket(context, ob):
+    """Apply: the pocket's Boolean applied on the part, the cutting block removed.  '' or a note when it could not
+    be applied (the part's mesh is shared / has shape keys): the Boolean then stays live on the part."""
+    cut = cutter_of(ob)
+    if cut is None:
+        return ''
+    target = bpy.data.objects.get(data(ob).get('target', '')) or ob.parent
+    mod = next((m for m in target.modifiers if m.type == 'BOOLEAN' and m.object == cut), None) if target else None
+    if mod is None:
+        drop_pocket(ob, target)
+        return ''
+    if target.data.users > 1 or target.data.shape_keys is not None:
+        return f'the pocket stays a live Boolean on {target.name} (its mesh is shared or has shape keys)'
+    try:
+        while target.modifiers[0] != mod:               # (a Boolean applies cleanly only from the top)
+            target.modifiers.move(list(target.modifiers).index(mod), 0)
+        with context.temp_override(object=target, active_object=target, selected_objects=[target]):
+            bpy.ops.object.modifier_apply(modifier=mod.name)
+    except RuntimeError as ex:
+        return f'the pocket stays a live Boolean on {target.name} ({str(ex).splitlines()[0]})'
+    drop_pocket(ob, target)
+    _BVH.clear()
+    return ''
+
+
 class MCH_OT_mholes_apply(bpy.types.Operator):
     """Keep the selected hole panels as they are (no longer live)"""
     bl_idname = 'mch.mholes_apply'
@@ -476,10 +639,14 @@ class MCH_OT_mholes_apply(bpy.types.Operator):
 
     def execute(self, context):
         obs = [o for o in context.selected_objects if is_holes(o)]
+        notes = []
         for ob in obs:
+            note = keep_pocket(context, ob)             # 0.24.207 the pocket cut into the part for good
+            if note:
+                notes.append(note)
             del ob[KEY]
             ob[DONE] = 1
-        self.report({'INFO'}, 'Kept: ' + ', '.join(o.name for o in obs))
+        self.report({'INFO'}, 'Kept: ' + ', '.join(o.name for o in obs) + (' | ' + '; '.join(notes) if notes else ''))
         return {'FINISHED'}
 
 
@@ -507,7 +674,7 @@ def draw(layout, context):
     for pid, label, _d in PATTERNS:
         g.operator('mch.mholes_pattern', text=label, depress=pg.pattern == pid).pattern = pid
     col = layout.column(align=True)
-    for k in ('cell', 'hole_size', 'angle', 'frame_width', 'frame_height', 'floor_height'):
+    for k in ('cell', 'hole_size', 'angle', 'frame_width', 'frame_height', 'floor_height', 'recess'):
         col.prop(pg, k, slider=k not in {'angle'})
     r = layout.row(align=True)
     r.prop(pg, 'color', text='')

@@ -1,0 +1,7 @@
+shot 1_open.png True
+open: tool tiles 75 dock y 191.2803266787659 | after a REAL click on Fold: folded True tiles 0 dock y 81.45473684210526
+shot 2_folded.png True
+after a REAL click on the tab: folded False tiles 75
+PASS 1 a REAL click on Fold: the menu is a small tab, the tool tiles gone, the actions dock lower
+PASS 2 a REAL click on the tab: the menu is open again
+2/2 passed

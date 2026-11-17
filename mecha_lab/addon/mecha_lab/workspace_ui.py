@@ -84,7 +84,7 @@ def handle_scale():
 # saved (Auto-Save Preferences off): they are kept in the add-on's own small
 # file in the user config folder.  Blender's own preference file is untouched.
 SIZE_KEYS = ('icon_scale', 'toolbar_scale', 'handle_scale', 'mecha_ui_size', 'menu_size', 'strip_scale',
-             'panel_opacity', 'wheel_opacity', 'wheel_size')   # 0.24.59 + tool tiles, panel opacity; 0.24.202 the Tool Wheel's
+             'panel_opacity', 'wheel_opacity', 'wheel_size', 'menu_folded')   # 0.24.59 + tool tiles, panel opacity; 0.24.202 the Tool Wheel's
 _SIZE_MUTE = [False]
 
 
@@ -125,7 +125,8 @@ def load_sizes(p=None):
     try:
         for k in SIZE_KEYS:
             if isinstance(data.get(k), (int, float)):
-                setattr(p, k, float(data[k]))
+                was = getattr(p, k, None)                   # (0.24.207 an on / off setting kept with the sizes)
+                setattr(p, k, bool(data[k]) if isinstance(was, bool) else float(data[k]))
         if 'menu_size' not in data and isinstance(data.get('mecha_ui_size'), (int, float)):
             p.menu_size = float(data['mecha_ui_size'])     # 0.24.58 the menu keeps the size it had (one size before)
     finally:
@@ -2142,6 +2143,8 @@ def draw_icon_sizes(layout, p):
         col.prop(p, 'panel_opacity', slider=True)        # 0.24.59 the cards' background only
     if hasattr(p, 'wheel_opacity'):
         col.prop(p, 'wheel_opacity', slider=True)        # 0.24.202 the Tool Wheel's own
+    if hasattr(p, 'menu_folded'):
+        col.prop(p, 'menu_folded')                       # 0.24.207
     if hasattr(p, 'wheel_size'):
         col.prop(p, 'wheel_size', slider=True)           # 0.24.205
     if hasattr(p, 'wheel_click'):
@@ -2554,6 +2557,9 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
     strip_names: BoolProperty(name='Tool Strip Names', default=True,
                               description='0.24.59 the tool strip shows each tool\'s name next to its icon (two '
                                           'columns); off = icons only')
+    menu_folded: BoolProperty(name='Tool Menu Folded', default=True, update=_sizes_changed,
+                              description='The bottom tool menu folded to a small tab (click the tab to open it; the '
+                                          'Tool Wheel - V or Alt + right click - has every tool too)')
     wheel_click: BoolProperty(name='Tool Wheel on Click', default=False,
                               description='A plain left click on empty space opens the Tool Wheel there (while '
                                           'Select / Move is on; a drag is still the box select, a click on a part '

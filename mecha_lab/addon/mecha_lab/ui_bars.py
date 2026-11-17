@@ -232,6 +232,41 @@ def menu_layout(region_w, k, groups, left=0.0):
     return rows, cols, cw, ch, fixed + cw * sum(cols), 2 * pad + head + rows * ch + (rows - 1) * gap
 
 
+FOLD_W, FOLD_H = 150.0, 30.0
+FOLD = [None]            # None = as the preference says; True / False = set here (no preferences: tests, a script)
+
+
+def menu_folded():
+    """0.24.207 (user: "아래 있는 이거는 이제 기본으로 접어 두자"): is the bottom tool menu folded to its tab?"""
+    if FOLD[0] is not None:
+        return bool(FOLD[0])
+    return bool(_pref('menu_folded', False))
+
+
+def set_menu_folded(value):
+    from .workspace_ui import prefs
+    p = prefs()
+    if p is not None and hasattr(p, 'menu_folded'):
+        FOLD[0] = None
+        p.menu_folded = bool(value)
+    else:
+        FOLD[0] = bool(value)
+    bump()
+
+
+class MCH_OT_menu_fold(bpy.types.Operator):
+    """Fold the bottom tool menu to a small tab / open it again (the Tool Wheel - V or Alt + right click - has every tool too)"""
+    bl_idname = 'mch.menu_fold'
+    bl_label = 'Fold Tool Menu'
+    bl_options = {'INTERNAL'}
+
+    def execute(self, context):
+        set_menu_folded(not menu_folded())
+        if context.area is not None:
+            context.area.tag_redraw()
+        return {'FINISHED'}
+
+
 def menu_items(context, region_w, region_h, k=1.0):
     """0.24.59 The main menu: every tool as a 6 : 4 tile (icon on top, name under it), grouped by job, in one
     band along the bottom of the viewport (the bottom toolbar sits on it)."""
@@ -239,11 +274,20 @@ def menu_items(context, region_w, region_h, k=1.0):
     groups = ts.grouped_tools()
     kk = k * strip_scale()
     left = left_inset(context)
+    if menu_folded():                 # 0.24.207 folded: one small tab at the bottom (a click opens the menu)
+        w, h = FOLD_W * kk, FOLD_H * kk
+        x0, y0 = max(left + 8 * k, (region_w - w) / 2.0), 8 * k
+        return [Item('card', x0, y0, w, h),
+                Item('tbtn', x0 + 3 * kk, y0 + 3 * kk, w - 6 * kk, h - 6 * kk, 'TOOLS  (open)', '', False, True,
+                     ('op', 'mch.menu_fold', {}))]
     rows, cols, cw, ch, w, h = menu_layout(region_w, kk, groups, left)
     pad, gap, sep, head = STRIP_PAD * kk, TILE_GAP * kk, MENU_SEP * kk, TILE_HEAD * kk
     x0 = max(left + 8 * k, (region_w - w) / 2.0)
     y0 = 8 * k
     out = [Item('card', x0, y0, w, h)]
+    fw = 46 * kk                      # (its fold button: the card's top right corner - or the view's right edge
+    fx = min(x0 + w, region_w - 8 * k) - fw - 4 * kk      #  when the card is wider than the view)
+    fold = Item('tbtn', fx, y0 + h - head - 1 * kk, fw, head, 'Fold', '', False, True, ('op', 'mch.menu_fold', {}))
     from . import bottom_bar
     try:
         active = '' if bottom_bar.in_select(context) else ts.effective_tool(context)
@@ -266,6 +310,7 @@ def menu_items(context, region_w, region_h, k=1.0):
             if t[0] in keys:
                 out.append(Item('keycap', tx + cw - 10 * kk, ty + ch - 11 * kk, 8 * kk, 10 * kk, keys[t[0]]))
         x += gw + sep
+    out.append(fold)                  # (last: drawn over a heading it may sit on)
     return out
 
 
@@ -278,6 +323,8 @@ def bottom_taken(context, k=1.0, region_w=None):
     if region_w is None:
         region_w = region.width
     kk = k * strip_scale()
+    if menu_folded():
+        return 8 * k + FOLD_H * kk + 8 * k
     h = menu_layout(region_w, kk, ts.grouped_tools(), left_inset(context))[5]
     return 8 * k + h + 8 * k
 
@@ -777,7 +824,7 @@ class MCH_OT_ui_scroll(bpy.types.Operator):
             return {'PASS_THROUGH'}
 
 
-CLASSES = (MCH_OT_ui_hover, MCH_OT_ui_scroll, MCH_PT_ui_value, MCH_MT_ui_choice, MCH_OT_side_page)
+CLASSES = (MCH_OT_ui_hover, MCH_OT_ui_scroll, MCH_PT_ui_value, MCH_MT_ui_choice, MCH_OT_side_page, MCH_OT_menu_fold)
 _keymaps = []
 
 

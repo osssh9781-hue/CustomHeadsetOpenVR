@@ -169,6 +169,7 @@ for (x0, z0), (x1, z1) in zip(rect, rect[1:] + rect[:1]):
     for j in range(20):
         dense.append(px(x0 + (x1 - x0) * j / 20, z0 + (z1 - z0) * j / 20))
 clear_sel()
+S.mch_mholes.recess = 0.0                            # (0.24.207: lying on top, as before - Recess is below)
 msg = mh.perform(C, [dense], FRONT)
 hp = C.active_object
 V, nf = ev(hp)
@@ -182,6 +183,47 @@ hits = [bvh.ray_cast(inv @ Vector((x, -5.0, z)), inv.to_3x3() @ Vector((0, 1, 0)
 depths = np.array([(hp.matrix_world @ h).y for h in hits if h is not None])
 check(f'... holes in it: from the front some rays go deeper (into the holes) than the panel face '
       f'({depths.min():+.3f} .. {depths.max():+.3f})', len(depths) > 100 and np.ptp(depths) > 0.005)
+
+# 0.24.207 Recess (user: "내가 지정한 영역을 파서 안으로 들어가서, 홀이 생긴 메쉬가 원래 있던 메쉬보다 조금 안쪽에")
+size_h = 1.6
+n_mod0 = len(Q.modifiers)
+hp.mch_mholes.recess = 0.05
+Vr, _nf = ev(hp)
+cutter = mh.cutter_of(hp)
+mods = [m for m in Q.modifiers if m.type == 'BOOLEAN' and m.name.startswith(mh.CUT_MOD)]
+check(f'Recess 0.05: the whole panel below the part\'s face (its front at y {Vr[:, 1].min():+.3f}, the face at -1.5), '
+      f'a cutting block (hidden, not rendered, not selectable) and a Boolean on the part',
+      Vr[:, 1].min() > -1.5 + 0.02 and cutter is not None and cutter.hide_render and cutter.hide_select
+      and len(mods) == 1 and mods[0].object == cutter and mods[0].operation == 'DIFFERENCE')
+C.view_layer.update()
+dgq = C.evaluated_depsgraph_get()
+bq = BVHTree.FromObject(Q, dgq)
+iq = Q.matrix_world.inverted()
+mid = bq.ray_cast(iq @ Vector((0.0, -5.0, -20.0)), iq.to_3x3() @ Vector((0, 1, 0)))[0]
+side = bq.ray_cast(iq @ Vector((1.3, -5.0, -20.0)), iq.to_3x3() @ Vector((0, 1, 0)))[0]
+check(f'... the part is cut open there: a ray at the panel\'s middle meets the part at y '
+      f'{(Q.matrix_world @ mid).y:+.3f} (the pocket\'s floor, under the panel), beside the panel at '
+      f'{(Q.matrix_world @ side).y:+.3f} (the face)', (Q.matrix_world @ mid).y > Vr[:, 1].max() - 1e-4
+      and abs((Q.matrix_world @ side).y + 1.5) < 1e-3)
+hp.mch_mholes.frame_width = 0.08                     # (another slider: laid again on the face that was there)
+Vr2, _nf = ev(hp)
+check('... another slider moved: the panel is where it was (it does not sink into its own pocket), still one Boolean',
+      abs(Vr2[:, 1].min() - Vr[:, 1].min()) < 2e-3
+      and len([m for m in Q.modifiers if m.name.startswith(mh.CUT_MOD)]) == 1)
+hp.mch_mholes.recess = 0.0
+check('Recess 0: the Boolean and the cutting block are gone, the panel on top again',
+      len(Q.modifiers) == n_mod0 and mh.cutter_of(hp) is None and abs(ev(hp)[0][:, 1].max() + 1.5) < 0.03)
+hp.mch_mholes.recess = 0.05
+nv0 = len(Q.data.vertices)
+clear_sel()
+hp.select_set(True)
+C.view_layer.objects.active = hp
+r = bpy.ops.mch.mholes_apply()
+check(f'Apply: the pocket cut into the part for good (its points {nv0} -> {len(Q.data.vertices)}), no Boolean left, '
+      f'the cutting block removed, the panel kept', 'FINISHED' in r and len(Q.data.vertices) > nv0
+      and not [m for m in Q.modifiers if m.name.startswith(mh.CUT_MOD)]
+      and not [o for o in bpy.data.objects if o.name.startswith('Mecha Holes Cut')] and not mh.is_holes(hp))
+S.mch_mholes.recess = 0.035
 
 # --- 4. Print Cut with a shape ---------------------------------------------------------------------------------------------
 B = box('Print Part', loc=(0.0, 0.0, -30.0), size=2.0)
