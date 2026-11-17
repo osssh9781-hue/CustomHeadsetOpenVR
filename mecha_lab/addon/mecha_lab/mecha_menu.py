@@ -648,6 +648,10 @@ def draw(items, hover, S, context):
             _tip(it.x + it.w / 2, it.y + it.h, it.label, S, 'ABOVE')
 
 
+# 0.24.213 the big section titles' colours (the digit of the title label's STRIP_COLOR_0n icon)
+BIG_HEAD = {'1': (0.60, 0.29, 0.29), '2': (0.66, 0.45, 0.18), '3': (0.56, 0.52, 0.20), '4': (0.25, 0.56, 0.42),
+            '5': (0.18, 0.44, 0.66), '6': (0.54, 0.31, 0.63), '7': (0.64, 0.34, 0.50), '8': (0.47, 0.36, 0.26),
+            '9': (0.36, 0.36, 0.38)}
 NEW_KINDS = {'sbtn', 'arow', 'ibtn', 'mini', 'drop', 'switch', 'tbtn', 'pnote', 'sbg', 'shead', 'phead', 'pbtn', 'pmin',
              'sbar', 'vrule', 'glabel', 'lrow', 'lfold', 'swatch', 'ptab', 'mtile', 'htile', 'btile'}
 BTN_BG = (0.17, 0.175, 0.19, 1.0)
@@ -810,6 +814,17 @@ def _draw_new(it, hot, S, white, dim):
         return (it, 'BELOW') if False else None
     if k == 'sbg':
         G.rounded_rect(x - 4 * S, y, w + 8 * S, h, 12 * S, (1.0, 1.0, 1.0, 0.035))
+        return None
+    if k == 'shead' and str(it.icon).startswith('big:'):     # 0.24.213 a big coloured title (click = fold)
+        tag, _sep, note = str(it.icon).partition('|')
+        rgb = BIG_HEAD.get(tag[4:], BIG_HEAD['9'])
+        G.rounded_rect(x - 4 * S, y, w + 8 * S, h, 9 * S, (*[min(1.0, c * (1.15 if hot else 1.0)) for c in rgb], 0.96))
+        tw = G.text(x + 8 * S, y + h / 2, ('–  ' if it.on else '+  ') + G.fit(it.label, 14.5 * S, w * 0.62), 14.5 * S,
+                    (1.0, 1.0, 1.0, 1.0))
+        if note:
+            room = w - tw - 26 * S
+            if room > 40 * S:
+                G.text(x + w - 6 * S, y + h / 2, G.fit(note, 10.5 * S, room), 10.5 * S, (1.0, 1.0, 1.0, 0.8), 'RIGHT')
         return None
     if k == 'shead':
         if hot:

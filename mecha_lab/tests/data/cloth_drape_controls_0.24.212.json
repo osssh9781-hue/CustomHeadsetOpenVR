@@ -1,0 +1,11342 @@
+{
+"idle AREA": [
+[
+"label",
+"",
+"Vacuum Pack: the selected meshes in one bag, the air sucked out"
+],
+[
+"op",
+"mch.vacuum_pack",
+"Vacuum Pack Selected",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.vacuum_mask",
+"Vacuum Pack Mask",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.gather",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"op",
+"mch.vacuum_gather_pick",
+"Pick Gather Point (click on the mesh)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.pressure",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.folds",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.self_collide",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.bag",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.points",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.collider_faces",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.film",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"label",
+"",
+"Cloth Drape"
+],
+[
+"label",
+"",
+"draw a lasso on the mesh: a loose cloth over that region"
+],
+[
+"prop",
+"MCH_PG_ClothDrape.drape_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"op",
+"mch.cdrape_control",
+"Drape (Space)",
+false,
+true,
+{
+"action": "toggle"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Restart",
+false,
+true,
+{
+"action": "restart"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Keep (Enter)",
+false,
+true,
+{
+"action": "confirm"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Drop (Esc)",
+false,
+true,
+{
+"action": "cancel"
+},
+false
+],
+[
+"op",
+"mch.cdrape_tack",
+"Tack Pins (0): cloth point, then body point",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_tack_clear",
+"",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_mesh",
+"Drape This Mesh (on the other selected / its tack pins)",
+true,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Mask (as in the ZBRUSH screen: drag = mask \u00b7 Alt = erase \u00b7 X = mirror)"
+],
+[
+"label",
+"",
+"Ctrl + click empty = invert \u00b7 Ctrl + lasso = mask \u00b7 Ctrl + drag empty = clear"
+],
+[
+"op",
+"mch.mecha_mask",
+"Paint Mask",
+true,
+true,
+{
+"action": "PAINT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Clear",
+true,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Invert",
+true,
+true,
+{
+"action": "INVERT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Brush",
+true,
+true,
+{
+"action": "BRUSH"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Lasso",
+true,
+true,
+{
+"action": "LASSO"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Box",
+true,
+true,
+{
+"action": "BOX"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Extract (mask -> shell)",
+true,
+true,
+{
+"action": "EXTRACT"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ZBrush.thick",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ZBrush.extract_offset",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_mask",
+"Drape Mask (masked faces lift off as the cloth)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_points",
+"Points",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_free",
+"Drape Mask: Fall Free (not held at the rim)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_wrap",
+"Wrap This Mesh (like a wrapping cloth)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_points",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_sew_copy",
+"Sew Copy (plate copied, edges sewn)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.puff",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_lines",
+"Use Lines (0)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_lines",
+"Draw Lines",
+true,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Stitches on the cloth (0)   drag = a seam \u00b7 Ctrl+Z = undo the last \u00b7 Esc = done"
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Draw Stitches",
+false,
+true,
+{
+"action": "DRAW"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Undo",
+false,
+true,
+{
+"action": "UNDO"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Clear",
+false,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_width",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_stick",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.line_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.size",
+"Tube Size",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.fold",
+"Height",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.lift",
+"Lift",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.fade",
+"End Fade",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.fabric",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.slack",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.shrink",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stick",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrinkles",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.keep",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stretch",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.self_collide",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gap",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.offset",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.spacing",
+"Cloth Detail (less = finer)",
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.collide_with",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_proxy",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.proxy_faces",
+"Faces",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.show_proxy",
+"",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.two_sides",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pin_rim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stop_at_pins",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.padding",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_pattern",
+"",
+true,
+false,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_size",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_puff",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim_width",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.thickness",
+null,
+true,
+true,
+{
+"slider": true
+}
+]
+],
+"idle CAPE": [
+[
+"label",
+"",
+"Vacuum Pack: the selected meshes in one bag, the air sucked out"
+],
+[
+"op",
+"mch.vacuum_pack",
+"Vacuum Pack Selected",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.vacuum_mask",
+"Vacuum Pack Mask",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.gather",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"op",
+"mch.vacuum_gather_pick",
+"Pick Gather Point (click on the mesh)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.pressure",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.folds",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.self_collide",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.bag",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.points",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.collider_faces",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.film",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"label",
+"",
+"Cloth Drape"
+],
+[
+"label",
+"",
+"draw a line across the shoulders (Surface: click points), Enter: a cape hangs from it"
+],
+[
+"prop",
+"MCH_PG_ClothDrape.drape_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.cape_length",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.cape_flare",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"op",
+"mch.cdrape_control",
+"Drape (Space)",
+false,
+true,
+{
+"action": "toggle"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Restart",
+false,
+true,
+{
+"action": "restart"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Keep (Enter)",
+false,
+true,
+{
+"action": "confirm"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Drop (Esc)",
+false,
+true,
+{
+"action": "cancel"
+},
+false
+],
+[
+"op",
+"mch.cdrape_tack",
+"Tack Pins (0): cloth point, then body point",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_tack_clear",
+"",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_mesh",
+"Drape This Mesh (on the other selected / its tack pins)",
+true,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Mask (as in the ZBRUSH screen: drag = mask \u00b7 Alt = erase \u00b7 X = mirror)"
+],
+[
+"label",
+"",
+"Ctrl + click empty = invert \u00b7 Ctrl + lasso = mask \u00b7 Ctrl + drag empty = clear"
+],
+[
+"op",
+"mch.mecha_mask",
+"Paint Mask",
+true,
+true,
+{
+"action": "PAINT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Clear",
+true,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Invert",
+true,
+true,
+{
+"action": "INVERT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Brush",
+true,
+true,
+{
+"action": "BRUSH"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Lasso",
+true,
+true,
+{
+"action": "LASSO"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Box",
+true,
+true,
+{
+"action": "BOX"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Extract (mask -> shell)",
+true,
+true,
+{
+"action": "EXTRACT"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ZBrush.thick",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ZBrush.extract_offset",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_mask",
+"Drape Mask (masked faces lift off as the cloth)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_points",
+"Points",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_free",
+"Drape Mask: Fall Free (not held at the rim)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_wrap",
+"Wrap This Mesh (like a wrapping cloth)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_points",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_sew_copy",
+"Sew Copy (plate copied, edges sewn)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.puff",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_lines",
+"Use Lines (0)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_lines",
+"Draw Lines",
+true,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Stitches on the cloth (0)   drag = a seam \u00b7 Ctrl+Z = undo the last \u00b7 Esc = done"
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Draw Stitches",
+false,
+true,
+{
+"action": "DRAW"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Undo",
+false,
+true,
+{
+"action": "UNDO"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Clear",
+false,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_width",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_stick",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.line_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.size",
+"Tube Size",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.fold",
+"Height",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.lift",
+"Lift",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.fade",
+"End Fade",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.fabric",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.slack",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.shrink",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stick",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrinkles",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.keep",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stretch",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.self_collide",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gap",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.offset",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.spacing",
+"Cloth Detail (less = finer)",
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.collide_with",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_proxy",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.proxy_faces",
+"Faces",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.show_proxy",
+"",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.two_sides",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pin_rim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stop_at_pins",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.padding",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_pattern",
+"",
+true,
+false,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_size",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_puff",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim_width",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.thickness",
+null,
+true,
+true,
+{
+"slider": true
+}
+]
+],
+"idle CSIM": [
+[
+"label",
+"",
+"Vacuum Pack: the selected meshes in one bag, the air sucked out"
+],
+[
+"op",
+"mch.vacuum_pack",
+"Vacuum Pack Selected",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.vacuum_mask",
+"Vacuum Pack Mask",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.gather",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"op",
+"mch.vacuum_gather_pick",
+"Pick Gather Point (click on the mesh)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.pressure",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.folds",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.self_collide",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.bag",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.points",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.collider_faces",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.film",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"label",
+"",
+"Cloth Drape"
+],
+[
+"label",
+"",
+"draw a line across the shoulders: Vertical = curtain pleats, Horizontal = folds the way you drew"
+],
+[
+"prop",
+"MCH_PG_ClothDrape.drape_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.cape_length",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.cape_flare",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.cape_folds",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.cape_gather",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.cape_pleats",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.cape_heading",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"op",
+"mch.cdrape_control",
+"Drape (Space)",
+false,
+true,
+{
+"action": "toggle"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Restart",
+false,
+true,
+{
+"action": "restart"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Keep (Enter)",
+false,
+true,
+{
+"action": "confirm"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Drop (Esc)",
+false,
+true,
+{
+"action": "cancel"
+},
+false
+],
+[
+"op",
+"mch.cdrape_tack",
+"Tack Pins (0): cloth point, then body point",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_tack_clear",
+"",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_mesh",
+"Drape This Mesh (on the other selected / its tack pins)",
+true,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Mask (as in the ZBRUSH screen: drag = mask \u00b7 Alt = erase \u00b7 X = mirror)"
+],
+[
+"label",
+"",
+"Ctrl + click empty = invert \u00b7 Ctrl + lasso = mask \u00b7 Ctrl + drag empty = clear"
+],
+[
+"op",
+"mch.mecha_mask",
+"Paint Mask",
+true,
+true,
+{
+"action": "PAINT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Clear",
+true,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Invert",
+true,
+true,
+{
+"action": "INVERT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Brush",
+true,
+true,
+{
+"action": "BRUSH"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Lasso",
+true,
+true,
+{
+"action": "LASSO"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Box",
+true,
+true,
+{
+"action": "BOX"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Extract (mask -> shell)",
+true,
+true,
+{
+"action": "EXTRACT"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ZBrush.thick",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ZBrush.extract_offset",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_mask",
+"Drape Mask (masked faces lift off as the cloth)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_points",
+"Points",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_free",
+"Drape Mask: Fall Free (not held at the rim)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_wrap",
+"Wrap This Mesh (like a wrapping cloth)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_points",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_sew_copy",
+"Sew Copy (plate copied, edges sewn)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.puff",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_lines",
+"Use Lines (0)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_lines",
+"Draw Lines",
+true,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Stitches on the cloth (0)   drag = a seam \u00b7 Ctrl+Z = undo the last \u00b7 Esc = done"
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Draw Stitches",
+false,
+true,
+{
+"action": "DRAW"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Undo",
+false,
+true,
+{
+"action": "UNDO"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Clear",
+false,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_width",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_stick",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.line_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.size",
+"Tube Size",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.fold",
+"Height",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.lift",
+"Lift",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.fade",
+"End Fade",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.fabric",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.slack",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.shrink",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stick",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrinkles",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.keep",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stretch",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.self_collide",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gap",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.offset",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.spacing",
+"Cloth Detail (less = finer)",
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.collide_with",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_proxy",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.proxy_faces",
+"Faces",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.show_proxy",
+"",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.two_sides",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pin_rim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stop_at_pins",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.padding",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_pattern",
+"",
+true,
+false,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_size",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_puff",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim_width",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.thickness",
+null,
+true,
+true,
+{
+"slider": true
+}
+]
+],
+"idle CSIM along": [
+[
+"label",
+"",
+"Vacuum Pack: the selected meshes in one bag, the air sucked out"
+],
+[
+"op",
+"mch.vacuum_pack",
+"Vacuum Pack Selected",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.vacuum_mask",
+"Vacuum Pack Mask",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.gather",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"op",
+"mch.vacuum_gather_pick",
+"Pick Gather Point (click on the mesh)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.pressure",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.folds",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.self_collide",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.bag",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.points",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.collider_faces",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.film",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"label",
+"",
+"Cloth Drape"
+],
+[
+"label",
+"",
+"draw a line across the shoulders: Vertical = curtain pleats, Horizontal = folds the way you drew"
+],
+[
+"prop",
+"MCH_PG_ClothDrape.drape_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.cape_length",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.cape_flare",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.cape_folds",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.cape_gather",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.cape_sides",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"op",
+"mch.cdrape_control",
+"Drape (Space)",
+false,
+true,
+{
+"action": "toggle"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Restart",
+false,
+true,
+{
+"action": "restart"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Keep (Enter)",
+false,
+true,
+{
+"action": "confirm"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Drop (Esc)",
+false,
+true,
+{
+"action": "cancel"
+},
+false
+],
+[
+"op",
+"mch.cdrape_tack",
+"Tack Pins (0): cloth point, then body point",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_tack_clear",
+"",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_mesh",
+"Drape This Mesh (on the other selected / its tack pins)",
+true,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Mask (as in the ZBRUSH screen: drag = mask \u00b7 Alt = erase \u00b7 X = mirror)"
+],
+[
+"label",
+"",
+"Ctrl + click empty = invert \u00b7 Ctrl + lasso = mask \u00b7 Ctrl + drag empty = clear"
+],
+[
+"op",
+"mch.mecha_mask",
+"Paint Mask",
+true,
+true,
+{
+"action": "PAINT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Clear",
+true,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Invert",
+true,
+true,
+{
+"action": "INVERT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Brush",
+true,
+true,
+{
+"action": "BRUSH"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Lasso",
+true,
+true,
+{
+"action": "LASSO"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Box",
+true,
+true,
+{
+"action": "BOX"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Extract (mask -> shell)",
+true,
+true,
+{
+"action": "EXTRACT"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ZBrush.thick",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ZBrush.extract_offset",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_mask",
+"Drape Mask (masked faces lift off as the cloth)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_points",
+"Points",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_free",
+"Drape Mask: Fall Free (not held at the rim)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_wrap",
+"Wrap This Mesh (like a wrapping cloth)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_points",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_sew_copy",
+"Sew Copy (plate copied, edges sewn)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.puff",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_lines",
+"Use Lines (0)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_lines",
+"Draw Lines",
+true,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Stitches on the cloth (0)   drag = a seam \u00b7 Ctrl+Z = undo the last \u00b7 Esc = done"
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Draw Stitches",
+false,
+true,
+{
+"action": "DRAW"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Undo",
+false,
+true,
+{
+"action": "UNDO"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Clear",
+false,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_width",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_stick",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.line_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.size",
+"Tube Size",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.fold",
+"Height",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.lift",
+"Lift",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.fade",
+"End Fade",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.fabric",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.slack",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.shrink",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stick",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrinkles",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.keep",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stretch",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.self_collide",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gap",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.offset",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.spacing",
+"Cloth Detail (less = finer)",
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.collide_with",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_proxy",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.proxy_faces",
+"Faces",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.show_proxy",
+"",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.two_sides",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pin_rim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stop_at_pins",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.padding",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_pattern",
+"",
+true,
+false,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_size",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_puff",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim_width",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.thickness",
+null,
+true,
+true,
+{
+"slider": true
+}
+]
+],
+"idle NECK": [
+[
+"label",
+"",
+"Vacuum Pack: the selected meshes in one bag, the air sucked out"
+],
+[
+"op",
+"mch.vacuum_pack",
+"Vacuum Pack Selected",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.vacuum_mask",
+"Vacuum Pack Mask",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.gather",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"op",
+"mch.vacuum_gather_pick",
+"Pick Gather Point (click on the mesh)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.pressure",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.folds",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.self_collide",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.bag",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.points",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.collider_faces",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.film",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"label",
+"",
+"Cloth Drape"
+],
+[
+"label",
+"",
+"draw round the neck (Surface: click points round it), Enter: a cloth over the shoulders"
+],
+[
+"prop",
+"MCH_PG_ClothDrape.drape_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.neck_style",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.neck_pin_top",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.neck_bottom",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.neck_top",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.cape_length",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"op",
+"mch.cdrape_control",
+"Drape (Space)",
+false,
+true,
+{
+"action": "toggle"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Restart",
+false,
+true,
+{
+"action": "restart"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Keep (Enter)",
+false,
+true,
+{
+"action": "confirm"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Drop (Esc)",
+false,
+true,
+{
+"action": "cancel"
+},
+false
+],
+[
+"op",
+"mch.cdrape_tack",
+"Tack Pins (0): cloth point, then body point",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_tack_clear",
+"",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_mesh",
+"Drape This Mesh (on the other selected / its tack pins)",
+true,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Mask (as in the ZBRUSH screen: drag = mask \u00b7 Alt = erase \u00b7 X = mirror)"
+],
+[
+"label",
+"",
+"Ctrl + click empty = invert \u00b7 Ctrl + lasso = mask \u00b7 Ctrl + drag empty = clear"
+],
+[
+"op",
+"mch.mecha_mask",
+"Paint Mask",
+true,
+true,
+{
+"action": "PAINT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Clear",
+true,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Invert",
+true,
+true,
+{
+"action": "INVERT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Brush",
+true,
+true,
+{
+"action": "BRUSH"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Lasso",
+true,
+true,
+{
+"action": "LASSO"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Box",
+true,
+true,
+{
+"action": "BOX"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Extract (mask -> shell)",
+true,
+true,
+{
+"action": "EXTRACT"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ZBrush.thick",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ZBrush.extract_offset",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_mask",
+"Drape Mask (masked faces lift off as the cloth)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_points",
+"Points",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_free",
+"Drape Mask: Fall Free (not held at the rim)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_wrap",
+"Wrap This Mesh (like a wrapping cloth)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_points",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_sew_copy",
+"Sew Copy (plate copied, edges sewn)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.puff",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_lines",
+"Use Lines (0)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_lines",
+"Draw Lines",
+true,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Stitches on the cloth (0)   drag = a seam \u00b7 Ctrl+Z = undo the last \u00b7 Esc = done"
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Draw Stitches",
+false,
+true,
+{
+"action": "DRAW"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Undo",
+false,
+true,
+{
+"action": "UNDO"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Clear",
+false,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_width",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_stick",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.line_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.size",
+"Tube Size",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.fold",
+"Height",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.lift",
+"Lift",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.fade",
+"End Fade",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.fabric",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.slack",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.shrink",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stick",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrinkles",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.keep",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stretch",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.self_collide",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gap",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.offset",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.spacing",
+"Cloth Detail (less = finer)",
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.collide_with",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_proxy",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.proxy_faces",
+"Faces",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.show_proxy",
+"",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.two_sides",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pin_rim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stop_at_pins",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.padding",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_pattern",
+"",
+true,
+false,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_size",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_puff",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim_width",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.thickness",
+null,
+true,
+true,
+{
+"slider": true
+}
+]
+],
+"idle NECK other style": [
+[
+"label",
+"",
+"Vacuum Pack: the selected meshes in one bag, the air sucked out"
+],
+[
+"op",
+"mch.vacuum_pack",
+"Vacuum Pack Selected",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.vacuum_mask",
+"Vacuum Pack Mask",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.gather",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"op",
+"mch.vacuum_gather_pick",
+"Pick Gather Point (click on the mesh)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.pressure",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.folds",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.self_collide",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.bag",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.points",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.collider_faces",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.film",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"label",
+"",
+"Cloth Drape"
+],
+[
+"label",
+"",
+"draw round the neck (Surface: click points round it), Enter: a cloth over the shoulders"
+],
+[
+"prop",
+"MCH_PG_ClothDrape.drape_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.neck_style",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.cape_length",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"op",
+"mch.cdrape_control",
+"Drape (Space)",
+false,
+true,
+{
+"action": "toggle"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Restart",
+false,
+true,
+{
+"action": "restart"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Keep (Enter)",
+false,
+true,
+{
+"action": "confirm"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Drop (Esc)",
+false,
+true,
+{
+"action": "cancel"
+},
+false
+],
+[
+"op",
+"mch.cdrape_tack",
+"Tack Pins (0): cloth point, then body point",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_tack_clear",
+"",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_mesh",
+"Drape This Mesh (on the other selected / its tack pins)",
+true,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Mask (as in the ZBRUSH screen: drag = mask \u00b7 Alt = erase \u00b7 X = mirror)"
+],
+[
+"label",
+"",
+"Ctrl + click empty = invert \u00b7 Ctrl + lasso = mask \u00b7 Ctrl + drag empty = clear"
+],
+[
+"op",
+"mch.mecha_mask",
+"Paint Mask",
+true,
+true,
+{
+"action": "PAINT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Clear",
+true,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Invert",
+true,
+true,
+{
+"action": "INVERT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Brush",
+true,
+true,
+{
+"action": "BRUSH"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Lasso",
+true,
+true,
+{
+"action": "LASSO"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Box",
+true,
+true,
+{
+"action": "BOX"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Extract (mask -> shell)",
+true,
+true,
+{
+"action": "EXTRACT"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ZBrush.thick",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ZBrush.extract_offset",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_mask",
+"Drape Mask (masked faces lift off as the cloth)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_points",
+"Points",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_free",
+"Drape Mask: Fall Free (not held at the rim)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_wrap",
+"Wrap This Mesh (like a wrapping cloth)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_points",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_sew_copy",
+"Sew Copy (plate copied, edges sewn)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.puff",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_lines",
+"Use Lines (0)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_lines",
+"Draw Lines",
+true,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Stitches on the cloth (0)   drag = a seam \u00b7 Ctrl+Z = undo the last \u00b7 Esc = done"
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Draw Stitches",
+false,
+true,
+{
+"action": "DRAW"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Undo",
+false,
+true,
+{
+"action": "UNDO"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Clear",
+false,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_width",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_stick",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.line_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.size",
+"Tube Size",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.fold",
+"Height",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.lift",
+"Lift",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.fade",
+"End Fade",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.fabric",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.slack",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.shrink",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stick",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrinkles",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.keep",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stretch",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.self_collide",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gap",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.offset",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.spacing",
+"Cloth Detail (less = finer)",
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.collide_with",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_proxy",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.proxy_faces",
+"Faces",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.show_proxy",
+"",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.two_sides",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pin_rim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stop_at_pins",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.padding",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_pattern",
+"",
+true,
+false,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_size",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_puff",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim_width",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.thickness",
+null,
+true,
+true,
+{
+"slider": true
+}
+]
+],
+"idle PANEL": [
+[
+"label",
+"",
+"Vacuum Pack: the selected meshes in one bag, the air sucked out"
+],
+[
+"op",
+"mch.vacuum_pack",
+"Vacuum Pack Selected",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.vacuum_mask",
+"Vacuum Pack Mask",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.gather",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"op",
+"mch.vacuum_gather_pick",
+"Pick Gather Point (click on the mesh)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.pressure",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.folds",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.self_collide",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.bag",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.points",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.collider_faces",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.film",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"label",
+"",
+"Cloth Drape"
+],
+[
+"label",
+"",
+"draw a polygon: a flat panel in front of the body; Tack Pins, then Drape This Mesh"
+],
+[
+"prop",
+"MCH_PG_ClothDrape.drape_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"op",
+"mch.cdrape_control",
+"Drape (Space)",
+false,
+true,
+{
+"action": "toggle"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Restart",
+false,
+true,
+{
+"action": "restart"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Keep (Enter)",
+false,
+true,
+{
+"action": "confirm"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Drop (Esc)",
+false,
+true,
+{
+"action": "cancel"
+},
+false
+],
+[
+"op",
+"mch.cdrape_tack",
+"Tack Pins (0): cloth point, then body point",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_tack_clear",
+"",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_mesh",
+"Drape This Mesh (on the other selected / its tack pins)",
+true,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Mask (as in the ZBRUSH screen: drag = mask \u00b7 Alt = erase \u00b7 X = mirror)"
+],
+[
+"label",
+"",
+"Ctrl + click empty = invert \u00b7 Ctrl + lasso = mask \u00b7 Ctrl + drag empty = clear"
+],
+[
+"op",
+"mch.mecha_mask",
+"Paint Mask",
+true,
+true,
+{
+"action": "PAINT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Clear",
+true,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Invert",
+true,
+true,
+{
+"action": "INVERT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Brush",
+true,
+true,
+{
+"action": "BRUSH"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Lasso",
+true,
+true,
+{
+"action": "LASSO"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Box",
+true,
+true,
+{
+"action": "BOX"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Extract (mask -> shell)",
+true,
+true,
+{
+"action": "EXTRACT"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ZBrush.thick",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ZBrush.extract_offset",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_mask",
+"Drape Mask (masked faces lift off as the cloth)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_points",
+"Points",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_free",
+"Drape Mask: Fall Free (not held at the rim)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_wrap",
+"Wrap This Mesh (like a wrapping cloth)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_points",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_sew_copy",
+"Sew Copy (plate copied, edges sewn)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.puff",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_lines",
+"Use Lines (0)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_lines",
+"Draw Lines",
+true,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Stitches on the cloth (0)   drag = a seam \u00b7 Ctrl+Z = undo the last \u00b7 Esc = done"
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Draw Stitches",
+false,
+true,
+{
+"action": "DRAW"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Undo",
+false,
+true,
+{
+"action": "UNDO"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Clear",
+false,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_width",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_stick",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.line_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.size",
+"Tube Size",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.fold",
+"Height",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.lift",
+"Lift",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.fade",
+"End Fade",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.fabric",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.slack",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.shrink",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stick",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrinkles",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.keep",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stretch",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.self_collide",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gap",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.offset",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.spacing",
+"Cloth Detail (less = finer)",
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.collide_with",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_proxy",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.proxy_faces",
+"Faces",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.show_proxy",
+"",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.two_sides",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pin_rim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stop_at_pins",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.padding",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_pattern",
+"",
+true,
+false,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_size",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_puff",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim_width",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.thickness",
+null,
+true,
+true,
+{
+"slider": true
+}
+]
+],
+"idle lines stitch": [
+[
+"label",
+"",
+"Vacuum Pack: the selected meshes in one bag, the air sucked out"
+],
+[
+"op",
+"mch.vacuum_pack",
+"Vacuum Pack Selected",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.vacuum_mask",
+"Vacuum Pack Mask",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.gather",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"op",
+"mch.vacuum_gather_pick",
+"Pick Gather Point (click on the mesh)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.pressure",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.folds",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.self_collide",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.bag",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.points",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.collider_faces",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.film",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"label",
+"",
+"Cloth Drape"
+],
+[
+"label",
+"",
+"draw a lasso on the mesh: a loose cloth over that region"
+],
+[
+"prop",
+"MCH_PG_ClothDrape.drape_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"op",
+"mch.cdrape_control",
+"Drape (Space)",
+false,
+true,
+{
+"action": "toggle"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Restart",
+false,
+true,
+{
+"action": "restart"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Keep (Enter)",
+false,
+true,
+{
+"action": "confirm"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Drop (Esc)",
+false,
+true,
+{
+"action": "cancel"
+},
+false
+],
+[
+"op",
+"mch.cdrape_tack",
+"Tack Pins (0): cloth point, then body point",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_tack_clear",
+"",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_mesh",
+"Drape This Mesh (on the other selected / its tack pins)",
+true,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Mask (as in the ZBRUSH screen: drag = mask \u00b7 Alt = erase \u00b7 X = mirror)"
+],
+[
+"label",
+"",
+"Ctrl + click empty = invert \u00b7 Ctrl + lasso = mask \u00b7 Ctrl + drag empty = clear"
+],
+[
+"op",
+"mch.mecha_mask",
+"Paint Mask",
+true,
+true,
+{
+"action": "PAINT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Clear",
+true,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Invert",
+true,
+true,
+{
+"action": "INVERT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Brush",
+true,
+true,
+{
+"action": "BRUSH"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Lasso",
+true,
+true,
+{
+"action": "LASSO"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Box",
+true,
+true,
+{
+"action": "BOX"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Extract (mask -> shell)",
+true,
+true,
+{
+"action": "EXTRACT"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ZBrush.thick",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ZBrush.extract_offset",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_mask",
+"Drape Mask (masked faces lift off as the cloth)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_points",
+"Points",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_free",
+"Drape Mask: Fall Free (not held at the rim)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_wrap",
+"Wrap This Mesh (like a wrapping cloth)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_points",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_sew_copy",
+"Sew Copy (plate copied, edges sewn)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.puff",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_lines",
+"Use Lines (0)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_lines",
+"Draw Lines",
+true,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Stitches on the cloth (0)   drag = a seam \u00b7 Ctrl+Z = undo the last \u00b7 Esc = done"
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Draw Stitches",
+false,
+true,
+{
+"action": "DRAW"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Undo",
+false,
+true,
+{
+"action": "UNDO"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Clear",
+false,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_width",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_stick",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.line_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.fabric",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.slack",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.shrink",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stick",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrinkles",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.keep",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stretch",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.self_collide",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gap",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.offset",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.spacing",
+"Cloth Detail (less = finer)",
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.collide_with",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_proxy",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.proxy_faces",
+"Faces",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.show_proxy",
+"",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.two_sides",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pin_rim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stop_at_pins",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.padding",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_pattern",
+"",
+true,
+false,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_size",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_puff",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim_width",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.thickness",
+null,
+true,
+true,
+{
+"slider": true
+}
+]
+],
+"idle padding trim proxy": [
+[
+"label",
+"",
+"Vacuum Pack: the selected meshes in one bag, the air sucked out"
+],
+[
+"op",
+"mch.vacuum_pack",
+"Vacuum Pack Selected",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.vacuum_mask",
+"Vacuum Pack Mask",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.gather",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"op",
+"mch.vacuum_gather_pick",
+"Pick Gather Point (click on the mesh)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.pressure",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.folds",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.self_collide",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.bag",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.points",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.collider_faces",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.film",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"label",
+"",
+"Cloth Drape"
+],
+[
+"label",
+"",
+"draw a lasso on the mesh: a loose cloth over that region"
+],
+[
+"prop",
+"MCH_PG_ClothDrape.drape_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"op",
+"mch.cdrape_control",
+"Drape (Space)",
+false,
+true,
+{
+"action": "toggle"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Restart",
+false,
+true,
+{
+"action": "restart"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Keep (Enter)",
+false,
+true,
+{
+"action": "confirm"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Drop (Esc)",
+false,
+true,
+{
+"action": "cancel"
+},
+false
+],
+[
+"op",
+"mch.cdrape_tack",
+"Tack Pins (0): cloth point, then body point",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_tack_clear",
+"",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_mesh",
+"Drape This Mesh (on the other selected / its tack pins)",
+true,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Mask (as in the ZBRUSH screen: drag = mask \u00b7 Alt = erase \u00b7 X = mirror)"
+],
+[
+"label",
+"",
+"Ctrl + click empty = invert \u00b7 Ctrl + lasso = mask \u00b7 Ctrl + drag empty = clear"
+],
+[
+"op",
+"mch.mecha_mask",
+"Paint Mask",
+true,
+true,
+{
+"action": "PAINT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Clear",
+true,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Invert",
+true,
+true,
+{
+"action": "INVERT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Brush",
+true,
+true,
+{
+"action": "BRUSH"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Lasso",
+true,
+true,
+{
+"action": "LASSO"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Box",
+true,
+true,
+{
+"action": "BOX"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Extract (mask -> shell)",
+true,
+true,
+{
+"action": "EXTRACT"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ZBrush.thick",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ZBrush.extract_offset",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_mask",
+"Drape Mask (masked faces lift off as the cloth)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_points",
+"Points",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_free",
+"Drape Mask: Fall Free (not held at the rim)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_wrap",
+"Wrap This Mesh (like a wrapping cloth)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_points",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_sew_copy",
+"Sew Copy (plate copied, edges sewn)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.puff",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_lines",
+"Use Lines (0)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_lines",
+"Draw Lines",
+true,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Stitches on the cloth (0)   drag = a seam \u00b7 Ctrl+Z = undo the last \u00b7 Esc = done"
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Draw Stitches",
+false,
+true,
+{
+"action": "DRAW"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Undo",
+false,
+true,
+{
+"action": "UNDO"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Clear",
+false,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_width",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_stick",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.line_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.size",
+"Tube Size",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.fold",
+"Height",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.lift",
+"Lift",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.fade",
+"End Fade",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.fabric",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.slack",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.shrink",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stick",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrinkles",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.keep",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stretch",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.self_collide",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gap",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.offset",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.spacing",
+"Cloth Detail (less = finer)",
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.collide_with",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_proxy",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.proxy_faces",
+"Faces",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.show_proxy",
+"",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.two_sides",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pin_rim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stop_at_pins",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.padding",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_pattern",
+"",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_size",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_puff",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim_width",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.thickness",
+null,
+true,
+true,
+{
+"slider": true
+}
+]
+],
+"idle vacuum gather": [
+[
+"label",
+"",
+"Vacuum Pack: the selected meshes in one bag, the air sucked out"
+],
+[
+"op",
+"mch.vacuum_pack",
+"Vacuum Pack Selected",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.vacuum_mask",
+"Vacuum Pack Mask",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.gather",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"op",
+"mch.vacuum_gather_pick",
+"Pick Gather Point (click on the mesh)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.pressure",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.folds",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.gather_size",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.self_collide",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.bag",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.points",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.collider_faces",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.film",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"label",
+"",
+"Cloth Drape"
+],
+[
+"label",
+"",
+"draw a lasso on the mesh: a loose cloth over that region"
+],
+[
+"prop",
+"MCH_PG_ClothDrape.drape_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"op",
+"mch.cdrape_control",
+"Drape (Space)",
+false,
+true,
+{
+"action": "toggle"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Restart",
+false,
+true,
+{
+"action": "restart"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Keep (Enter)",
+false,
+true,
+{
+"action": "confirm"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Drop (Esc)",
+false,
+true,
+{
+"action": "cancel"
+},
+false
+],
+[
+"op",
+"mch.cdrape_tack",
+"Tack Pins (0): cloth point, then body point",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_tack_clear",
+"",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_mesh",
+"Drape This Mesh (on the other selected / its tack pins)",
+true,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Mask (as in the ZBRUSH screen: drag = mask \u00b7 Alt = erase \u00b7 X = mirror)"
+],
+[
+"label",
+"",
+"Ctrl + click empty = invert \u00b7 Ctrl + lasso = mask \u00b7 Ctrl + drag empty = clear"
+],
+[
+"op",
+"mch.mecha_mask",
+"Paint Mask",
+true,
+true,
+{
+"action": "PAINT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Clear",
+true,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Invert",
+true,
+true,
+{
+"action": "INVERT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Brush",
+true,
+true,
+{
+"action": "BRUSH"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Lasso",
+true,
+true,
+{
+"action": "LASSO"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Box",
+true,
+true,
+{
+"action": "BOX"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Extract (mask -> shell)",
+true,
+true,
+{
+"action": "EXTRACT"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ZBrush.thick",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ZBrush.extract_offset",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_mask",
+"Drape Mask (masked faces lift off as the cloth)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_points",
+"Points",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_free",
+"Drape Mask: Fall Free (not held at the rim)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_wrap",
+"Wrap This Mesh (like a wrapping cloth)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_points",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_sew_copy",
+"Sew Copy (plate copied, edges sewn)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.puff",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_lines",
+"Use Lines (0)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_lines",
+"Draw Lines",
+true,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Stitches on the cloth (0)   drag = a seam \u00b7 Ctrl+Z = undo the last \u00b7 Esc = done"
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Draw Stitches",
+false,
+true,
+{
+"action": "DRAW"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Undo",
+false,
+true,
+{
+"action": "UNDO"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Clear",
+false,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_width",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_stick",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.line_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.size",
+"Tube Size",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.fold",
+"Height",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.lift",
+"Lift",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.fade",
+"End Fade",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.fabric",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.slack",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.shrink",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stick",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrinkles",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.keep",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stretch",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.self_collide",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gap",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.offset",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.spacing",
+"Cloth Detail (less = finer)",
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.collide_with",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_proxy",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.proxy_faces",
+"Faces",
+true,
+false,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.show_proxy",
+"",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.two_sides",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pin_rim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stop_at_pins",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.padding",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_pattern",
+"",
+true,
+false,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_size",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_puff",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim_width",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.thickness",
+null,
+true,
+true,
+{
+"slider": true
+}
+]
+],
+"live done": [
+[
+"label",
+"",
+"Vacuum Pack: the selected meshes in one bag, the air sucked out"
+],
+[
+"op",
+"mch.vacuum_pack",
+"Vacuum Pack Selected",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.vacuum_mask",
+"Vacuum Pack Mask",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.gather",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"op",
+"mch.vacuum_gather_pick",
+"Pick Gather Point (click on the mesh)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.pressure",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.folds",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.self_collide",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.bag",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.points",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.collider_faces",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.film",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"label",
+"",
+"Cloth Drape"
+],
+[
+"label",
+"",
+"done: frame 0 / 60  (Enter keep \u00b7 Esc drop \u00b7 Space again)  \u00b7 drag the cloth to pull it"
+],
+[
+"prop",
+"MCH_PG_ClothDrape.drape_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"op",
+"mch.cdrape_control",
+"Again (Space)",
+true,
+true,
+{
+"action": "toggle"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Restart",
+true,
+true,
+{
+"action": "restart"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Keep (Enter)",
+true,
+true,
+{
+"action": "confirm"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Drop (Esc)",
+true,
+true,
+{
+"action": "cancel"
+},
+false
+],
+[
+"op",
+"mch.cdrape_tack",
+"Tack Pins (0): cloth point, then body point",
+false,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_tack_clear",
+"",
+false,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_mesh",
+"Drape This Mesh (on the other selected / its tack pins)",
+false,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Mask (as in the ZBRUSH screen: drag = mask \u00b7 Alt = erase \u00b7 X = mirror)"
+],
+[
+"label",
+"",
+"Ctrl + click empty = invert \u00b7 Ctrl + lasso = mask \u00b7 Ctrl + drag empty = clear"
+],
+[
+"op",
+"mch.mecha_mask",
+"Paint Mask",
+true,
+true,
+{
+"action": "PAINT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Clear",
+true,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Invert",
+true,
+true,
+{
+"action": "INVERT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Brush",
+true,
+true,
+{
+"action": "BRUSH"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Lasso",
+true,
+true,
+{
+"action": "LASSO"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Box",
+true,
+true,
+{
+"action": "BOX"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Extract (mask -> shell)",
+true,
+true,
+{
+"action": "EXTRACT"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ZBrush.thick",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ZBrush.extract_offset",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_mask",
+"Drape Mask (masked faces lift off as the cloth)",
+false,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_points",
+"Points",
+false,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_free",
+"Drape Mask: Fall Free (not held at the rim)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_wrap",
+"Wrap This Mesh (like a wrapping cloth)",
+false,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_points",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_sew_copy",
+"Sew Copy (plate copied, edges sewn)",
+false,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.puff",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_lines",
+"Use Lines (0)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_lines",
+"Draw Lines",
+true,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Stitches on the cloth (0)   drag = a seam \u00b7 Ctrl+Z = undo the last \u00b7 Esc = done"
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Draw Stitches",
+true,
+true,
+{
+"action": "DRAW"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Undo",
+true,
+true,
+{
+"action": "UNDO"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Clear",
+true,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_width",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_stick",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.line_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.size",
+"Tube Size",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.fold",
+"Height",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.lift",
+"Lift",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.fade",
+"End Fade",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.fabric",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.slack",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.shrink",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stick",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrinkles",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.keep",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stretch",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.self_collide",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gap",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.offset",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.spacing",
+"Cloth Detail (less = finer)",
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.collide_with",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_proxy",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.proxy_faces",
+"Faces",
+true,
+false,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.show_proxy",
+"",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.two_sides",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pin_rim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stop_at_pins",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.padding",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_pattern",
+"",
+true,
+false,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_size",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_puff",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim_width",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.thickness",
+null,
+true,
+true,
+{
+"slider": true
+}
+]
+],
+"live mask waiting": [
+[
+"label",
+"",
+"Vacuum Pack: the selected meshes in one bag, the air sucked out"
+],
+[
+"op",
+"mch.vacuum_pack",
+"Vacuum Pack Selected",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.vacuum_mask",
+"Vacuum Pack Mask",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.gather",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"op",
+"mch.vacuum_gather_pick",
+"Pick Gather Point (click on the mesh)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.pressure",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.folds",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.self_collide",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.bag",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.points",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.collider_faces",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.film",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"label",
+"",
+"Cloth Drape"
+],
+[
+"label",
+"",
+"ready: frame 0 / 60  (Space drape \u00b7 Enter keep \u00b7 Esc drop)  \u00b7 drag the cloth to pull it"
+],
+[
+"prop",
+"MCH_PG_ClothDrape.drape_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"op",
+"mch.cdrape_control",
+"Drape (Space)",
+true,
+true,
+{
+"action": "toggle"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Restart",
+true,
+true,
+{
+"action": "restart"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Keep (Enter)",
+true,
+true,
+{
+"action": "confirm"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Drop (Esc)",
+true,
+true,
+{
+"action": "cancel"
+},
+false
+],
+[
+"op",
+"mch.cdrape_tack",
+"Tack Pins (0): cloth point, then body point",
+false,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_tack_clear",
+"",
+false,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_mesh",
+"Drape This Mesh (on the other selected / its tack pins)",
+false,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Mask (as in the ZBRUSH screen: drag = mask \u00b7 Alt = erase \u00b7 X = mirror)"
+],
+[
+"label",
+"",
+"Ctrl + click empty = invert \u00b7 Ctrl + lasso = mask \u00b7 Ctrl + drag empty = clear"
+],
+[
+"op",
+"mch.mecha_mask",
+"Paint Mask",
+true,
+true,
+{
+"action": "PAINT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Clear",
+true,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Invert",
+true,
+true,
+{
+"action": "INVERT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Brush",
+true,
+true,
+{
+"action": "BRUSH"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Lasso",
+true,
+true,
+{
+"action": "LASSO"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Box",
+true,
+true,
+{
+"action": "BOX"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Extract (mask -> shell)",
+true,
+true,
+{
+"action": "EXTRACT"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ZBrush.thick",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ZBrush.extract_offset",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_mask",
+"Drape Mask (masked faces lift off as the cloth)",
+false,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_points",
+"Points",
+false,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_free",
+"Drape Mask: Fall Free (not held at the rim)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_wrap",
+"Wrap This Mesh (like a wrapping cloth)",
+false,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_points",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_sew_copy",
+"Sew Copy (plate copied, edges sewn)",
+false,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.puff",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_lines",
+"Use Lines (0)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_lines",
+"Draw Lines",
+true,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Stitches on the cloth (0)   drag = a seam \u00b7 Ctrl+Z = undo the last \u00b7 Esc = done"
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Draw Stitches",
+true,
+true,
+{
+"action": "DRAW"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Undo",
+true,
+true,
+{
+"action": "UNDO"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Clear",
+true,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_width",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_stick",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.line_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.size",
+"Tube Size",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.fold",
+"Height",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.lift",
+"Lift",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.fade",
+"End Fade",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.fabric",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.slack",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.shrink",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stick",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrinkles",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.keep",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stretch",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.self_collide",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gap",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.offset",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.spacing",
+"Cloth Detail (less = finer)",
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.collide_with",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_proxy",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.proxy_faces",
+"Faces",
+true,
+false,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.show_proxy",
+"",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.two_sides",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pin_rim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stop_at_pins",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.padding",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_pattern",
+"",
+true,
+false,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_size",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_puff",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim_width",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.thickness",
+null,
+true,
+true,
+{
+"slider": true
+}
+]
+],
+"live running": [
+[
+"label",
+"",
+"Vacuum Pack: the selected meshes in one bag, the air sucked out"
+],
+[
+"op",
+"mch.vacuum_pack",
+"Vacuum Pack Selected",
+true,
+true,
+{},
+false
+],
+[
+"op",
+"mch.vacuum_mask",
+"Vacuum Pack Mask",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.gather",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"op",
+"mch.vacuum_gather_pick",
+"Pick Gather Point (click on the mesh)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.pressure",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.folds",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.self_collide",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.bag",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.points",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.collider_faces",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.film",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"label",
+"",
+"Cloth Drape"
+],
+[
+"label",
+"",
+"draping: frame 0 / 60  (Space pause \u00b7 Enter keep \u00b7 Esc drop)  \u00b7 drag the cloth to pull it"
+],
+[
+"prop",
+"MCH_PG_ClothDrape.drape_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"op",
+"mch.cdrape_control",
+"Pause (Space)",
+true,
+true,
+{
+"action": "toggle"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Restart",
+true,
+true,
+{
+"action": "restart"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Keep (Enter)",
+true,
+true,
+{
+"action": "confirm"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Drop (Esc)",
+true,
+true,
+{
+"action": "cancel"
+},
+false
+],
+[
+"op",
+"mch.cdrape_tack",
+"Tack Pins (0): cloth point, then body point",
+false,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_tack_clear",
+"",
+false,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_mesh",
+"Drape This Mesh (on the other selected / its tack pins)",
+false,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Mask (as in the ZBRUSH screen: drag = mask \u00b7 Alt = erase \u00b7 X = mirror)"
+],
+[
+"label",
+"",
+"Ctrl + click empty = invert \u00b7 Ctrl + lasso = mask \u00b7 Ctrl + drag empty = clear"
+],
+[
+"op",
+"mch.mecha_mask",
+"Paint Mask",
+true,
+true,
+{
+"action": "PAINT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Clear",
+true,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Invert",
+true,
+true,
+{
+"action": "INVERT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Brush",
+true,
+true,
+{
+"action": "BRUSH"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Lasso",
+true,
+true,
+{
+"action": "LASSO"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Box",
+true,
+true,
+{
+"action": "BOX"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Extract (mask -> shell)",
+true,
+true,
+{
+"action": "EXTRACT"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ZBrush.thick",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ZBrush.extract_offset",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_mask",
+"Drape Mask (masked faces lift off as the cloth)",
+false,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_points",
+"Points",
+false,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_free",
+"Drape Mask: Fall Free (not held at the rim)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_wrap",
+"Wrap This Mesh (like a wrapping cloth)",
+false,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_points",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_sew_copy",
+"Sew Copy (plate copied, edges sewn)",
+false,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.puff",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_lines",
+"Use Lines (0)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_lines",
+"Draw Lines",
+false,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Stitches on the cloth (0)   drag = a seam \u00b7 Ctrl+Z = undo the last \u00b7 Esc = done"
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Draw Stitches",
+false,
+true,
+{
+"action": "DRAW"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Undo",
+false,
+true,
+{
+"action": "UNDO"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Clear",
+false,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_width",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_stick",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.line_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.size",
+"Tube Size",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.fold",
+"Height",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.lift",
+"Lift",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.fade",
+"End Fade",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.fabric",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.slack",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.shrink",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stick",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrinkles",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.keep",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stretch",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.self_collide",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gap",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.offset",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.spacing",
+"Cloth Detail (less = finer)",
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.collide_with",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_proxy",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.proxy_faces",
+"Faces",
+true,
+false,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.show_proxy",
+"",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.two_sides",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pin_rim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stop_at_pins",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.padding",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_pattern",
+"",
+true,
+false,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_size",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_puff",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim_width",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.thickness",
+null,
+true,
+true,
+{
+"slider": true
+}
+]
+],
+"live vacuum": [
+[
+"label",
+"",
+"Vacuum Pack: the selected meshes in one bag, the air sucked out"
+],
+[
+"label",
+"",
+"Vacuum Pack ready: frame 0 / 60  (Space suck in \u00b7 Enter keep \u00b7 Esc drop)"
+],
+[
+"op",
+"mch.cdrape_control",
+"Suck In / Pause (Space)",
+true,
+true,
+{
+"action": "toggle"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Apply (Enter)",
+true,
+true,
+{
+"action": "confirm"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Drop (Esc)",
+true,
+true,
+{
+"action": "cancel"
+},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.gather",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"op",
+"mch.vacuum_gather_pick",
+"Pick Gather Point (click on the mesh)",
+true,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_Vacuum.pressure",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.folds",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.self_collide",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.bag",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_Vacuum.points",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.collider_faces",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_Vacuum.film",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"label",
+"",
+"Cloth Drape"
+],
+[
+"label",
+"",
+"Vacuum Pack ready: frame 0 / 60  (Space suck in \u00b7 Enter keep \u00b7 Esc drop)"
+],
+[
+"prop",
+"MCH_PG_ClothDrape.drape_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"op",
+"mch.cdrape_control",
+"Drape (Space)",
+true,
+true,
+{
+"action": "toggle"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Restart",
+true,
+true,
+{
+"action": "restart"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Keep (Enter)",
+true,
+true,
+{
+"action": "confirm"
+},
+false
+],
+[
+"op",
+"mch.cdrape_control",
+"Drop (Esc)",
+true,
+true,
+{
+"action": "cancel"
+},
+false
+],
+[
+"op",
+"mch.cdrape_tack",
+"Tack Pins (0): cloth point, then body point",
+false,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_tack_clear",
+"",
+false,
+true,
+{},
+false
+],
+[
+"op",
+"mch.cdrape_mesh",
+"Drape This Mesh (on the other selected / its tack pins)",
+false,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Mask (as in the ZBRUSH screen: drag = mask \u00b7 Alt = erase \u00b7 X = mirror)"
+],
+[
+"label",
+"",
+"Ctrl + click empty = invert \u00b7 Ctrl + lasso = mask \u00b7 Ctrl + drag empty = clear"
+],
+[
+"op",
+"mch.mecha_mask",
+"Paint Mask",
+true,
+true,
+{
+"action": "PAINT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Clear",
+true,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Invert",
+true,
+true,
+{
+"action": "INVERT"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Brush",
+true,
+true,
+{
+"action": "BRUSH"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Lasso",
+true,
+true,
+{
+"action": "LASSO"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Box",
+true,
+true,
+{
+"action": "BOX"
+},
+false
+],
+[
+"op",
+"mch.mecha_mask",
+"Extract (mask -> shell)",
+true,
+true,
+{
+"action": "EXTRACT"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ZBrush.thick",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ZBrush.extract_offset",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_mask",
+"Drape Mask (masked faces lift off as the cloth)",
+false,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_points",
+"Points",
+false,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.mask_free",
+"Drape Mask: Fall Free (not held at the rim)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_wrap",
+"Wrap This Mesh (like a wrapping cloth)",
+false,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrap_points",
+null,
+true,
+true,
+{}
+],
+[
+"op",
+"mch.cdrape_sew_copy",
+"Sew Copy (plate copied, edges sewn)",
+false,
+true,
+{},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.puff",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_lines",
+"Use Lines (0)",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"op",
+"mch.cdrape_lines",
+"Draw Lines",
+true,
+true,
+{},
+false
+],
+[
+"label",
+"",
+"Stitches on the cloth (0)   drag = a seam \u00b7 Ctrl+Z = undo the last \u00b7 Esc = done"
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Draw Stitches",
+true,
+true,
+{
+"action": "DRAW"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Undo",
+true,
+true,
+{
+"action": "UNDO"
+},
+false
+],
+[
+"op",
+"mch.cdrape_stitch",
+"Clear",
+true,
+true,
+{
+"action": "CLEAR"
+},
+false
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_tight",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_width",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stitch_stick",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.line_mode",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.size",
+"Tube Size",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.fold",
+"Height",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.lift",
+"Lift",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_WrinkleLines.fade",
+"End Fade",
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.fabric",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.slack",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.shrink",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gravity",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stick",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.wrinkles",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.keep",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stretch",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.self_collide",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.gap",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.offset",
+null,
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.spacing",
+"Cloth Detail (less = finer)",
+true,
+true,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.collide_with",
+null,
+true,
+true,
+{
+"expand": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.use_proxy",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.proxy_faces",
+"Faces",
+true,
+false,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.show_proxy",
+"",
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.two_sides",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pin_rim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.stop_at_pins",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.padding",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_pattern",
+"",
+true,
+false,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_size",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.pad_puff",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim",
+null,
+true,
+true,
+{
+"toggle": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.trim_width",
+null,
+true,
+false,
+{
+"slider": true
+}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.frames",
+null,
+true,
+true,
+{}
+],
+[
+"prop",
+"MCH_PG_ClothDrape.thickness",
+null,
+true,
+true,
+{
+"slider": true
+}
+]
+]
+}

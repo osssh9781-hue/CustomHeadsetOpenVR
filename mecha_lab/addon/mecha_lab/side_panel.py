@@ -28,6 +28,7 @@ TABS = 34.0              # 0.24.95 the Tool | Material | HDRI tabs under the tit
 PAGES = {'MATERIAL': ('Mech', 'material'), 'CREATURE': ('Creature', 'creature'), 'DECALS': ('Decals', 'decal'),
          'HDRI': ('Render', 'hdri'), 'SHAPES': ('Shapes', 'shapes')}   # 0.24.137 HDRI -> Render   # 0.24.95 Shapes: random base shapes
 SECTION = 26.0
+BIG_SECTION = 34.0       # 0.24.213 a big coloured title (a box whose title label has a STRIP_COLOR_0n icon)
 NOTE = 17.0
 TOP_MARGIN = 150.0          # below the navigation gizmo
 BOTTOM_MARGIN = 16.0
@@ -123,6 +124,42 @@ def info(data, prop):
         return None
     items = [(e.identifier, e.name) for e in rna.enum_items] if rna.type == 'ENUM' else []
     return rna.type, rna.name or prop, items, bool(getattr(rna, 'is_array', False)) and rna.type != 'ENUM'
+
+
+def summary(kids, tool, most=3):
+    """0.24.213 what a folded big section is set to, in a few words: its first settings ("Cotton · Looseness 25").
+    Text only - nothing is changed."""
+    from . import i18n
+    out = []
+    stack = list(reversed(kids))
+    while stack and len(out) < most:
+        n = stack.pop()
+        if n.kind in {'row', 'column', 'split', 'grid', 'other'}:
+            stack.extend(reversed(n.children))
+            continue
+        if n.kind != 'prop' or n.data is None or is_top_bar(n.data, n.prop):
+            continue
+        try:
+            inf = info(n.data, n.prop)
+            v = getattr(n.data, n.prop)
+        except (AttributeError, TypeError, ReferenceError):
+            continue
+        if inf is None:
+            continue
+        typ, name, items, arr = inf
+        name = n.opts.get('text') or name
+        if arr or not name:
+            continue
+        if typ == 'ENUM':
+            out.append(i18n.tr(dict(items).get(v, str(v))))
+        elif typ == 'BOOLEAN':
+            if v:
+                out.append(i18n.tr(name))
+        elif typ == 'INT':
+            out.append(f'{i18n.tr(name)} {v}')
+        elif typ == 'FLOAT':
+            out.append(f'{i18n.tr(name)} {v:.3g}')
+    return i18n.raw(' · '.join(out))
 
 
 def folded(tool, title, default=False):
@@ -361,7 +398,11 @@ class Builder:
             return
         kids = list(node.children)
         head_cells = []
+        big = ''
         if title is None and kids and kids[0].kind == 'label' and kids[0].opts.get('text'):
+            icon = str(kids[0].opts.get('icon') or '')
+            if icon.startswith('STRIP_COLOR_0'):      # 0.24.213 a big part of the window: its colour
+                big = icon[-1]
             title = kids.pop(0).opts['text']
         elif title is None and kids and kids[0].kind == 'row' and kids[0].children \
                 and kids[0].children[0].kind == 'label' and kids[0].children[0].opts.get('text') \
@@ -375,7 +416,14 @@ class Builder:
         self.gap(0.5)
         bg = self.Item('sbg', x, 0, w, 0)
         self.out.append(bg)
-        if title:
+        if title and big:
+            self.y -= BIG_SECTION * k
+            # (folded: what it is set to, at the right of the title - "Cotton · Looseness 25 · Wrinkles 50")
+            self.out.append(self.Item('shead', x, self.y, w, BIG_SECTION * k, title.upper(),
+                                      f'big:{big}|' + (summary(kids, self.tool) if key_folded else ''), not key_folded,
+                                      True, ('fold', f'{self.tool}:{title}', start_folded)))
+            self.gap(0.3)
+        elif title:
             self.y -= SECTION * k
             hw = 30 * k * len(head_cells)
             self.out.append(self.Item('shead', x, self.y, w - hw, SECTION * k, title.upper(), '', not key_folded,

@@ -1,0 +1,15 @@
+shot 01_sections_korean_top.png True
+A1 big titles in the window now: [('CLOTH DRAPE', '클로스 드레이프'), ('MAKE', '만들기')]
+A2 REAL click on the Fabric title: folded True | shown in the title: 면 · 여유 25 · 수축 0
+shot 02_fabric_folded.png True
+A3 a second REAL click opens it again True
+A4 REAL click on Pin Rim (in Pins & Stitches): True -> False
+A5 REAL drag on Looseness (in Fabric): 25.0 -> 34.8
+shot 03_sections_korean_lower.png True
+shot 04_sections_english_top.png True
+PASS A1 the window starts with the big Cloth Drape title; big coloured titles are drawn
+PASS A2 a REAL click on the Fabric title folds it; the title shows what it is set to
+PASS A3 a second REAL click opens it
+PASS A4 a switch inside a section answers a REAL click (Pin Rim)
+PASS A5 a slider inside a section answers a REAL drag (Looseness)
+5/5 passed

@@ -878,7 +878,7 @@ def draw(layout, context):
     from . import cloth_drape as cd
     vp = context.scene.mch_vacuum
     box = layout.box()
-    box.label(text='Vacuum Pack: the selected meshes in one bag, the air sucked out', icon='MOD_SHRINKWRAP')
+    box.label(text='Vacuum Pack: the selected meshes in one bag, the air sucked out', icon='STRIP_COLOR_08')   # 0.24.213 a big title
     live = cd.sim_active() and cd.SIM.get('mode') == 'VACUUM'
     if live:                                          # 0.24.190 (user: "베큠팩은 어플라이가 안 돼"): buttons, not only keys
         box.label(text=sim_status(), icon='PLAY')

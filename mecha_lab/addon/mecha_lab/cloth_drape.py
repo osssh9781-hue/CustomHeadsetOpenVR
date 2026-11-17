@@ -3127,14 +3127,24 @@ class MCH_OT_cdrape_keep(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def _section(layout, title, colour):
+    """0.24.213 a big titled part of the window: a box whose first line is its title; the icon is the title bar's
+    colour in the Mecha window (``side_panel``: STRIP_COLOR_0n = a big coloured title, click = fold)."""
+    box = layout.box()
+    box.label(text=title, icon=f'STRIP_COLOR_0{colour}')
+    return box
+
+
 def draw(layout, context):
+    """0.24.213 (user: "오른쪽 창 설정이 정리가 안 되어 있잖아, 큰 구다리로 묶고 ... 구다리 제목은 좀 더 큰 폰트나 색으로";
+    "기존에 있는 기능은 절대 변경 안 되어야 하고"): the same controls as before, every one of them, only grouped:
+    Cloth Drape (mode, run) / Make / Fabric / Pins & Stitches / Detail & Thickness / Finish / Collision, then Vacuum
+    Pack.  tests/test_v02625 holds the list of what was there before."""
     st = settings(context)
     if st is None:
         return
-    from . import vacuum_pack                            # 0.24.171 the selected meshes sealed in one film
-    vacuum_pack.draw(layout, context)
     box = layout.box()
-    box.label(text='Cloth Drape', icon='MOD_CLOTH')
+    box.label(text='Cloth Drape', icon='STRIP_COLOR_05')
     live = sim_active()
     hint = {'AREA': 'draw a lasso on the mesh: a loose cloth over that region',
             'CAPE': 'draw a line across the shoulders (Surface: click points), Enter: a cape hangs from it',
@@ -3181,6 +3191,7 @@ def draw(layout, context):
     r.enabled = live
     r.operator('mch.cdrape_control', text='Keep (Enter)', icon='CHECKMARK').action = 'confirm'
     r.operator('mch.cdrape_control', text='Put Back (Esc)' if SIM.get('mode') == 'MESH' else 'Drop (Esc)', icon='X').action = 'cancel'
+    box = _section(layout, 'Make', 4)
     r = box.row(align=True)                              # 0.24.95 Tack Pins (Marvelous Designer's tack)
     r.enabled = not live
     act = context.view_layer.objects.active
@@ -3207,6 +3218,22 @@ def draw(layout, context):
     r.enabled = not live
     r.operator('mch.cdrape_sew_copy', text='Sew Copy (plate copied, edges sewn)', icon='MOD_SOLIDIFY')
     box.prop(st, 'puff', slider=True)
+    box = _section(layout, 'Fabric', 2)
+    box.row().prop(st, 'fabric', expand=True)
+    col = box.column(align=True)
+    col.prop(st, 'slack', slider=True)
+    col.prop(st, 'shrink', slider=True)
+    col.prop(st, 'gravity', slider=True)
+    col.prop(st, 'stick', slider=True)
+    col.prop(st, 'wrinkles', slider=True)
+    col.prop(st, 'keep', slider=True)
+    col.prop(st, 'stretch', slider=True)
+    col.prop(st, 'self_collide', toggle=True, icon='MOD_PHYSICS')
+    box = _section(layout, 'Pins & Stitches', 6)
+    r = box.row(align=True)
+    r.prop(st, 'two_sides', toggle=True, icon='MOD_MIRROR')
+    r.prop(st, 'pin_rim', toggle=True)
+    r.prop(st, 'stop_at_pins', toggle=True)
     ob = context.view_layer.objects.active
     body = bpy.data.objects.get(SIM.get('target', '')) if live else ob
     n_lines = len(wl._lines_of(body)) if body is not None and body.type == 'MESH' else 0
@@ -3240,36 +3267,17 @@ def draw(layout, context):
         r = box.row(align=True)
         r.prop(wst, 'lift', text='Lift')
         r.prop(wst, 'fade', text='End Fade')
-    box.row().prop(st, 'fabric', expand=True)
+    box = _section(layout, 'Detail & Thickness', 3)
     col = box.column(align=True)
-    col.prop(st, 'slack', slider=True)
-    col.prop(st, 'shrink', slider=True)
-    col.prop(st, 'gravity', slider=True)
-    col.prop(st, 'stick', slider=True)
-    col.prop(st, 'wrinkles', slider=True)
-    col.prop(st, 'keep', slider=True)
-    col.prop(st, 'stretch', slider=True)
-    col.prop(st, 'self_collide', toggle=True, icon='MOD_PHYSICS')
-    col = box.column(align=True)
-    col.prop(st, 'gap', slider=True)
-    col.prop(st, 'offset', slider=True)
-    r = box.row(align=True)                              # 0.24.95 what the cloth collides with
-    r.prop(st, 'collide_with', expand=True)
-    r = box.row(align=True)
-    r.prop(st, 'use_proxy', toggle=True, icon='MESH_ICOSPHERE')
-    rr = r.row(align=True)
-    rr.active = st.use_proxy
-    rr.prop(st, 'proxy_faces', text='Faces')
-    # (0.24.95 user: "쇼 프록시가 안 꺼져" - it sat in the row greyed out with Proxy off, and the drawn panel does not
-    # click a greyed-out button: proxies made earlier stayed on screen with no way to hide them)
-    r.prop(st, 'show_proxy', text='', icon='HIDE_OFF' if st.show_proxy else 'HIDE_ON', toggle=True)
     col.prop(st, 'spacing', slider=True, text='Cloth Detail (less = finer)')
     if sim_active() and SIM.get('source') not in {'AREA', 'MASK', 'CAPE', 'NECK'} and SIM.get('spacing') is not None and abs(float(st.spacing) - SIM['spacing']) > 1e-6:
         box.label(text='Cloth Detail changes the NEXT lasso (this cloth keeps its mesh)', icon='INFO')
-    r = box.row(align=True)
-    r.prop(st, 'two_sides', toggle=True, icon='MOD_MIRROR')
-    r.prop(st, 'pin_rim', toggle=True)
-    r.prop(st, 'stop_at_pins', toggle=True)
+    col = box.column(align=True)
+    col.prop(st, 'gap', slider=True)
+    col.prop(st, 'offset', slider=True)
+    box.prop(st, 'frames')
+    box.prop(st, 'thickness', slider=True)
+    box = _section(layout, 'Finish', 7)
     r = box.row(align=True)                              # 0.24.95 Padding + Trim
     r.prop(st, 'padding', toggle=True, icon='MESH_GRID')
     rr = r.row(align=True)
@@ -3284,9 +3292,19 @@ def draw(layout, context):
     rr = r.row(align=True)
     rr.active = st.trim
     rr.prop(st, 'trim_width', slider=True)
-    box.prop(st, 'frames')
-    box.prop(st, 'thickness', slider=True)
-
+    box = _section(layout, 'Collision', 9)
+    r = box.row(align=True)                              # 0.24.95 what the cloth collides with
+    r.prop(st, 'collide_with', expand=True)
+    r = box.row(align=True)
+    r.prop(st, 'use_proxy', toggle=True, icon='MESH_ICOSPHERE')
+    rr = r.row(align=True)
+    rr.active = st.use_proxy
+    rr.prop(st, 'proxy_faces', text='Faces')
+    # (0.24.95 user: "쇼 프록시가 안 꺼져" - it sat in the row greyed out with Proxy off, and the drawn panel does not
+    # click a greyed-out button: proxies made earlier stayed on screen with no way to hide them)
+    r.prop(st, 'show_proxy', text='', icon='HIDE_OFF' if st.show_proxy else 'HIDE_ON', toggle=True)
+    from . import vacuum_pack                            # 0.24.171 the selected meshes sealed in one film
+    vacuum_pack.draw(layout, context)
 
 CLASSES = (MCH_PG_ClothDrape, MCH_OT_cdrape_stitch, MCH_OT_cdrape_sim, MCH_OT_cdrape_mesh, MCH_OT_cdrape_mask, MCH_OT_cdrape_tack, MCH_OT_cdrape_tack_clear, MCH_OT_cdrape_wrap, MCH_OT_cdrape_sew_copy, MCH_OT_cdrape_lines,
            MCH_OT_cdrape_control, MCH_OT_cdrape_keep)
