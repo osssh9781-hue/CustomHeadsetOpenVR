@@ -7,6 +7,7 @@ the keys keep their Blender meaning because the operators' poll fails there.
 Bottom toolbar = 2D button gizmos (the same kind as the viewport navigation
 buttons): no modal operator, so it cannot fight the Cut / Split stroke modal.
 """
+from .i18n import tr as _tr
 import bpy
 from bpy.props import EnumProperty, StringProperty
 
@@ -729,10 +730,10 @@ def _draw_tidy_labels(context):
     blf.color(0, 0.88, 0.9, 0.93, 1.0)
     for (_a, _i, label, _d), (x, y) in zip(TIDY, tidy_positions(context)):
         blf.position(0, (x + 27 * f) * ui, (y - 5 * f) * ui, 0)
-        blf.draw(0, label)
+        blf.draw(0, _tr(label))
     x, y = top_tidy_position(context)
     blf.position(0, (x + 27 * f) * ui, (y - 5 * f) * ui, 0)
-    blf.draw(0, TOP_TIDY[2] + '  (click a mesh)')
+    blf.draw(0, _tr(TOP_TIDY[2] + '  (click a mesh)'))
 
 
 def _draw_active_label(context):
@@ -747,7 +748,7 @@ def _draw_active_label(context):
     blf.size(0, 14 * ui * f)
     blf.color(0, *(ACCENT if on else (0.9, 0.92, 0.95)), 1.0)
     blf.position(0, (x + 32 * f) * ui, (y - 5 * f) * ui, 0)
-    blf.draw(0, f'{t[1]}  ON' if on else f'{t[1]}  -  click to activate')
+    blf.draw(0, _tr(f'{t[1]}  ON' if on else f'{t[1]}  -  click to activate'))
 
 
 def _draw_labels():
@@ -774,11 +775,11 @@ def _draw_labels():
         font = 0
         blf.size(font, 10 * ui * max(0.6, f))
         for (tid, label, *_), (x, y) in zip(BAR_TOOLS, pos):
-            w, _h = blf.dimensions(font, label)
+            w, _h = blf.dimensions(font, _tr(label))
             on = tid == active
             blf.color(font, *(ACCENT if on else (0.85, 0.87, 0.9)), 1.0)
             blf.position(font, x * ui - w / 2, (y - d / 2 - 12 * max(0.6, f)) * ui, 0)
-            blf.draw(font, label)
+            blf.draw(font, _tr(label))
     except Exception:            # never break viewport drawing
         pass
 

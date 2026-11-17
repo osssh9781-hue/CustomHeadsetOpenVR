@@ -10,6 +10,7 @@ copies toward the other side; every change updates the live modifier at once
 """
 from __future__ import annotations
 
+from .i18n import tr as _tr
 import bpy
 from bpy.props import EnumProperty
 from mathutils import Vector
@@ -197,7 +198,7 @@ def _draw_labels():
             x, y = lay[name]
             blf.color(0, *(ACCENT if is_on(p, name) else (0.85, 0.87, 0.9)), 1.0)
             blf.position(0, (x + 20) * ui, (y - 4) * ui, 0)
-            blf.draw(0, label)
+            blf.draw(0, _tr(label))
     except Exception:          # never break viewport drawing
         pass
 

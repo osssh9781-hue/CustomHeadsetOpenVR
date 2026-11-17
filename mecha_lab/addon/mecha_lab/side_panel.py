@@ -266,7 +266,8 @@ class Builder:
             return 150.0 * self.k
         if kind == 'drop':
             return (110.0 if label else 80.0) * self.k
-        return (len(label) * 5.8 + 16.0) * self.k
+        from . import i18n
+        return (i18n.vlen(label) * 5.8 + 16.0) * self.k
 
     def _h(self, c):
         if c[0] == 'tbtn' and len(c) > 7 and c[7]:
@@ -475,6 +476,8 @@ def _text_w(s, size):
     """Width of ``s`` in the UI font at ``size`` px (an estimate when the font cannot be asked)."""
     try:
         import blf
+        from . import i18n
+        s = i18n.tr(s)
         blf.size(0, size)
         wd = blf.dimensions(0, s)[0]
         if wd > 0:

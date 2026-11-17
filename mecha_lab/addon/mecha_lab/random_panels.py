@@ -21,6 +21,7 @@ headless; the HUD needs a real viewport.
 """
 from __future__ import annotations
 
+from .i18n import tr as _tr
 import json
 import math
 import random
@@ -696,15 +697,15 @@ def _draw_labels():
             blf.color(0, *((1.0, 0.62, 0.16) if on else (0.85, 0.87, 0.9)), 1.0)
             text = label + (f'  (seed {st.seed})' if name == 'reroll' else '')
             blf.position(0, (x + 21) * ui, (y - 4) * ui, 0)
-            blf.draw(0, text)
+            blf.draw(0, _tr(text))
         for key, *_ in SLIDERS:
             x, y = lay['slider_' + key]
             label, v, *_rest = slider_spec(context, key)
             text = f'{label}  {v} %'
-            w, _h = blf.dimensions(0, text)
+            w, _h = blf.dimensions(0, _tr(text))
             blf.color(0, 1.0, 1.0, 1.0, 1.0)
             blf.position(0, x * ui - w / 2, (y - 4) * ui, 0)
-            blf.draw(0, text)
+            blf.draw(0, _tr(text))
     except Exception:          # never break viewport drawing
         pass
 

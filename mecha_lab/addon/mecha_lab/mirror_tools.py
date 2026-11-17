@@ -2,6 +2,7 @@
 
 Independently authored for Mecha Lab. Blender 4.3+ APIs.
 """
+from .i18n import tr as _tr
 import math
 import time
 
@@ -903,7 +904,7 @@ def draw_lean_overlay(op):
             blf.size(0, 14)
             blf.color(0, 1, 1, 1, 0.95)
             blf.position(0, c[0] - 60, c[1] - 110, 0)
-            blf.draw(0, 'Mirror ' + op.describe())
+            blf.draw(0, _tr('Mirror ' + op.describe()))
     except Exception:          # never break viewport drawing
         pass
 

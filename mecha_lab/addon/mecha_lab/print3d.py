@@ -16,6 +16,7 @@ Lengths are shown in the window's unit (mm by default; 1 Blender unit = 1 m x th
 """
 from __future__ import annotations
 
+from .i18n import tr as _tr
 import json
 import math
 
@@ -162,7 +163,7 @@ def _draw_overlay():
         import blf
         size = int(12 * k)
         blf.size(0, size)
-        w, _h = blf.dimensions(0, s)
+        w, _h = blf.dimensions(0, _tr(s))
         ug.rounded_rect(p[0] - w / 2 - 6 * k, p[1] - 10 * k, w + 12 * k, 20 * k, 6 * k, (0.06, 0.065, 0.075, 0.85))
         ug.text(p[0], p[1], s, size, color, align='CENTER')
     for a, b in items:

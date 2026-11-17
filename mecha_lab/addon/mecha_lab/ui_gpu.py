@@ -112,6 +112,8 @@ def polyline(pts, color, width=2.0, closed=False):
 def text(x, y, s, size, color=TEXT, align='LEFT', vcenter=True):
     """Text at (x, y); align LEFT / CENTER / RIGHT; vcenter puts y in the middle of the letters."""
     import blf
+    from . import i18n
+    s = i18n.tr(s)                                   # 0.24.212 what is drawn is looked up (Korean when on)
     blf.size(0, size)
     w, h = blf.dimensions(0, s)
     if align == 'CENTER':
@@ -129,6 +131,8 @@ def text(x, y, s, size, color=TEXT, align='LEFT', vcenter=True):
 def fit(s, size, width):
     """Shorten ``s`` with '…' so it fits ``width`` px."""
     import blf
+    from . import i18n
+    s = i18n.tr(s)
     blf.size(0, size)
     if blf.dimensions(0, s)[0] <= width:
         return s
@@ -140,6 +144,8 @@ def fit(s, size, width):
 def wrap2(s, size, width):
     """``s`` in at most two lines that fit ``width`` px (split at a space, the rest shortened with '…')."""
     import blf
+    from . import i18n
+    s = i18n.tr(s)
     blf.size(0, size)
     if blf.dimensions(0, s)[0] <= width or ' ' not in s:
         return [fit(s, size, width)]

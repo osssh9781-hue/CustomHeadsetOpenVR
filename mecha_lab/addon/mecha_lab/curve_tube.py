@@ -21,6 +21,7 @@ until Apply (N panel / tool panel):
 """
 from __future__ import annotations
 
+from .i18n import tr as _tr
 import math
 
 import bpy
@@ -1911,10 +1912,10 @@ def _draw_bar_labels():
             if name == 'mode' and tb.mode in LINE_MODES:
                 continue
             x, y = lay[name]
-            w, _h = blf.dimensions(0, text)
+            w, _h = blf.dimensions(0, _tr(text))
             blf.color(0, 0.9, 0.9, 0.92, 1.0)
             blf.position(0, x * ui - w / 2, (y - 26) * ui, 0)
-            blf.draw(0, text)
+            blf.draw(0, _tr(text))
         for key, *_r in TUBE_SLIDERS:
             if key == 'count' and (tb.mode not in REPEAT_MODES or tb.spacing_mode != 'COUNT'):
                 continue
@@ -1924,10 +1925,10 @@ def _draw_bar_labels():
                 continue
             x, y = lay['slider_' + key]
             text = tube_slider_spec(ob, key)[5]
-            w, _h = blf.dimensions(0, text)
+            w, _h = blf.dimensions(0, _tr(text))
             blf.color(0, 1, 1, 1, 1)
             blf.position(0, x * ui - w / 2, (y - 4) * ui, 0)
-            blf.draw(0, text)
+            blf.draw(0, _tr(text))
     except Exception:           # never break viewport drawing
         pass
 

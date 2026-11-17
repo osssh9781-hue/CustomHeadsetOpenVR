@@ -4,6 +4,7 @@ Preferences: Key Legend.  Drawn only in MECHA LAB, Object Mode, with a drawing t
 """
 from __future__ import annotations
 
+from .i18n import tr as _tr
 import bpy
 
 from . import tool_state as ts
@@ -181,7 +182,7 @@ def _width(s, size):
     """Text width as drawn (the same font and size the card uses)."""
     import blf
     blf.size(0, size)
-    return blf.dimensions(0, s)[0]
+    return blf.dimensions(0, _tr(s))[0]
 
 
 def box(context, k=None):

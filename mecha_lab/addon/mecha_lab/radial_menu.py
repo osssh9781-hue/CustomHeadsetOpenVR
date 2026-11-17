@@ -16,6 +16,8 @@ import math
 import time
 
 import bpy
+
+from . import i18n
 from bpy.props import StringProperty
 
 from . import tool_state as ts
@@ -157,7 +159,7 @@ def centre_click(context):
 
 def _label(g, x, y, s, size, k, bright):
     s = g.fit(s, size, 150 * k)
-    w = max(30.0 * k, len(s) * size * 0.64 + 12.0 * k)
+    w = max(30.0 * k, i18n.vlen(s) * size * 0.64 + 12.0 * k)
     h = size * 1.7
     g.rounded_rect(x - w / 2, y - h / 2, w, h, 6.0 * k, (0.06, 0.06, 0.07, 0.88))
     g.text(x, y, s, size, g.TEXT if bright else g.TEXT_DIM, 'CENTER')

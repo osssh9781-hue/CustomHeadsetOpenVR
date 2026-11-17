@@ -20,6 +20,7 @@ and tested headless; the buttons and slider need a real viewport.
 """
 from __future__ import annotations
 
+from .i18n import tr as _tr
 import bpy
 from bpy.props import BoolProperty
 from mathutils import Matrix, Vector
@@ -524,28 +525,28 @@ def _draw_labels():
             on = (key == 'add' and not sub) or (key == 'sub' and sub) or key == 'apply'
             blf.color(font, *(ACCENT if on else (0.85, 0.87, 0.9)), 1.0)
             blf.position(font, (x + BTN * 0.7) * ui, (y - 4) * ui, 0)
-            blf.draw(font, text)
+            blf.draw(font, _tr(text))
         blf.color(font, 0.55, 0.95, 0.65, 1.0)
         for key, text in SEG_LABELS.items():
             if key in lay:
                 x, y = lay[key]
                 blf.position(font, (x + BTN * 0.55) * ui, (y - 4) * ui, 0)
-                blf.draw(font, text)
+                blf.draw(font, _tr(text))
         spec = slider_spec(context, kind, ob)
         if spec is not None:
             x, y = lay['slider']
             text = f'{spec[0]}  {spec[1]}'
-            w, _h = blf.dimensions(font, text)
+            w, _h = blf.dimensions(font, _tr(text))
             blf.color(font, 1.0, 1.0, 1.0, 1.0)
             blf.position(font, x * ui - w / 2, (y - 4) * ui, 0)
-            blf.draw(font, text)
+            blf.draw(font, _tr(text))
         if kind == 'GHOST' and st is not None and coplanar_cached(context, st):
             x, y = lay['slider']
             blf.color(font, 1.0, 0.25, 0.25, 1.0)
             lines = ('Faces lie on the mesh surface:', 'make the shape a little bigger', 'or smaller (Boolean artefacts)')
             for k, line in enumerate(lines):
                 blf.position(font, (x - SLIDER_W / 2) * ui, (y - 26 - 14 * k) * ui, 0)
-                blf.draw(font, line)
+                blf.draw(font, _tr(line))
     except Exception:          # never break viewport drawing
         pass
 

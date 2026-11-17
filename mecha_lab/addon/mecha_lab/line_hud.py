@@ -10,6 +10,7 @@ goes on from) and follows it.  Everything it sets is the live object's own setti
 values and Ctrl+Z steps back.  ``hud_layout`` is pure and tested headless; the gizmos need a real viewport."""
 from __future__ import annotations
 
+from .i18n import tr as _tr
 import json
 import math
 
@@ -759,38 +760,38 @@ def _draw_labels():
         x, y = lay['corner']
         blf.color(font, *(ROUND_COL if round_on else (0.85, 0.87, 0.9)), 1.0)
         blf.position(font, x - BTN * 0.55 * ui, y + BTN * 0.75 * ui, 0)
-        blf.draw(font, 'Round' if round_on else 'Sharp')
+        blf.draw(font, _tr('Round' if round_on else 'Sharp'))
         if 'move' in lay:
             x, y = lay['move']
             mv = move_on(context)
             blf.color(font, *(ACCENT if mv else (0.85, 0.87, 0.9)), 1.0)
             blf.position(font, x + BTN * 0.7 * ui, y - 4 * ui, 0)
-            blf.draw(font, 'Move')
+            blf.draw(font, _tr('Move'))
         if 'section' in lay:                                   # 0.24.119
             x, y = lay['section']
             bend = p.line_up == 'BEND'
             blf.color(font, *(BEND_COL if bend else (0.85, 0.87, 0.9)), 1.0)
             blf.position(font, x + BTN * 0.7 * ui, y - 4 * ui, 0)
-            blf.draw(font, 'Section: Bend' if bend else 'Section: Each View')
+            blf.draw(font, _tr('Section: Bend' if bend else 'Section: Each View'))
         pk = pick_on(context)
         if 'pick' in lay:                                      # 0.24.121
             x, y = lay['pick']
             blf.color(font, *(ACCENT if pk else (0.85, 0.87, 0.9)), 1.0)
             blf.position(font, x + BTN * 0.7 * ui, y - 4 * ui, 0)
-            blf.draw(font, 'Pick')
+            blf.draw(font, _tr('Pick'))
         if 'ends' in lay:
             x, y = lay['ends']
             rnd = getattr(p, 'line_end', 'FLAT') == 'ROUND'
             blf.color(font, *(ENDS_COL if rnd else (0.85, 0.87, 0.9)), 1.0)
             blf.position(font, x + BTN * 0.7 * ui, y - 4 * ui, 0)
-            blf.draw(font, 'Ends: Round' if rnd else 'Ends: Flat')
+            blf.draw(font, _tr('Ends: Round' if rnd else 'Ends: Flat'))
         if 'detail' in lay:
             blf.color(font, 1.0, 1.0, 1.0, 1.0)
             x, y = lay['detail']
             text = f'Detail  {getattr(p, "line_detail", 1.0):.2f} x'
-            w, _h = blf.dimensions(font, text)
+            w, _h = blf.dimensions(font, _tr(text))
             blf.position(font, x - w / 2, y - 4 * ui, 0)
-            blf.draw(font, text)
+            blf.draw(font, _tr(text))
         if pk:                                                 # the path you can grab, over the line
             try:
                 import gpu
@@ -810,15 +811,15 @@ def _draw_labels():
         blf.color(font, 1.0, 1.0, 1.0, 1.0)
         x, y = lay['thick']
         text = f'Thickness  {p.section_width:.3f}'
-        w, _h = blf.dimensions(font, text)
+        w, _h = blf.dimensions(font, _tr(text))
         blf.position(font, x - w / 2, y - 4 * ui, 0)
-        blf.draw(font, text)
+        blf.draw(font, _tr(text))
         if 'radius' in lay:
             x, y = lay['radius']
             text = f'Radius  {p.corner_radius:.2f} x'
-            w, _h = blf.dimensions(font, text)
+            w, _h = blf.dimensions(font, _tr(text))
             blf.position(font, x - w / 2, y - 4 * ui, 0)
-            blf.draw(font, text)
+            blf.draw(font, _tr(text))
     except Exception:          # never break viewport drawing
         pass
 

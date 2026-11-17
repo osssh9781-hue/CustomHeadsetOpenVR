@@ -11,6 +11,7 @@ sits on the other side of the plate.  ``build_group`` is tested headless.
 """
 from __future__ import annotations
 
+from .i18n import tr as _tr
 import math
 
 import bpy
@@ -509,14 +510,14 @@ def _draw_labels():
         x, y = lay['lift_n']
         blf.color(0, 1.0, 0.62, 0.16, 1.0)
         blf.position(0, (x - 15) * ui, (y + 22) * ui, 0)
-        blf.draw(0, 'CREATURE SHELL  (lift edges N E S W)')
+        blf.draw(0, _tr('CREATURE SHELL  (lift edges N E S W)'))
         for key, *_r in SLIDERS:
             x, y = lay['slider_' + key]
             text = slider_spec(ob, key)[5]
-            w, _h = blf.dimensions(0, text)
+            w, _h = blf.dimensions(0, _tr(text))
             blf.color(0, 1, 1, 1, 1)
             blf.position(0, x * ui - w / 2, (y - 4) * ui, 0)
-            blf.draw(0, text)
+            blf.draw(0, _tr(text))
     except Exception:            # never break viewport drawing
         pass
 

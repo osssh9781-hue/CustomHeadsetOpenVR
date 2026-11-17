@@ -27,6 +27,7 @@ import os
 import bpy
 from bpy.props import BoolProperty, StringProperty
 
+from . import i18n
 from . import panel_capture as pc
 from .quick_hud import points_text
 
@@ -408,7 +409,7 @@ def content(context, x, width, k):
             except RuntimeError:
                 sel = False
         lx = ix + 18 * k
-        out.append(Item('lrow', lx, y, right - lx - 2 * k, rh, ob.name, _icon(ob), sel, True,
+        out.append(Item('lrow', lx, y, right - lx - 2 * k, rh, i18n.raw(ob.name), _icon(ob), sel, True,
                         ('op', 'mch.layer_pick', {'name': ob.name, 'coll': is_c}),
                         {'hidden': hidden, 'badge': badge, 'active': ob == active}))
         y -= 2 * k

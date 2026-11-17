@@ -18,6 +18,7 @@ Nodes has no bevel - and rebuilt on every change.
 """
 from __future__ import annotations
 
+from .i18n import tr as _tr
 import math
 import random
 
@@ -1382,26 +1383,26 @@ def _draw_labels():
         x, y = lay['apply']
         blf.color(0, 1.0, 0.62, 0.16, 1.0)
         blf.position(0, (x + 21) * ui, (y - 4) * ui, 0)
-        blf.draw(0, 'Apply')
+        blf.draw(0, _tr('Apply'))
         x, y = lay['details']
         blf.color(0, 0.85, 0.87, 0.9, 1.0)
         blf.position(0, (x + 21) * ui, (y - 4) * ui, 0)
         cat = dict((a, b) for a, b, _c in CATEGORIES)[rp.category]
         sty = dict((a, b) for a, b, _c in STYLES)[rp.style]
-        blf.draw(0, f'{cat} | {sty} | {dict((a, b) for a, b, _c in PARTS)[rp.part]}')
+        blf.draw(0, _tr(f'{cat} | {sty} | {dict((a, b) for a, b, _c in PARTS)[rp.part]}'))
         x, y = lay['top']
         names = dict((a, b) for a, b, _c in END_SHAPES)
         blf.position(0, (x + 21) * ui, (y - 4) * ui, 0)
-        blf.draw(0, f'Bottom {names[rp.bottom_shape]}  ->  Top {names[rp.top_shape]}')
+        blf.draw(0, _tr(f'Bottom {names[rp.bottom_shape]}  ->  Top {names[rp.top_shape]}'))
         for key, *_r in SLIDERS:
             if 'slider_' + key not in lay:
                 continue
             x, y = lay['slider_' + key]
             text = slider_spec(context, key, ob)[5]
-            w, _h = blf.dimensions(0, text)
+            w, _h = blf.dimensions(0, _tr(text))
             blf.color(0, 1.0, 1.0, 1.0, 1.0)
             blf.position(0, x * ui - w / 2, (y - 4) * ui, 0)
-            blf.draw(0, text)
+            blf.draw(0, _tr(text))
     except Exception:          # never break viewport drawing
         pass
 

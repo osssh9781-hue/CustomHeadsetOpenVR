@@ -15,6 +15,7 @@ side panel is too narrow.  The tool's own settings are in the side panel (``side
 """
 from __future__ import annotations
 
+from . import i18n
 from . import tool_state as ts
 
 ROW = 30.0
@@ -332,13 +333,13 @@ def concept_groups(context, tool):
 def _width(c, k):
     if c['width']:
         return c['width'] * k
-    return (len(c['label']) * 7.0 + 24.0) * k
+    return (i18n.vlen(c['label']) * 7.0 + 24.0) * k
 
 
 def _group_width(title, cells, k):
     w = sum(_width(c, k) for c in cells) + GAP * k * (len(cells) - 1)
     if title:
-        w += (len(title) * 7.0 + 8.0) * k + GAP * k
+        w += (i18n.vlen(title) * 7.0 + 8.0) * k + GAP * k
     return w
 
 
@@ -427,7 +428,7 @@ def items(context, region_w, region_h, k=1.0, left=None, right=None):
                 out.append(Item('vrule', x + sep / 2 - 0.5 * k, y + 6 * k, 1.0 * k, ROW * k - 12 * k))
                 x += sep
             if title:
-                tw = (len(title) * 7.0 + 8.0) * k
+                tw = (i18n.vlen(title) * 7.0 + 8.0) * k
                 out.append(Item('glabel', x, y, tw, ROW * k, title.upper()))
                 x += tw + GAP * k
             for c in cells:

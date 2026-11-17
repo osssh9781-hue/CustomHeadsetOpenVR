@@ -17,6 +17,7 @@ steps; click keeps, Esc puts it back), Shift + R: back to 0 degrees.
 """
 from __future__ import annotations
 
+from .i18n import tr as _tr
 import math
 import time
 
@@ -2281,11 +2282,11 @@ def _draw_turn(op):
         blf.size(0, 15)
         blf.color(0, 1.0, 0.92, 0.6, 1.0)
         blf.position(0, cx + op.size + 14, cy + 6, 0)
-        blf.draw(0, f'{math.degrees(ang):.1f}\u00b0')
+        blf.draw(0, _tr(f'{math.degrees(ang):.1f}\u00b0'))
         blf.size(0, 12)
         blf.color(0, 0.85, 0.87, 0.9, 1.0)
         blf.position(0, cx + op.size + 14, cy - 14, 0)
-        blf.draw(0, 'move: turn   Ctrl: 5\u00b0 steps   Shift: fine   click / R: keep   Esc: back')
+        blf.draw(0, _tr('move: turn   Ctrl: 5\u00b0 steps   Shift: fine   click / R: keep   Esc: back'))
     except Exception:
         pass
 

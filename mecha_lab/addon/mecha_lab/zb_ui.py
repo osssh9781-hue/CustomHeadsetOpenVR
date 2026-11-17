@@ -17,6 +17,8 @@ import os
 
 import bpy
 
+from . import i18n
+
 from . import panel_capture as pc
 from . import zb_sculpt as zs
 from .quick_hud import points_text
@@ -312,7 +314,7 @@ def top_shelf(context, region_w, region_h, k, Item):
     ]
 
     def gw(title, cells):
-        return _cells_width(cells, k) + ((len(title) * 7 + 8) * k + GAP * k if title else 0.0)
+        return _cells_width(cells, k) + ((i18n.vlen(title) * 7 + 8) * k + GAP * k if title else 0.0)
     room = region_w - 2 * corner_reserve(context, region_w, region_h, k) - 16 * k
     wrapped = []
     for r in rows:                                   # too wide: the groups go on more lines (narrow screen)
@@ -342,7 +344,7 @@ def top_shelf(context, region_w, region_h, k, Item):
                 out.append(Item('vrule', x + SEP * k / 2, y + 5 * k, 1.0 * k, ROW * k - 10 * k))
                 x += SEP * k
             if title:
-                tw = (len(title) * 7 + 8) * k
+                tw = (i18n.vlen(title) * 7 + 8) * k
                 out.append(Item('glabel', x, y, tw, ROW * k, title.upper()))
                 x += tw + GAP * k
             x = _cells_row(Item, out, cells, x, y, k) - GAP * k

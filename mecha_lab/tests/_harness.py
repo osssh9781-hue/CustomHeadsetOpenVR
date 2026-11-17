@@ -19,6 +19,7 @@ for var in ('BLENDER_USER_CONFIG', 'BLENDER_USER_SCRIPTS', 'BLENDER_USER_DATAFIL
 if ADDON_PARENT not in sys.path:
     sys.path.insert(0, ADDON_PARENT)
 
+os.environ.setdefault('MCH_LANG', 'EN')     # 0.24.212 the tests read the screen in English (Korean: test_v02624)
 import bpy  # noqa: E402
 import bmesh  # noqa: E402
 
