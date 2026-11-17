@@ -135,9 +135,43 @@ def data(ob):
         return {}
 
 
+# 0.24.189 (user: "인공 근육이랑 근육 둘 다 전에 바로 했던 설정은 저장이 되어야지, 블렌더를 껐다 켜기 전에는"): what was set last -
+# on the tool or on a muscle already made - is what the next muscle starts with, in this file and in any new one,
+# until Blender closes
+SESSION = {}                       # tool -> {setting: value}: the last used, this Blender session
+
+
+def _value(pg, k):
+    v = getattr(pg, k)
+    return tuple(v) if hasattr(v, '__len__') and not isinstance(v, str) else v
+
+
+def remember(pg, tool):
+    """These settings are the last used ones of ``tool``."""
+    SESSION[tool] = {k: _value(pg, k) for k in LIVE if hasattr(pg, k)}
+
+
+def _fill(pg, vals):
+    was = _BUSY[0]
+    _BUSY[0] = True
+    try:
+        for k, v in vals.items():
+            try:
+                if _value(pg, k) != v:
+                    setattr(pg, k, v)
+            except (TypeError, ValueError, AttributeError):
+                pass
+    finally:
+        _BUSY[0] = was
+
+
 def settings(context, tool):
     sc = context.scene
-    return sc.mch_mmuscle if tool == 'MMUSCLE' else sc.mch_muscle
+    pg = sc.mch_mmuscle if tool == 'MMUSCLE' else sc.mch_muscle
+    last = SESSION.get(tool)
+    if last and not any(pg.is_property_set(k) for k in LIVE):     # (a scene never set up - a new file: the last used.
+        _fill(pg, last)                                           #  A file opened with its own settings keeps them)
+    return pg
 
 
 # ---- the body's surface ------------------------------------------------------------------------------------------------
@@ -2266,10 +2300,19 @@ def _upd(self, context):
         return
     ob = self.id_data
     if isinstance(ob, bpy.types.Object) and is_muscle(ob):
+        tool = data(ob).get('tool', 'MUSCLE')
+        remember(self, tool)                          # (a made muscle's sliders: the next one starts with them)
+        sc = getattr(context, 'scene', None)
+        if sc is not None:
+            _fill(sc.mch_mmuscle if tool == 'MMUSCLE' else sc.mch_muscle, SESSION[tool])
         try:
             build(ob, context)
         except RuntimeError as ex:
             print('Muscle:', ex)
+    elif isinstance(ob, bpy.types.Scene):
+        for tool, pg in (('MUSCLE', ob.mch_muscle), ('MMUSCLE', ob.mch_mmuscle)):
+            if pg == self:
+                remember(self, tool)
 
 
 def _upd_preset(self, context):

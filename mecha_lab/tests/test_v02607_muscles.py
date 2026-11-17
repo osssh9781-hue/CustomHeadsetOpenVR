@@ -208,5 +208,29 @@ check(f'Skin (Vacuum, folds): a bag tight round the body and the muscles ({len(f
       abs(fv[:, 2].max() - bv[:, 2].max()) < 0.25 and bpy.data.objects.get('MCH Skin Proxy') is not None and
       bpy.data.objects['MCH Skin Proxy'].hide_get())
 
+# 0.24.189 the last used settings stay (user: "전에 바로 했던 설정은 저장이 되어야지, 블렌더를 껐다 켜기 전에는")
+for tool in ('MUSCLE', 'MMUSCLE'):
+    st = mg.settings(C, tool)
+    a_, _m = mg.make(C, tool, [pt(0.9, 0.3), pt(-0.6, 0.3)])
+    w0 = a_.mch_muscle.width
+    a_.mch_muscle.width = w0 * 1.7                    # (a slider of the muscle just made)
+    a_.mch_muscle.belly = 0.33
+    b_, _m = mg.make(C, tool, [pt(0.9, 2.0), pt(-0.6, 2.0)])
+    check(f'{tool}: a made muscle\'s sliders changed - the next muscle starts with them (width x1.7, belly 0.33)',
+          abs(b_.mch_muscle.width - w0 * 1.7) < 1e-6 and abs(b_.mch_muscle.belly - 0.33) < 1e-6 and
+          abs(mg.settings(C, tool).width - w0 * 1.7) < 1e-6, (b_.mch_muscle.width, w0))
+    st.twist = 0.77 if hasattr(st, 'twist') else 0.0  # (a slider of the tool itself)
+    sc2 = bpy.data.scenes.new('New File')
+    C.window.scene = sc2
+    st2 = mg.settings(C, tool)
+    check(f'{tool}: a new scene (a new file) starts with the last used settings too',
+          abs(st2.width - w0 * 1.7) < 1e-6 and abs(st2.belly - 0.33) < 1e-6 and abs(st2.twist - 0.77) < 1e-6,
+          (st2.width, st2.belly, st2.twist))
+    sc3 = bpy.data.scenes.new('Own Settings')
+    (sc3.mch_mmuscle if tool == 'MMUSCLE' else sc3.mch_muscle).belly = 0.9      # (a file with its own settings)
+    C.window.scene = sc3
+    check(f'{tool}: a scene that has its own settings keeps them', abs(mg.settings(C, tool).belly - 0.9) < 1e-6)
+    C.window.scene = S
+
 mecha_lab.unregister()
 sys.exit(1 if summary() else 0)
