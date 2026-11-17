@@ -2128,7 +2128,7 @@ def _upd_skin(self, context):
 
 class MCH_PG_MuscleSkin(bpy.types.PropertyGroup):
     look: EnumProperty(name='Look', items=(('CREATURE', 'Creature', ''), ('MECHA', 'Mecha', '')), default='CREATURE')
-    detail: IntProperty(name='Detail', default=220, min=24, soft_max=400, max=1000, update=_upd_skin,
+    detail: IntProperty(name='Detail', default=160, min=24, soft_max=400, max=1000, update=_upd_skin,
                         description='Points across the whole body (more: finer, heavier)')
     adaptivity: FloatProperty(name='Lightness', default=0.2, min=0.0, max=1.0, update=_upd_skin,
                               description='Fewer faces where it is flat (0: even everywhere)')
