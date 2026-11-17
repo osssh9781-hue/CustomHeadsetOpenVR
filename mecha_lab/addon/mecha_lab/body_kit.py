@@ -1318,10 +1318,7 @@ def draw(layout, context):
     row = col.row(align=True)
     for kid, label in (('human', 'Human'), ('creature', 'Creature'), ('creature2', 'Creature 2')):
         row.operator('mch.bodywhole_add', text=label).kind = kid
-    from . import body_whole, hand_kit               # 0.24.186 the one-piece body: its own sliders
-    hand_kit.draw_add(layout)                        # 0.24.187 the hand / foot builder
-    if hand_kit.draw(layout, context):
-        return
+    from . import body_whole                         # 0.24.186 the one-piece body: its own sliders
     if body_whole.draw(layout, context):
         return
     ob = active_part(context)

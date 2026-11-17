@@ -60,8 +60,28 @@ def load(kind='human'):
         meta = json.loads(str(z['meta']))
     bones = {b['name']: (np.array(b['head'], float), np.array(b['tail'], float), b['parent'], b['slot'], b['side'])
              for b in meta['bones']}
+    _CACHE[kind + ':digits'] = {b['name']: (b['z'], b['u'], b['seg']) for b in meta['bones'] if 'z' in b}
     _CACHE[kind] = (V, N, L, bones, B)
     return _CACHE[kind]
+
+
+def digits(kind='human'):
+    """{bone: (its curl side, where across the hand (-1 .. 1), which joint (0: the root))} of the fingers / toes."""
+    load(kind)
+    return _CACHE[kind + ':digits']
+
+
+def kind_of(rig):
+    try:
+        return json.loads(rig[KEY]).get('kind', 'human')
+    except (KeyError, TypeError, ValueError):
+        return 'human'
+
+
+def slot_of(name):
+    """'Finger2b.L' -> 'Finger', 'Toes.R' -> 'Toe', 'Thigh.L' -> 'Thigh'."""
+    base = name.split('.')[0]
+    return 'Finger' if base.startswith('Finger') else 'Toe' if base.startswith('Toe') else base
 
 
 def weights(B, bones):
@@ -131,12 +151,16 @@ def make(context, height=1.8, location=None, kind='human'):
     rig.select_set(True)
     bpy.ops.object.mode_set(mode='EDIT')
     front = Vector((0.0, -1.0, 0.0))
+    dg_ = digits(kind)
     for n, (a, b, par, _slot, _side) in bones.items():
         eb = arm.edit_bones.new(n)
         eb.head, eb.tail = Vector(a), Vector(b)
-        f = front - eb.y_axis * front.dot(eb.y_axis)
-        if f.length < 0.35:
-            f = Vector((0.0, 0.0, 1.0))
+        if n in dg_:                                  # (a finger: its Z to the palm's inside - Bend curls it)
+            f = Vector(dg_[n][0])
+        else:
+            f = front - eb.y_axis * front.dot(eb.y_axis)
+            if f.length < 0.35:
+                f = Vector((0.0, 0.0, 1.0))
         eb.align_roll(f)                              # (the bone's Z to the front: Bend turns round its X)
         if par:
             eb.parent = arm.edit_bones[par]
@@ -149,12 +173,24 @@ def make(context, height=1.8, location=None, kind='human'):
     W, names = weights(B, bones)
     E = np.empty(len(me.edges) * 2, np.int64)
     me.edges.foreach_get('vertices', E)
-    W = smooth_weights(W, E.reshape(-1, 2), passes=10)
+    E = E.reshape(-1, 2)
+    fine = np.array([n in dg_ or n.startswith('Hand') for n in names])[B]
+    Wf = smooth_weights(W, E, passes=2)               # (the fingers are small: their skin less blurred)
+    W = smooth_weights(W, E, passes=10)
+    W[fine] = Wf[fine]
     for j, n in enumerate(names):
         vg = body.vertex_groups.new(name=n)
         idx = np.nonzero(W[:, j] > 0.004)[0]
         for i in idx:
             vg.add([int(i)], float(W[i, j]), 'REPLACE')
+    for end in ('Hand', 'Foot'):                      # (a whole hand / foot with its fingers: what a swap hides)
+        for sd in ('L', 'R'):
+            cols = [j for j, n in enumerate(names) if n.endswith('.' + sd) and
+                    (n.startswith(end) or slot_of(n) == ('Finger' if end == 'Hand' else 'Toe'))]
+            w = W[:, cols].sum(1)
+            vg = body.vertex_groups.new(name=f'MCH End {end}.{sd}')
+            for i in np.nonzero(w > 0.004)[0]:
+                vg.add([int(i)], float(min(w[i], 1.0)), 'REPLACE')
     md = body.modifiers.new(ARM_MOD, 'ARMATURE')
     md.object = rig
     body.parent = rig
@@ -198,9 +234,19 @@ def refresh(context, rig):
     def val(n):
         return dict({'scale': 1.0, 'length': 1.0, 'width': 1.0, 'bend': 0.0, 'twist': 0.0, 'side': 0.0}, **J.get(n, {}))
     size = {}
+    dg_ = digits(kind_of(rig))
     for pb in rig.pose.bones:                         # (parents first)
-        slot = pb.name.split('.')[0]
+        slot = slot_of(pb.name)
         v = val(pb.name)
+        if slot == 'Finger' and pb.name in dg_:       # (all the fingers at once, on top of each one's own)
+            _z, u, seg = dg_[pb.name]
+            v['bend'] += kp.fingers_curl
+            v['length'] *= kp.fingers_length
+            v['width'] *= kp.fingers_thick
+            if seg == 0:
+                v['side'] -= kp.fingers_spread * u
+        elif slot == 'Toe':
+            v['bend'] += kp.toes_curl
         own = v['scale'] * (getattr(kp, REGION[slot]) if slot in REGION else 1.0)
         size[pb.name] = own * (size[pb.parent.name] if pb.parent else 1.0)
         ln = v['length'] * (kp.legs if slot in LEGS else kp.arms if slot in ARMS else kp.torso if slot in ('Waist', 'Chest') else 1.0)
@@ -273,8 +319,19 @@ def _upd_pick(self, context):
 
 
 def _joint_items(self, context):
-    bones = load()[3]
-    return [(n, n.replace('UpperArm', 'Upper Arm'), '') for n in bones]
+    bones = load(kind_of(self.id_data))[3]
+    _JOINT_ITEMS[:] = [(n, _joint_label(n), '') for n in bones]
+    return _JOINT_ITEMS
+
+
+_JOINT_ITEMS = []
+
+
+def _joint_label(n):
+    base, _d, sd = n.partition('.')
+    if base.startswith('Finger'):
+        base = f'Finger {base[6:-1]} - {("root", "middle", "tip")["abc".index(base[-1])]}'
+    return base.replace('UpperArm', 'Upper Arm') + (f' ({sd})' if sd else '')
 
 
 def _f(name, default, lo, hi, desc, update=_upd, soft=None):
@@ -300,6 +357,14 @@ class MCH_PG_BodyWhole(bpy.types.PropertyGroup):
     arms: _f('Arms', 1.0, 0.3, 3.0, 'Arm length', soft=(0.5, 1.8))
     torso: _f('Torso', 1.0, 0.3, 3.0, 'Torso length', soft=(0.6, 1.6))
     build: _f('Build', 1.0, 0.3, 3.0, 'Slim to heavy', soft=(0.6, 1.6))
+    fingers_curl: FloatProperty(name='Curl', default=0.0, min=-math.pi / 2, max=math.pi / 2, subtype='ANGLE', update=_upd,
+                                description='Every finger joint curled toward the palm (minus: opened back)')
+    fingers_spread: FloatProperty(name='Spread', default=0.0, min=-math.pi / 3, max=math.pi / 3, subtype='ANGLE',
+                                  update=_upd, description='The fingers fanned apart (minus: together)')
+    fingers_length: _f('Length', 1.0, 0.3, 4.0, 'Every finger longer', soft=(0.5, 2.5))
+    fingers_thick: _f('Thickness', 1.0, 0.3, 4.0, 'Every finger thicker', soft=(0.5, 2.5))
+    toes_curl: FloatProperty(name='Toes', default=0.0, min=-math.pi / 2, max=math.pi / 2, subtype='ANGLE', update=_upd,
+                             description='The front of the feet bent down (minus: up - on tiptoe)')
     ground: BoolProperty(name='Feet on Ground', default=True, update=_upd)
     floor: FloatProperty(name='Floor', default=0.0, unit='LENGTH', update=_upd)
     symmetry: BoolProperty(name='Symmetry', default=True, description='A joint\'s sliders on the other side too')
@@ -317,7 +382,9 @@ def set_pose(context, rig, vals):
     """vals: {slot or bone: (bend, twist, side) in degrees} (the Body Kit's poses)."""
     J = joints(rig)
     for pb in rig.pose.bones:
-        slot = pb.name.split('.')[0]
+        slot = slot_of(pb.name)
+        if slot in ('Finger', 'Toe') and pb.name not in vals and slot not in vals:
+            continue                                  # (a body pose leaves the fingers as they are)
         b, t, s_ = vals.get(pb.name, vals.get(slot, vals.get('Knee' if slot == 'Shin' else slot, (0, 0, 0))))
         if slot in ('Waist', 'Chest') and slot not in vals and 'Torso' in vals:
             b, t, s_ = (x * 0.5 for x in vals['Torso'])   # (a kit pose's torso: half at the waist, half at the chest)
@@ -336,7 +403,7 @@ END_KEY = 'mch_bodywhole_end'            # on a swapped hand / foot: its slot an
 def end_variants(slot):
     """[(id, label)] of what a hand / foot can be: the body's own, the kits' (your creature's), your saved parts."""
     from . import body_kit as bk
-    out = [('own', 'Own (the body\'s)'), ('built', 'Built (palm + fingers - its own sliders)')]
+    out = [('own', 'Own (the body\'s)')]
     for vid, label in bk.variants(slot):
         if not vid.startswith('human:'):
             out.append((vid, label))
@@ -362,23 +429,9 @@ def set_end(context, rig, slot, vid):
             continue
         if mk is None:
             mk = body.modifiers.new('MCH Hide ' + bone, 'MASK')
-        mk.vertex_group = bone
+        mk.vertex_group = 'MCH End ' + bone if ('MCH End ' + bone) in body.vertex_groups else bone
         mk.invert_vertex_group = True
         mk.threshold = 0.5
-        pb = rig.pose.bones[bone]
-        if vid == 'built':                            # (the hand / foot builder's: put together from your pieces)
-            from . import hand_kit as hk
-            ob = hk.make(context, 'Palm' if slot == 'Hand' else 'Sole', side, name=f'Body {bone}', slot=slot,
-                         link=False)
-            for m in body.data.materials:
-                ob.data.materials.append(m)
-            (body.users_collection[0] if body.users_collection else context.scene.collection).objects.link(ob)
-            ob.parent = rig
-            ob.parent_type = 'BONE'
-            ob.parent_bone = bone
-            ob.location = (0.0, -pb.bone.length, 0.0)
-            ob[END_KEY] = bone
-            continue
         if vid.startswith('mine:'):
             path = os.path.join(bk.my_dir(), slot, vid[5:] + '.npz')
             with np.load(path, allow_pickle=False) as z:
@@ -489,6 +542,11 @@ class MCH_OT_bodywhole_pose(bpy.types.Operator):
             set_pose(context, rig, vals)
         elif self.pose == '__RESET__':
             rig['mch_joints'] = json.dumps({n: dict(v, bend=0.0, twist=0.0, side=0.0) for n, v in joints(rig).items()})
+            _BUSY[0] = True
+            try:
+                rig.mch_bodywhole.fingers_curl = rig.mch_bodywhole.fingers_spread = rig.mch_bodywhole.toes_curl = 0.0
+            finally:
+                _BUSY[0] = False
             _upd_pick(rig.mch_bodywhole, context)
             refresh(context, rig)
         return {'FINISHED'}
@@ -515,6 +573,10 @@ def draw(layout, context):
     col.prop(kp, 'joint', text='')
     for k in JOINT_KEYS:
         col.prop(kp, 'j_' + k, slider=True)
+    col = layout.column(align=True)
+    col.label(text='Fingers (all) - one finger: pick it in Joint')
+    for k in ('fingers_curl', 'fingers_spread', 'fingers_length', 'fingers_thick', 'toes_curl'):
+        col.prop(kp, k, slider=True)
     col = layout.column(align=True)
     col.label(text='Hands / Feet (swap)')
     ends = json.loads(rig.get('mch_ends', '{}'))

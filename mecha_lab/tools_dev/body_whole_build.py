@@ -239,37 +239,265 @@ def found_bones(V, N, L, marks):
         bones[n] = (np.array(a, float), np.array(b, float))
         if n.endswith('.L'):
             bones[n[:-1] + 'R'] = (np.array(a, float) * (-1, 1, 1), np.array(b, float) * (-1, 1, 1))
-    # each point's bone: the nearest one it can see (a fingertip beside the thigh does not see the thigh's bone)
-    tris, k = [], 0
+    # each point's bone.  First which LIMB it is of, along the skin: from a ring of skin round the middle of each limb
+    # bone and from the body's middle line, every point takes the limb it is nearest to OVER THE SURFACE (a hand
+    # hanging beside the thigh is far from it that way) - then, within the limb, the bone nearest to it.
+    import heapq
+    nb = [[] for _ in V]
+    k = 0
     for n_ in N:
-        for q in range(1, n_ - 1):
-            tris.append((int(L[k]), int(L[k + q]), int(L[k + q + 1])))
+        n_ = int(n_)
+        f = [int(x) for x in L[k:k + n_]]
+        for a_, b_ in zip(f, f[1:] + f[:1]):
+            nb[a_].append(b_)
+            nb[b_].append(a_)
         k += n_
-    bvh = BVHTree.FromPolygons([tuple(v) for v in V], tris)
-    names = list(bones)
-    A = np.array([bones[n][0] for n in names])
-    B = np.array([bones[n][1] for n in names])
+
+    def seg_d(P, n):
+        a_, b_ = bones[n]
+        ab = b_ - a_
+        t = ((P - a_) @ ab) / float(ab @ ab)
+        return np.linalg.norm(P - (a_ + np.outer(np.clip(t, 0, 1), ab)), axis=1), t
+    chains = {'trunk': ['Pelvis', 'Waist', 'Chest', 'Neck', 'Head', 'Shoulder.L', 'Shoulder.R']}
+    for sd in 'LR':
+        chains['arm' + sd] = [f'{b}.{sd}' for b in ('UpperArm', 'Forearm', 'Hand')]
+        chains['leg' + sd] = [f'{b}.{sd}' for b in ('Thigh', 'Shin', 'Foot')]
+    seed = {}
+    for cn, bl in chains.items():
+        if cn == 'trunk':
+            zlo, zhi = bones['Pelvis'][0][2], bones['Head'][1][2]
+            for i in np.nonzero((np.abs(V[:, 0]) < 0.02) & (V[:, 2] > zlo))[0]:
+                seed[int(i)] = cn
+            continue
+        sgn = 1.0 if cn.endswith('L') else -1.0
+        for n in bl:
+            d_, t_ = seg_d(V, n)
+            m = (np.abs(t_ - 0.5) < 0.2) & (V[:, 0] * sgn > 0) & (d_ < 0.09)
+            if m.sum() < 8:
+                continue
+            lim = np.quantile(d_[m], 0.25) * 1.6
+            for i in np.nonzero(m & (d_ <= lim))[0]:
+                seed[int(i)] = cn
+    dist = {i: 0.0 for i in seed}
+    own = dict(seed)
+    hp = [(0.0, i) for i in seed]
+    heapq.heapify(hp)
+    while hp:
+        da, a_ = heapq.heappop(hp)
+        if da > dist.get(a_, 1e9):
+            continue
+        for b_ in nb[a_]:
+            db = da + float(np.linalg.norm(V[a_] - V[b_]))
+            if db < dist.get(b_, 1e9):
+                dist[b_] = db
+                own[b_] = own[a_]
+                heapq.heappush(hp, (db, b_))
     out = []
-    for v in V:
-        ab = B - A
-        t = np.clip(((v - A) * ab).sum(1) / np.maximum((ab * ab).sum(1), 1e-12), 0.0, 1.0)
-        Q = A + ab * t[:, None]
-        d = np.linalg.norm(Q - v, axis=1)
-        for j, n in enumerate(names):                 # (the other side's limbs: out of reach)
+    counts = {}
+    for vi, v in enumerate(V):
+        cn = own.get(vi, 'trunk')
+        if cn != 'trunk':                             # (before the limb's first joint: the body's)
+            a_, b_ = bones[chains[cn][0]]
+            if float((v - a_) @ (b_ - a_)) < 0:
+                cn = 'trunk'
+        best, bd = None, 1e9
+        for n in chains[cn]:
             if (n.endswith('.L') and v[0] < -0.004) or (n.endswith('.R') and v[0] > 0.004):
-                d[j] = 1e3
-        pick = None
-        for j in np.argsort(d)[:4]:
-            dv = Vector(Q[j] - v)
-            if dv.length < 1e-6:
-                pick = j
-                break
-            hit = bvh.ray_cast(Vector(v) + dv.normalized() * 0.002, dv.normalized(), dv.length - 0.002)
-            if hit[0] is None:
-                pick = j
-                break
-        out.append(names[int(pick if pick is not None else np.argmin(d))])
+                continue
+            d_ = float(seg_d(v[None], n)[0][0])
+            if d_ < bd:
+                best, bd = n, d_
+        out.append(best)
+        counts[cn] = counts.get(cn, 0) + 1
+    print('limbs', counts)
     return bones, out
+
+
+def add_digits(V, N, L, bones, lab):
+    """Fingers and toes (user: "손이나 발 쪽도 세부적으로 조절 가능하게 리깅을"): found on the mesh - over the hand (foot),
+    how far each point is from the wrist ALONG THE SKIN; the far ends are the tips, and coming back from them the
+    fingers are the pieces that stay apart until they meet at the webs.  Each finger: 3 bones (a toe: 2), its points
+    theirs.  The left side is found, the right is its mirror.  Returns the digits' records (for the meta)."""
+    import heapq
+    nb = [[] for _ in V]
+    k = 0
+    for n_ in N:
+        n_ = int(n_)
+        f = [int(x) for x in L[k:k + n_]]
+        for a, b in zip(f, f[1:] + f[:1]):
+            nb[a].append(b)
+            nb[b].append(a)
+        k += n_
+    VN = np.zeros_like(V)                              # (each point's outward direction)
+    k = 0
+    for n_ in N:
+        n_ = int(n_)
+        f = L[k:k + n_]
+        VN[f] += np.cross(V[f[1]] - V[f[0]], V[f[2]] - V[f[0]])
+        k += n_
+    recs = []
+    for slot, pre, nseg, minfrac, mindot in (('Hand', 'Finger', 3, 0.2, -0.3),):
+        name = slot + '.L'
+        head, tail = bones[name]
+        ln = float(np.linalg.norm(tail - head))
+        dirv = (tail - head) / ln
+        region = {i for i, x in enumerate(lab) if x == name}
+        if slot == 'Hand':                            # (fingertips beside the thigh got another bone: back to the hand)
+            hops = {i: 0 for i in region}
+            st = list(region)
+            own = sorted(region)
+            kd0 = kdtree.KDTree(len(own))
+            for j, i in enumerate(own):
+                kd0.insert(V[i], j)
+            kd0.balance()
+            while st:
+                a = st.pop()
+                for b in nb[a]:
+                    if b in hops or V[b, 0] <= 0 or float((V[b] - head) @ dirv) <= 0 or hops[a] >= 0 or \
+                            float(np.linalg.norm(V[b] - head)) > 3.2 * ln:
+                        continue
+                    near = kd0.find_range(V[b], 0.02)
+                    if not near:
+                        continue
+                    cen = np.mean([V[own[j]] for _c, j, _d in near], 0)
+                    if float((cen - V[b]) @ VN[b]) > 0:   # (it faces the hand: the thigh's skin beside it, not the hand's)
+                        continue
+                    hops[b] = hops[a] + 1
+                    st.append(b)
+            region = set(hops)
+            for i in region:
+                lab[i] = name
+        along = {i: float((V[i] - head) @ dirv) for i in region}
+        src = [i for i in region if along[i] < 0.12 * ln] or sorted(region, key=along.get)[:max(4, len(region) // 20)]
+        d = {i: 0.0 for i in src}
+        hp = [(0.0, i) for i in src]
+        while hp:
+            da, a = heapq.heappop(hp)
+            if da > d.get(a, 1e9):
+                continue
+            for b in nb[a]:
+                if b in region:
+                    db = da + float(np.linalg.norm(V[a] - V[b]))
+                    if db < d.get(b, 1e9):
+                        d[b] = db
+                        heapq.heappush(hp, (db, b))
+        for i in region:
+            d.setdefault(i, 0.0)
+        dmax = max(d.values())
+        minlen = dmax * minfrac
+        par, comp, done, found = {}, {}, set(), []
+
+        def find(a):
+            while par[a] != a:
+                par[a] = par[par[a]]
+                a = par[a]
+            return a
+        for v in sorted(region, key=d.get, reverse=True):
+            par[v] = v
+            comp[v] = {'birth': d[v], 'tip': v, 'm': [v], 'trunk': False}
+            done.add(v)
+            for w in nb[v]:
+                if w not in done:
+                    continue
+                ra, rb = find(v), find(w)
+                if ra == rb:
+                    continue
+                A, B = comp[ra], comp[rb]
+                lv = d[v]
+                sa = (not A['trunk']) and A['birth'] - lv > minlen
+                sb = (not B['trunk']) and B['birth'] - lv > minlen
+                trunk = A['trunk'] or B['trunk']
+                for C, sc, other in ((A, sa, sb or B['trunk']), (B, sb, sa or A['trunk'])):
+                    if sc and other:                  # (two fingers meet, or a finger meets the hand: it ends here)
+                        found.append({'m': list(C['m']), 'b': lv, 't': C['birth'], 'tip': C['tip']})
+                        trunk = True
+                if len(A['m']) < len(B['m']):
+                    ra, rb, A, B = rb, ra, B, A
+                A['m'] += B['m']
+                if B['birth'] > A['birth']:
+                    A['birth'], A['tip'] = B['birth'], B['tip']
+                A['trunk'] = trunk
+                par[rb] = ra
+                del comp[rb]
+        print(slot, 'region', len(region), 'sources', len(src), 'far', round(dmax, 4), 'bone', round(ln, 4), 'pieces', [(round(f['t'] - f['b'], 3), len(f['m'])) for f in found])
+        digits = []
+        for f in found:
+            M = np.array(f['m'])
+            fr = (np.array([d[i] for i in M]) - f['b']) / max(f['t'] - f['b'], 1e-9)
+            J = []
+            for q in range(nseg + 1):
+                m = (fr < 0.14) if q == 0 else (fr > 0.9) if q == nseg else (np.abs(fr - q / nseg) < 0.1)
+                if not m.any():
+                    m = np.abs(fr - q / nseg) < 0.25
+                J.append(V[M[m]].mean(0))
+            J[-1] = J[-1] + (J[-1] - J[-2]) * 0.15
+            vec = J[-1] - J[0]
+            if float(vec @ dirv) / max(float(np.linalg.norm(vec)), 1e-9) < mindot:
+                continue                              # (the heel is not a toe)
+            digits.append({'M': M, 'fr': fr, 'J': J, 'len': f['t'] - f['b']})
+        digits = sorted(digits, key=lambda g: -g['len'])[:6]
+        if not digits:
+            print(slot, 'no digits found')
+            continue
+        fing = set(int(i) for g in digits for i in g['M'])
+        palm = np.array([V[i] for i in region if i not in fing] or [V[i] for i in region])
+        _u, _s, vt = np.linalg.svd(palm - palm.mean(0), full_matrices=False)
+        if slot == 'Hand':                            # (the palm's inside: where the fingers lean)
+            nrm = vt[2] - dirv * float(vt[2] @ dirv)
+            nrm /= np.linalg.norm(nrm)
+            lean = sum(float((g['J'][-1] - g['J'][0]) @ nrm) for g in digits)
+            if lean < 0 or (abs(lean) < 1e-4 and nrm[1] > 0):
+                nrm = -nrm
+        else:                                         # (toes curl down)
+            nrm = np.array([0.0, 0.0, -1.0])
+        lat = np.cross(dirv, nrm)
+        base_c = np.mean([g['J'][0] for g in digits], 0)
+        us = np.array([float((g['J'][0] - base_c) @ lat) for g in digits])
+        order = np.argsort(us)
+        umax = max(float(np.abs(us).max()), 1e-9)
+        for rank, gi in enumerate(order):
+            g = digits[gi]
+            seg = np.clip((g['fr'] * nseg).astype(int), 0, nseg - 1)
+            for q in range(nseg):
+                bn = f'{pre}{rank + 1}{"abc"[q]}'
+                for i in g['M'][seg == q]:
+                    lab[int(i)] = bn + '.L'
+                for sd, mir in (('L', np.array([1.0, 1.0, 1.0])), ('R', np.array([-1.0, 1.0, 1.0]))):
+                    bones[f'{bn}.{sd}'] = (g['J'][q] * mir, g['J'][q + 1] * mir)
+                    recs.append({'name': f'{bn}.{sd}', 'slot': pre, 'side': sd,
+                                 'parent': (f'{pre}{rank + 1}{"abc"[q - 1]}.{sd}' if q else f'{slot}.{sd}'),
+                                 'z': [round(float(x), 4) for x in nrm * mir], 'u': round(float(us[gi] / umax), 3),
+                                 'seg': q})
+        print(slot, 'digits', len(digits), 'lengths', [round(float(g['len']), 3) for g in digits], 'points',
+              [len(g['M']) for g in digits])
+    # the toes: the foot's front as one piece on its own bone (the sculpts' toes sit too close to tell apart)
+    head, tail = bones['Foot.L']
+    ln = float(np.linalg.norm(tail - head))
+    dirv = (tail - head) / ln
+    ball = head + dirv * ln * 0.62
+    for i, x in enumerate(lab):
+        if x == 'Foot.L' and float((V[i] - ball) @ dirv) > 0:
+            lab[i] = 'Toes.L'
+    for sd, mir in (('L', np.array([1.0, 1.0, 1.0])), ('R', np.array([-1.0, 1.0, 1.0]))):
+        bones[f'Toes.{sd}'] = (ball * mir, (tail + dirv * ln * 0.12) * mir)
+        recs.append({'name': f'Toes.{sd}', 'slot': 'Toe', 'side': sd, 'parent': f'Foot.{sd}', 'z': [0.0, 0.0, -1.0],
+                     'u': 0.0, 'seg': 0})
+    # the right side: each point takes its mirror twin's bone on the left (hands and feet)
+    left = [i for i, x in enumerate(lab) if x.endswith('.L') and x.split('.')[0].rstrip('abc').rstrip('0123456789') in
+            ('Hand', 'Foot', 'Finger', 'Toe', 'Toes')]
+    kd = kdtree.KDTree(len(left))
+    for j, i in enumerate(left):
+        kd.insert(V[i] * (-1.0, 1.0, 1.0), j)
+    kd.balance()
+    moved = 0
+    for i in np.nonzero(V[:, 0] < 0)[0]:
+        _co, j, dist = kd.find(V[i])
+        if dist < 0.006:
+            new = lab[left[j]][:-1] + 'R'
+            moved += new != lab[i]
+            lab[int(i)] = new
+    print('right side: points given their twin\'s bone', moved)
+    return recs
 
 
 def main(kind, path, extra=None):
@@ -293,6 +521,7 @@ def main(kind, path, extra=None):
     for base in ORDER:
         for sd in (('L', 'R') if base in SIDED else ('',)):
             names.append(base + ('.' + sd if sd else ''))
+    digit_recs = add_digits(V, N, L, bones, lab)
     rec = []
     for n in names:
         base, _d, sd = n.partition('.')
@@ -301,6 +530,10 @@ def main(kind, path, extra=None):
             par + '.' + sd if par in SIDED else par),
             'head': [round(float(x), 6) for x in bones[n][0]], 'tail': [round(float(x), 6) for x in bones[n][1]]})
         print(f'{kind} {n:12s} {np.round(bones[n][0], 3)} -> {np.round(bones[n][1], 3)}')
+    for r_ in digit_recs:
+        n = r_['name']
+        rec.append(dict(r_, head=[round(float(x), 6) for x in bones[n][0]], tail=[round(float(x), 6) for x in bones[n][1]]))
+        names.append(n)
     idx = {n: i for i, n in enumerate(names)}
     B = np.array([idx[x] for x in lab], np.uint8)
     print(kind, 'points per bone', {n: int((B == i).sum()) for n, i in idx.items()})
