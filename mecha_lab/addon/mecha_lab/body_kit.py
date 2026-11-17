@@ -1313,6 +1313,10 @@ def draw(layout, context):
     row = layout.row(align=True)
     row.prop(st, 'height')
     row.operator('mch.bodykit_add', text='Add Body', icon='ADD')
+    layout.operator('mch.bodywhole_add', text='Add One-Piece Human (skin bends at the joints)', icon='ARMATURE_DATA')
+    from . import body_whole                         # 0.24.186 the one-piece body: its own sliders
+    if body_whole.draw(layout, context):
+        return
     ob = active_part(context)
     if ob is None:
         layout.label(text='Pick a body part to shape it')
