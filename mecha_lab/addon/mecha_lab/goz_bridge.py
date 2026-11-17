@@ -544,10 +544,12 @@ class MCH_OT_goz_send(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == 'OBJECT' and any(o.type == 'MESH' for o in context.selected_objects)
+        return any(o.type == 'MESH' for o in context.selected_objects)
 
     def execute(self, context):
         st = context.scene.mch_goz
+        if context.mode != 'OBJECT' and context.active_object is not None:     # (from the card in Sculpt Mode too)
+            bpy.ops.object.mode_set(mode='OBJECT')
         try:
             folder, sent, points = send(context, [o for o in context.selected_objects if o.type == 'MESH'], st)
         except (RuntimeError, OSError) as ex:

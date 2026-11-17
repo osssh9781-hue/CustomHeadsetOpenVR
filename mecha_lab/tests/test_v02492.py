@@ -351,7 +351,7 @@ ub.bump()
 blender_items = ub.all_items(CTX)
 check('Blender style: Blender sculpting, only the corner card (no ZBrush keys: on() is off)',
       not zs.on(C) and {i.label for i in blender_items if i.kind == 'seg'} == {'MECHA', 'ZBRUSH', 'PAINT', 'ZBrush',
-                                                                               'Blender'})
+                                                                               'Blender', 'Send', 'Import'})   # (0.24.198 + GOZ)
 check('... no ZBrush canvas navigation either', not zs.nav_on(C))
 zs.set_style('ZBRUSH')
 check('ZBrush style: canvas navigation on in Object and Sculpt Mode (MECHA LAB tab)', zs.nav_on(C))

@@ -1,0 +1,8 @@
+card cells: Send True Import True
+shot 1_card.png True
+after a REAL click on Send: listed ['/tmp/mch_goz_card_c03lcw8x/GoZProjects/Default/Cube.GoZ']
+after a REAL click on Import: cube 4.0 wide, objects 1 -> 1 materials ['Paint']
+PASS 1 the corner card has a GOZ row: Send | Import
+PASS 2 a REAL click on Send: the cube written as a .GoZ file
+PASS 3 a REAL click on Import: the same cube changed (twice as big), no second object, its material kept
+3/3 passed

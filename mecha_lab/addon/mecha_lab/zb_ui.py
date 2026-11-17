@@ -897,6 +897,7 @@ def corner_box(context, region_w, region_h, k):
     rows = 2 if getattr(context, 'mode', '') == 'SCULPT' else 4       # 0.24.77 + VIEW Wire | Solo on MECHA LAB; 0.24.124 + 3D MOUSE
     if zs.style() == 'ZBRUSH':
         rows += 1                                                      # 0.24.79 + NAV ZBrush | Blender
+    rows += 1                                                          # 0.24.198 + GOZ Send | Import
     w, h = CORNER_W * k, rows * ROW * k + (rows - 1) * GAP * k + 2 * PAD * k
     gizmo = 0.0
     try:
@@ -979,6 +980,13 @@ def corner_items(context, region_w, region_h, k=1.0):
                         ('op', 'mch.ndof_parts', {'on': False})))
         out.append(Item('seg', x0 + PAD * k + lw3 + 2 * GAP * k + s3, y, s3, ROW * k, 'Parts', '', parts, True,
                         ('op', 'mch.ndof_parts', {'on': True})))
+    # 0.24.198 (user: "여기다가만 고즈 버튼 넣어 주라, 고즈 센드 임포트"): GoZ on the card, every screen
+    y -= ROW * k + GAP * k
+    out.append(Item('glabel', x0 + PAD * k, y, lw, ROW * k, 'GOZ'))
+    out.append(Item('seg', x0 + PAD * k + lw + GAP * k, y, s2, ROW * k, 'Send', '', False, True,
+                    ('op', 'mch.goz_send', {})))
+    out.append(Item('seg', x0 + PAD * k + lw + 2 * GAP * k + s2, y, s2, ROW * k, 'Import', '', False, True,
+                    ('op', 'mch.goz_import', {})))
     return out
 
 

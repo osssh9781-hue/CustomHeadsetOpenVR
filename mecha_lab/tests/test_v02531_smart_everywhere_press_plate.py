@@ -266,7 +266,8 @@ labels = [i.label for i in its if i.kind == 'glabel']
 seg = {(i.label, i.action[1] if i.action else ''): i for i in its if i.kind == 'seg'}
 cx, cy, cw, ch = zu.corner_box(CTX, W, H, K)
 check('corner card (MECHA LAB): a 3D MOUSE row View | Parts under VIEW, View on; the card holds all rows',
-      labels[-2:] == ['VIEW', '3D MOUSE'] and seg[('View', 'mch.ndof_parts')].on and not seg[('Parts', 'mch.ndof_parts')].on
+      labels[-3:] == ['VIEW', '3D MOUSE', 'GOZ'] and seg[('Send', 'mch.goz_send')].action[0] == 'op'
+      and seg[('Import', 'mch.goz_import')].action[0] == 'op' and seg[('View', 'mch.ndof_parts')].on and not seg[('Parts', 'mch.ndof_parts')].on
       and seg[('Parts', 'mch.ndof_parts')].action[2] == {'on': True}
       and all(cy - 0.5 <= i.y and i.y + i.h <= cy + ch + 0.5 for i in its if i.kind != 'card'), labels)
 
