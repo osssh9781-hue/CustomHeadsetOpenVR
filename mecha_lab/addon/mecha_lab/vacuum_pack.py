@@ -471,6 +471,32 @@ def _colliders(context, parts, faces, gap):
     return out
 
 
+def leftovers(context):
+    """0.24.191 (user: "이런 게 계속 남아"): collision copies no pack is using any more - a pack whose film was deleted
+    by hand, or made again while Enter did nothing, never cleared its own (they are wire, and cannot be picked)."""
+    coll = bpy.data.collections.get(COLL)
+    if coll is None:
+        return []
+    SIM = _sim()
+    film = bpy.data.objects.get(SIM.get('ob', '')) if SIM.get('mode') == 'VACUUM' else None
+    used = set(SIM.get('colliders', ())) if film is not None else set()
+    return [o for o in coll.objects if o.name not in used]
+
+
+def purge(context):
+    """The leftover collision copies removed; how many."""
+    objs = leftovers(context)
+    for c in objs:
+        me = c.data
+        bpy.data.objects.remove(c)
+        if me is not None and me.users == 0:
+            bpy.data.meshes.remove(me)
+    coll = bpy.data.collections.get(COLL)
+    if coll is not None and not coll.objects:
+        bpy.data.collections.remove(coll)
+    return len(objs)
+
+
 def cloth_settings(film, vp, size):
     """The Vacuum Pack's sliders on the bag's Cloth modifier."""
     cm = film.modifiers.get(CLOTH_MOD)
@@ -536,6 +562,7 @@ def perform(context, bag=None):
     parts = pick_parts(context)
     if not parts:
         raise cg.CutError('Vacuum Pack: select the meshes to seal in the bag')
+    purge(context)                                    # (an earlier pack's collision copies never cleared: gone)
     vp = context.scene.mch_vacuum
     size = bounds_size(context, parts)
     me = bag if bag is not None else bag_mesh(context, parts, vp.bag, vp.points)   # (bag: one made by the caller)
@@ -697,6 +724,18 @@ class MCH_OT_vacuum_pack(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_vacuum_purge(bpy.types.Operator):
+    """Remove the wire copies an earlier Vacuum Pack left behind (its collision copies of your meshes - they cannot be picked)"""
+    bl_idname = 'mch.vacuum_purge'
+    bl_label = 'Remove Leftover Copies'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        n = purge(context)
+        self.report({'INFO'}, f'Vacuum Pack: {n} leftover collision cop{"y" if n == 1 else "ies"} removed')
+        return {'FINISHED'}
+
+
 class MCH_OT_vacuum_gather_pick(bpy.types.Operator):
     """Click on the mesh where the cloth is drawn together (the knot: the tension folds run toward it); Esc cancels"""
     bl_idname = 'mch.vacuum_gather_pick'
@@ -757,6 +796,9 @@ def draw(layout, context):
         r.operator('mch.cdrape_control', text='Drop (Esc)').action = 'cancel'
     else:
         box.operator('mch.vacuum_pack', text='Vacuum Pack Selected', icon='MOD_SHRINKWRAP')
+    left = len(leftovers(context))
+    if left:                                          # (wire copies an earlier pack left: one click and they are gone)
+        box.operator('mch.vacuum_purge', text=f'Remove Leftover Copies ({left})', icon='TRASH')
     r = box.row(align=True)
     r.prop(vp, 'gather', expand=True)
     box.operator('mch.vacuum_gather_pick', text='Pick Gather Point (click on the mesh)', icon='EYEDROPPER')
@@ -774,7 +816,7 @@ def draw(layout, context):
     box.row(align=True).prop(vp, 'film', expand=True)
 
 
-CLASSES = (MCH_PG_Vacuum, MCH_OT_vacuum_pack, MCH_OT_vacuum_gather_pick)
+CLASSES = (MCH_PG_Vacuum, MCH_OT_vacuum_pack, MCH_OT_vacuum_purge, MCH_OT_vacuum_gather_pick)
 
 
 def register():

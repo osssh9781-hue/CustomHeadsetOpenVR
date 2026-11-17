@@ -186,5 +186,27 @@ for kind in ('creature', 'creature2'):
           len(used) == len(r2.pose.bones) and abs(Z.min()) < 2e-3 and abs(Z.max() - 1.8) < 0.01 and r_p == {'FINISHED'} and
           Z2.max() < 1.65 and abs(Z2.min()) < 2e-3, (len(used), Z.min(), Z.max(), Z2.max()))
 
+# 0.24.191 the rig removed (user: "베이스 바디 메쉬 만들면 그 리깅 정보 지우는 버튼도 만들어 줘")
+r = bpy.ops.mch.bodywhole_add(kind='human')
+b3, r3 = bw.pair(C.active_object)
+C.view_layer.objects.active = b3
+bpy.ops.mch.bodywhole_pose(pose='CROUCH')
+r3.mch_bodywhole.fingers_curl = math.radians(40)
+C.view_layer.update()
+ev = b3.evaluated_get(C.evaluated_depsgraph_get())
+P0 = np.array([ev.matrix_world @ v.co for v in ev.data.vertices])
+rig_name, arm_name = r3.name, r3.data.name
+C.view_layer.objects.active = b3
+r = bpy.ops.mch.bodywhole_bake()
+C.view_layer.update()
+P1 = np.array([b3.matrix_world @ v.co for v in b3.data.vertices])
+check(f'Remove Rig: the body stays exactly as posed (moved at most {np.abs(P1 - P0).max():.6f}), a plain mesh - no bones '
+      'object, no Armature modifier, no weights, no parent, not a "body" any more', r == {'FINISHED'} and
+      len(P0) == len(P1) and np.abs(P1 - P0).max() < 1e-4 and bpy.data.objects.get(rig_name) is None and
+      bpy.data.armatures.get(arm_name) is None and not b3.modifiers and not b3.vertex_groups and b3.parent is None and
+      not bw.is_body(b3) and C.view_layer.objects.active == b3,
+      (r, bpy.data.objects.get(rig_name), bpy.data.armatures.get(arm_name), [m.name for m in b3.modifiers],
+       len(b3.vertex_groups), b3.parent, bw.is_body(b3)))
+
 mecha_lab.unregister()
 sys.exit(1 if summary() else 0)

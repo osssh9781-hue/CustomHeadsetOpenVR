@@ -132,6 +132,31 @@ f3 = cd.SIM['ob']
 r_msg = cd.cancel(C)
 check(f'Esc: dropped ({r_msg}) - no cloth, no colliders left', bpy.data.objects.get(f3) is None
       and not [o for o in bpy.data.objects if 'vacuum collider' in o.name] and not cd.sim_active())
+# 0.24.191 leftovers (user: "이런 게 계속 남아"): a pack whose film was deleted by hand left its collision copies
+for o in C.selected_objects:
+    o.select_set(False)
+for o in parts:
+    o.select_set(True)
+C.view_layer.objects.active = parts[0]
+vp.perform(C)
+bpy.data.objects.remove(bpy.data.objects[cd.SIM['ob']])          # (the film deleted by hand: no Enter, no Esc)
+left = vp.leftovers(C)
+check(f'a pack whose film was deleted by hand: its collision copies are leftovers ({len(left)})', len(left) >= 1
+      and not cd.sim_active())
+for o in C.selected_objects:
+    o.select_set(False)
+for o in parts:
+    o.select_set(True)
+C.view_layer.objects.active = parts[0]
+vp.perform(C)
+now = [o.name for o in bpy.data.objects if 'vacuum collider' in o.name]
+check(f'the next pack clears them first (only its own copies now: {len(now)})',
+      sorted(now) == sorted(cd.SIM['colliders']) and not vp.leftovers(C))
+bpy.data.objects.remove(bpy.data.objects[cd.SIM['ob']])
+r_p = bpy.ops.mch.vacuum_purge()
+check('Remove Leftover Copies: none left, their collection gone', r_p == {'FINISHED'} and
+      not [o for o in bpy.data.objects if 'vacuum collider' in o.name] and bpy.data.collections.get(vp.COLL) is None)
+cd.SIM.clear()
 from mecha_lab import cloth_drape as _cd  # noqa: E402
 check('the Cloth Drape window starts with the Vacuum Pack box', 'vacuum_pack.draw' in open(_cd.__file__, encoding='utf-8').read())
 

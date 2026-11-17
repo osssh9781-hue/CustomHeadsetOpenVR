@@ -1,0 +1,18 @@
+enter after space button found True
+enter after space film <bpy_struct, Object("Vacuum Pack") at 0x7f82a5efd608> sim active True mode VACUUM modal None
+enter after space after space: done True frame 30 modal True
+enter after space kept True still film False sim active False mods []
+shot vac_enter_after_space.png True
+enter at once button found True
+enter at once film <bpy_struct, Object("Vacuum Pack") at 0x7f82a0933208> sim active True mode VACUUM modal None
+enter at once kept True still film False sim active False mods []
+shot vac_enter_at_once.png True
+button button found True
+button film <bpy_struct, Object("Vacuum Pack") at 0x7f82a070f208> sim active True mode VACUUM modal None
+button Apply button True
+button kept True still film False sim active False mods []
+shot vac_button.png True
+PASS enter after space
+PASS enter at once
+PASS button
+3/3 passed

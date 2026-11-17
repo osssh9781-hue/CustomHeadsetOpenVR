@@ -340,6 +340,18 @@ def flow():
     res['3 the Bend slider dragged for REAL: the picked upper arm bends, the left one too (Symmetry)'] = (
         abs(b1 - b0) > 0.05 and abs(b1l - b1) < 1e-6)
     shot('3_bent.png')
+    # 4 (0.24.191) REAL click "Remove Rig (plain mesh)": the body kept as posed, no bones
+    it = yield from scrolled_item('Remove Rig (plain mesh)')
+    log('4 button', it is not None)
+    if it is not None:
+        yield from press(it)
+    yield from wait_draws(3)
+    b2 = bpy.data.objects.get(body.name)
+    arms = [o for o in S.objects if o.type == 'ARMATURE']
+    log('4 after', b2, 'armatures', arms, 'mods', [m.name for m in b2.modifiers] if b2 else None)
+    res['4 REAL click "Remove Rig (plain mesh)": the body a plain mesh as posed - no bones, no weights'] = (
+        b2 is not None and not arms and not b2.modifiers and not b2.vertex_groups and not bw.is_body(b2))
+    shot('4_no_rig.png')
     bpy.types.SpaceView3D.draw_handler_remove(handle, 'WINDOW')
     for k_, v in res.items():
         log(('PASS ' if v else 'FAIL ') + k_)

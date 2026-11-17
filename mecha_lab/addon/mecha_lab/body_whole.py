@@ -730,6 +730,69 @@ def _draw_picked():
 _HANDLE = [None]
 
 
+# ---- the rig removed (0.24.191, user: "베이스 바디 메쉬 만들면 그 리깅 정보 지우는 버튼도 만들어 줘") ----
+def remove_rig(context, body):
+    """The body as it stands now - its pose and sizes - a plain mesh: the bones, the weights, the hidden-hand masks and
+    the sliders gone (a swapped hand / foot stays where it is, its own object).  Returns the body."""
+    _b, rig = pair(body)
+    body = _b or body
+    context.view_layer.update()
+    dg = context.evaluated_depsgraph_get()
+    ev = body.evaluated_get(dg)
+    me = bpy.data.meshes.new_from_object(ev, depsgraph=dg)        # (the Armature and the masks applied)
+    mw = body.matrix_world.copy()
+    old = body.data
+    for m in list(body.modifiers):
+        if m.name == ARM_MOD or m.name.startswith('MCH Hide '):
+            body.modifiers.remove(m)
+    me.name = old.name
+    body.data = me
+    body.vertex_groups.clear()                        # (the weights - kept in the mesh itself: after it is the body's)
+    if old.users == 0:
+        bpy.data.meshes.remove(old)
+    body.parent = None
+    body.matrix_world = mw
+    for k in (KEY,):
+        if k in body:
+            del body[k]
+    if rig is not None:
+        for o in list(rig.children):                  # (swapped hands / feet: freed, where they are)
+            mo = o.matrix_world.copy()
+            o.parent = None
+            o.matrix_world = mo
+            if END_KEY in o:
+                del o[END_KEY]
+        arm = rig.data
+        bpy.data.objects.remove(rig)
+        if arm is not None and arm.users == 0:
+            bpy.data.armatures.remove(arm)
+    for o in context.selected_objects:
+        o.select_set(False)
+    body.select_set(True)
+    context.view_layer.objects.active = body
+    return body
+
+
+class MCH_OT_bodywhole_bake(bpy.types.Operator):
+    bl_idname = 'mch.bodywhole_bake'
+    bl_label = 'Remove Rig (plain mesh)'
+    bl_description = ('The body as it stands now (its pose and sizes) kept as a plain mesh: the bones, the weights and '
+                      'the sliders removed - for sculpting, cutting, printing.  It cannot be posed after (Ctrl+Z: back)')
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return _rig_of(context) is not None
+
+    def execute(self, context):
+        body, _r = pair(context.active_object)
+        if body is None:
+            return {'CANCELLED'}
+        body = remove_rig(context, body)
+        self.report({'INFO'}, f'{body.name}: a plain mesh now ({len(body.data.polygons):,} faces) - no bones, no weights')
+        return {'FINISHED'}
+
+
 class MCH_OT_bodywhole_add(bpy.types.Operator):
     bl_idname = 'mch.bodywhole_add'
     bl_label = 'Add One-Piece Body'
@@ -822,10 +885,12 @@ def draw(layout, context):
     for pid, label, _v in bk.POSES:
         g.operator('mch.bodywhole_pose', text=label).pose = pid
     col.operator('mch.bodywhole_pose', text='Reset Pose').pose = '__RESET__'
+    layout.operator('mch.bodywhole_bake', icon='MESH_DATA')    # (done posing: the rig off)
     return True
 
 
-CLASSES = (MCH_PG_BodyWhole, MCH_OT_bodywhole_end, MCH_OT_bodywhole_click, MCH_OT_bodywhole_add, MCH_OT_bodywhole_pose)
+CLASSES = (MCH_PG_BodyWhole, MCH_OT_bodywhole_end, MCH_OT_bodywhole_click, MCH_OT_bodywhole_bake, MCH_OT_bodywhole_add,
+           MCH_OT_bodywhole_pose)
 
 
 def register():

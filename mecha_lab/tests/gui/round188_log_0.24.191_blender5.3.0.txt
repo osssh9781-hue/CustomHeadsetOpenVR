@@ -1,0 +1,16 @@
+1 body <bpy_struct, Object("Body") at 0x7fdf2ec45d08> <bpy_struct, Object("Body Bones") at 0x7fdf2ec45608> 3.4 s
+shot 1_body.png True
+2 click Shin.L -> Shin.L active <bpy_struct, Object("Body") at 0x7fdf2ec45d08>
+2 click Head -> Head active <bpy_struct, Object("Body") at 0x7fdf2ec45d08>
+2 click UpperArm.R -> UpperArm.R active <bpy_struct, Object("Body") at 0x7fdf2ec45d08>
+shot 2_picked.png True
+3 bend 0.0 -> 3.1415927410125732 left 3.1415927410125732
+shot 3_bent.png True
+4 button True
+4 after <bpy_struct, Object("Body") at 0x7fdf2ec45d08> armatures [] mods []
+shot 4_no_rig.png True
+PASS 1 REAL click "Creature 2" (One-Piece Body): the body on its bones
+PASS 2 REAL clicks on the shin, the head, the right upper arm: the window's Part is each one {'Shin.L': 'Shin.L', 'Head': 'Head', 'UpperArm.R': 'UpperArm.R'}
+PASS 3 the Bend slider dragged for REAL: the picked upper arm bends, the left one too (Symmetry)
+PASS 4 REAL click "Remove Rig (plain mesh)": the body a plain mesh as posed - no bones, no weights
+4/4 passed
