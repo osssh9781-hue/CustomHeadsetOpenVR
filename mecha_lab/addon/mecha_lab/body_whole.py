@@ -177,15 +177,41 @@ def make(context, height=1.8, location=None, kind='human'):
     E = E.reshape(-1, 2)
     fine = np.array([n in dg_ or n.startswith('Hand') for n in names])[B]
     Wf = smooth_weights(W, E, passes=2)               # (the fingers are small: their skin less blurred)
-    Ww = smooth_weights(W, E, passes=110)             # (round the shoulders: the skin shared over a wide band, so a
-    W = smooth_weights(W, E, passes=18)               #  lifted arm takes the shoulder muscle and the chest's edge along)
-    wide = np.array([n.split('.')[0] in ('Shoulder', 'UpperArm') for n in names])[B].astype(float)[:, None]
-    wide = np.clip(smooth_weights(np.hstack([wide, 1.0 - wide]), E, passes=40)[:, :1] * 1.6, 0.0, 1.0)
-    W = W * (1.0 - wide) + Ww * wide
+    # how far the skin is shared between two bones - by DISTANCE (the body 1 tall), not by how fine the mesh is: a
+    # joint's skin shared too narrowly folds to a sharp corner (user: the bent knee "너무 각지는데")
+    el = float(np.linalg.norm(V[E[:, 0]] - V[E[:, 1]], axis=1).mean())
+    bc = [j for j, n in enumerate(names) if n not in dg_]      # (the body's bones: the fingers' stay as they are)
+
+    def shared(dist, cols=None):
+        n_ = int(np.clip((dist / el) ** 2, 2, 320))
+        if cols is None:
+            return smooth_weights(W0, E, passes=n_)
+        out_ = np.zeros_like(W0)
+        sub = W0[:, cols]
+        out_[:, cols] = smooth_weights(np.hstack([sub, 1.0 - sub.sum(1, keepdims=True)]), E, passes=n_)[:, :-1]
+        return out_
+
+    def band(slots, dist=0.02, gain=1.5):
+        m_ = np.array([n.split('.')[0] in slots for n in names])[B].astype(float)[:, None]
+        n_ = int(np.clip((dist / el) ** 2, 2, 320))
+        return np.clip(smooth_weights(np.hstack([m_, 1.0 - m_]), E, passes=n_)[:, :1] * gain, 0.0, 1.0)
+    W0 = W
+    W = shared(0.018)
+    m_ = band(('Thigh', 'Shin', 'UpperArm', 'Forearm'))        # (knees and elbows: a rounder fold)
+    W = W * (1.0 - m_) + shared(0.034, bc) * m_
+    knee_z, hip_z = float(bones['Shin.L'][0][2]), float(bones['Thigh.L'][0][2])
+    m_ = band(('Thigh', 'Pelvis')) * np.clip((V[:, 2] - (knee_z + 0.35 * (hip_z - knee_z))) /
+                                             (0.3 * (hip_z - knee_z)), 0.0, 1.0)[:, None]
+    W = W * (1.0 - m_) + shared(0.046, bc) * m_       # (the hips: a lifted thigh takes the hip's side and the buttock)
+    m_ = band(('Shoulder', 'UpperArm'), 0.03, 1.6)
+    zj = float(bones['UpperArm.L'][0][2])
+    elbow_z = float(bones['Forearm.L'][0][2])
+    m_ = m_ * np.clip((V[:, 2] - (elbow_z + 0.45 * (zj - elbow_z))) / (0.25 * (zj - elbow_z)), 0.0, 1.0)[:, None]
+    W = W * (1.0 - m_) + shared(0.052, bc) * m_       # (the shoulders: the widest - the shoulder muscle goes up with the arm)
+    W /= np.maximum(W.sum(1, keepdims=True), 1e-9)
     # under the armpit the body's own skin (the ribs' side, the chest's and the back's edge) lets go of the arm: any
     # share of the arm's bones there swings it out like a balloon when the arm lifts - none at the armpit's depth,
     # all of it back by the shoulder's height
-    zj = float(bones['UpperArm.L'][0][2])
     keep = np.clip((V[:, 2] - (zj - 0.085)) / 0.075, 0.0, 1.0)
     keep = keep * keep * (3.0 - 2.0 * keep)
     body_pt = np.array([n.split('.')[0] in ('Pelvis', 'Waist', 'Chest', 'Neck', 'Shoulder') for n in names])[B]
