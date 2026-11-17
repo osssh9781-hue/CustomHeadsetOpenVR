@@ -121,6 +121,8 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
     mask_points: IntProperty(name='Cloth Points', description='Drape Mask: the masked faces are rebuilt as an even, lighter cloth of about this many points '
                              '(0 = from Cloth Detail; never more points than the body has there; before Space the cloth follows the slider)',
                              default=0, min=0, max=200000, update=_hang_live_update)
+    mask_free: BoolProperty(name='Fall Free', description='Drape Mask: the cloth is not held at its rim - it comes off the body and '
+                            'falls / slides as a loose piece (off: the rim stays sewn where the mask ended)', default=False)
     spacing: FloatProperty(name='Cloth Detail', description='The patch spacing as % of the outline size (smaller = more points, finer folds)',
                            default=1.5, min=0.4, max=6.0, subtype='PERCENTAGE', update=_hang_live_update)
     slack: FloatProperty(name='Looseness', description='Extra fabric: the cloth is this much bigger than the region, so it sags and bunches',
@@ -349,7 +351,7 @@ def show_start(me, surface, size, st):
 
 
 def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_ob=None, wrap=False, sew=None, pin_idx=None, puff=False,
-          tether=False, tacks=None, offset_lift=False, no_slack=False, keep_rim=False):
+          tether=False, tacks=None, offset_lift=False, no_slack=False, keep_rim=False, free=False):
     """The cloth + the collider for the mesh ``me``: a lasso patch (local space of ``target``, the first ``nb``
     points its rim) or (``to_cloth``: the matrix that brings the target's points into the cloth's space) a mesh
     of its own laid on ``target``.  Returns the session."""
@@ -365,7 +367,9 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
     margin = max(spacing * MARGIN, gap * 0.5)
     cloth_co = co + nrm * (start_lift(co, spacing, size, st) if offset_lift else (gap + spacing * GAP))
     pin = np.zeros(n)
-    if sew is not None:                               # front + back pieces: the seams hold them, only the top edge pinned
+    if free:                                          # 0.24.193 Drape Mask, Fall Free: nothing holds it
+        pass
+    elif sew is not None:                             # front + back pieces: the seams hold them, only the top edge pinned
         if st.pin_rim and pin_idx is not None and len(pin_idx):
             pin[np.asarray(pin_idx, np.int64)] = 1.0
     elif st.pin_rim and wrap:                         # a wrapped tube: its open ends held firmly
@@ -913,6 +917,47 @@ def rim_locks(me, co, length):
     return locked
 
 
+RIM_SMOOTH = 40                  # Drape Mask: passes that take the stair steps out of the rim (0.24.193)
+
+
+def smooth_rim(me, iters=RIM_SMOOTH):
+    """0.24.193 (user: "외곽 계단 현상 평평하게, 그 단면 부분"): the masked faces end along the body's own face edges,
+    so the cloth's rim ran in stair steps (and with Thickness the cut face showed them).  The open loops are
+    smoothed along themselves (Taubin: the steps go, the outline keeps its size), the two rings of points next to
+    the rim follow a little so no face folds.  Returns how far the farthest rim point moved."""
+    co = mio.read_co(me).astype(np.float64)
+    ev = mio.read_edge_verts(me)
+    be = ev[mio.edge_face_counts(me) == 1]            # (by the rim's edges, not by walked loops: where two steps
+    if len(be) < 8 or iters <= 0:                     # touch at a corner the walk broke into short pieces)
+        return 0.0
+    deg = np.zeros(len(co))
+    np.add.at(deg, be.ravel(), 1.0)
+    on = deg > 0
+    p = co.copy()
+    for i in range(iters * 2):
+        k = 0.5 if i % 2 == 0 else -0.53
+        acc = np.zeros_like(p)
+        np.add.at(acc, be[:, 0], p[be[:, 1]])
+        np.add.at(acc, be[:, 1], p[be[:, 0]])
+        p[on] += k * (acc[on] / deg[on, None] - p[on])
+    d = p - co
+    moved = np.linalg.norm(d, axis=1)
+    w = on.astype(np.float64)
+    for share in (0.5, 0.2):                          # the next two rings follow (half, a fifth)
+        acc = np.zeros_like(d)
+        cnt = np.zeros(len(co))
+        for x, y in ((0, 1), (1, 0)):
+            src = w[ev[:, x]] > 0
+            np.add.at(acc, ev[src, y], d[ev[src, x]])
+            np.add.at(cnt, ev[src, y], 1.0)
+        ring = (cnt > 0) & (w == 0)
+        d[ring] = acc[ring] / cnt[ring, None] * (0.5 if share == 0.5 else 0.4)   # (of the ring before it)
+        w[ring] = share
+    mio.write_co(me, co + d)
+    me.update()
+    return float(moved.max())
+
+
 def light_patch(me, target_points):
     """The masked patch ``me`` (dense, the body's own faces) rebuilt as an even, lighter triangle mesh of about
     ``target_points`` points: Fast Decimate (fast, any size) to about the count, then an isotropic remesh
@@ -985,6 +1030,7 @@ def rebuild_mask(context):
     if len(faces) < 3:
         return False
     me = faces_mesh(body.data, faces)
+    smooth_rim(me)
     light = light_patch(me, mask_target_points(st, 0.0))
     if light is not None:
         bpy.data.meshes.remove(me)
@@ -1022,6 +1068,7 @@ def perform_masked(context, body):
         bpy.data.meshes.remove(me)
         raise cg.CutError('Drape Mask: the masked region has no open edge (a closed shell): mask a patch, not all of it')
     dense = len(me.vertices)
+    smooth_rim(me)                                           # 0.24.193 the stair steps out of the rim
     light = light_patch(me, mask_target_points(st, 0.0))     # 0.24.95 lighter, even cloth (the body stays dense)
     if light is not None:
         bpy.data.meshes.remove(me)
@@ -1041,7 +1088,7 @@ def perform_masked(context, body):
     context.view_layer.objects.active = ob
     surface = co.copy()
     try:
-        sess = build(context, body, me, 0, size, st, offset_lift=True)
+        sess = build(context, body, me, 0, size, st, offset_lift=True, free=bool(st.mask_free))
     except Exception:
         bpy.data.objects.remove(ob)
         bpy.data.meshes.remove(me)
@@ -1907,7 +1954,7 @@ def _snapshot(st):
                                           'wrap_tight', 'use_lines', 'stop_at_pins', 'two_sides', 'puff', 'wrinkles',
                                           'padding', 'pad_pattern', 'pad_size', 'pad_puff', 'trim', 'trim_width',
                                           'collide_with', 'use_proxy', 'proxy_faces',
-                                          'cape_length', 'cape_flare', 'cape_gather', 'cape_pleats', 'cape_folds', 'cape_heading', 'cape_sides', 'spacing', 'neck_style', 'neck_pin_top', 'neck_bottom', 'neck_top', 'mask_points', 'offset'))
+                                          'cape_length', 'cape_flare', 'cape_gather', 'cape_pleats', 'cape_folds', 'cape_heading', 'cape_sides', 'spacing', 'neck_style', 'neck_pin_top', 'neck_bottom', 'neck_top', 'mask_free', 'mask_points', 'offset'))
 
 
 def restart(context):
@@ -1930,7 +1977,7 @@ def restart(context):
     sess = build(context, target, me, SIM['nb'], SIM['size'], st, sew=SIM.get('sew'), pin_idx=SIM.get('pin_idx'),
                  to_cloth=SIM.get('to_cloth'), pin_sel=bool(SIM.get('pin_sel')), gdir_ob=ob if mode == 'MESH' else target,
                  wrap=mode == 'WRAP', puff=mode == 'SEW', tether=SIM.get('source') in {'CAPE', 'NECK'}, tacks=SIM.get('tacks'), no_slack=bool(SIM.get('no_slack')),
-                 keep_rim=SIM.get('source') == 'CAPE',
+                 keep_rim=SIM.get('source') == 'CAPE', free=SIM.get('source') == 'MASK' and bool(st.mask_free),
                  offset_lift=SIM.get('source') in {'CAPE', 'NECK', 'MASK', 'AREA'})
     if mode == 'SEW':
         c = sess['cloth']
@@ -1977,6 +2024,16 @@ def add_thickness(ob, size, st):
     md.use_even_offset = False            # (even offset divides by the corner angle: a crumpled cloth would spike)
     md.use_quality_normals = True
     md.use_rim = True
+    try:                                  # 0.24.193 the cut face its own flat band: the open edges sharp, so the
+        me = ob.data                      # smooth shading does not run round the rim (it showed as dark steps)
+        cnt = mio.edge_face_counts(me)
+        att = me.attributes.get('sharp_edge') or me.attributes.new('sharp_edge', 'BOOLEAN', 'EDGE')
+        old = np.zeros(len(me.edges), bool)
+        att.data.foreach_get('value', old)
+        att.data.foreach_set('value', old | (cnt == 1))
+        me.update()
+    except (RuntimeError, AttributeError, TypeError):
+        pass
     return True
 
 
@@ -2629,6 +2686,7 @@ def draw(layout, context):
     r.enabled = not live
     r.operator('mch.cdrape_mask', text='Drape Mask (masked faces lift off as the cloth)', icon='MOD_MASK')
     r.prop(st, 'mask_points', text='Points')
+    box.row().prop(st, 'mask_free', toggle=True, text='Drape Mask: Fall Free (not held at the rim)', icon='UNPINNED')
     r = box.row(align=True)
     r.enabled = not live
     r.operator('mch.cdrape_wrap', text='Wrap This Mesh (like a wrapping cloth)', icon='MOD_SHRINKWRAP')

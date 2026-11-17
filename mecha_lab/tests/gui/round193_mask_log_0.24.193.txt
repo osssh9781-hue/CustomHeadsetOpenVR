@@ -1,0 +1,11 @@
+tool CDRAPE Fall Free cell True before False
+cloth Cloth Drape points 1313 held 0 rim mean turn 6.4 deg
+shot 1_laid_wire.png True
+after the drape (24 s): mean height 0.453 -> 0.08 running False done True
+shot 2_fallen_wire.png True
+after Enter: sim active False kept ['Cloth Drape']
+PASS 1 a REAL click on Drape Mask: Fall Free turns it on
+PASS 2 a REAL click on Drape Mask: the cloth of the masked faces, nothing held, the rim smooth
+PASS 3 the drape the click started: the cloth comes off and falls
+PASS 4 Enter (REAL key): the cloth kept where it fell
+4/4 passed
