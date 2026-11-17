@@ -38,6 +38,7 @@ LEGS, ARMS = {'Thigh', 'Shin'}, {'UpperArm', 'Forearm'}
 GIRTH = {'Waist', 'Chest', 'Pelvis', 'Thigh', 'Shin', 'UpperArm', 'Forearm'}
 REGION = {'UpperArm': 'arm_size', 'Thigh': 'leg_size', 'Head': 'head', 'Hand': 'hands', 'Foot': 'feet'}
 SHOULDER_SHARE = 0.22                    # how much of an upper arm's lift its collarbone takes
+NECK_SHARE = 0.4                         # how much of the head's turn its neck takes
 JOINT_KEYS = ('scale', 'length', 'width', 'bend', 'twist', 'side')
 _BUSY = [False]
 _CACHE = {}
@@ -203,6 +204,8 @@ def make(context, height=1.8, location=None, kind='human'):
     m_ = band(('Thigh', 'Pelvis')) * np.clip((V[:, 2] - (knee_z + 0.35 * (hip_z - knee_z))) /
                                              (0.3 * (hip_z - knee_z)), 0.0, 1.0)[:, None]
     W = W * (1.0 - m_) + shared(0.046, bc) * m_       # (the hips: a lifted thigh takes the hip's side and the buttock)
+    m_ = band(('Head', 'Neck'), 0.025, 1.6)           # (the neck: a head bent must not fold to a corner at the nape
+    W = W * (1.0 - m_) + shared(0.04, bc) * m_        #  or under the chin)
     m_ = band(('Shoulder', 'UpperArm'), 0.03, 1.6)
     zj = float(bones['UpperArm.L'][0][2])
     elbow_z = float(bones['Forearm.L'][0][2])
@@ -294,6 +297,13 @@ def refresh(context, rig):
             up = val('UpperArm' + pb.name[8:])
             v['side'] += up['side'] * SHOULDER_SHARE
             v['bend'] += up['bend'] * SHOULDER_SHARE * 0.6
+        elif slot == 'Neck':                          # (a head turned takes its neck along: part of the way)
+            hd = val('Head')
+            for k_ in ('bend', 'twist', 'side'):
+                v[k_] += hd[k_] * NECK_SHARE
+        elif slot == 'Head':
+            for k_ in ('bend', 'twist', 'side'):
+                v[k_] *= 1.0 - NECK_SHARE
         elif slot == 'UpperArm':
             v['side'] *= 1.0 - SHOULDER_SHARE
             v['bend'] *= 1.0 - SHOULDER_SHARE * 0.6

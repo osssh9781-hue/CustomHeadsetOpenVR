@@ -75,11 +75,12 @@ check(f'the skin bends at the joints, nothing torn or pulled into strands (99 % 
       np.quantile(ratio, 0.99) < 2.5 and ratio.max() < 12.0)
 # 0.24.187 the neck / the shoulder / the waist on their own; hands and feet swapped
 bpy.ops.mch.bodywhole_pose(pose='__RESET__')
-h0, n0 = tip('Head'), tip('Neck')
+h0, n0, c0_ = tip('Head'), tip('Neck'), tip('Chest')
 kp.joint = 'Head'
 kp.j_bend = math.radians(40)
-check('Head Bend: the head nods, the neck stays', np.linalg.norm(tip('Head') - h0) > 0.03 and
-      np.linalg.norm(tip('Neck') - n0) < 1e-4)
+dh, dn = np.linalg.norm(tip('Head') - h0), np.linalg.norm(tip('Neck') - n0)
+check(f'Head Bend: the head nods ({dh:.3f}), its neck goes part of the way with it ({dn:.3f} - no sharp fold at the '
+      'nape), the chest stays', dh > 0.03 and 1e-3 < dn < dh and np.linalg.norm(tip('Chest') - c0_) < 1e-4)
 kp.j_bend = 0.0
 e0, hd0 = tip('UpperArm.L'), tip('Hand.L')
 kp.joint = 'Shoulder.L'
