@@ -107,4 +107,47 @@ with open(txt, 'a') as f:
 gz.write_script(root)
 check('... the compiled script is kept while the text is the same, thrown away when the text changes',
       kept and not os.path.isfile(txt[:-4] + '.zsc'))
+
+# 0.24.197 (user: "갔다 오니까 재질 다 사라졌어"): the materials come back with the mesh
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+bpy.ops.mesh.primitive_uv_sphere_add(segments=24, ring_count=12, location=(0, 4, 0))
+ball = C.active_object
+ball.name = 'Ball'
+red, blue = bpy.data.materials.new('Red'), bpy.data.materials.new('Blue')
+ball.data.materials.append(red)
+ball.data.materials.append(blue)
+for pl in ball.data.polygons:
+    pl.material_index = 1 if pl.center.z > 0 else 0
+top0 = sum(pl.material_index for pl in ball.data.polygons)
+bpy.ops.mch.goz_send()
+row = gz.listed(root)[0]
+d = gz.read_goz(row)
+gz.write_goz(row, d['name'], d['verts'] * 1.1, d['faces'])            # ZBrush: the same faces, moved
+with open(gz.list_path(root), 'w') as f:
+    f.write(row[:-4] + '\n')
+bpy.ops.mch.goz_import()
+me = ball.data
+check('back from ZBrush with the same faces: both material slots and each face\'s material as they were',
+      [m.name for m in me.materials] == ['Red', 'Blue'] and sum(pl.material_index for pl in me.polygons) == top0
+      and all((pl.material_index == 1) == (pl.center.z > 0) for pl in me.polygons))
+bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=4, location=(0, 4, 0))      # ZBrush: a different mesh (remeshed)
+ico = C.active_object
+w2 = np.array([ico.matrix_world @ v.co for v in ico.data.vertices])
+F2 = np.array([list(pl.vertices) + [gz.NO_CORNER] for pl in ico.data.polygons], np.uint32)
+bpy.data.objects.remove(ico)
+gz.write_goz(row, 'BALL1', np.c_[w2[:, 0], -w2[:, 2], w2[:, 1]], F2)          # (and ZBrush changed the name's case)
+os.remove(os.path.join(gz.project_dir(root), gz.MANIFEST))                   # (and emptied its project folder)
+os.replace(row, row[:-4] + '_x.GoZ')
+with open(gz.list_path(root), 'w') as f:
+    f.write(row[:-4] + '_x\n')
+n_obj = len(bpy.data.objects)
+bpy.ops.mch.goz_import()
+me = ball.data
+wrong = sum(1 for pl in me.polygons if (pl.material_index == 1) != (pl.center.z > 0) and abs(pl.center.z) > 0.15)
+check(f'back remeshed (other faces: {len(me.polygons)}) under a name ZBrush changed: still the same object (no new '
+      f'one), the slots kept, the materials taken from the nearest old faces ({wrong} wrong away from the border)',
+      len(bpy.data.objects) == n_obj and ball.data is me and len(me.polygons) == len(F2)
+      and [m.name for m in me.materials] == ['Red', 'Blue'] and wrong == 0
+      and 0 < sum(pl.material_index for pl in me.polygons) < len(me.polygons))
 summary()

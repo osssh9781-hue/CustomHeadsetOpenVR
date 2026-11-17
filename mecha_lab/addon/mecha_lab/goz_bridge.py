@@ -229,16 +229,18 @@ def send(context, objects, settings):
                     continue
                 zid = ob.get(ID_KEY) or __import__('uuid').uuid4().hex[:12]
                 ob[ID_KEY] = zid
-                name = next((k for k, v in man.items() if v.get('id') == zid), None)
-                if name is None:
+                name = ob.get(NAME_KEY)
+                taken = {str(o[NAME_KEY]).lower() for o in bpy.data.objects if o.get(NAME_KEY) and o != ob}
+                if not name or str(name).lower() in taken:
                     name, i = _safe(ob.name), 1
-                    while name in man:
+                    while name.lower() in taken:
                         name, i = f'{_safe(ob.name)}_{i}', i + 1
                 verts, faces, groups, colours = mesh_arrays(me, ob.matrix_world)
                 base = os.path.join(folder, name)
                 write_goz(base + '.GoZ', name, verts, faces, groups, colours)
                 with open(base + '.ztn', 'w') as f:
                     f.write(base)
+                ob[NAME_KEY] = name
                 man[name] = dict(id=zid, object=ob.name, matrix=[list(r) for r in ob.matrix_world], sent=time.time())
                 lines.append(base)
                 sent.append(ob.name)
@@ -387,6 +389,63 @@ def build_mesh(name, d):
     return me
 
 
+def keep_materials(old, me):
+    """0.24.197 (user: "갔다 오니까 재질 다 사라졌어"): the material slots of the mesh being replaced, and each face's
+    material - straight across when the faces are the same ones (same count), else from the old face nearest to each
+    new face (ZBrush changed the mesh: DynaMesh, ZRemesher, Divide).  Both meshes in the object's own space."""
+    for mat in old.materials:
+        me.materials.append(mat)
+    n_old, n_new = len(old.polygons), len(me.polygons)
+    if not n_old or not n_new or len(old.materials) < 2:
+        return 'slots'
+    idx_old = np.empty(n_old, np.int32)
+    old.polygons.foreach_get('material_index', idx_old)
+    if not idx_old.any():
+        return 'slots'
+    if n_old == n_new and len(old.vertices) == len(me.vertices):
+        me.polygons.foreach_set('material_index', idx_old)
+        me.update()
+        return 'same faces'
+    from mathutils.kdtree import KDTree
+    c_old = np.empty(n_old * 3, np.float32)
+    old.polygons.foreach_get('center', c_old)
+    c_old = c_old.reshape(-1, 3)
+    c_new = np.empty(n_new * 3, np.float32)
+    me.polygons.foreach_get('center', c_new)
+    c_new = c_new.reshape(-1, 3)
+    kd = KDTree(n_old)
+    for i, c in enumerate(c_old):
+        kd.insert(c, i)
+    kd.balance()
+    out = np.fromiter((idx_old[kd.find(c)[1]] for c in c_new), np.int32, n_new)
+    me.polygons.foreach_set('material_index', out)
+    me.update()
+    return 'nearest faces'
+
+
+NAME_KEY = 'mch_goz_name'
+
+
+def match_object(d, path, man=None, single=False):
+    """The object a returned file belongs to (0.24.197, user: "보냈던 파일도 있고 가져온 것도 있어서 두 개씩 생겨, 이름이
+    같으니까 같은 거끼리는 없어지는 게 낫다"): the name it was sent under is kept ON the object (ZBrush empties its
+    project folder, so a list kept there was gone when the mesh came back), compared without letter case; then the
+    object's own name; then a sent name the returned one begins with ("Cube1" for "Cube")."""
+    names = {d['name'].lower(), Path(path).stem.lower()}
+    meshes = [o for o in bpy.data.objects if o.type == 'MESH']
+    sent = [o for o in meshes if o.get(NAME_KEY)]
+    for o in sent:
+        if str(o[NAME_KEY]).lower() in names:
+            return o
+    for o in meshes:
+        if o.name.lower() in names or _safe(o.name).lower() in names:
+            return o
+    for o in sorted(sent, key=lambda o: -len(str(o[NAME_KEY]))):
+        if any(n.startswith(str(o[NAME_KEY]).lower()) for n in names):
+            return o
+    return None
+
+
 def listed(root):
     """The .GoZ files the list names (ZBrush's GoZ button, or our own Send)."""
     try:
@@ -404,7 +463,8 @@ def import_listed(context, settings):
         raise RuntimeError('ZBrush\'s GoZ folder was not found')
     man = _manifest(root)
     done, created, errors = [], [], []
-    for path in listed(root):
+    rows = listed(root)
+    for path in rows:
         try:
             d = read_goz(path)
             if not len(d['verts']) or not len(d['faces']):
@@ -413,12 +473,7 @@ def import_listed(context, settings):
         except (OSError, ValueError) as ex:
             errors.append(str(ex))
             continue
-        ent = man.get(d['name']) or man.get(Path(path).stem)
-        ob = None
-        if ent:
-            ob = next((o for o in bpy.data.objects if o.get(ID_KEY) == ent.get('id') and o.type == 'MESH'), None)
-        if ob is None:
-            ob = next((o for o in bpy.data.objects if o.type == 'MESH' and o.name == d['name']), None)
+        ob = match_object(d, path, man, len(rows) == 1)
         if ob is None:
             ob = bpy.data.objects.new(d['name'], me)
             context.scene.collection.objects.link(ob)
@@ -426,8 +481,7 @@ def import_listed(context, settings):
             continue
         me.transform(Matrix(ob.matrix_world).inverted_safe())
         old = ob.data
-        for mat in old.materials:
-            me.materials.append(mat)
+        keep_materials(old, me)
         nm = old.name
         ob.data = me
         if old.users > 0:
