@@ -186,7 +186,7 @@ class MCH_OT_mecha_mask(bpy.types.Operator):
             if not ON[0]:
                 self.report({'WARNING'}, msg)
                 return {'CANCELLED'}
-            self.report({'INFO'}, 'Paint Mask: drag = mask, Ctrl + drag = erase, F = size' + (f' ({msg})' if msg else ''))
+            self.report({'INFO'}, 'Paint Mask: drag = mask, Alt = erase, X = mirror, Ctrl + click empty = invert' + (f' ({msg})' if msg else ''))
             return {'FINISHED'}
         if self.action in {'CLEAR', 'INVERT'}:
             set_values(context, ob, (lambda v: v * 0.0) if self.action == 'CLEAR' else (lambda v: 1.0 - v))
@@ -214,7 +214,8 @@ def draw(layout, context):
     """The Mask rows (Cloth Drape's window)."""
     zb = context.scene.mch_zb
     box = layout.box()
-    box.label(text='Mask (drag = mask · Ctrl + drag = erase · F = size)', icon='MOD_MASK')
+    box.label(text='Mask (as in the ZBRUSH screen: drag = mask · Alt = erase · X = mirror)', icon='MOD_MASK')
+    box.label(text='Ctrl + click empty = invert · Ctrl + lasso = mask · Ctrl + drag empty = clear')
     r = box.row(align=True)
     r.operator('mch.mecha_mask', text='Paint Mask' + (' (on)' if on(context) else ''), icon='BRUSH_DATA',
                depress=on(context)).action = 'PAINT'

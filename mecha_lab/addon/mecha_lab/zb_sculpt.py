@@ -2534,10 +2534,21 @@ def append(context, kind='SPHERE'):
 
 # --- operators ------------------------------------------------------------------------------------------------------
 
+def mask_session(context=None):
+    """0.24.210 painting a mask in the MECHA LAB screen (mecha_mask): Sculpt Mode underneath, the Mecha screen kept."""
+    from . import mecha_mask
+    return mecha_mask.on(context)
+
+
+MASK_ACTIONS = {'SYM_X'}         # the ZBrush keys that also work while a mask is painted in MECHA LAB (X = mirror)
+
+
 class _ZBPoll:
+    MASK_OK = False              # (0.24.210) does this one also work while a mask is painted in MECHA LAB?
+
     @classmethod
     def poll(cls, context):
-        return on(context)
+        return on(context) or (cls.MASK_OK and mask_session(context))
 
 
 # 0.24.65 actions that only change a setting / the view / a tool: no undo step (Ctrl+Z undoes what you did)
@@ -2557,8 +2568,11 @@ class MCH_OT_zb_action(_ZBPoll, bpy.types.Operator):
     bl_label = 'ZBrush Action'
     bl_options = {'REGISTER', 'INTERNAL'}       # (the undo step is pushed below: one per change to the model)
     action: StringProperty()
+    MASK_OK = True
 
     def execute(self, context):
+        if not on(context) and self.action not in MASK_ACTIONS:      # (a mask painted in MECHA LAB: only its keys -
+            return {'PASS_THROUGH'}                                  #  nothing that sculpts or remeshes the part)
         step = 'ZBrush ' + self.action.replace('_', ' ').title()
         if self.action not in SETTING_ACTIONS and context.mode == 'SCULPT':
             _REC.update(name=step, before=False, after=False, print=None)
@@ -2818,8 +2832,17 @@ class MCH_OT_zb_press(_ZBPoll, bpy.types.Operator):
     bl_idname = 'mch.zb_press'
     bl_label = 'ZBrush Mouse'
     bl_options = {'INTERNAL'}
+    MASK_OK = True
 
     def invoke(self, context, event):
+        # 0.24.210 (user: "마스크 그릴 때 그냥 지브러시 탭처럼 작동해야지, 알트 누르면 지워지고 ... 이미 단축키가 있는데"):
+        # a mask painted in MECHA LAB uses this mouse too - drag = mask, Alt = erase, Ctrl + click on empty = invert,
+        # Ctrl + lasso = mask, Ctrl + drag on empty = clear.  Shift (Smooth) and Ctrl + Shift (hide) would change the
+        # part: not there
+        if not on(context) and event.shift:
+            if object_under(context, event.mouse_region_x, event.mouse_region_y) is not None:
+                return {'FINISHED'}
+            return {'PASS_THROUGH'}
         try:
             from . import ui_bars
             inside, _it = ui_bars.hit(context, event.mouse_region_x, event.mouse_region_y)

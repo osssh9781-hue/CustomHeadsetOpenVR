@@ -138,9 +138,9 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
         ('TUBES', 'Tubes', 'The drawn lines are tubes under the cloth: it catches and folds on them'),
         ('STITCH', 'Stitches', 'The drawn lines are seams sewn into the cloth: it is gathered (pulled together) along them')],
         default='TUBES')
-    stitch_tight: FloatProperty(name='Tighten', description='Stitches: how much the cloth is pulled together along a seam (0 = a seam with no gather)', default=35.0, min=0.0, max=80.0, subtype='PERCENTAGE')
-    stitch_width: FloatProperty(name='Seam Width', description='Stitches: how wide the gathered band along a line is, as % of the cloth\'s size', default=2.5, min=0.3, max=15.0, subtype='PERCENTAGE')
-    stitch_puff: FloatProperty(name='Puff', description='Stitches: how much the cloth between the seams swells out (the seams stay low: a quilted look); 0 = only the gather', default=40.0, min=0.0, max=200.0, subtype='PERCENTAGE')
+    stitch_tight: FloatProperty(name='Tighten', description='Stitches: how much the cloth is pulled together along a seam (0 = a seam with no gather)', default=55.0, min=0.0, max=80.0, subtype='PERCENTAGE')
+    stitch_width: FloatProperty(name='Seam Width', description='Stitches: how wide the gathered band along a line is, as % of the cloth\'s size', default=3.5, min=0.3, max=15.0, subtype='PERCENTAGE')
+    stitch_puff: FloatProperty(name='Puff', description='Stitches: how much the cloth between the seams swells out (the seams stay low: a quilted look); 0 = only the gather', default=90.0, min=0.0, max=200.0, subtype='PERCENTAGE')
     stitch_stick: BoolProperty(name='Sewn to Body', description='Stitches: the seam is also held on the body where it was drawn (off: only the cloth is gathered, it moves freely)', default=False)
     stretch: FloatProperty(name='Stretch', description='How much the cloth gives when pulled: 0 = cloth (keeps its length), 100 = rubber', default=0.0, min=0.0, max=100.0, subtype='PERCENTAGE')
     self_collide: BoolProperty(name='Self Collision', description='The cloth does not pass through itself (folds lying on each other, a piece falling onto itself). Slower', default=False)
@@ -362,7 +362,29 @@ def show_start(me, surface, size, st):
     me.update()
 
 
-SEAM_KEEP = 0.5                  # how firmly a cloth-only seam keeps its place (x the Silhouette Keep spring's full pull)
+SEAM_KEEP = 0.85                 # how firmly a cloth-only seam keeps its place (x the Silhouette Keep spring's full pull)
+
+
+SEAM_DOWN = 0.8                  # x the puff: how hard a seam is drawn down between the swelling cloth
+STITCH_PROP = 'mch_stitch_lines'  # on the cloth's mesh: the seams drawn on it (lists of points, its own space)
+
+
+def stitch_paths(me):
+    """The seams drawn on this cloth (Draw Stitches): arrays of points in the cloth's space."""
+    import json
+    try:
+        raw = me.get(STITCH_PROP)
+        return [np.asarray(p, np.float64) for p in json.loads(raw)] if raw else []
+    except (TypeError, ValueError, AttributeError):
+        return []
+
+
+def set_stitch_paths(me, paths):
+    import json
+    if paths:
+        me[STITCH_PROP] = json.dumps([np.asarray(p, np.float64).round(6).tolist() for p in paths])
+    elif STITCH_PROP in me:
+        del me[STITCH_PROP]
 
 
 def stitch(cloth, co, paths, width, tight, stick):
@@ -386,10 +408,10 @@ def stitch(cloth, co, paths, width, tight, stick):
         on = s > 0.55
         cloth.pin = np.asarray(cloth.pin, np.float64).copy()
         cloth.pin[on] = 1.0
-    else:                                             # (cloth only: the seam is drawn back to where it lay, softly -
-        keep = np.broadcast_to(np.asarray(cloth.keep, np.float64), s.shape)   # it can still shift and sag)
-        cloth.keep = np.maximum(keep, s * SEAM_KEEP)
-    cloth.seam = s
+    # (0.24.210 cloth only: no spring back to where the seam lay - that was the lifted start, so the seam stood up as
+    #  a ridge while the cloth round it settled; it is drawn DOWN instead, in advance())
+    old = getattr(cloth, 'seam', None)
+    cloth.seam = s if old is None else np.maximum(old, s)
     return int(np.count_nonzero(s > 0))
 
 
@@ -509,6 +531,10 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
         stitches = stitch(cloth, co, paths, max(size * st.stitch_width / 100.0, spacing * 1.2),   # (``co``: on the body, as drawn)
                           st.stitch_tight / 100.0, bool(st.stitch_stick))
         lines = []
+    own = stitch_paths(me)                            # 0.24.210 the seams drawn on the cloth itself (Draw Stitches)
+    if own:
+        stitches += stitch(cloth, cloth_co, own, max(size * st.stitch_width / 100.0, spacing * 1.2),
+                           st.stitch_tight / 100.0, bool(st.stitch_stick))
     if lines:                                         # the drawn lines as tubes on the body: the cloth catches on them
         wst = wl.settings(context)
         tgt = wl.target_of(context, target)
@@ -575,8 +601,8 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
                 grid_time=time.perf_counter() - t, stage='run')
 
     if stitches and not pad_on and getattr(st, 'stitch_puff', 0.0) > 0:      # 0.24.208 between the seams it swells
-        sess.update(puff=size * 0.0015 * st.stitch_puff / 50.0, puff_dir=nrm.copy(),
-                    puff_max=size * 0.05 * max(0.15, st.slack / 100.0) ** 0.5, seam=np.asarray(cloth.seam, np.float64))
+        sess.update(puff=size * 0.004 * st.stitch_puff / 50.0, puff_dir=nrm.copy(),     # (0.24.210: over gravity too -
+                    puff_max=size * 0.09 * max(0.15, st.slack / 100.0) ** 0.5, seam=np.asarray(cloth.seam, np.float64))
     if pad_on:                                        # the padding's puff: the cells (or the whole area: Whole) blow up
         cell = st.pad_size / 100.0 if st.pad_pattern != 'NONE' else 1.0
         sess.update(puff=size * 0.0015 * st.pad_puff / 50.0, puff_dir=nrm.copy(),
@@ -648,6 +674,8 @@ def advance(sess, st):
         if sess.get('seam') is not None:                                      # (a seam is not blown up)
             free = free * (1.0 - np.clip(sess['seam'], 0.0, 1.0))
         f = sess['puff_dir'] * (sess['puff'] * room * free)[:, None]
+        if sess.get('seam') is not None:              # 0.24.210 ... and is drawn down toward the body: a clear groove
+            f = f - sess['puff_dir'] * (sess['puff'] * SEAM_DOWN * np.clip(sess['seam'], 0.0, 1.0) * (1.0 - cloth.pin))[:, None]
         force = f if force is None else force + f
     cloth.step(force=force, gravity=g, damping=sess['damping'], iterations=ITERATIONS,
                keep_rate=KEEP_RATE if st.keep > 0 else 0.0)
@@ -2619,6 +2647,189 @@ class MCH_OT_cdrape_sew_copy(bpy.types.Operator):
 
 
 LINES_BACK = {}
+STITCH = {}                      # Draw Stitches: on, the stroke being drawn (world points), the draw handler
+
+
+def stitch_refresh(context):
+    """The laid cloth made again with its seams (still waiting: Space starts the drape)."""
+    if not sim_active():
+        return
+    restart(context)
+    SIM['running'] = False
+    if context.area is not None:
+        context.area.tag_redraw()
+
+
+def _stitch_draw():
+    """The seams on the laid cloth, and the one being drawn - over everything, so a line shows while it is drawn."""
+    ob = _ob()
+    if ob is None or not sim_active() or SIM.get('running') or ob.hide_get():
+        return
+    import gpu
+    from gpu_extras.batch import batch_for_shader
+    lines = []
+    M = ob.matrix_world
+    for p in stitch_paths(ob.data):
+        lines.append(([tuple(M @ Vector(q)) for q in p.tolist()], (1.0, 0.82, 0.1, 1.0)))
+    if STITCH.get('stroke') and len(STITCH['stroke']) >= 2:
+        lines.append(([tuple(q) for q in STITCH['stroke']], (1.0, 0.35, 0.1, 1.0)))
+    if not lines:
+        return
+    sh = gpu.shader.from_builtin('POLYLINE_UNIFORM_COLOR')
+    gpu.state.blend_set('ALPHA')
+    gpu.state.depth_test_set('NONE')
+    try:
+        vp = gpu.state.viewport_get()
+        for pts, col in lines:
+            sh.bind()
+            sh.uniform_float('viewportSize', (vp[2], vp[3]))
+            sh.uniform_float('lineWidth', 4.0)
+            sh.uniform_float('color', col)
+            batch_for_shader(sh, 'LINE_STRIP', {'pos': pts}).draw(sh)
+    finally:
+        gpu.state.depth_test_set('LESS_EQUAL')
+        gpu.state.blend_set('NONE')
+
+
+def stitch_handler(on=True):
+    h = STITCH.get('handle')
+    if on and h is None:
+        STITCH['handle'] = bpy.types.SpaceView3D.draw_handler_add(_stitch_draw, (), 'WINDOW', 'POST_VIEW')
+    elif not on and h is not None:
+        try:
+            bpy.types.SpaceView3D.draw_handler_remove(h, 'WINDOW')
+        except (ValueError, RuntimeError):
+            pass
+        STITCH.pop('handle', None)
+
+
+def cloth_hit(context, ob, x, y):
+    """The point of the laid cloth under region (x, y), world space - or None."""
+    from bpy_extras import view3d_utils
+    region, rv3d = context.region, context.region_data
+    if region is None or rv3d is None:
+        return None
+    o = view3d_utils.region_2d_to_origin_3d(region, rv3d, (x, y))
+    d = view3d_utils.region_2d_to_vector_3d(region, rv3d, (x, y))
+    inv = ob.matrix_world.inverted()
+    ol, dl = inv @ o, (inv.to_3x3() @ d).normalized()
+    try:
+        ok, loc, _n, _i = ob.ray_cast(ol, dl)
+    except RuntimeError:
+        return None
+    return ob.matrix_world @ loc if ok else None
+
+
+class MCH_OT_cdrape_stitch(bpy.types.Operator):
+    """Stitches on the laid cloth: Draw = drag seams on the cloth (they show while you draw; Ctrl+Z takes the last one back, Esc / Enter / right click ends), Undo = the last seam off, Clear = all off. Space then drapes with them"""
+    bl_idname = 'mch.cdrape_stitch'
+    bl_label = 'Stitches'
+    bl_options = {'REGISTER'}
+    action: bpy.props.StringProperty(default='DRAW', options={'SKIP_SAVE'})
+
+    @classmethod
+    def poll(cls, context):
+        return sim_active() and not SIM.get('running') and context.mode == 'OBJECT'
+
+    def _pop(self, context, everything=False):
+        ob = _ob()
+        paths = stitch_paths(ob.data)
+        if not paths:
+            return 0
+        set_stitch_paths(ob.data, [] if everything else paths[:-1])
+        stitch_refresh(context)
+        return len(paths) if everything else 1
+
+    def invoke(self, context, event):
+        ob = _ob()
+        if ob is None:
+            return {'CANCELLED'}
+        if self.action in {'UNDO', 'CLEAR'}:
+            n = self._pop(context, self.action == 'CLEAR')
+            self.report({'INFO'}, f'{n} seam(s) taken off' if n else 'No seam on the cloth')
+            return {'FINISHED'}
+        if STITCH.get('on'):                           # (the button again: stop drawing)
+            STITCH['on'] = False
+            return {'FINISHED'}
+        if context.area is None or context.area.type != 'VIEW_3D':
+            return {'CANCELLED'}
+        ob.hide_set(False)
+        STITCH.update(on=True, stroke=None)
+        stitch_handler(True)
+        context.window_manager.modal_handler_add(self)
+        self.drawing = False
+        context.area.tag_redraw()
+        self.report({'INFO'}, 'Draw Stitches: drag on the cloth · Ctrl+Z = undo the last · Esc / Enter = done')
+        return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        return self.invoke(context, None)
+
+    def _done(self, context):
+        STITCH.update(on=False, stroke=None)
+        try:
+            from . import ui_bars
+            ui_bars.bump()
+        except (ImportError, AttributeError):
+            pass
+        if context.area is not None:
+            context.area.tag_redraw()
+        return {'FINISHED'}
+
+    def modal(self, context, event):
+        ob = _ob()
+        if not STITCH.get('on') or ob is None or not sim_active() or SIM.get('running') or context.area is None:
+            return self._done(context)
+        if event.type == 'MOUSEMOVE':
+            if self.drawing:
+                p = cloth_hit(context, ob, event.mouse_region_x, event.mouse_region_y)
+                if p is not None and (not STITCH['stroke'] or (p - Vector(STITCH['stroke'][-1])).length > SIM['size'] * 0.004):
+                    STITCH['stroke'].append(tuple(p))
+                    context.area.tag_redraw()
+                return {'RUNNING_MODAL'}
+            return {'PASS_THROUGH'}
+        if event.type == 'LEFTMOUSE':
+            if event.value == 'PRESS':
+                try:
+                    from . import ui_bars
+                    if ui_bars.hit(context, event.mouse_region_x, event.mouse_region_y)[0]:
+                        return {'PASS_THROUGH'}         # (a click on a panel is the panel's)
+                except (ImportError, AttributeError, KeyError, TypeError):
+                    pass
+                r = context.region
+                if not (0 <= event.mouse_region_x <= r.width and 0 <= event.mouse_region_y <= r.height):
+                    return {'PASS_THROUGH'}
+                self.drawing = True
+                STITCH['stroke'] = []
+                p = cloth_hit(context, ob, event.mouse_region_x, event.mouse_region_y)
+                if p is not None:
+                    STITCH['stroke'].append(tuple(p))
+                return {'RUNNING_MODAL'}
+            if event.value == 'RELEASE' and self.drawing:
+                self.drawing = False
+                pts = STITCH.get('stroke') or []
+                STITCH['stroke'] = None
+                if len(pts) >= 2:
+                    inv = ob.matrix_world.inverted()
+                    local = np.array([tuple(inv @ Vector(q)) for q in pts])
+                    set_stitch_paths(ob.data, stitch_paths(ob.data) + [local])
+                    stitch_refresh(context)
+                    self.report({'INFO'}, f'Seam {len(stitch_paths(ob.data))} on the cloth (Ctrl+Z: off again)')
+                context.area.tag_redraw()
+                return {'RUNNING_MODAL'}
+            return {'RUNNING_MODAL'}
+        if self.drawing:
+            return {'RUNNING_MODAL'}
+        if event.type == 'Z' and event.ctrl and event.value == 'PRESS':
+            n = self._pop(context)                      # (its own undo: the seams are not in Blender's undo list)
+            self.report({'INFO'}, 'The last seam taken off' if n else 'No seam left')
+            return {'RUNNING_MODAL'}
+        if event.type in {'ESC', 'RET', 'NUMPAD_ENTER', 'RIGHTMOUSE'} and event.value == 'PRESS':
+            return self._done(context)
+        if event.type == 'SPACE' and event.value == 'PRESS':
+            self._done(context)
+            return {'FINISHED', 'PASS_THROUGH'}         # (Space: done drawing, and the drape starts)
+        return {'PASS_THROUGH'}
 
 
 def lines_back(context):
@@ -2829,15 +3040,25 @@ def draw(layout, context):
     rr = r.row()
     rr.enabled = not live or not SIM.get('running')      # (0.24.209 also on a cloth laid and waiting: it was greyed
     rr.operator('mch.cdrape_lines', text='Draw Lines', icon='GREASEPENCIL')   # out - the lines could not be drawn)
+    # 0.24.210 the seams drawn on the cloth itself
+    cl = _ob() if live else None
+    n_st = len(stitch_paths(cl.data)) if cl is not None else 0
+    sb = box.box()
+    sb.label(text=f'Stitches on the cloth ({n_st})   drag = a seam · Ctrl+Z = undo the last · Esc = done', icon='MOD_LINEART')
+    r = sb.row(align=True)
+    r.enabled = live and not SIM.get('running')
+    r.operator('mch.cdrape_stitch', text='Draw Stitches' + (' (on)' if STITCH.get('on') else ''), icon='GREASEPENCIL',
+               depress=bool(STITCH.get('on'))).action = 'DRAW'
+    r.operator('mch.cdrape_stitch', text='Undo').action = 'UNDO'
+    r.operator('mch.cdrape_stitch', text='Clear').action = 'CLEAR'
+    r = sb.row(align=True)
+    r.prop(st, 'stitch_tight', slider=True)
+    r.prop(st, 'stitch_width', slider=True)
+    r = sb.row(align=True)
+    r.prop(st, 'stitch_puff', slider=True)
+    r.prop(st, 'stitch_stick', toggle=True, icon='PINNED')
     if st.use_lines:                                     # 0.24.208 what the lines are: tubes, or seams in the cloth
         box.row(align=True).prop(st, 'line_mode', expand=True)
-        if st.line_mode == 'STITCH':
-            r = box.row(align=True)
-            r.prop(st, 'stitch_tight', slider=True)
-            r.prop(st, 'stitch_width', slider=True)
-            r = box.row(align=True)
-            r.prop(st, 'stitch_puff', slider=True)
-            r.prop(st, 'stitch_stick', toggle=True, icon='PINNED')
     wst = wl.settings(context)
     if wst is not None and st.use_lines and st.line_mode == 'TUBES':
         r = box.row(align=True)
@@ -2894,7 +3115,7 @@ def draw(layout, context):
     box.prop(st, 'thickness', slider=True)
 
 
-CLASSES = (MCH_PG_ClothDrape, MCH_OT_cdrape_sim, MCH_OT_cdrape_mesh, MCH_OT_cdrape_mask, MCH_OT_cdrape_tack, MCH_OT_cdrape_tack_clear, MCH_OT_cdrape_wrap, MCH_OT_cdrape_sew_copy, MCH_OT_cdrape_lines,
+CLASSES = (MCH_PG_ClothDrape, MCH_OT_cdrape_stitch, MCH_OT_cdrape_sim, MCH_OT_cdrape_mesh, MCH_OT_cdrape_mask, MCH_OT_cdrape_tack, MCH_OT_cdrape_tack_clear, MCH_OT_cdrape_wrap, MCH_OT_cdrape_sew_copy, MCH_OT_cdrape_lines,
            MCH_OT_cdrape_control, MCH_OT_cdrape_keep)
 
 
@@ -2924,6 +3145,8 @@ def unregister():
         undo_keep.AFTER_RESTORE.remove(collider_proxy.sync)
     for h in [h for h in bpy.app.handlers.load_post if getattr(h, '__name__', '') == '_sync_proxies_on_load']:
         bpy.app.handlers.load_post.remove(h)
+    stitch_handler(False)
+    STITCH.clear()
     SIM.clear()
     if hasattr(bpy.types.Scene, 'mch_cdrape'):
         del bpy.types.Scene.mch_cdrape

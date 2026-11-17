@@ -13,8 +13,8 @@ fresh()
 mecha_lab.register()
 C = bpy.context
 st = cd.settings(C)
-check('the settings: Lines = Tubes by default (as before), Stitches with Tighten 35 %, Seam Width, Puff 40 %, Sewn to Body off',
-      st.line_mode == 'TUBES' and abs(st.stitch_tight - 35.0) < 1e-6 and abs(st.stitch_puff - 40.0) < 1e-6
+check('the settings: Lines = Tubes by default (as before), Stitches with Tighten 55 %, Seam Width, Puff 90 % (0.24.210: stronger), Sewn to Body off',
+      st.line_mode == 'TUBES' and abs(st.stitch_tight - 55.0) < 1e-6 and abs(st.stitch_puff - 90.0) < 1e-6
       and st.stitch_stick is False)
 bpy.ops.mesh.primitive_grid_add(x_subdivisions=80, y_subdivisions=80, size=2.0)
 body = C.active_object
@@ -60,9 +60,9 @@ def run(mode, stick=False):
 
 tube = run('TUBES')
 sew = run('STITCH')
-check(f'Stitches: the seam touches {sew["stitches"]} cloth points, its edges want to be up to 35 % shorter (shortest '
+check(f'Stitches: the seam touches {sew["stitches"]} cloth points, its edges want to be up to 55 % shorter (shortest '
       f'x{sew["scale_min"]:.2f}); Tubes mode gathers nothing (x{tube["scale_min"]:.2f}, 0 seam points)',
-      sew['stitches'] > 20 and 0.6 < sew['scale_min'] < 0.72 and tube['stitches'] == 0 and tube['scale_min'] > 0.99)
+      sew['stitches'] > 20 and 0.4 < sew['scale_min'] < 0.52 and tube['stitches'] == 0 and tube['scale_min'] > 0.99)
 check(f'... after the drape the cloth along the line is pulled together (its length x{sew["span_on"]:.2f}; Tubes '
       f'x{tube["span_on"]:.2f}), away from the line it keeps its width (x{sew["span_off"]:.2f}); nothing held '
       f'({sew["pins"]} pins), finite', sew['span_on'] < tube['span_on'] - 0.01 and sew['span_off'] > 0.9
@@ -70,5 +70,44 @@ check(f'... after the drape the cloth along the line is pulled together (its len
 stuck = run('STITCH', stick=True)
 check(f'Sewn to Body: the points on the line are held ({stuck["pins"]} pins) and stay where they were drawn (moved '
       f'{stuck["moved"]:.4f}; free: {sew["moved"]:.4f})', stuck['pins'] > 5 and stuck['moved'] < sew['moved'] * 0.6)
+# 0.24.210 the seams drawn on the cloth itself (Draw Stitches): kept on its mesh, used with no body line at all
+del body[wl.PROP]
+wl._CACHE.pop(body.name, None)
+st.use_lines, st.line_mode, st.stitch_stick = False, 'TUBES', False
+for o in C.selected_objects:
+    o.select_set(False)
+body.select_set(True)
+C.view_layer.objects.active = body
+cd.perform_masked(C, body)
+ob = bpy.data.objects[cd.SIM['ob']]
+n_before = cd.SIM['sess'].get('stitches', 0)
+start = cd.SIM['sess']['cloth'].init
+line = np.array([(x, 0.0, float(start[:, 2].mean())) for x in np.linspace(-0.45, 0.45, 12)])
+cd.set_stitch_paths(ob.data, [line])
+st.slack = 20.0                                    # (some extra fabric: it can swell beside the seam)
+cd.stitch_refresh(C)
+sess = cd.SIM['sess']
+check(f'a seam drawn on the laid cloth (no line on the body, Use Lines off): kept on the cloth\'s mesh, the cloth made '
+      f'again with it ({n_before} -> {sess.get("stitches", 0)} seam points), and it still waits (not running)',
+      n_before == 0 and len(cd.stitch_paths(ob.data)) == 1 and sess.get('stitches', 0) > 20
+      and cd.SIM.get('running') is False and float(np.asarray(sess['cloth'].scale_e).min()) < 0.6)
+for _i in range(50):
+    cd.step(C)
+c = mio.read_co(ob.data)
+on = (np.abs(start[:, 1]) < 0.012) & (np.abs(start[:, 0]) < 0.35)
+between = (np.abs(np.abs(start[:, 1]) - 0.3) < 0.05) & (np.abs(start[:, 0]) < 0.35)
+dz = float(c[between, 2].mean() - c[on, 2].mean())
+check(f'... draped: the seam is a groove - the cloth beside it stands {dz:.3f} higher than the cloth on it',
+      dz > 0.01 and bool(np.all(np.isfinite(c))))
+cd.cancel(C)
+cd.perform_masked(C, body)
+ob = bpy.data.objects[cd.SIM['ob']]
+cd.set_stitch_paths(ob.data, [line, line + np.array((0.0, 0.2, 0.0))])
+r1 = bpy.ops.mch.cdrape_stitch(action='UNDO')
+n1 = len(cd.stitch_paths(ob.data))
+r2 = bpy.ops.mch.cdrape_stitch(action='CLEAR')
+check('Undo takes the last seam off (2 -> 1), Clear all of them', 'FINISHED' in r1 and n1 == 1 and 'FINISHED' in r2
+      and len(cd.stitch_paths(ob.data)) == 0 and cd.SIM['sess'].get('stitches', 0) == 0)
+cd.cancel(C)
 st.line_mode, st.stitch_stick, st.use_lines, st.mask_free, st.slack = 'TUBES', False, False, False, 25.0
 summary()

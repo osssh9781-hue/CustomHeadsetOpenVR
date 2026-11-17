@@ -1,0 +1,21 @@
+Paint Mask on: True | a REAL drag: masked 154 | Alt + REAL drag over half of it: masked 54
+X (REAL key): mirror False -> True still painting True mode SCULPT
+Ctrl + REAL click on empty canvas: masked 54 -> 5996 of 6050
+Shift + REAL drag on the model: the mesh moved 0.0
+masked before Drape Mask 165
+shot 1_mask.png True
+cloth Cloth Drape running False Draw Stitches cell True
+shot 2_stitch_while_drawing.png True
+Draw Stitches on: True | half way through the REAL drag the stroke has 7 points | let go: seams 1 seam points 42 cloth hidden False
+shot 3_seam.png True
+Ctrl + Z (REAL keys): seams 1 -> 0 cloth still there True
+drawn again: seams 1 | Space (REAL key): frame 12 drawing on False
+shot 4_draped.png True
+PASS A1 the ZBRUSH mouse in MECHA LAB: a REAL drag masks, Alt + drag erases (fewer masked points)
+PASS A2 X (REAL key) switches the mirror, the painting goes on
+PASS A3 Ctrl + REAL click on empty canvas inverts the mask
+PASS A4 Shift + drag (Smooth in the ZBRUSH screen) does not change the mesh here
+PASS B1 Draw Stitches: a REAL drag on the cloth itself - the line is there while it is drawn (points mid-drag), a seam on the cloth after
+PASS B2 Ctrl + Z (REAL keys) takes the last seam off (the cloth stays)
+PASS B3 drawn again, then Space (REAL key): drawing ends and it drapes with the seam
+7/7 passed
