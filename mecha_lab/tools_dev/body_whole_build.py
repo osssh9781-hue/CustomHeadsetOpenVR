@@ -2,7 +2,7 @@
 크리쳐도 리깅해 주고"): each body made light and stored whole WITH its bones and each point's bone.
 
     <blender python> body_whole_build.py human <body02.fbx>
-    <blender python> body_whole_build.py creature <body.fbx>            (the part-split creature's whole body)
+    <blender python> body_whole_build.py creature <body06.fbx>          (no parts: the joints and the wrists / ankles found)
     <blender python> body_whole_build.py creature2 <body4.fbx> <hand.fbx>   (no parts: the joints found on the mesh;
                                                                           hand.fbx: its palms / soles mark wrists, ankles)
 
@@ -176,7 +176,7 @@ def found_bones(V, N, L, marks):
     mid_n = np.array([((np.abs(V[:, 0]) < 0.008) & (np.abs(V[:, 2] - z) < 0.006)).sum() for z in zs])
     crotch = float(zs[np.nonzero((mid_n > 4) & (zs > 0.2))[0][0]])
     wrist, ankle, toe = (np.array(marks[k], float) for k in ('wrist', 'ankle', 'toe'))
-    leg, arm, body = [], [], []
+    leg, arm, body, leg_sl = [], [], [], []
     for z in zs:
         m = np.abs(R[:, 2] - z) < 0.006
         if m.sum() < 6:
@@ -186,6 +186,7 @@ def found_bones(V, N, L, marks):
         if z < crotch:                                # (below the crotch: the leg is the inner clump)
             inner = cl[0][2]
             leg.append(P[inner].mean(0))
+            leg_sl.append((z, float(cl[0][1]), len(cl), float(R[:, 0][m].max())))
             if len(cl) > 1 and z > wrist[2] - 0.02:
                 arm.append(P[cl[-1][2]].mean(0))
         else:
@@ -201,7 +202,7 @@ def found_bones(V, N, L, marks):
     ax = (ankle - hip) / np.linalg.norm(ankle - hip)
     off = np.linalg.norm((lg - hip) - np.outer((lg - hip) @ ax, ax), axis=1)
     tt = (lg - hip) @ ax / np.linalg.norm(ankle - hip)
-    ok = (tt > 0.25) & (tt < 0.75)
+    ok = (tt > 0.4) & (tt < 0.75)
     knee = lg[ok][np.argmax(off[ok])]
     # the arm: the shoulder joint inside the body's top corner over the armpit, the elbow as the knee
     top = V[(V[:, 0] > 0) & (V[:, 2] > armpit) & (V[:, 2] < armpit + 0.1)]
@@ -258,6 +259,13 @@ def found_bones(V, N, L, marks):
         ab = b_ - a_
         t = ((P - a_) @ ab) / float(ab @ ab)
         return np.linalg.norm(P - (a_ + np.outer(np.clip(t, 0, 1), ab)), axis=1), t
+    VNs = np.zeros_like(V)
+    k = 0
+    for n_ in N:
+        n_ = int(n_)
+        f = L[k:k + n_]
+        VNs[f] += np.cross(V[f[1]] - V[f[0]], V[f[2]] - V[f[0]])
+        k += n_
     chains = {'trunk': ['Pelvis', 'Waist', 'Chest', 'Neck', 'Head', 'Shoulder.L', 'Shoulder.R']}
     for sd in 'LR':
         chains['arm' + sd] = [f'{b}.{sd}' for b in ('UpperArm', 'Forearm', 'Hand')]
@@ -272,12 +280,26 @@ def found_bones(V, N, L, marks):
         sgn = 1.0 if cn.endswith('L') else -1.0
         for n in bl:
             d_, t_ = seg_d(V, n)
-            m = (np.abs(t_ - 0.5) < 0.2) & (V[:, 0] * sgn > 0) & (d_ < 0.09)
+            a_, b_ = bones[n]
+            Qn = a_ + np.outer(np.clip(t_, 0, 1), b_ - a_)
+            behind = ((V - Qn) * VNs).sum(1) > 0      # (its own skin: the bone lies behind it - not the flank's beside)
+            m = (np.abs(t_ - 0.5) < 0.2) & (V[:, 0] * sgn > 0) & (d_ < 0.09) & behind
             if m.sum() < 8:
                 continue
             lim = np.quantile(d_[m], 0.25) * 1.6
             for i in np.nonzero(m & (d_ <= lim))[0]:
                 seed[int(i)] = cn
+    for z_, P_, _cl in body:                          # (the body's own skin where the arm hangs apart beside it)
+        xm = float(P_[:, 0].max()) - 0.004
+        for i in np.nonzero((np.abs(V[:, 2] - z_) < 0.006) & (np.abs(V[:, 0]) < xm))[0]:
+            if len(_cl) > 1:
+                seed[int(i)] = 'trunk'
+    arm_low = min(float(V[i, 2]) for i, c_ in seed.items() if c_.startswith('arm')) - 0.03
+    for z_, xhi, ncl, _xm in leg_sl:                  # (the leg's own skin where the hand hangs APART beside it, and
+        if ncl > 1 or z_ < arm_low:                   #  below the hands: sure to be the leg's)
+            for i in np.nonzero((np.abs(V[:, 2] - z_) < 0.006) & (np.abs(V[:, 0]) <= xhi + 1e-6))[0]:
+                seed[int(i)] = 'legL' if V[i, 0] > 0 else 'legR'
+    VNu = VNs / np.maximum(np.linalg.norm(VNs, axis=1), 1e-12)[:, None]
     dist = {i: 0.0 for i in seed}
     own = dict(seed)
     hp = [(0.0, i) for i in seed]
@@ -287,11 +309,49 @@ def found_bones(V, N, L, marks):
         if da > dist.get(a_, 1e9):
             continue
         for b_ in nb[a_]:
-            db = da + float(np.linalg.norm(V[a_] - V[b_]))
+            # (over a sharp fold - where a hand lies grown onto the thigh - is a long way round)
+            db = da + float(np.linalg.norm(V[a_] - V[b_])) * (25.0 if float(VNu[a_] @ VNu[b_]) < 0.35 else 1.0)
             if db < dist.get(b_, 1e9):
                 dist[b_] = db
                 own[b_] = own[a_]
                 heapq.heappush(hp, (db, b_))
+    # a hand grown onto the thigh: which skin there is the thigh's, which the hand's - by the thigh's own surface
+    # (how far out it lies round the thigh bone, read from the leg's sure skin above and below): on it, the thigh's;
+    # standing out from it, the hand's
+    moved = [0, 0]
+    for sd in 'LR':
+        a_, b_ = bones['Thigh.' + sd]
+        ax = (b_ - a_) / np.linalg.norm(b_ - a_)
+        e1 = np.cross(ax, [0.0, 1.0, 0.0])
+        e1 /= np.linalg.norm(e1)
+        e2 = np.cross(ax, e1)
+        rel = V - a_
+        tl = rel @ ax
+        rv = rel - np.outer(tl, ax)
+        rr = np.linalg.norm(rv, axis=1)
+        th = np.arctan2(rv @ e2, rv @ e1)
+        emb = np.stack([tl, 0.05 * np.cos(th), 0.05 * np.sin(th)], 1)
+        sure = [i for i, c_ in seed.items() if c_ == 'leg' + sd and -0.05 < tl[i] < 0.3]
+        if len(sure) < 20:
+            continue
+        kd = kdtree.KDTree(len(sure))
+        for j, i in enumerate(sure):
+            kd.insert(emb[i], j)
+        kd.balance()
+        sgn = 1.0 if sd == 'L' else -1.0
+        for vi in np.nonzero((V[:, 0] * sgn > 0) & (tl > -0.03) & (tl < 0.28) & (rr < 0.14))[0]:
+            vi = int(vi)
+            cn = own.get(vi, 'trunk')
+            if vi in seed or cn == 'trunk':
+                continue
+            ref = float(np.mean([rr[sure[j]] for _c, j, _d in kd.find_n(emb[vi], 6)]))
+            if cn == 'arm' + sd and rr[vi] <= ref + 0.005:
+                own[vi] = 'leg' + sd
+                moved[0] += 1
+            elif cn == 'leg' + sd and rr[vi] > ref + 0.008:
+                own[vi] = 'arm' + sd
+                moved[1] += 1
+    print('at the thigh: skin given back to the leg', moved[0], ', to the hand', moved[1])
     out = []
     counts = {}
     for vi, v in enumerate(V):
@@ -500,6 +560,43 @@ def add_digits(V, N, L, bones, lab):
     return recs
 
 
+def auto_marks(V):
+    """The wrist, the ankle and the toes found on a whole body (no palm / sole parts to mark them): the arm's and the
+    leg's narrowest slice near their ends, the foot's front on the floor."""
+    R = V[V[:, 0] > 0]
+    zs = np.linspace(0.02, 0.98, 97)
+    mid_n = np.array([((np.abs(V[:, 0]) < 0.008) & (np.abs(V[:, 2] - z) < 0.006)).sum() for z in zs])
+    crotch = float(zs[np.nonzero((mid_n > 4) & (zs > 0.2))[0][0]])
+    arm, leg = [], []
+    for z in zs:
+        P = R[np.abs(R[:, 2] - z) < 0.006]
+        if len(P) < 6:
+            continue
+        cl = clusters(P[:, 0])
+        if z < crotch:
+            leg.append((z, P[cl[0][2]]))
+            if len(cl) > 1:
+                arm.append((z, np.concatenate([P[c[2]] for c in cl[1:]])))
+        elif len(cl) > 1:
+            arm.append((z, P[cl[-1][2]]))
+
+    def narrow(sl, z0, z1):
+        best = None
+        for z, P in sl:
+            if z0 <= z <= z1:
+                a = float(np.ptp(P[:, 0]) * np.ptp(P[:, 1]))
+                if best is None or a < best[0]:
+                    best = (a, P.mean(0))
+        return best[1]
+    az = [z for z, _p in arm]
+    tip, top = min(az), max(az)
+    wrist = narrow(arm, tip + (top - tip) * 0.2, tip + (top - tip) * 0.6)
+    ankle = narrow(leg, 0.15, 0.32)
+    low = R[(R[:, 2] < 0.04) & (R[:, 0] < wrist[0] + 0.05)]
+    toe = low[low[:, 1] <= np.quantile(low[:, 1], 0.5)].mean(0)
+    return {'wrist': wrist, 'ankle': ankle, 'toe': toe}
+
+
 def main(kind, path, extra=None):
     V, N, L = read(path)
     V, shift, H = normalise(V)
@@ -514,6 +611,11 @@ def main(kind, path, extra=None):
                  'toe': sole[sole[:, 2] <= np.quantile(sole[:, 2], 0.25)].mean(0)}
         bones, lab = found_bones(V, N, L, marks)
         meta_extra = {'marks': {k: [round(float(x), 5) for x in v] for k, v in marks.items()}}
+    elif kind == 'creature':                          # (body06.fbx: one mesh, no parts - its joints found on it)
+        marks = auto_marks(V)
+        print('marks', {k: np.round(v, 3) for k, v in marks.items()})
+        bones, lab = found_bones(V, N, L, marks)
+        meta_extra = {'marks': {k: [round(float(x), 5) for x in v] for k, v in marks.items()}}
     else:
         bones, lab = kit_bones(kind, V)
         meta_extra = {}
@@ -521,6 +623,95 @@ def main(kind, path, extra=None):
     for base in ORDER:
         for sd in (('L', 'R') if base in SIDED else ('',)):
             names.append(base + ('.' + sd if sd else ''))
+    # a hand sculpted touching the thigh is grown onto it: the faces between them cut, or the skin there would stretch
+    low = {'Thigh', 'Shin', 'Foot', 'Pelvis', 'Waist'}
+    def klass(x):
+        return 1 if x.split('.')[0] in ('Forearm', 'Hand') else 2 if x.split('.')[0] in low else 0
+
+    def near_bone(v, names_):
+        best, bd = names_[0], 1e9
+        for n in names_:
+            a_, b_ = bones[n]
+            ab = b_ - a_
+            q = a_ + ab * min(max(float((v - a_) @ ab) / float(ab @ ab), 0.0), 1.0)
+            d_ = float(np.linalg.norm(v - q))
+            if d_ < bd:
+                best, bd = n, d_
+        return best
+    nbv = [set() for _ in V]
+    k = 0
+    for n_ in N:
+        n_ = int(n_)
+        f = [int(x) for x in L[k:k + n_]]
+        for a_, b_ in zip(f, f[1:] + f[:1]):
+            nbv[a_].add(b_)
+            nbv[b_].add(a_)
+        k += n_
+    flipped = 0
+    for _it in range(4):                              # (a stray point of the hand's in the thigh's skin, or the other
+        for i in range(len(V)):                       #  way round, would pull a strand: it takes its neighbours' side)
+            c = klass(lab[i])
+            if c == 0 or not nbv[i]:
+                continue
+            other = sum(1 for j in nbv[i] if klass(lab[j]) == 3 - c)
+            if other * 2 > len(nbv[i]):
+                sd = 'L' if V[i, 0] > 0 else 'R'
+                lab[i] = near_bone(V[i], [f'Thigh.{sd}', f'Shin.{sd}'] if c == 1 else [f'Hand.{sd}', f'Forearm.{sd}'])
+                flipped += 1
+    print('stray points put on their neighbours\' side', flipped)
+    cls = np.array([klass(x) for x in lab])
+    keepN, keepL, k, cut = [], [], 0, 0
+    for n_ in N:
+        n_ = int(n_)
+        f = L[k:k + n_]
+        k += n_
+        c = cls[f]
+        if (c == 1).any() and (c == 2).any():
+            cut += 1
+            continue
+        keepN.append(n_)
+        keepL.extend(int(x) for x in f)
+    print('faces cut between the hands and the legs', cut)
+    N, L = np.array(keepN, np.uint8), np.array(keepL, np.int32)
+    if cut:                                           # (the cut's open rims closed: the thigh whole, the finger capped)
+        bm = bmesh.new()
+        vs = [bm.verts.new(v) for v in V]
+        k = 0
+        for n_ in N:
+            n_ = int(n_)
+            try:
+                bm.faces.new([vs[int(i)] for i in L[k:k + n_]])
+            except ValueError:
+                pass
+            k += n_
+        seen, small = set(), []                       # (crumbs left loose by the cut: gone)
+        for v0 in bm.verts:
+            if v0 in seen:
+                continue
+            comp, st = [v0], [v0]
+            seen.add(v0)
+            while st:
+                a_ = st.pop()
+                for e in a_.link_edges:
+                    b_ = e.other_vert(a_)
+                    if b_ not in seen:
+                        seen.add(b_)
+                        comp.append(b_)
+                        st.append(b_)
+            if 1 < len(comp) < 80:
+                small += comp
+        if small:
+            bmesh.ops.delete(bm, geom=list({f for v in small for f in v.link_faces}), context='FACES_ONLY')
+            print('crumbs removed: points', len(small))
+        before = len(bm.faces)
+        bmesh.ops.holes_fill(bm, edges=[e for e in bm.edges if e.is_boundary], sides=0)
+        bmesh.ops.triangulate(bm, faces=[f for f in bm.faces if len(f.verts) > 4])
+        bm.normal_update()
+        bm.verts.index_update()
+        N = np.array([len(f.verts) for f in bm.faces], np.uint8)
+        L = np.array([v.index for f in bm.faces for v in f.verts], np.int32)
+        print('rims closed: faces', before, '->', len(bm.faces))
+        bm.free()
     digit_recs = add_digits(V, N, L, bones, lab)
     rec = []
     for n in names:

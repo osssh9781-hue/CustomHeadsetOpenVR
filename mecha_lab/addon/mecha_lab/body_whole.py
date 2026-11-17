@@ -37,6 +37,7 @@ HEAD_BASE = 0.868                        # where the head sits on the neck (the 
 LEGS, ARMS = {'Thigh', 'Shin'}, {'UpperArm', 'Forearm'}
 GIRTH = {'Waist', 'Chest', 'Pelvis', 'Thigh', 'Shin', 'UpperArm', 'Forearm'}
 REGION = {'UpperArm': 'arm_size', 'Thigh': 'leg_size', 'Head': 'head', 'Hand': 'hands', 'Foot': 'feet'}
+SHOULDER_SHARE = 0.22                    # how much of an upper arm's lift its collarbone takes
 JOINT_KEYS = ('scale', 'length', 'width', 'bend', 'twist', 'side')
 _BUSY = [False]
 _CACHE = {}
@@ -176,7 +177,7 @@ def make(context, height=1.8, location=None, kind='human'):
     E = E.reshape(-1, 2)
     fine = np.array([n in dg_ or n.startswith('Hand') for n in names])[B]
     Wf = smooth_weights(W, E, passes=2)               # (the fingers are small: their skin less blurred)
-    W = smooth_weights(W, E, passes=10)
+    W = smooth_weights(W, E, passes=18)
     W[fine] = Wf[fine]
     for j, n in enumerate(names):
         vg = body.vertex_groups.new(name=n)
@@ -247,6 +248,13 @@ def refresh(context, rig):
                 v['side'] -= kp.fingers_spread * u
         elif slot == 'Toe':
             v['bend'] += kp.toes_curl
+        elif slot == 'Shoulder':                      # (an arm lifted takes its collarbone along: a third of the way)
+            up = val('UpperArm' + pb.name[8:])
+            v['side'] += up['side'] * SHOULDER_SHARE
+            v['bend'] += up['bend'] * SHOULDER_SHARE * 0.6
+        elif slot == 'UpperArm':
+            v['side'] *= 1.0 - SHOULDER_SHARE
+            v['bend'] *= 1.0 - SHOULDER_SHARE * 0.6
         own = v['scale'] * (getattr(kp, REGION[slot]) if slot in REGION else 1.0)
         size[pb.name] = own * (size[pb.parent.name] if pb.parent else 1.0)
         ln = v['length'] * (kp.legs if slot in LEGS else kp.arms if slot in ARMS else kp.torso if slot in ('Waist', 'Chest') else 1.0)
