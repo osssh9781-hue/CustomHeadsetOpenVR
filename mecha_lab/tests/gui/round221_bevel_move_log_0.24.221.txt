@@ -1,0 +1,11 @@
+A1 the tool starts on MOVE | Move Points / Cut cells in its window: True True
+A2 REAL drag along the top front edge (Move Points): 208 points moved, faces 9600 -> 9600 | the edge moved 0.1414 (a 0.2 chamfer: 0.1414 )
+shot 01_move_points.png True
+A3 Ctrl + Z (REAL keys): the mesh is as before 0.0
+A4 REAL click on the Cut cell, then a REAL click on the top right edge: method CUT | faces 9600 -> 9309
+shot 02_cut.png True
+PASS A1 the tool starts on Move Points; Move Points / Cut are cells of its window
+PASS A2 a REAL drag along an edge: the points there are moved onto the chamfer, the mesh keeps its faces
+PASS A3 Ctrl + Z takes it back
+PASS A4 Cut (a REAL click on its cell): the boolean bevel as before
+4/4 passed

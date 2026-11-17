@@ -59,6 +59,10 @@ cube(); sweep('a cube selected')
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 before = json.load(open(os.path.join(HERE, 'data', 'side_panel_cells_0.24.214.json')))
+# (0.24.221 one thing was added on purpose since: the bevel tool's Method - Move Points / Cut - left out of the compare)
+ADDED = {'MCH_PG_BoolBevel.method'}
+for k_ in states:
+    states[k_]['cells'] = [c for c in states[k_]['cells'] if c[5] not in ADDED]
 order = [k for k in before if before[k]['cells'] != states[k]['cells']]
 n_cells = sum(len(v['cells']) for v in before.values())
 check(f'every cell of every tool\'s window is as in 0.24.214 - kind, name, on / off, enabled, what a click does, its '

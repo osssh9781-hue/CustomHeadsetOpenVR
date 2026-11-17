@@ -366,6 +366,13 @@ class MCH_OT_quick_hud_press(bpy.types.Operator):
                 self.x0, self.y0 = event.mouse_region_x, event.mouse_region_y
                 self.moved, self.ctrl = False, event.ctrl
                 self.init = ui_values.get(item.data, item.prop)
+                # 0.24.221 the fine drag (0.24.212) is for the top bar's small number cells ONLY - it had reached the
+                # side panel's long bars too (theirs follows the mouse: the bar's range over its width)
+                try:
+                    from . import top_bar
+                    self.gentle = top_bar.holds(context, item)
+                except (ImportError, AttributeError, TypeError, ReferenceError):
+                    self.gentle = False
                 self.acc, self.last_x = 0.0, event.mouse_x        # 0.24.59 summed moves (the cursor wraps)
                 context.window_manager.modal_handler_add(self)
                 return {'RUNNING_MODAL'}
@@ -532,7 +539,7 @@ class MCH_OT_quick_hud_press(bpy.types.Operator):
                 if self.moved and ui_values.kind(it.data, it.prop) in {'INT', 'FLOAT'}:
                     # 0.24.59 the bar's range over its own width: the fill follows the mouse
                     v = ui_values.drag(it.data, it.prop, self.init, self.acc, fine=event.shift, width=it.w,
-                                       gentle=it.kind == 'mini')
+                                       gentle=bool(getattr(self, 'gentle', False)))
                     if v != ui_values.get(it.data, it.prop):
                         ui_values.set(it.data, it.prop, v)
                     if context.area:

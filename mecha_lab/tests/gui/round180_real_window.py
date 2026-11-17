@@ -464,6 +464,7 @@ def flow():
         for o in C.selected_objects:
             o.select_set(False)
         view((math.radians(62), 0.0, math.radians(-28)), (0.0, 0.0, 0.0), 6.5)
+    bpy.context.scene.mch_bool_bevel.method = 'CUT'     # (0.24.221 the tool starts on Move Points: this checks the Cut)
     S.mch_bool_bevel.profile, S.mch_bool_bevel.width, S.mch_bool_bevel.edge_loop = 'CHAMFER', 0.2, False
     set_tool('BBEVEL')
     yield 2.0

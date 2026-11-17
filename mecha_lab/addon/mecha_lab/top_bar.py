@@ -922,6 +922,17 @@ def items(context, region_w, region_h, k=1.0, left=None, right=None):
     return out
 
 
+def holds(context, item):
+    """Is ``item`` (a drawn cell) one of the top bar's?  (Looked up by its setting and place in the bar as it is now.)"""
+    region = getattr(context, 'region', None)
+    if region is None or not on(context):
+        return False
+    from .ui_gpu import ui_factor
+    its = items(context, region.width, region.height, ui_factor(context, region))
+    return any(i.kind == item.kind and i.prop == item.prop and abs(i.x - item.x) < 1.0 and abs(i.y - item.y) < 1.0
+               for i in its)
+
+
 def on(context):
     from .workspace_ui import pref
     from . import bottom_bar

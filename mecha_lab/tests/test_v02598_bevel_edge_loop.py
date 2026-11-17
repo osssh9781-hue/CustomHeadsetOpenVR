@@ -15,6 +15,7 @@ from mecha_lab import bool_bevel as bb, edge_runs, geo_sculpt as gs  # noqa: E40
 
 fresh()
 mecha_lab.register()
+bpy.context.scene.mch_bool_bevel.method = 'CUT'   # (0.24.221 the tool starts on Move Points: this is the Cut's test)
 C = bpy.context
 S = C.scene
 

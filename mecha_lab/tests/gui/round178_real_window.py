@@ -376,6 +376,7 @@ def flow():
     res['3 Alt + a REAL click on the first edge: off'] = w1c < 1e-4
     shot('3_alt_off.png')
     # 4 Boolean Bevel: a real drag along part of the block's top front edge
+    bpy.context.scene.mch_bool_bevel.method = 'CUT'     # (0.24.221 the tool starts on Move Points: this checks the Cut)
     S.mch_bool_bevel.profile, S.mch_bool_bevel.width = 'CHAMFER', 0.15
     set_tool('BBEVEL')
     yield 2.0

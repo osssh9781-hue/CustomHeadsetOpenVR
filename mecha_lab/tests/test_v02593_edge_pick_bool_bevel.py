@@ -22,6 +22,7 @@ fresh()
 mecha_lab.register()
 C = bpy.context
 S = C.scene
+S.mch_bool_bevel.method = 'CUT'          # (0.24.221 the tool now starts on Move Points: this is the Cut's test)
 
 
 def closed_ok(ob):

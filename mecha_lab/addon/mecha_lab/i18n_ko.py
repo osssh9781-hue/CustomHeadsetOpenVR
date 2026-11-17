@@ -4940,6 +4940,7 @@ KO = {
     'Move Ghost Here': '고스트 여기로 이동',
     'Move Line End': '라인 끝 이동',
     'Move MASTER; opposite instance follows.': '마스터를 이동하면 반대편 인스턴스가 따라옵니다.',
+    'Move Points': '점 옮기기',
     'Move Section': '섹션 이동',
     'Move Station': '스테이션 이동',
     'Move Topological': '토폴로지 이동',

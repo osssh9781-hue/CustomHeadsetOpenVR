@@ -31,7 +31,15 @@ def _redraw(self, context):
             a.tag_redraw()
 
 
+METHODS = (('MOVE', 'Move Points', 'The part\'s own points near the edge are moved onto the bevel - no cut, the mesh keeps '
+            'its faces (fast on a dense / sculpted mesh; a mesh with few points has nothing to move)'),
+           ('CUT', 'Cut', 'The bevel is cut off with a boolean: a clean face on any mesh (slower on a very heavy one)'))
+
+
 class MCH_PG_BoolBevel(bpy.types.PropertyGroup):
+    # 0.24.221 (user, after reading how ZBrush's BevelFlat / BevelArc brushes work: "점만 옮기기로 하자, 그리고 컷 버전도
+    # 옵션으로 만들어 줘"): how the bevel is made
+    method: EnumProperty(name='Method', items=METHODS, default='MOVE', update=_redraw)
     profile: EnumProperty(name='Profile', items=PROFILES, default='CHAMFER', update=_redraw)
     width: FloatProperty(name='Width', default=0.05, min=0.00005, soft_min=0.0002, soft_max=0.2, precision=4,
                          step=0.1, unit='LENGTH', update=_redraw,
@@ -346,6 +354,164 @@ def cutter_mesh(runs, rid, s0, s1, w, profile='CHAMFER', segments=8, name='MCH_B
 # the cut
 # -----------------------------------------------------------------------------
 
+# -----------------------------------------------------------------------------
+# 0.24.221 Move Points: the bevel made by moving the part's own points (ZBrush's BevelFlat / BevelArc way)
+# -----------------------------------------------------------------------------
+
+MOVE_NEAR = 0.3                  # x Width: how far off a face's plane a point may be and still count as on that face
+MOVE_RAMP = 1.0                  # x Width: where the drawn stretch stops inside an edge, the bevel fades out this long
+
+
+def move_points(me, runs, rid, s0, s1, w, profile='CHAMFER'):
+    """The bevel of run ``rid`` between arc lengths ``s0`` .. ``s1``, ``w`` wide, made by MOVING the points of ``me``
+    that lie on the two faces within ``w`` of the edge: a point ``d`` in from the edge on face A goes to where that
+    much of the bevel's own section is (the edge itself to the middle of the bevel, ``w`` in stays where it is) -
+    flat (Chamfer) or on the arc touching both faces (Round).  The faces, their count and order stay as they are.
+    Where the stretch stops inside the edge the bevel fades out over a Width.  Returns how many points moved."""
+    P = runs.polyline(rid)
+    closed = bool(runs.closed[rid])
+    seg = P[1:] - P[:-1]
+    L = np.linalg.norm(seg, axis=1)
+    acc = np.concatenate([[0.0], np.cumsum(L)])
+    total = float(acc[-1])
+    sides = _sides(runs, rid)
+    n = len(me.vertices)
+    co = np.empty(n * 3)
+    me.vertices.foreach_get('co', co)
+    co = co.reshape(-1, 3)
+    whole = closed and s1 - s0 >= total - 1e-9
+    spans = [(s0, s1)] if not closed or whole or s1 <= total else [(s0, total), (0.0, s1 - total)]
+    if whole:
+        spans = [(0.0, total)]
+    best_d = np.full(n, np.inf)
+    target = co.copy()
+    blend = np.zeros(n)
+    for k in range(len(L)):
+        if L[k] < 1e-12:
+            continue
+        a_lo, a_hi = float(acc[k]), float(acc[k + 1])
+        cover = [(max(a_lo, lo), min(a_hi, hi)) for lo, hi in spans if min(a_hi, hi) - max(a_lo, lo) > 1e-12]
+        if not cover:
+            continue
+        T = seg[k] / L[k]
+        nA, inA, nB, inB = sides[k]
+        dA = _unit(np.cross(nA, T))
+        if float(np.dot(inA, dA)) < 0:
+            dA = -dA
+        dB = _unit(np.cross(nB, T))
+        if float(np.dot(inB, dB)) < 0:
+            dB = -dB
+        g = float(np.dot(dA, dB))
+        det = 1.0 - g * g
+        if det < 1e-6:                                  # (the two faces in one plane: no edge to bevel)
+            continue
+        # the points near this piece of the edge
+        lo_b = np.minimum(P[k], P[k + 1]) - w * 1.5
+        hi_b = np.maximum(P[k], P[k + 1]) + w * 1.5
+        idx = np.nonzero(np.all((co >= lo_b) & (co <= hi_b), axis=1))[0]
+        if not len(idx):
+            continue
+        r = co[idx] - P[k]
+        t = r @ T
+        s = a_lo + np.clip(t, 0.0, L[k])
+        rr = r - np.clip(t, 0.0, L[k])[:, None] * T       # from the foot point on the edge
+        along = rr @ T                                    # (past the piece's end: not across it)
+        ra, rb = rr @ dA, rr @ dB
+        al = (ra - g * rb) / det                          # rr = al * dA + be * dB (+ what is off the section plane)
+        be = (rb - g * ra) / det
+        off = np.linalg.norm(rr - al[:, None] * dA - be[:, None] * dB - along[:, None] * T, axis=1)
+        # what the bevel takes away: in the corner between the two faces, beyond the bevel's own surface - the
+        # points on the faces within the Width, and the ones of an end face that stand in that corner
+        ca, cb = np.maximum(al, 0.0), np.maximum(be, 0.0)
+        if profile == 'ROUND':
+            alpha_ = math.acos(max(-1.0, min(1.0, g)))
+            cdist = w / max(math.cos(alpha_ / 2), 1e-3)          # the arc's centre: this far along the bisector
+            rad_ = w * math.tan(alpha_ / 2)
+            q = ca[:, None] * dA + cb[:, None] * dB - _unit(dA + dB) * cdist
+            beyond = np.linalg.norm(q, axis=1) >= rad_ * (1.0 - 1e-6)
+        else:
+            beyond = ca + cb <= w * (1.0 + 1e-6)
+        ok = (np.abs(along) < 1e-6 + w * 0.02) & (al <= w * 1.0001) & (be <= w * 1.0001) & (al >= -MOVE_NEAR * w) \
+            & (be >= -MOVE_NEAR * w) & beyond & (off <= MOVE_NEAR * w)
+        in_span = np.zeros(len(idx), bool)
+        fade = np.zeros(len(idx))
+        for lo, hi in spans:
+            m = (s >= lo - 1e-9) & (s <= hi + 1e-9)
+            f = np.ones(len(idx))
+            if not whole:
+                ramp = max(w * MOVE_RAMP, 1e-9)
+                if not (lo <= 1e-9 and not closed):       # (the stretch starts inside the edge: fade in)
+                    f = np.minimum(f, np.clip((s - lo) / ramp, 0.0, 1.0))
+                if not (hi >= total - 1e-9 and not closed):
+                    f = np.minimum(f, np.clip((hi - s) / ramp, 0.0, 1.0))
+            f = f * f * (3.0 - 2.0 * f)
+            fade = np.where(m, np.maximum(fade, f), fade)
+            in_span |= m
+        ok &= in_span
+        if not np.any(ok):
+            continue
+        d = np.maximum(np.abs(al), np.abs(be))            # the nearest piece of the edge wins a point
+        u = np.clip((np.maximum(al, 0.0) - np.maximum(be, 0.0)) / w, -1.0, 1.0)     # +1: w in on A, -1: w in on B
+        foot = P[k] + np.clip(t, 0.0, L[k])[:, None] * T
+        if profile == 'ROUND':
+            alpha = math.acos(max(-1.0, min(1.0, g)))
+            bis = _unit(dA + dB)
+            Cc = bis * (w / max(math.cos(alpha / 2), 1e-3))
+            rad = w * math.tan(alpha / 2)
+            ua = _unit(dA * w - Cc)
+            vb = dB * w - Cc
+            vb = _unit(vb - ua * float(np.dot(vb, ua)))
+            phi = math.acos(max(-1.0, min(1.0, float(np.dot(_unit(dA * w - Cc), _unit(dB * w - Cc))))))
+            qq = ca[:, None] * dA + cb[:, None] * dB - Cc            # straight out from the arc's centre onto it
+            ln = np.maximum(np.linalg.norm(qq, axis=1), 1e-12)
+            tgt = foot + Cc + qq * (rad / ln)[:, None]
+        else:
+            tgt = foot + ((1.0 + u) * 0.5 * w)[:, None] * dA + ((1.0 - u) * 0.5 * w)[:, None] * dB
+        take = ok & (d < best_d[idx])
+        j = idx[take]
+        best_d[j] = d[take]
+        target[j] = tgt[take]
+        blend[j] = fade[take]
+    moved = np.nonzero(blend > 1e-6)[0]
+    if not len(moved):
+        return 0
+    new = co.copy()
+    new[moved] = co[moved] + (target[moved] - co[moved]) * blend[moved][:, None]
+    me.vertices.foreach_set('co', new.ravel())
+    me.update()
+    return int(np.count_nonzero(np.linalg.norm(new - co, axis=1) > 1e-9))
+
+
+def perform_move(context, ob, pts_local, whole=False, reach=None, loop=False, view=None):
+    """Bevel ``ob`` along the edge drawn over by moving its points (Method: Move Points).  Returns a message."""
+    st = context.scene.mch_bool_bevel
+    w = st.width / _mean_scale(ob)
+    me = ob.data
+    if me.users > 1:
+        raise BevelError('Move Points changes the mesh itself and this mesh is shared with another object - use Cut')
+    runs = edge_runs.get_mesh(me)
+    r_ = reach if reach is not None else max(w * 1.5, 1e-6)
+    if loop:
+        hit = runs.nearest(pts_local[0], r_)
+        edges = loop_edges(runs, hit[1], pts_local[0], view)[0] if hit is not None else []
+        parts = runs.loop_parts(edges) if edges else []
+    else:
+        parts = portions(runs, pts_local, r_, whole)
+    if not parts:
+        raise BevelError('No edge there - drag along one of the shown edges of the part')
+    moved = 0
+    for rid, s0, s1 in parts:
+        moved += move_points(me, runs, rid, s0, s1, w, st.profile)
+    if not moved:
+        raise BevelError('Move Points found no points of the part within the Width of that edge - the mesh is too '
+                         'coarse there for it (use Method: Cut, or a bigger Width)')
+    edge_runs.clear()
+    length = sum(s1 - s0 for _r, s0, s1 in parts) * _mean_scale(ob)
+    return (f'Bevel by moving points ({st.profile.title()}, {st.width:.3g} wide) on "{ob.name}": {length:.3g} along '
+            f'{len(parts)} edge{"s" if len(parts) != 1 else ""}, {moved:,} points moved, the mesh keeps its '
+            f'{len(me.polygons):,} faces (Ctrl+Z takes it back)')
+
+
 def _solvers():
     return [i.identifier for i in bpy.types.BooleanModifier.bl_rna.properties['solver'].enum_items]
 
@@ -523,6 +689,11 @@ def base_mesh(ob):
 
 def runs_for(ob):
     """The runs to pick from: the base's (the edges as they were, bevelled ones too) while the set is live."""
+    try:                                            # 0.24.221 Move Points works on the mesh as it is now
+        if bpy.context.scene.mch_bool_bevel.method == 'MOVE':
+            return edge_runs.get_mesh(ob.data)
+    except AttributeError:
+        pass
     me = base_mesh(ob)
     return edge_runs.get_mesh(me)
 
@@ -570,6 +741,11 @@ def perform(context, ob, pts_local, whole=False, reach=None, remove=False, loop=
     cut taken off; 0.24.180 ``loop``: the whole edge loop through the edge clicked).  Returns a message."""
     import json
     st = context.scene.mch_bool_bevel
+    if getattr(st, 'method', 'CUT') == 'MOVE':             # 0.24.221 the part's points moved, nothing cut
+        if remove:
+            raise BevelError('Move Points has nothing to take off an edge - Ctrl+Z takes the last bevel back '
+                             '(Alt + click takes off a Cut bevel: Method Cut)')
+        return perform_move(context, ob, pts_local, whole, reach, loop, view)
     w = st.width / _mean_scale(ob)
     d = state(ob)
     if d is None:                                     # (the first cut, or the part changed since: a new base)
@@ -855,12 +1031,15 @@ class MCH_OT_bool_bevel_draw(bpy.types.Operator):
 
 def draw(layout, context):
     st = context.scene.mch_bool_bevel
+    row = layout.row(align=True)                     # 0.24.221 Move Points (as ZBrush's bevel brushes) / Cut
+    row.prop_enum(st, 'method', 'MOVE')
+    row.prop_enum(st, 'method', 'CUT')
     row = layout.row(align=True)
     row.prop_enum(st, 'profile', 'CHAMFER')
     row.prop_enum(st, 'profile', 'ROUND')
     col = layout.column(align=True)
     col.prop(st, 'width')
-    if st.profile == 'ROUND':
+    if st.profile == 'ROUND' and st.method == 'CUT':
         col.prop(st, 'segments')
     row = layout.row(align=True)
     row.scale_y = 1.2

@@ -320,6 +320,7 @@ def flow():
             o.select_set(False)
         other.hide_set(True)
     S.mch_cut.targets = 'AUTO'
+    bpy.context.scene.mch_bool_bevel.method = 'CUT'     # (0.24.221 the tool starts on Move Points: this checks the Cut)
     S.mch_bool_bevel.profile, S.mch_bool_bevel.width, S.mch_bool_bevel.segments = 'ROUND', 0.25, 8
     set_tool('BBEVEL')
     yield 2.0
