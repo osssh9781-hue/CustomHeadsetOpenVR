@@ -275,12 +275,28 @@ def edge_groups(context, tool):
             cells = [_cell('seg', label, p.profile == pid, ('op', 'mch.set_profile', {'profile': pid}))
                      for pid, label in (('FLAT', 'Flat'), ('CHAMFER', 'Chamfer'), ('BEVEL', 'Bevel'))]
             if p.profile in {'BEVEL', 'CHAMFER'}:
-                cells.append(_cell('drop', '', action=('menu_enum',), data=p, prop='bevel_sides', width=104))
+                # 0.24.212 (user: "위랑 아래 어디 할지 선택하는 게 마우스 대면 사라졌다가 꾹 누르고 있어야 나타나는 것도
+                # 불편하니까 그냥 잘 나오게 해 주고 위아래 베벨 조절도 섬세하게"): the sides as buttons that are always
+                # there (it was a closed list: a pop-up that went when the mouse moved), and with Both the top and
+                # the bottom each their own Width / Segments beside it
+                out.append(('Edge', cells))
+                cells = _enum_segs(p, 'bevel_sides', (('TOP', 'Top'), ('BOTTOM', 'Bottom'), ('BOTH', 'Both'),
+                                                      ('NONE', 'Off')))
                 if p.bevel_sides != 'NONE':
-                    cells.append(_mini('Width', p, 'bevel_width', 130))
+                    both = p.bevel_sides == 'BOTH'
+                    split = both and not p.bevel_link
+                    if both:
+                        cells.append(_seg('Same', p, 'bevel_link'))
+                    cells.append(_mini('Top W' if split else 'Width', p, 'bevel_width', 140))
                     if p.profile == 'BEVEL':
-                        cells.append(_mini('Segments', p, 'bevel_segments', 140))
-            out.append(('Edge', cells))
+                        cells.append(_mini('Top Segs' if split else 'Segments', p, 'bevel_segments', 140))
+                    if split:
+                        cells.append(_mini('Bottom W', p, 'bevel_width_bottom', 150))
+                        if p.profile == 'BEVEL':
+                            cells.append(_mini('Bottom Segs', p, 'bevel_segments_bottom', 150))
+                out.append(('Sides', cells))
+            else:
+                out.append(('Edge', cells))
     return out
 
 

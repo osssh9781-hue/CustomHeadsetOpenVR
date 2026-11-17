@@ -1,0 +1,23 @@
+shot 01_korean_cloth_drape.png True
+A1 korean on KO side panel cells 22 drawn in Korean 21 | e.g. [('CLOTH DRAPE', '클로스 드레이프'), ('Tool', '도구'), ('Mech', '메크'), ('Creature', '크리쳐'), ('Decals', '데칼'), ('Render', '렌더')]
+A2 REAL click on the Paint Mask cell (Korean on screen): mask session on True
+shot 02_korean_mask_session.png True
+shot 03_korean_cut_tool.png True
+B1 Base Mesh top bar: REAL click on Both -> BOTH | bottom width cell there True ['SHAPE', 'Lasso', 'Curve Lasso', 'Rectangle', 'Circle', 'Ellipse', 'Free Draw', 'Custom', 'CORNERS', 'Sharp', 'Round', 'Chamfer', 'RESOLUTION', 'Res', 'Apply to Parts', 'DRAW', 'Line', 'Sketch', 'Slow Line', 'TARGET', 'Auto', 'Selected', 'Active', 'EDGE', 'Flat', 'Chamfer', 'Bevel', 'SIDES', 'Top', 'Bottom', 'Both', 'Off', 'Same', 'Top W', 'Top Segs', 'Bottom W', 'Bottom Segs', 'Ortho']
+shot 05_korean_base_mesh_bar.png True
+B2 the Bottom width dragged 40 px (REAL): 0.0500 -> 0.0854 (it was the whole 0..2 range over the cell: +0.6)
+shot 06a_right_after_click.png True
+shot 06_list_stays_open.png True
+B3 a closed list: REAL click opens it, the mouse moves, a second REAL click picks: BOTH -> B
+shot 04_english_cut_tool.png True
+A3 Preferences > Korean off: English again EN Thickness
+A4 ... and on again KO 두께
+not in the table (drawn in English): 27
+PASS A1 Korean on: the side panel's cells are drawn from the Korean table
+PASS A2 a REAL click on a cell drawn in Korean lands (Paint Mask starts)
+PASS A3 Korean off: English at once
+PASS A4 on again: Korean
+PASS B1 Base Mesh: the bevel sides are buttons - REAL click on Both, the bottom has its own width cell
+PASS B2 the width cell drags finely (REAL drag)
+PASS B3 a closed list opened by a REAL click stays open until a choice is clicked
+7/7 passed

@@ -591,14 +591,14 @@ def run(context, item):
             _undo(item.label, item.data)
         elif kind == 'menu_enum':
             EDIT[:] = [item.ref, item.prop]
-            bpy.ops.wm.call_menu(name='MCH_MT_ui_choice')
+            open_menu('MCH_MT_ui_choice')
         elif kind == 'op':
             mod, name = a[1].split('.')
             # 0.24.65 like a click on a Blender button: an operator that changes the model gets its undo step
             # (from here, inside the click handler, Blender had dropped it - Ctrl+Z then jumped further back)
             getattr(getattr(bpy.ops, mod), name)('INVOKE_DEFAULT', True, **a[2])
         elif kind == 'menu':
-            bpy.ops.wm.call_menu(name=a[1])
+            open_menu(a[1])
         elif kind == 'fold':
             side_panel.toggle_fold(a[1], a[2])
         elif kind == 'minimise':
@@ -824,7 +824,65 @@ class MCH_OT_ui_scroll(bpy.types.Operator):
             return {'PASS_THROUGH'}
 
 
-CLASSES = (MCH_OT_ui_hover, MCH_OT_ui_scroll, MCH_PT_ui_value, MCH_MT_ui_choice, MCH_OT_side_page, MCH_OT_menu_fold)
+def open_menu(name):
+    """0.24.212 a list opened from a drawn cell.  The cell is pressed with the button still DOWN: a Blender menu
+    opened then is its hold-and-drag kind - it went when the mouse moved off it and only stayed while the button
+    was held (user: "마우스 대면 갑자기 사라졌다가 꾹 누르고 있어야 나타나는").  So the menu opens when the button comes
+    UP: a plain click, the list stays until a choice is clicked."""
+    if bpy.app.background:
+        bpy.ops.wm.call_menu(name=name)
+        return
+    try:
+        bpy.ops.mch.ui_menu_release('INVOKE_DEFAULT', name=name)
+    except RuntimeError:
+        bpy.ops.wm.call_menu(name=name)
+
+
+def _menu_later(context, name, delay=0.06):
+    """The menu a moment later, from a timer: outside the click's own event handling (opened inside it, Blender
+    closed the menu again with that same click)."""
+    win, area, region = context.window, context.area, context.region
+
+    def go():
+        try:
+            with bpy.context.temp_override(window=win, area=area, region=region):
+                bpy.ops.wm.call_menu('INVOKE_DEFAULT', name=name)
+        except (RuntimeError, TypeError, ReferenceError, AttributeError) as ex:
+            print('Mecha Lab list:', ex)
+        return None
+    bpy.app.timers.register(go, first_interval=delay)
+
+
+class MCH_OT_ui_menu_release(bpy.types.Operator):
+    """Opens a list of the drawn UI once the mouse button is released"""
+    bl_idname = 'mch.ui_menu_release'
+    bl_label = 'Mecha List'
+    bl_options = {'INTERNAL'}
+
+    name: bpy.props.StringProperty()
+
+    def invoke(self, context, event):
+        if event.type != 'LEFTMOUSE' or event.value == 'RELEASE':    # (no button down: at once)
+            _menu_later(context, self.name)
+            return {'FINISHED'}
+        self._timer = context.window_manager.event_timer_add(0.05, window=context.window)
+        self._t0 = __import__('time').perf_counter()
+        context.window_manager.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
+
+    def modal(self, context, event):
+        up = event.type == 'LEFTMOUSE' and event.value == 'RELEASE'
+        late = __import__('time').perf_counter() - self._t0 > 1.5     # (the release was missed: open anyway)
+        if up or late or event.type in {'ESC', 'RIGHTMOUSE'}:
+            context.window_manager.event_timer_remove(self._timer)
+            if event.type not in {'ESC', 'RIGHTMOUSE'}:
+                _menu_later(context, self.name)
+            return {'FINISHED'}
+        return {'RUNNING_MODAL'}
+
+
+CLASSES = (MCH_OT_ui_hover, MCH_OT_ui_scroll, MCH_PT_ui_value, MCH_MT_ui_choice, MCH_OT_side_page, MCH_OT_menu_fold,
+           MCH_OT_ui_menu_release)
 _keymaps = []
 
 

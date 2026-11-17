@@ -127,7 +127,7 @@ S.mch_base.profile = 'BEVEL'
 it = bar('BASE')
 check('Base Mesh: EDGE Flat / Chamfer / Bevel + sides, width, segments', 'Edge' in groups('BASE')
       and {'bevel_width', 'bevel_segments'} <= {i.prop for i in it if i.kind == 'mini'}
-      and any(i.kind == 'drop' and i.prop == 'bevel_sides' for i in it))
+      and {'Top', 'Bottom', 'Both', 'Off'} <= {i.label for i in it if i.kind == 'seg' and i.prop == 'bevel_sides'})   # 0.24.212 buttons, no closed list
 flat = next(i for i in it if i.kind == 'seg' and i.label == 'Flat' and i.action and i.action[0] == 'op')
 ub.run(CTX, flat)
 check('... Flat from the bar: the base mesh profile flat', S.mch_base.profile == 'FLAT')

@@ -193,7 +193,7 @@ def value_text(data, prop):
     return f'{name}  {v:.{prec}f}' if prec < 3 else f'{name}  {v:.3f}'      # 0.24.60 '5.0' (thousands)
 
 
-def drag_value(data, prop, start, dx, fine=False, px=None):
+def drag_value(data, prop, start, dx, fine=False, px=None, gentle=False):
     """New value after dragging ``dx`` px from ``start`` (whole soft range ≈ 300 px; ints 1 per 8 px).
     0.24.59 ``px`` = the bar's width: the bar's whole range over its own width, so the fill follows the mouse
     (ints: at least 4 px a step)."""
@@ -213,6 +213,10 @@ def drag_value(data, prop, start, dx, fine=False, px=None):
         if not (0.0 < span < 1e6):
             span = max(abs(start) * 2.0, 0.1)
         span = max(span, abs(start))           # a value past the bar's range (a big scene) moves as fast as it is big
+        if gentle:                             # 0.24.212 a small number cell (the top bar): its whole range over
+            # 130 px made a 0.05 bevel jump 0.015 a pixel - now about four times the value it has over the cell
+            # (never less than a twentieth of the range, so 0 still moves); Shift: ten times finer still
+            span = min(span, max(abs(start) * 4.0, span * 0.05))
         return max(rna.hard_min, min(rna.hard_max, start + dx * k * span / px))
     if rna.type == 'INT':
         lo, hi = rna.hard_min, rna.hard_max
@@ -527,7 +531,8 @@ class MCH_OT_quick_hud_press(bpy.types.Operator):
                     self.last_x = tx
                 if self.moved and ui_values.kind(it.data, it.prop) in {'INT', 'FLOAT'}:
                     # 0.24.59 the bar's range over its own width: the fill follows the mouse
-                    v = ui_values.drag(it.data, it.prop, self.init, self.acc, fine=event.shift, width=it.w)
+                    v = ui_values.drag(it.data, it.prop, self.init, self.acc, fine=event.shift, width=it.w,
+                                       gentle=it.kind == 'mini')
                     if v != ui_values.get(it.data, it.prop):
                         ui_values.set(it.data, it.prop, v)
                     if context.area:

@@ -103,13 +103,13 @@ def fraction(data, prop):
     return max(0.0, min(1.0, (v - lo) / (hi - lo))) if hi > lo else 0.0
 
 
-def drag(data, prop, start, dx, fine=False, width=None):
+def drag(data, prop, start, dx, fine=False, width=None, gentle=False):
     """The value after dragging ``dx`` px from ``start`` (the soft range over about 300 px, ints 1 per 8 px).
     0.24.59 ``width`` = the bar's width: its whole range over the bar, so the fill follows the mouse."""
     if data is None:
         return start
     if not is_id(prop):
-        return quick_hud.drag_value(data, prop, start, dx, fine, px=width)
+        return quick_hud.drag_value(data, prop, start, dx, fine, px=width, gentle=gentle)
     ui = _ui(data, _key(prop))
     lo, hi = ui.get('soft_min', ui.get('min', 0.0)), ui.get('soft_max', ui.get('max', 1.0))
     hard_lo, hard_hi = ui.get('min', -1e30), ui.get('max', 1e30)
@@ -121,6 +121,8 @@ def drag(data, prop, start, dx, fine=False, width=None):
     span = (hi - lo) if hi > lo else 1.0
     if width:
         span = max(span, abs(start))        # past the bar's range: as fast as the value is big
+        if gentle:                          # (0.24.212 a small number cell: see quick_hud.drag_value)
+            span = min(span, max(abs(start) * 4.0, span * 0.05))
     return float(max(hard_lo, min(hard_hi, start + dx * k * span / px)))
 
 

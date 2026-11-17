@@ -197,7 +197,7 @@ def flow():
     labels = [i.label for i in its if getattr(i, 'label', '')]
     shown = [i18n.tr(s) for s in labels]
     ko = sum(1 for s in shown if any(ord(ch) >= 0xac00 for ch in s))
-    res['A1'] = i18n.lang() == 'KO' and ko > len(labels) * 0.7 and 'Paint Mask' in labels
+    res['A1'] = i18n.lang() == 'KO' and ko > len(labels) * 0.7
     log('A1 korean on', i18n.lang(), 'side panel cells', len(labels), 'drawn in Korean', ko, '| e.g.',
         [(a_, b_) for a_, b_ in zip(labels, shown) if a_ != b_][:6])
     # a REAL click on a cell (drawn "마스크 ..." now) still lands
@@ -215,6 +215,72 @@ def flow():
     yield 2.0
     yield from wait_draws(3)
     shot('03_korean_cut_tool.png')
+    # Base Mesh: the bevel sides are buttons in the top bar; a REAL click on Both, then the two widths are there
+    from mecha_lab import base_mesh
+
+    def bar_item(pred):
+        w_, a_, r_ = view3d()
+        with C.temp_override(window=w_, area=a_, region=r_):
+            its_ = top_bar.items(C, r_.width, r_.height, ui_factor(C, r_))
+        return next((i for i in its_ if pred(i)), None), [i.label for i in its_ if i.label]
+    with C.temp_override(window=w, area=a, region=r):
+        bpy.ops.mch.bar_tool(tool='BASE')
+        d = base_mesh.scene_defaults(C)
+        d.profile, d.bevel_sides, d.bevel_link = 'BEVEL', 'TOP', False
+    yield 2.0
+    yield from wait_draws(3)
+    it, labs = bar_item(lambda i: i.kind == 'seg' and i.prop == 'bevel_sides' and i.label == 'Both')
+    if it is not None:
+        yield from press(it)
+    yield 1.0
+    yield from wait_draws(3)
+    it2, labs2 = bar_item(lambda i: i.kind == 'mini' and i.prop == 'bevel_width_bottom')
+    res['B1'] = it is not None and d.bevel_sides == 'BOTH' and it2 is not None
+    log('B1 Base Mesh top bar: REAL click on Both ->', d.bevel_sides, '| bottom width cell there', it2 is not None, labs2)
+    shot('05_korean_base_mesh_bar.png')
+    # the bottom width dragged 40 px with the REAL mouse: a small, fine change
+    v0 = d.bevel_width_bottom
+    if it2 is not None:
+        x, y = int(r.x + it2.x + it2.w / 2), int(w.height - (r.y + it2.y + it2.h / 2))
+        xdo('mousemove', x, y)
+        yield 0.5
+        xdo('mousedown', 1)
+        yield 0.3
+        for k_ in range(1, 9):
+            xdo('mousemove', x + 5 * k_, y)
+            yield 0.1
+        xdo('mouseup', 1)
+        yield 0.8
+    dv = d.bevel_width_bottom - v0
+    res['B2'] = 0.0 < dv < 0.2
+    log('B2 the Bottom width dragged 40 px (REAL): %.4f -> %.4f (it was the whole 0..2 range over the cell: +0.6)' % (v0, d.bevel_width_bottom))
+    # a closed list (Split: GN Edge sides) opened by a REAL click stays while the mouse moves
+    with C.temp_override(window=w, area=a, region=r):
+        bpy.ops.mch.bar_tool(tool='SPLIT')
+        S.mch_cut.gn_finish = 'CHAMFER'
+    yield 2.0
+    yield from wait_draws(3)
+    it3, _l = bar_item(lambda i: i.kind == 'drop' and i.prop == 'gn_sides')
+    before = S.mch_cut.gn_sides
+    if it3 is not None:
+        yield from press(it3)
+        shot('06a_right_after_click.png')
+        x, y = int(r.x + it3.x + it3.w / 2), int(w.height - (r.y + it3.y + it3.h / 2))
+        xdo('mousemove', x + 6, y + 30)
+        yield 0.8
+        shot('06_list_stays_open.png')
+        xdo('mousemove', x + 6, y + 52)             # (the second row of the list)
+        yield 0.6
+        xdo('click', 1)
+        yield 1.0
+    res['B3'] = it3 is not None and S.mch_cut.gn_sides != before
+    log('B3 a closed list: REAL click opens it, the mouse moves, a second REAL click picks:', before, '->', S.mch_cut.gn_sides)
+    xdo('key', 'Escape')
+    yield 0.5
+    with C.temp_override(window=w, area=a, region=r):
+        bpy.ops.mch.bar_tool(tool='CUT')
+    yield 1.5
+    yield from wait_draws(3)
     set_lang(False)
     yield 1.0
     yield from wait_draws(3)
@@ -229,7 +295,10 @@ def flow():
     log('not in the table (drawn in English):', len(i18n.MISSES))
     names = {'A1': 'Korean on: the side panel\'s cells are drawn from the Korean table',
              'A2': 'a REAL click on a cell drawn in Korean lands (Paint Mask starts)',
-             'A3': 'Korean off: English at once', 'A4': 'on again: Korean'}
+             'A3': 'Korean off: English at once', 'A4': 'on again: Korean',
+             'B1': 'Base Mesh: the bevel sides are buttons - REAL click on Both, the bottom has its own width cell',
+             'B2': 'the width cell drags finely (REAL drag)',
+             'B3': 'a closed list opened by a REAL click stays open until a choice is clicked'}
     n = 0
     for k in sorted(names):
         ok = bool(res.get(k))

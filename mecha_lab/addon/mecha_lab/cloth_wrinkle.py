@@ -1903,7 +1903,8 @@ class MCH_OT_wrinkle_presets_menu(bpy.types.Operator):
     bl_options = {'INTERNAL'}
 
     def execute(self, context):
-        bpy.ops.wm.call_menu(name=MCH_MT_wrinkle_presets.bl_idname)
+        from . import ui_bars                 # 0.24.212 opened when the button is up: the list stays
+        ui_bars.open_menu(MCH_MT_wrinkle_presets.bl_idname)
         return {'FINISHED'}
 
 
