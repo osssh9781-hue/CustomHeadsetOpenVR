@@ -2683,7 +2683,8 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
 
 # 0.24.5 Enter = Apply for the live results (first match for the selection wins)
 ENTER_APPLY = (
-    ('pdetail_apply', 'Plate Detail'),
+    ('cdrape_keep', 'Cloth / Vacuum Pack'),            # 0.24.190 a cloth being draped / packed: Enter keeps it,
+    ('pdetail_apply', 'Plate Detail'),                 #  also when Space was never pressed (its own loop not running)
     ('plate_apply', 'Armor Plate'),
     ('mridge_apply', 'Mech Ridge'),
     ('cape_apply', 'Cape'),

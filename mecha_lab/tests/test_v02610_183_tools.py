@@ -113,6 +113,40 @@ ok_light = all(r[0] < 6000 for r in res.values())
 ok_out = all(abs(r[1] - 1.8) < 0.12 and abs(r[2] - 1.2) < 0.12 for r in res.values())
 check(f'every form: light ({min(r[0] for r in res.values())} .. {max(r[0] for r in res.values())} faces) and as wide '
       'and tall as the outline drawn', ok_light and ok_out, res)
+# 0.24.190 quick while a slider is dragged (user: "크리쳐 베이스 메쉬는 너무 느려 ... 요철 2 번")
+import time as _time  # noqa: E402
+S.mch_omass.kind = forms[0]
+S.mch_omass.stick = False
+clear_sel()
+om.perform(C, [[px(40 + x, z) for x, z in outline]], FRONT)
+fm = C.active_object
+n_full = len(fm.data.polygons)
+om._BUSY[0] = True
+fm.mch_omass.depth *= 1.2
+om._BUSY[0] = False
+t0 = _time.perf_counter()
+om.build(fm, C, live=True)
+t_live = _time.perf_counter() - t0
+n_live = len(fm.data.polygons)
+t0 = _time.perf_counter()
+om.build(fm, C)
+t_rest = _time.perf_counter() - t0
+check(f'a form while its slider is dragged: quick ({t_live:.2f}s, not merged light yet: {n_live} faces), the full light '
+      f'mesh when it rests ({t_rest:.2f}s, {len(fm.data.polygons)} faces)', t_live < t_rest * 0.6 and
+      n_live > len(fm.data.polygons) and abs(len(fm.data.polygons) - n_full) < n_full * 0.5, (t_live, t_rest, n_live))
+tag = fm.data.vertices[0].co.copy()
+fm.data.vertices[0].co.z += 123.0                    # (a mark: gone if the base mesh is made again)
+fm.mch_omass.color_a = (0.2, 0.3, 0.4)
+fm.mch_omass.r_strength = 0.02
+check('a colour / surface slider: the base mesh is not made again (only its surface)',
+      abs(fm.data.vertices[0].co.z - tag.z - 123.0) < 1e-4)
+fm.mch_omass.depth *= 1.1
+check('... a shape slider (Height): made again', abs(fm.data.vertices[0].co.z - tag.z - 123.0) > 1.0)
+import os as _os  # noqa: E402
+check('the node group comes ready-made from the add-on\'s file (not built: 4 - 5 s the first time before)',
+      _os.path.isfile(om.TREE_FILE) and bpy.data.node_groups[om.TREE].get('mch_v') == om.TREE_VERSION and
+      len(bpy.data.node_groups[om.TREE].nodes) > 500)
+bpy.data.objects.remove(fm)
 # Stick to Surface: on a part
 P = box('Mass Part', loc=(0.0, 0.0, -10.0), size=3.0, cuts=8)
 S.mch_omass.kind = forms[0]

@@ -749,8 +749,12 @@ def draw(layout, context):
     box = layout.box()
     box.label(text='Vacuum Pack: the selected meshes in one bag, the air sucked out', icon='MOD_SHRINKWRAP')
     live = cd.sim_active() and cd.SIM.get('mode') == 'VACUUM'
-    if live:
-        box.label(text='Space: suck the air out  ·  Enter: keep  ·  Esc: drop', icon='PLAY')
+    if live:                                          # 0.24.190 (user: "베큠팩은 어플라이가 안 돼"): buttons, not only keys
+        box.label(text=sim_status(), icon='PLAY')
+        r = box.row(align=True)
+        r.operator('mch.cdrape_control', text='Suck In / Pause (Space)').action = 'toggle'
+        r.operator('mch.cdrape_control', text='Apply (Enter)').action = 'confirm'
+        r.operator('mch.cdrape_control', text='Drop (Esc)').action = 'cancel'
     else:
         box.operator('mch.vacuum_pack', text='Vacuum Pack Selected', icon='MOD_SHRINKWRAP')
     r = box.row(align=True)

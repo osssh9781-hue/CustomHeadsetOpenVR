@@ -17,6 +17,9 @@ from __future__ import annotations
 
 import json
 import math
+import os
+import time
+import zlib
 
 import bpy
 import numpy as np
@@ -31,6 +34,12 @@ TREE = 'MCH Organic'
 TREE_VERSION = 6
 COLLECTION = None
 _BUSY = [False]
+# 0.24.190 (user: "크리쳐 베이스 메쉬는 너무 느려 ... 새로 만든 요철 2 번"):
+TREE_FILE = os.path.join(os.path.dirname(__file__), 'node_trees', 'omass_tree.blend')   # the node group ready-made
+STORED = [True]                    # (a tool that makes that file turns it off: the group built here)
+MESH_KEY = 'mch_omass_mesh'        # on a lump: what its base mesh was made from (the same again: not made again)
+LIVE_RES = 0.55                    # while a slider is dragged: this share of the Resolution (the full one after)
+_PENDING = {}                      # object name -> when its last live change was (its full mesh is still owed)
 
 # (id, label, description, base, slider values, recipe weights, colours (a, b), material look)
 #   base: PUFF (inflated lump) | PLATE (a thin curved plate) | CRYSTAL (a cluster)
@@ -482,7 +491,7 @@ def form_heights(kind, F, XY, P2, pg, dmax):
     return np.where(d > 1e-12, top, wall)
 
 
-def form_mesh(P2, holes, pg):
+def form_mesh(P2, holes, pg, res=None):
     """(verts, faces, distance to the outline) of a big form, light (0.24.183 user: "너무 고밀도야, 가벼워야 돼"): the
     outline's area in coarse triangles, cut exactly along each step's riser and the form's own edges (so they stay
     crisp with few points), the top raised, the bottom flat (Back: rounded down too), a wall round the outline - and
@@ -492,7 +501,7 @@ def form_mesh(P2, holes, pg):
     from .creature_hair import outline_distance
     from .plate_detail import cut_iso
     size = float(np.ptp(P2, axis=0).max())
-    step = size / max(int(pg.resolution), 20)
+    step = size / max(int(res if res is not None else pg.resolution), 20)
     loops = [_densify(P2, step * 0.5)] + [_densify(h, step * 0.5) for h in holes]
     lo, hi = P2.min(0), P2.max(0)
     xs = np.arange(lo[0] + step * 0.5, hi[0], step)
@@ -571,6 +580,33 @@ def _menu(sock, value):
         pass
 
 
+def _stored_tree(old):
+    """The node group taken ready-made from the add-on's own file - or None (no file, another Blender's, an older
+    group: then it is built)."""
+    if not os.path.isfile(TREE_FILE):
+        return None
+    if old is not None:
+        old.name = TREE + ' (old)'
+    ng = None
+    try:
+        with bpy.data.libraries.load(TREE_FILE, link=False) as (src, dst):
+            if TREE in src.node_groups:
+                dst.node_groups = [TREE]
+        ng = dst.node_groups[0] if dst.node_groups else None
+    except (OSError, RuntimeError, ValueError, IndexError, AttributeError):
+        ng = None
+    if ng is None or ng.get('mch_v') != TREE_VERSION:
+        if ng is not None:
+            bpy.data.node_groups.remove(ng)
+        if old is not None:
+            old.name = TREE
+        return None
+    ng.name = TREE
+    if old is not None and old.users == 0:
+        bpy.data.node_groups.remove(old)
+    return ng
+
+
 def organic_tree():
     """The shared node group: remeshed evenly (or not: crystals), smoothed, the matter's surface along the normal;
     stores ``mch_om_var`` (big noise), ``mch_om_pat`` (its pattern: cracks, pores, gills...) and ``mch_om_spot``
@@ -579,6 +615,10 @@ def organic_tree():
     ng = bpy.data.node_groups.get(TREE)
     if ng is not None and ng.get('mch_v') == TREE_VERSION:
         return ng
+    got = _stored_tree(ng) if STORED[0] else None     # (ready-made: building its 670 nodes here takes 4 - 5 seconds)
+    if got is not None:
+        return got
+    ng = bpy.data.node_groups.get(TREE)
     if ng is None:
         ng = bpy.data.node_groups.new(TREE, 'GeometryNodeTree')
     ng.nodes.clear()
@@ -1001,9 +1041,48 @@ def data(ob):
         return {}
 
 
-def build(ob, context=None):
+def _mesh_key(P2, holes, pg, spec, live):
+    """What a lump's base mesh is made from (a surface or colour slider is not in it: the mesh is kept)."""
+    if pg.stick or spec[3] == 'CRYSTAL':
+        return ''                                     # (on a part - it may have moved; crystals: quick anyway)
+    crc = zlib.crc32(np.ascontiguousarray(P2).tobytes())
+    for h in holes:
+        crc = zlib.crc32(np.ascontiguousarray(h).tobytes(), crc)
+    vals = [spec[3], crc, round(float(pg.depth), 6), round(float(pg.back), 6)]
+    if spec[3] == 'FORM':
+        vals += [pg.kind, int(pg.resolution), int(pg.edge_steps), round(float(pg.edge_width), 6),
+                 round(float(pg.jag), 6), round(float(pg.slope), 6), round(float(pg.turn), 6), int(pg.seed),
+                 int(pg.count), round(float(pg.pattern_width), 6), pg.surface == 'NONE', bool(pg.remesh), bool(live)]
+    else:
+        vals.append(spec[3] == 'PLATE')
+    return repr(vals)
+
+
+def _finish():
+    """The full mesh of every lump whose slider has stopped (a timer)."""
+    now = time.monotonic()
+    for name, t in list(_PENDING.items()):
+        if now - t >= 0.3:
+            del _PENDING[name]
+            ob = bpy.data.objects.get(name)
+            if ob is not None and is_mass(ob):
+                try:
+                    build(ob, bpy.context)
+                except Exception as ex:
+                    print('Creature Base Mesh 2:', ex)
+    return 0.1 if _PENDING else None
+
+
+def settle(ob, context=None):
+    """A lump still showing its quick (dragging) mesh: its full one now."""
+    if _PENDING.pop(ob.name, None) is not None:
+        build(ob, context or bpy.context)
+
+
+def build(ob, context=None, live=False):
     """The lump again from its outline and sliders; returns the base mesh's face count.  A converted mesh (Click a
-    Mesh) keeps its own mesh: only its surface is laid again."""
+    Mesh) keeps its own mesh: only its surface is laid again.  ``live`` (a slider being dragged): quick - a form at a
+    share of its Resolution and not merged light yet, a lump remeshed coarser; the full one follows (``_finish``)."""
     d = data(ob)
     pg = ob.mch_omass
     spec = KIND[pg.kind]
@@ -1022,26 +1101,32 @@ def build(ob, context=None):
         if len(P2) < 3:
             return 0
         holes = [np.asarray(h, float) for h in d.get('holes', [])]
-        if spec[3] == 'CRYSTAL':
+        key = _mesh_key(P2, holes, pg, spec, live)
+        same = bool(key) and ob.get(MESH_KEY) == key and len(me.vertices) > 0
+        if same:
+            pass                                      # (only its surface / colours changed: the base mesh stays)
+        elif spec[3] == 'CRYSTAL':
             V, F = crystals(P2, pg, int(pg.seed))
             RD = np.full(len(V), 1e3)
         elif spec[3] == 'FORM':
-            V, F, RD = form_mesh(P2, holes, pg)
+            V, F, RD = form_mesh(P2, holes, pg, res=int(pg.resolution) * LIVE_RES if live else None)
         else:
             V, F, RD = lump(P2, holes, pg)
-        V = stick(context, ob, np.asarray(V, float), d) if pg.stick else V
-        me.clear_geometry()
-        me.from_pydata([tuple(v) for v in V], [], [list(map(int, f)) for f in F])
-        me.validate(clean_customdata=False)
-        at = me.attributes.get(RD_ATTR) or me.attributes.new(RD_ATTR, 'FLOAT', 'POINT')
-        if len(at.data) == len(RD):
-            at.data.foreach_set('value', RD.astype(np.float32))
-        if spec[3] == 'FORM':                         # (the wall's faces turned out, as the top's)
+        if not same:
+            V = stick(context, ob, np.asarray(V, float), d) if pg.stick else V
+            me.clear_geometry()
+            me.from_pydata([tuple(v) for v in V], [], [list(map(int, f)) for f in F])
+            me.validate(clean_customdata=False)
+            at = me.attributes.get(RD_ATTR) or me.attributes.new(RD_ATTR, 'FLOAT', 'POINT')
+            if len(at.data) == len(RD):
+                at.data.foreach_set('value', RD.astype(np.float32))
+            ob[MESH_KEY] = key
+        if spec[3] == 'FORM' and not same:            # (the wall's faces turned out, as the top's)
             import bmesh
             bm = bmesh.new()
             bm.from_mesh(me)
             bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
-            if pg.surface == 'NONE' and not pg.remesh:
+            if pg.surface == 'NONE' and not pg.remesh and not live:
                 # 0.24.183 (user: "너무 고밀도야, 가벼워야 돼") light: the flat and gently bent parts merged into big
                 # faces (a tread, a slanted top, a facet: one face each) - only a fine surface keeps the fine points
                 bmesh.ops.dissolve_limit(bm, angle_limit=math.radians(5.0), use_dissolve_boundaries=False,
@@ -1064,7 +1149,7 @@ def build(ob, context=None):
     cc = cap_centre(P2)
     look = spec[7]
     remesh = pg.remesh if (d.get('converted') or spec[3] == 'FORM') else spec[3] != 'CRYSTAL'
-    vals = {'Remesh': remesh, 'Voxel': size / max(int(pg.resolution), 8), 'Smooth': int(pg.smooth),
+    vals = {'Remesh': remesh, 'Voxel': size / max(int(pg.resolution * (0.6 if live else 1.0)), 8), 'Smooth': int(pg.smooth),
             'Size': size, 'Seed': float(pg.seed % 997), 'Pattern Scale': float(pg.pattern_scale),
             'Pattern Width': float(pg.pattern_width), 'Count': float(pg.count),
             'Flat': bool(look.get('flat', False)) and (remesh or spec[3] == 'CRYSTAL'),
@@ -1098,10 +1183,15 @@ def _upd(self, context):
         return
     ob = self.id_data
     if isinstance(ob, bpy.types.Object) and is_mass(ob):
+        live = not bpy.app.background                 # (in a window: quick now, the full mesh when the slider rests)
         try:
-            build(ob, context)
+            build(ob, context, live=live)
         except Exception as ex:                       # (a slider never stops the window: said in the header)
             print('Creature Base Mesh 2:', ex)
+        if live:
+            _PENDING[ob.name] = time.monotonic()
+            if not bpy.app.timers.is_registered(_finish):
+                bpy.app.timers.register(_finish, first_interval=0.3)
         sc = getattr(context, 'scene', None)
         if sc is not None and hasattr(sc, 'mch_omass'):
             _BUSY[0] = True
@@ -1296,6 +1386,7 @@ def apply_mass(ob, context=None):
     """Kept as it is: the modifier applied (a plain mesh), no longer live.  A converted mesh: only this modifier
     (its own others - a Mirror - stay)."""
     context = context or bpy.context
+    settle(ob, context)                               # (never applied as its quick, dragging mesh)
     if data(ob).get('converted') and ob.modifiers.get(MOD) is not None:
         try:
             with context.temp_override(object=ob, active_object=ob):

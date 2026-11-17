@@ -1,0 +1,40 @@
+1 tiles ['Human', 'Creature'] kit creature
+1 parts 15
+shot 1a_body_kit.png True
+1b active Body Thigh.L
+1c legs 1.3372371196746826 height 1.8000507354736328 -> 2.0000534057617188 floor 2.9802322387695312e-08
+shot 1c_legs.png True
+1d muscles ['Thigh Quads.L', 'Thigh Hamstrings.L', 'Thigh Inner.L', 'Thigh Outer.L', 'Thigh Quads.R', 'Thigh Hamstrings.R', 'Thigh Inner.R', 'Thigh Outer.R']
+shot 1d_thigh_muscles.png True
+1e lowest of all parts (hands / knees may go lower in a crouch) -0.06820574402809143
+1e crouch 1.1894654035568237 -> 0.3554234802722931 floor -1.1641532182693481e-09
+shot 1e_crouch.png True
+1f scale 1.5072969198226929 1.5072969198226929
+shot 1f_scale.png True
+2 muscles 8 -> 9 ['Muscle']
+shot 2_muscle_clicks.png True
+2b cables [('Muscle.001', 'CABLE', 2326)]
+shot 2b_cables.png True
+2c skin {'FINISHED'} 79871
+shot 2c_skin.png True
+3 masses 1 faces 607
+shot 3_omass.png True
+4 holes [('Mecha Holes', 'Cube')]
+shot 4_mecha_holes.png True
+5 print cut ['PrintBox.A', 'PrintBox.B'] True
+shot 5_print_cut.png True
+3b height 0.699999988079071 -> 1.486886739730835 faces 612 pending {}
+PASS 1a Body Kit: REAL click on the "Creature" picture tile, REAL "Add Body" - its 15 parts on the cursor
+PASS 1b a REAL click on the thigh picks it
+PASS 1c the Legs slider dragged for REAL: longer legs, taller, the feet still on the floor
+PASS 1d REAL click "All": the thighs' muscles (both sides), the user's sculpted shapes
+PASS 1e REAL click "Crouch": the creature crouches, its feet (the lowest foot) on the floor
+PASS 1f the thigh's Scale slider dragged for REAL: bigger, the other side too
+PASS 2 Muscle: two REAL clicks on the torso - a muscle between them (the user's one-belly shape)
+PASS 2b Mecha Muscle, Cables: two REAL clicks - a bundle of 7 cables
+PASS 2c Smooth Skin: one skin mesh over the whole kit and the muscles
+PASS 3 Creature Base Mesh 2: a REAL outline - a big form (Terraces), light
+PASS 4 Mecha Holes: a REAL outline over a cube - a holed panel on it
+PASS 5 Print Cut: a REAL lasso over half a cube - split in two (the original hidden)
+PASS 3b its Height slider dragged for REAL: changed, and the light mesh again once the slider rests
+13/13 passed

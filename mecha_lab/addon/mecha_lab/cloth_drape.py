@@ -2544,6 +2544,24 @@ class MCH_OT_cdrape_control(bpy.types.Operator):
         return bpy.ops.mch.cdrape_sim('INVOKE_DEFAULT')
 
 
+class MCH_OT_cdrape_keep(bpy.types.Operator):
+    """Keep the cloth / the vacuum pack as it is now (Enter) - also before Space was ever pressed"""
+    bl_idname = 'mch.cdrape_keep'
+    bl_label = 'Keep the Cloth'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and sim_active()
+
+    def execute(self, context):
+        if SIM.get('modal'):                          # (its own window loop keeps it)
+            SIM['want'] = 'confirm'
+            return {'FINISHED'}
+        self.report({'INFO'}, confirm(context))
+        return {'FINISHED'}
+
+
 def draw(layout, context):
     st = settings(context)
     if st is None:
@@ -2684,7 +2702,7 @@ def draw(layout, context):
 
 
 CLASSES = (MCH_PG_ClothDrape, MCH_OT_cdrape_sim, MCH_OT_cdrape_mesh, MCH_OT_cdrape_mask, MCH_OT_cdrape_tack, MCH_OT_cdrape_tack_clear, MCH_OT_cdrape_wrap, MCH_OT_cdrape_sew_copy, MCH_OT_cdrape_lines,
-           MCH_OT_cdrape_control)
+           MCH_OT_cdrape_control, MCH_OT_cdrape_keep)
 
 
 @bpy.app.handlers.persistent
