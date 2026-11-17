@@ -992,10 +992,27 @@ def main(kind, path, extra=None):
     B = np.array([idx[x] for x in lab], np.uint8)
     print(kind, 'points per bone', {n: int((B == i).sum()) for n, i in idx.items()})
     blo, bhi = V.min(0), V.max(0)
+    # each point's weights worked out now and stored (half a minute a body: not when the user adds one)
+    sys.path.insert(0, os.path.join(HERE, '..', 'addon'))
+    from mecha_lab import body_whole as bw
+    Eset, k = set(), 0
+    for n_ in N:
+        n_ = int(n_)
+        f = [int(x) for x in L[k:k + n_]]
+        for a_, b_ in zip(f, f[1:] + f[:1]):
+            Eset.add((min(a_, b_), max(a_, b_)))
+        k += n_
+    bn = {r_['name']: (np.array(r_['head'], float), np.array(r_['tail'], float), r_['parent'], r_['slot'], r_['side'])
+          for r_ in rec}
+    dgt = {r_['name']: (r_['z'], r_['u'], r_['seg']) for r_ in rec if 'z' in r_}
+    Wt, _nm = bw.skin_weights(V, np.array(sorted(Eset), np.int64), B.astype(np.int64), bn, dgt)
+    WI, WW = bw.pack_weights(Wt)
+    print('weights stored: strongest 4 a point; the rest dropped at most', round(float(1 - np.sort(Wt, 1)[:, -4:].sum(1).min()), 3))
+    Qv = np.round((V - blo) / (bhi - blo) * 65535).astype(np.uint16)
     np.savez_compressed(os.path.join(OUT, f'{kind}_whole.npz'), meta=np.array(json.dumps(dict(kit=kind, bones=rec,
                                                                                               **meta_extra))),
-                        Body_Q=np.round((V - blo) / (bhi - blo) * 65535).astype(np.uint16),
-                        Body_box=np.array([blo, bhi], np.float32), Body_N=N, Body_L=L.astype(np.uint16), Body_B=B)
+                        Body_box=np.array([blo, bhi], np.float32), Body_N=N, Body_B=B,
+                        **bw.pack_mesh(Qv, L, WI, WW))
     print('saved', kind, len(N), 'faces')
 
 

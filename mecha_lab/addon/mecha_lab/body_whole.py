@@ -15,6 +15,7 @@ modifier and the bones' pose); Apply: Blender's own (the Armature modifier).
 from __future__ import annotations
 
 import json
+import lzma
 import math
 import os
 
@@ -56,8 +57,9 @@ def load(kind='human'):
         return _CACHE[kind]
     with np.load(os.path.join(DIR, kind + '_whole.npz'), allow_pickle=False) as z:
         lo, hi = z['Body_box'].astype(np.float64)
-        V = z['Body_Q'].astype(np.float64) / 65535.0 * (hi - lo) + lo
-        N, L = np.array(z['Body_N']).astype(np.int64), np.array(z['Body_L']).astype(np.int64)
+        Q, L = unpack_mesh(z)
+        V = Q.astype(np.float64) / 65535.0 * (hi - lo) + lo
+        N = np.array(z['Body_N']).astype(np.int64)
         B = np.array(z['Body_B']).astype(np.int64)
         meta = json.loads(str(z['meta']))
     bones = {b['name']: (np.array(b['head'], float), np.array(b['tail'], float), b['parent'], b['slot'], b['side'])
@@ -86,6 +88,29 @@ def slot_of(name):
     return 'Finger' if base.startswith('Finger') else 'Toe' if base.startswith('Toe') else base
 
 
+def pack_mesh(Q, L, WI=None, WW=None):
+    """The body's big tables packed small (the zip must stay under its limit): the points and the faces' corners as
+    steps from one to the next, then LZMA - a third of the plain size.  -> {key: uint8 array}."""
+    def z_(a):
+        return np.frombuffer(lzma.compress(np.ascontiguousarray(a).tobytes(), preset=9), np.uint8)
+    Q = np.asarray(Q).astype(np.int64)
+    out = {'Body_Qz': z_(np.diff(Q, axis=0, prepend=0).astype(np.uint16).T),      # (steps, wrapped to 16 bits)
+           'Body_Lz': z_(np.diff(np.asarray(L).astype(np.int64), prepend=0).astype(np.int32))}
+    if WI is not None:
+        out['Body_WIz'], out['Body_WWz'] = z_(np.asarray(WI, np.uint8).T), z_(np.asarray(WW, np.uint8).T)
+    return out
+
+
+def unpack_mesh(z):
+    """(points (n, 3) as 16-bit steps of the box, corners) from an opened body file - packed or plain."""
+    if 'Body_Qz' in z:
+        dq = np.frombuffer(lzma.decompress(z['Body_Qz'].tobytes()), np.uint16).reshape(3, -1).T.astype(np.int64)
+        Q = np.cumsum(dq, axis=0) % 65536
+        L = np.cumsum(np.frombuffer(lzma.decompress(z['Body_Lz'].tobytes()), np.int32).astype(np.int64))
+        return Q, L
+    return np.array(z['Body_Q']).astype(np.int64), np.array(z['Body_L']).astype(np.int64)
+
+
 def weights(B, bones):
     """Each point's bone (n, bones; one each - smoothed over the mesh by the caller)."""
     names = list(bones)
@@ -105,6 +130,90 @@ def smooth_weights(W, edges, passes=6):
         np.add.at(acc, edges[:, 1], W[edges[:, 0]])
         W = (W + acc / np.maximum(deg, 1)[:, None]) * 0.5
     return W / W.sum(1, keepdims=True)
+
+
+def skin_weights(V, E, B, bones, dg_):
+    """(n, bones) how much each point follows each bone - from each point's own bone (``B``), shared between
+    neighbouring bones over the mesh (``E``: its edges).  Slow (a body: half a minute) - so it is worked out when the
+    body is BUILT (tools_dev/body_whole_build.py) and stored with it; here only if a body has none stored."""
+    W, names = weights(B, bones)
+    fine = np.array([n in dg_ or n.startswith('Hand') for n in names])[B]
+    Wf = smooth_weights(W, E, passes=2)               # (the fingers are small: their skin less blurred)
+    # how far the skin is shared between two bones - by DISTANCE (the body 1 tall), not by how fine the mesh is: a
+    # joint's skin shared too narrowly folds to a sharp corner (user: the bent knee "너무 각지는데")
+    el = float(np.linalg.norm(V[E[:, 0]] - V[E[:, 1]], axis=1).mean())
+    bc = [j for j, n in enumerate(names) if n not in dg_]      # (the body's bones: the fingers' stay as they are)
+
+    def shared(dist, cols=None):
+        n_ = int(np.clip((dist / el) ** 2, 2, 320))
+        if cols is None:
+            return smooth_weights(W0, E, passes=n_)
+        out_ = np.zeros_like(W0)
+        sub = W0[:, cols]
+        out_[:, cols] = smooth_weights(np.hstack([sub, 1.0 - sub.sum(1, keepdims=True)]), E, passes=n_)[:, :-1]
+        return out_
+
+    def band(slots, dist=0.02, gain=1.5):
+        m_ = np.array([n.split('.')[0] in slots for n in names])[B].astype(float)[:, None]
+        n_ = int(np.clip((dist / el) ** 2, 2, 320))
+        return np.clip(smooth_weights(np.hstack([m_, 1.0 - m_]), E, passes=n_)[:, :1] * gain, 0.0, 1.0)
+    W0 = W
+    W = shared(0.018)
+    m_ = band(('Thigh', 'Shin', 'UpperArm', 'Forearm'))        # (knees and elbows: a rounder fold)
+    W = W * (1.0 - m_) + shared(0.034, bc) * m_
+    knee_z, hip_z = float(bones['Shin.L'][0][2]), float(bones['Thigh.L'][0][2])
+    m_ = band(('Thigh', 'Pelvis')) * np.clip((V[:, 2] - (knee_z + 0.35 * (hip_z - knee_z))) /
+                                             (0.3 * (hip_z - knee_z)), 0.0, 1.0)[:, None]
+    W = W * (1.0 - m_) + shared(0.046, bc) * m_       # (the hips: a lifted thigh takes the hip's side and the buttock)
+    m_ = band(('Head', 'Neck'), 0.025, 1.6)           # (the neck: a head bent must not fold to a corner at the nape
+    W = W * (1.0 - m_) + shared(0.04, bc) * m_        #  or under the chin)
+    m_ = band(('Shoulder', 'UpperArm'), 0.03, 1.6)
+    zj = float(bones['UpperArm.L'][0][2])
+    elbow_z = float(bones['Forearm.L'][0][2])
+    m_ = m_ * np.clip((V[:, 2] - (elbow_z + 0.45 * (zj - elbow_z))) / (0.25 * (zj - elbow_z)), 0.0, 1.0)[:, None]
+    W = W * (1.0 - m_) + shared(0.052, bc) * m_       # (the shoulders: the widest - the shoulder muscle goes up with the arm)
+    W /= np.maximum(W.sum(1, keepdims=True), 1e-9)
+    # under the armpit the body's own skin (the ribs' side, the chest's and the back's edge) lets go of the arm: any
+    # share of the arm's bones there swings it out like a balloon when the arm lifts - none at the armpit's depth,
+    # all of it back by the shoulder's height
+    keep = np.clip((V[:, 2] - (zj - 0.085)) / 0.075, 0.0, 1.0)
+    keep = keep * keep * (3.0 - 2.0 * keep)
+    body_pt = np.array([n.split('.')[0] in ('Pelvis', 'Waist', 'Chest', 'Neck', 'Shoulder') for n in names])[B]
+    keep = np.where(body_pt, keep, 1.0)
+    for j, n in enumerate(names):
+        if n.split('.')[0] in ('UpperArm', 'Forearm'):
+            W[:, j] *= keep
+    W /= W.sum(1, keepdims=True)
+    W[fine] = Wf[fine]
+    return W, names
+
+
+def stored_weights(kind, n, nb):
+    """The body's stored weights ((n, bones)) - or None."""
+    try:
+        with np.load(os.path.join(DIR, kind + '_whole.npz'), allow_pickle=False) as z:
+            if 'Body_WI' not in z and 'Body_WIz' not in z:
+                return None
+            if 'Body_WIz' in z:
+                wi = np.frombuffer(lzma.decompress(z['Body_WIz'].tobytes()), np.uint8).reshape(4, -1).T.astype(np.int64)
+                ww = np.frombuffer(lzma.decompress(z['Body_WWz'].tobytes()), np.uint8).reshape(4, -1).T.astype(np.float64)
+            else:
+                wi, ww = np.array(z['Body_WI']).astype(np.int64), np.array(z['Body_WW']).astype(np.float64)
+    except OSError:
+        return None
+    if len(wi) != n or wi.max() >= nb:
+        return None
+    W = np.zeros((n, nb))
+    np.add.at(W, (np.repeat(np.arange(n), wi.shape[1]), wi.ravel()), ww.ravel())
+    return W / np.maximum(W.sum(1, keepdims=True), 1e-9)
+
+
+def pack_weights(W, keep=4):
+    """(indices (n, keep) uint8, weights (n, keep) uint8) - each point's strongest bones."""
+    wi = np.argsort(-W, axis=1)[:, :keep]
+    ww = np.take_along_axis(W, wi, 1)
+    ww = ww / np.maximum(ww.sum(1, keepdims=True), 1e-9)
+    return wi.astype(np.uint8), np.round(ww * 255).astype(np.uint8)
 
 
 def is_body(ob):
@@ -171,64 +280,18 @@ def make(context, height=1.8, location=None, kind='human'):
     bpy.ops.object.mode_set(mode='OBJECT')
     arm.display_type = 'STICK'
     rig.show_in_front = True
-    # the skin: each point on the bones nearest it
-    W, names = weights(B, bones)
-    E = np.empty(len(me.edges) * 2, np.int64)
-    me.edges.foreach_get('vertices', E)
-    E = E.reshape(-1, 2)
-    fine = np.array([n in dg_ or n.startswith('Hand') for n in names])[B]
-    Wf = smooth_weights(W, E, passes=2)               # (the fingers are small: their skin less blurred)
-    # how far the skin is shared between two bones - by DISTANCE (the body 1 tall), not by how fine the mesh is: a
-    # joint's skin shared too narrowly folds to a sharp corner (user: the bent knee "너무 각지는데")
-    el = float(np.linalg.norm(V[E[:, 0]] - V[E[:, 1]], axis=1).mean())
-    bc = [j for j, n in enumerate(names) if n not in dg_]      # (the body's bones: the fingers' stay as they are)
-
-    def shared(dist, cols=None):
-        n_ = int(np.clip((dist / el) ** 2, 2, 320))
-        if cols is None:
-            return smooth_weights(W0, E, passes=n_)
-        out_ = np.zeros_like(W0)
-        sub = W0[:, cols]
-        out_[:, cols] = smooth_weights(np.hstack([sub, 1.0 - sub.sum(1, keepdims=True)]), E, passes=n_)[:, :-1]
-        return out_
-
-    def band(slots, dist=0.02, gain=1.5):
-        m_ = np.array([n.split('.')[0] in slots for n in names])[B].astype(float)[:, None]
-        n_ = int(np.clip((dist / el) ** 2, 2, 320))
-        return np.clip(smooth_weights(np.hstack([m_, 1.0 - m_]), E, passes=n_)[:, :1] * gain, 0.0, 1.0)
-    W0 = W
-    W = shared(0.018)
-    m_ = band(('Thigh', 'Shin', 'UpperArm', 'Forearm'))        # (knees and elbows: a rounder fold)
-    W = W * (1.0 - m_) + shared(0.034, bc) * m_
-    knee_z, hip_z = float(bones['Shin.L'][0][2]), float(bones['Thigh.L'][0][2])
-    m_ = band(('Thigh', 'Pelvis')) * np.clip((V[:, 2] - (knee_z + 0.35 * (hip_z - knee_z))) /
-                                             (0.3 * (hip_z - knee_z)), 0.0, 1.0)[:, None]
-    W = W * (1.0 - m_) + shared(0.046, bc) * m_       # (the hips: a lifted thigh takes the hip's side and the buttock)
-    m_ = band(('Head', 'Neck'), 0.025, 1.6)           # (the neck: a head bent must not fold to a corner at the nape
-    W = W * (1.0 - m_) + shared(0.04, bc) * m_        #  or under the chin)
-    m_ = band(('Shoulder', 'UpperArm'), 0.03, 1.6)
-    zj = float(bones['UpperArm.L'][0][2])
-    elbow_z = float(bones['Forearm.L'][0][2])
-    m_ = m_ * np.clip((V[:, 2] - (elbow_z + 0.45 * (zj - elbow_z))) / (0.25 * (zj - elbow_z)), 0.0, 1.0)[:, None]
-    W = W * (1.0 - m_) + shared(0.052, bc) * m_       # (the shoulders: the widest - the shoulder muscle goes up with the arm)
-    W /= np.maximum(W.sum(1, keepdims=True), 1e-9)
-    # under the armpit the body's own skin (the ribs' side, the chest's and the back's edge) lets go of the arm: any
-    # share of the arm's bones there swings it out like a balloon when the arm lifts - none at the armpit's depth,
-    # all of it back by the shoulder's height
-    keep = np.clip((V[:, 2] - (zj - 0.085)) / 0.075, 0.0, 1.0)
-    keep = keep * keep * (3.0 - 2.0 * keep)
-    body_pt = np.array([n.split('.')[0] in ('Pelvis', 'Waist', 'Chest', 'Neck', 'Shoulder') for n in names])[B]
-    keep = np.where(body_pt, keep, 1.0)
-    for j, n in enumerate(names):
-        if n.split('.')[0] in ('UpperArm', 'Forearm'):
-            W[:, j] *= keep
-    W /= W.sum(1, keepdims=True)
-    W[fine] = Wf[fine]
+    # the skin: each point on the bones it follows (stored with the body; worked out here only if it has none)
+    names = list(bones)
+    W = stored_weights(kind, len(V), len(names))
+    if W is None:
+        E = np.empty(len(me.edges) * 2, np.int64)
+        me.edges.foreach_get('vertices', E)
+        W, names = skin_weights(V, E.reshape(-1, 2), B, bones, dg_)
     for j, n in enumerate(names):
         vg = body.vertex_groups.new(name=n)
-        idx = np.nonzero(W[:, j] > 0.004)[0]
-        for i in idx:
-            vg.add([int(i)], float(W[i, j]), 'REPLACE')
+        q = np.round(W[:, j] * 255).astype(np.int64)  # (points of the same weight added together: quick)
+        for lv in np.unique(q[q > 0]):
+            vg.add(np.nonzero(q == lv)[0].tolist(), float(lv) / 255.0, 'REPLACE')
     for end in ('Hand', 'Foot'):                      # (a whole hand / foot with its fingers: what a swap hides)
         for sd in ('L', 'R'):
             cols = [j for j, n in enumerate(names) if n.endswith('.' + sd) and
