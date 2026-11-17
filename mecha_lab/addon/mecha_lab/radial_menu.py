@@ -134,14 +134,8 @@ def _draw():
         cur = ts.effective_tool(bpy.context)
     except (AttributeError, KeyError):
         cur = ''
-    alpha = opacity()
-    if alpha > 0.0:                  # 0.24.202 its own background (Tool Wheel Opacity): behind the ring, and behind
-        back = (0.085, 0.087, 0.095, alpha)                                   # the open group's tools
-        _disc(g, cx, cy, (R_GROUP + B_GROUP + 14.0) * k, back)
-        for it in items:
-            if it['kind'] == 'tool':
-                _disc(g, it['x'], it['y'], it['r'] + 10.0 * k, back)
-    _disc(g, cx, cy, (R_GROUP - B_GROUP - 10.0) * k, (0.13, 0.135, 0.15, max(alpha, 0.55)))
+    # 0.24.203 Tool Wheel Opacity: the big disc in the middle only (user: "가운데에 제일 큰 원 말이야, 다른 건 냅둬")
+    _disc(g, cx, cy, (R_GROUP - B_GROUP - 10.0) * k, (0.085, 0.087, 0.095, opacity()))
     title = grp[open_idx][0] if 0 <= open_idx < len(grp) else 'Tools'
     g.text(cx, cy + 7 * k, title.upper(), 12 * k, g.TEXT, 'CENTER')
     tool_name = ''

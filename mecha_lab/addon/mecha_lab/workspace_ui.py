@@ -2552,9 +2552,8 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
                                           'columns); off = icons only')
     wheel_opacity: FloatProperty(name='Tool Wheel Opacity', default=0.92, min=0.0, max=1.0, subtype='FACTOR',
                                  update=_sizes_changed,
-                                 description='0.24.202 how solid the Tool Wheel\'s background is (V): the disc behind '
-                                             'the ring and the tools - 1 = the model does not show through, 0 = no '
-                                             'background (the bubbles stay solid)')
+                                 description='How solid the big disc in the middle of the Tool Wheel is (V): 1 = the '
+                                             'model does not show through, 0 = no disc. The bubbles are not changed')
     panel_opacity: FloatProperty(name='Panel Opacity', default=0.98, min=0.1, max=1.0, subtype='FACTOR',
                                  update=_sizes_changed,
                                  description='0.24.59 how solid the viewport cards are (menus, panels, HUD, key legend, '

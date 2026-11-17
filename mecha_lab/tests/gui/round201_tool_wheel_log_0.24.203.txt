@@ -1,0 +1,14 @@
+tap V: wheel open True groups 11
+shot 1_wheel.png True
+REAL click on Cloth: tools shown ['WRINKLE', 'CDRAPE', 'WLINES', 'CAPE', 'SCAPE']
+shot 2_cloth_open.png True
+after the REAL click on Cloth Drape: tool CDRAPE wheel open False
+shot 3_hover_split.png True
+hold V, onto Cut, onto Split, let go: tool SPLIT wheel open False
+flick up toward Block-out and past its tools, let go: hover was ('tool', 'OMASS') tool OMASS
+PASS 1 a REAL tap on V: the wheel opens at the mouse with the eleven groups and stays
+PASS 2 click: a REAL click on the Cloth group, then on Cloth Drape - that tool is on, the wheel gone
+PASS 3 hover: V held, the mouse onto Cut then Split, V let go - Split is on
+PASS 4 flick: V held, a flick toward Block-out and on out, V let go - a Block-out tool is on (the nearest)
+PASS 5 tap V then Esc: closed, the tool as it was
+5/5 passed
