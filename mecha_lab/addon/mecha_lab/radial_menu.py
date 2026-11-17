@@ -105,6 +105,15 @@ def _disc(g, x, y, r, color):
     g.rounded_rect(x - r, y - r, 2 * r, 2 * r, r, color)
 
 
+def opacity():
+    """Preferences > Tool Wheel Opacity (0 .. 1)."""
+    try:
+        from .workspace_ui import pref
+        return max(0.0, min(1.0, float(pref('wheel_opacity', 0.92))))
+    except (TypeError, ValueError, ImportError):
+        return 0.92
+
+
 def _label(g, x, y, s, size, k, bright):
     s = g.fit(s, size, 150 * k)
     w = max(30.0 * k, len(s) * size * 0.64 + 12.0 * k)
@@ -125,7 +134,14 @@ def _draw():
         cur = ts.effective_tool(bpy.context)
     except (AttributeError, KeyError):
         cur = ''
-    _disc(g, cx, cy, (R_GROUP - B_GROUP - 10.0) * k, (0.085, 0.087, 0.095, 0.55))
+    alpha = opacity()
+    if alpha > 0.0:                  # 0.24.202 its own background (Tool Wheel Opacity): behind the ring, and behind
+        back = (0.085, 0.087, 0.095, alpha)                                   # the open group's tools
+        _disc(g, cx, cy, (R_GROUP + B_GROUP + 14.0) * k, back)
+        for it in items:
+            if it['kind'] == 'tool':
+                _disc(g, it['x'], it['y'], it['r'] + 10.0 * k, back)
+    _disc(g, cx, cy, (R_GROUP - B_GROUP - 10.0) * k, (0.13, 0.135, 0.15, max(alpha, 0.55)))
     title = grp[open_idx][0] if 0 <= open_idx < len(grp) else 'Tools'
     g.text(cx, cy + 7 * k, title.upper(), 12 * k, g.TEXT, 'CENTER')
     tool_name = ''

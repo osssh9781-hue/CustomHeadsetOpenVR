@@ -55,4 +55,14 @@ check('near a region edge the wheel moves in so the ring shows; in the open it i
       and rm.fit_centre(900, 500, 1920, 1080, 1.0) == (900, 500))
 check('V (the Tool Pie key) is the wheel: the operator exists and the key item is still there',
       hasattr(bpy.types, 'MCH_OT_radial_menu') and hasattr(bpy.types, 'MCH_OT_tool_pie'))
+from mecha_lab import workspace_ui as wu
+p_ = wu.prefs()
+ok = abs(rm.opacity() - 0.92) < 1e-6 and 'wheel_opacity' in wu.SIZE_KEYS and hasattr(wu.MCH_AddonPreferences if hasattr(wu, 'MCH_AddonPreferences') else type('x', (), {'wheel_opacity': 1}), '__name__')
+if p_ is not None and hasattr(p_, 'wheel_opacity'):
+    d0 = rm.opacity()
+    p_.wheel_opacity = 0.3
+    d1 = rm.opacity()
+    p_.wheel_opacity = 0.92
+    ok = abs(d0 - 0.92) < 1e-6 and abs(d1 - 0.3) < 1e-6 and 'wheel_opacity' in wu.SIZE_KEYS
+check('0.24.202 Tool Wheel Opacity: its own setting (0.92 by default, mostly solid), kept with the other sizes', ok)
 summary()

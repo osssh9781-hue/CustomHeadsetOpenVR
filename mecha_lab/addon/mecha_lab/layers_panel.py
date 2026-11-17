@@ -237,6 +237,7 @@ def draw_sizes(layout, context):
     box.prop(p, 'menu_size')
     box.prop(p, 'strip_scale', text='Tool Menu')
     box.prop(p, 'panel_opacity')
+    box.prop(p, 'wheel_opacity')
     row = box.row()
     for label, v in (('Small', 0.75), ('Normal', 1.0), ('Large', 1.4), ('Huge', 1.9)):
         row.operator('mch.icon_size_preset', text=label).factor = v
