@@ -234,6 +234,13 @@ def build_mesh(P2, pg, size):
     inner = d >= fw
     pit = size * 0.0015
     inside = pattern_field(pg.pattern, V2, cell, float(pg.angle)) < float(pg.hole_size) * 0.5 * 0.9
+    if len(C):                                        # 0.24.186 only in the holes that were made: a cell too near the
+        dc = np.full(len(V2), np.inf)                 # frame has no hole - its floor stays flat (no dents there)
+        for k0 in range(0, len(C), 256):
+            dc = np.minimum(dc, np.linalg.norm(V2[:, None, :] - C[None, k0:k0 + 256, :], axis=2).min(1))
+        inside &= dc < r * 1.15
+    else:
+        inside[:] = False
     if tiles:
         top, groove = flo + fh * 0.25, flo * 0.35
         zin = np.where(kinds == 1, top, np.where(kinds == 2, groove, np.where(inside, top, groove)))

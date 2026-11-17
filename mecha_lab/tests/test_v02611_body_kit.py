@@ -191,7 +191,7 @@ check(f'Muscles on the thigh: front, back, inner, outer on both thighs (Symmetry
       names)
 quad = next(o for o in mus if o.name == 'Thigh Quads.L')
 check('the front one laid with the user\'s triceps shape (heads into a tendon): its faces, its points on the thigh',
-      len(quad.data.polygons) == mg.clean_count(quad.mch_muscle) and mg.sculpt_of(quad.mch_muscle, 'LINE') == 'TRICEPS')
+      len(quad.data.polygons) > mg.clean_count(quad.mch_muscle) and mg.sculpt_of(quad.mch_muscle, 'LINE') == 'TRICEPS')
 from mathutils.bvhtree import BVHTree  # noqa: E402
 TV = ev_verts([th])
 QV = ev_verts([quad])
@@ -226,7 +226,7 @@ pec, _m = mg.make(C, 'MUSCLE', [(ball.name, tuple(p), tuple((p - Vector((10, 0, 
 PV = ev_verts([pec])
 dmin = [float(np.min(np.linalg.norm(PV - np.array(p), axis=1))) for p in P3]
 check(f'Chest (three points): the user\'s chest fan between them - a corner at each start point, its tendon at the '
-      f'third ({", ".join(f"{x:.3f}" for x in dmin)})', len(pec.data.polygons) == len(tp['PEC']['N']) and
+      f'third ({", ".join(f"{x:.3f}" for x in dmin)})', 0 < len(pec.data.polygons) < len(tp['PEC']['N']) and all(len(p_.vertices) == 4 for p_ in pec.data.polygons) and
       max(dmin) < 0.08)
 st.shape = 'STRANDS'
 st.preset = 'SPINDLE'

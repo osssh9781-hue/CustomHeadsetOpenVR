@@ -764,12 +764,12 @@ def clean_count(pg):
     return (clean_rings(pg) - 1) * CLEAN_SIDES + 2
 
 
-def clean_line(tp, K, S=CLEAN_SIDES, rim=0.0, rim_width=0.5, parts=None):
+def clean_line(tp, K, S=CLEAN_SIDES, rim=0.0, rim_width=0.5, parts=None, t0=0.0, t1=1.0):
     """A clean mesh after a LINE shape: ``K`` rings of ``S`` points - at each ring, how far the shape reaches from its
     middle there in each direction (smoothed round and along it); quads between the rings, a cap at each end."""
     A = tp['A']
     t, sx, v = A[:, 0], A[:, 1], A[:, 2]
-    tk = np.linspace(0.0, 1.0, K)
+    tk = np.linspace(t0, t1, K)
     ang = (np.arange(S) + 0.5) / S * 2 * math.pi - math.pi
     R = np.full((K, S), np.nan)
     Cn = np.full((K, 2), np.nan)
@@ -805,7 +805,7 @@ def clean_line(tp, K, S=CLEAN_SIDES, rim=0.0, rim_width=0.5, parts=None):
         R = (P_[:-2] + P_[1:-1] * 2 + P_[2:]) / 4.0
         Pc = np.pad(Cn, ((1, 1), (0, 0)), mode='edge')
         Cn = (Pc[:-2] + Pc[1:-1] * 2 + Pc[2:]) / 4.0
-    ease = np.minimum(1.0, (np.minimum(tk, 1.0 - tk) / 0.09) ** 0.6 * 0.85 + 0.15)   # (its ends drawn in to a tip)
+    ease = np.minimum(1.0, (np.maximum(np.minimum(tk - t0, t1 - tk), 0.0) / 0.09) ** 0.6 * 0.85 + 0.15)   # (its ends drawn in to a tip)
     R = R * ease[:, None]
     R0, ang0 = R.copy(), ang.copy()                   # (the plain parts sit on the pod as it is without its lip)
     rim_cols = set()
@@ -1007,6 +1007,121 @@ def part_mesh(parts):
     return np.array(a), np.array(b), np.array(c), np.array(N), np.array(L)
 
 
+def fork_of(tp, nb=24):
+    """A LINE shape that starts as two heads (the triceps): (how far along they join, the line between them there
+    [(t, s)]) - None: one body all along."""
+    A = tp['A']
+    t, sx = A[:, 0], A[:, 1]
+    run, mids = [], []
+    for i in range(nb):
+        m = (t >= i / nb) & (t < (i + 1) / nb)
+        if m.sum() < 12:
+            break
+        q = np.sort(sx[m])
+        g = np.diff(q)
+        k = int(np.argmax(g))
+        if g[k] > 0.22 * (q[-1] - q[0]) and min(k + 1, len(q) - k - 1) > 0.12 * len(q):
+            run.append(i)
+            mids.append(((i + 0.5) / nb, (q[k] + q[k + 1]) * 0.5))
+        elif i > 0 or len(run):
+            break
+    if len(run) < 3:
+        return None
+    return (run[-1] + 1) / nb, mids
+
+
+def clean_forked(tp, K, fork, **kw):
+    """0.24.186 a shape with two heads, clean: a body of rings for each head and one for where they have joined,
+    each tapering into the other (three clean meshes laid as one)."""
+    tf, mids = fork
+    A = tp['A']
+    t, sx = A[:, 0], A[:, 1]
+    split = np.interp(t, [m[0] for m in mids], [m[1] for m in mids])
+    ov = 0.1
+    pieces = [clean_line(tp=dict(tp, A=A[t >= tf - ov]), K=max(6, round(K * (1.0 - tf + ov))), t0=tf - ov, t1=1.0,
+                         **kw)]
+    for side in (-1, 1):
+        m = (t <= tf + ov) & ((sx - split) * side > 0)
+        if m.sum() > 20:
+            pieces.append(clean_line(tp=dict(tp, A=A[m]), K=max(6, round(K * (tf + ov))), t0=0.0, t1=tf + ov))
+    out_A, out_N, out_L, out_M, off = [], [], [], [], 0
+    for pc in pieces:
+        out_A.append(pc['A'])
+        out_N.append(pc['N'])
+        out_L.append(pc['L'] + off)
+        out_M.append(pc['M'] if 'M' in pc else np.zeros(len(pc['N']), np.int64))
+        off += len(pc['A'])
+    lo = np.min([pc['lo'] for pc in pieces], axis=0)
+    res = dict(tp, A=np.concatenate(out_A), N=np.concatenate(out_N), L=np.concatenate(out_L), lo=lo)
+    if any('M' in pc for pc in pieces):
+        res['M'] = np.concatenate(out_M)
+    return res
+
+
+def clean_fan(tp, nu=17, nt=33):
+    """0.24.186 a FAN shape, clean: rows across it from its start to its end, each row from its one edge to the
+    other - a top sheet and an under sheet of quads joined along the edges (the shape's own outline and thickness)."""
+    A = tp['A']
+    u, t, v = A[:, 0], A[:, 1], A[:, 2]
+    tj = np.linspace(float(t.min()), float(t.max()), nt)
+    half = (tj[1] - tj[0]) * 0.9
+    lo_u, hi_u = np.zeros(nt), np.zeros(nt)
+    for j in range(nt):
+        m = np.abs(t - tj[j]) <= half
+        if m.sum() < 3:
+            m = np.argsort(np.abs(t - tj[j]))[:6]
+        lo_u[j], hi_u[j] = u[m].min(), u[m].max()
+    for _ in range(2):                                # (the outline smoothed along it)
+        for arr in (lo_u, hi_u):
+            pad = np.pad(arr, 1, mode='edge')
+            arr[:] = (pad[:-2] + pad[1:-1] * 2 + pad[2:]) / 4.0
+    fi = np.linspace(0.0, 1.0, nu)
+    U = lo_u[:, None] + (hi_u - lo_u)[:, None] * fi[None, :]
+    T = np.repeat(tj[:, None], nu, axis=1)
+    top = np.zeros((nt, nu))
+    bot = np.zeros((nt, nu))
+    su = max(float(np.ptp(u)), 1e-9) / nu * 1.2
+    for j in range(nt):
+        mrow = np.abs(t - tj[j]) <= half * 1.3
+        idx = np.nonzero(mrow)[0]
+        if len(idx) < 3:
+            idx = np.argsort(np.abs(t - tj[j]))[:8]
+        for i in range(nu):
+            near = idx[np.abs(u[idx] - U[j, i]) <= su]
+            if len(near) == 0:
+                near = idx[np.argsort(np.abs(u[idx] - U[j, i]))[:3]]
+            top[j, i], bot[j, i] = v[near].max(), v[near].min()
+    for arr in (top, bot):
+        for _ in range(2):
+            pad = np.pad(arr, 1, mode='edge')
+            arr[:] = (pad[1:-1, 1:-1] * 4 + pad[:-2, 1:-1] + pad[2:, 1:-1] + pad[1:-1, :-2] + pad[1:-1, 2:]) / 8.0
+    mid = (top + bot) * 0.5
+    edge = np.minimum(np.minimum(fi, 1 - fi)[None, :] / 0.12, np.minimum(np.arange(nt), nt - 1 - np.arange(nt))[:, None]
+                      / 2.0)
+    k = np.clip(edge, 0.0, 1.0) ** 0.6                # (thin to nothing at its edges and ends: the sheets meet)
+    top = mid + (top - mid) * k
+    bot = mid + (bot - mid) * k
+    P = np.concatenate([np.stack([U, T, top], 2).reshape(-1, 3), np.stack([U, T, bot], 2).reshape(-1, 3)])
+    n1 = nt * nu
+    N, L = [], []
+    for j in range(nt - 1):
+        for i in range(nu - 1):
+            a, b, c, d = j * nu + i, j * nu + i + 1, (j + 1) * nu + i + 1, (j + 1) * nu + i
+            N += [4, 4]
+            L += [a, b, c, d, n1 + d, n1 + c, n1 + b, n1 + a]
+    for j in range(nt - 1):                           # the two long edges
+        for i in (0, nu - 1):
+            a, d = j * nu + i, (j + 1) * nu + i
+            N.append(4)
+            L += ([a, d, n1 + d, n1 + a] if i == 0 else [d, a, n1 + a, n1 + d])
+    for j in (0, nt - 1):                             # the two ends
+        for i in range(nu - 1):
+            a, b = j * nu + i, j * nu + i + 1
+            N.append(4)
+            L += ([b, a, n1 + a, n1 + b] if j == 0 else [a, b, n1 + b, n1 + a])
+    return dict(tp, A=P, N=np.array(N), L=np.array(L))
+
+
 def clean_shape(sid, tp, pg):
     K = clean_rings(pg)
     rim = float(pg.band_rim) if pg.style == 'BAND' else 0.0
@@ -1021,7 +1136,9 @@ def clean_shape(sid, tp, pg):
     if key not in _CLEAN:
         if len(_CLEAN) > 64:
             _CLEAN.clear()
-        _CLEAN[key] = clean_line(tp, K, rim=rim, rim_width=float(pg.band_rim_width), parts=parts)
+        fork = fork_of(tp)
+        kw = dict(rim=rim, rim_width=float(pg.band_rim_width), parts=parts)
+        _CLEAN[key] = clean_forked(tp, K, fork, **kw) if fork else clean_line(tp, K, **kw)
     return _CLEAN[key]
 
 
@@ -1190,6 +1307,10 @@ def sculpt_mesh(context, ob, sid):
     mesh = Mesh()
     mecha = pg.style == 'BAND'              # 0.24.185 the user's muscle shapes as artificial muscles: + end fittings
     if tp['kind'] == 'FAN':
+        ck = ('fan', sid, len(tp['A']))
+        if ck not in _CLEAN:
+            _CLEAN[ck] = clean_fan(tp)                # (0.24.186 a clean mesh after the fan too)
+        tp = _CLEAN[ck]
         Lb = lay_fan(context, mesh, tp, ob, pg)
         if mecha:
             d = data(ob)
