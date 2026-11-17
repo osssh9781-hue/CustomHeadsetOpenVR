@@ -92,7 +92,7 @@ seen = collections.Counter()
 
 
 def bar_h(its):
-    cards = [i for i in its if i.kind == 'card']
+    cards = [i for i in its if i.kind == 'card' and i.icon != 'outer']
     return max(c.y + c.h for c in cards) - min(c.y for c in cards)
 
 
@@ -158,8 +158,8 @@ check(f'a place the tool does not use is EMPTY, nothing greyed, nothing moved in
       and all(i.enabled for i in its))
 hs = {t: bar_h(at(2560, t)) for t in tools}
 its = at(2560, 'SMART')
-cards = [i for i in its if i.kind == 'card']
-n_cut = len([i for i in at(2560, 'CUT') if i.kind == 'card'])
+cards = [i for i in its if i.kind == 'card' and i.icon != 'outer']
+n_cut = len([i for i in at(2560, 'CUT') if i.kind == 'card' and i.icon != 'outer'])
 check(f'0.24.218 every section is a card of its own; a section the tool does not use has NO card (Smart Move: '
       f'{len(cards)} cards, Cut: {n_cut}) - the view shows there, no empty dark place; the bar is as high as the tool '
       f'needs (Smart Move {hs["SMART"]:.0f} px, Cut {hs["CUT"]:.0f} px)',
@@ -167,7 +167,7 @@ check(f'0.24.218 every section is a card of its own; a section the tool does not
       and all(any(c.x <= i.x and i.x + i.w <= c.x + c.w + 0.01 and c.y <= i.y and i.y + i.h <= c.y + c.h + 0.01 for c in cards)
               for i in its if i.kind in {'seg', 'mini', 'ibtn', 'drop', 'glabel'}))
 its = at(2560, 'BASE')
-left_edge = min(i.x for i in its if i.kind == 'card')
+left_edge = min(i.x for i in its if i.kind == 'card' and i.icon != 'outer')
 own = [i for i in its if i.kind == 'glabel' and i.label in {'EDGE', 'SIDES'}]
 fixed_bottom = min(i.y for i in its if (i.kind, i.label) in FIXED and FIXED[(i.kind, i.label)](cell_of(i)))
 check('the tool\'s own groups (Base Mesh: Edge) are under the fixed rows, from the left',
@@ -218,6 +218,15 @@ for t in tools:
         if i.kind == 'seg' and i.label == 'Ortho':
             pos.add((round(i.x, 1), round(1000 - i.y, 1)))
 check(f'... the same place in every tool ({sorted(pos)})', len(pos) == 1)
+outer = [i for i in its if i.kind == 'card' and i.icon == 'outer']
+inner_cards = [i for i in its if i.kind == 'card' and i.icon != 'outer']
+widths = {round(next(i for i in at(2560, t) if i.kind == 'card' and i.icon == 'outer').w, 1) for t in tools}
+xs = {round(next(i for i in at(2560, t) if i.kind == 'card' and i.icon == 'outer').x, 1) for t in tools}
+check(f'0.24.220 one lighter box holds all the section cards (it is drawn first; every card inside it), the same '
+      f'width and left edge for every tool ({sorted(widths)} px at {sorted(xs)})',
+      len(outer) == 1 and its[0] is outer[0] and len(widths) == 1 and len(xs) == 1
+      and all(outer[0].x <= c.x and c.x + c.w <= outer[0].x + outer[0].w + 0.01 and outer[0].y <= c.y
+              and c.y + c.h <= outer[0].y + outer[0].h + 0.01 for c in inner_cards))
 check('the section names are drawn as titles (bigger, bright) - every section of the bar',
       all(i.icon == 'title' for i in its if i.kind == 'glabel') and tb.TITLE_H >= 18)
 wide, narrow = at(2560, 'BASE'), at(500, 'BASE')

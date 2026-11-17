@@ -557,7 +557,10 @@ def draw(items, hover, S, context):
         dim = 1.0 if it.enabled else 0.35
         white = (G.TEXT[0], G.TEXT[1], G.TEXT[2], dim)
         hot = it is hover and it.clickable()
-        if it.kind == 'card':
+        if it.kind == 'card' and it.icon == 'outer':      # 0.24.220 the lighter box that holds the top bar's section cards
+            c = G.card_color()
+            G.rounded_rect(it.x, it.y, it.w, it.h, 24 * S, (0.46, 0.47, 0.52, min(1.0, c[3] * 0.80)))
+        elif it.kind == 'card':
             G.rounded_rect(it.x, it.y, it.w, it.h, 18 * S, G.card_color())
         elif it.kind == 'title':
             G.text(it.x, it.y + it.h / 2, it.label, 16 * S, G.TEXT)

@@ -524,6 +524,7 @@ SPLIT_W = 230.0               # a section wider than this in one row puts its ce
 BAND_GAP = 22.0               # between two bands of sections (their cards: 6 px apart)
 SEP = 22.0                    # between two sections (their cards: 6 px apart)
 CARD_PAD = 8.0                # a section's card round its cells
+OUTER_PAD = 8.0               # the lighter box round all the section cards
 SECTION_NAMES = {4: 'Options', 7: 'Surface'}     # the two fixed sections whose group has no name of its own
 LASSO_SECTION = 300.0
 
@@ -799,6 +800,14 @@ def items(context, region_w, region_h, k=1.0, left=None, right=None):
                 section(title or SECTION_NAMES.get(si, ''), cells, pl, lasso_rows.get(si))
         for (title, cells), pl in zip(own, own_places):
             section(title, cells, pl)
+        # 0.24.220 (user: "박스로 만드니까 잘 보이는데 뭔가 산개돼 있어서, 저 박스들을 묶는 좀 더 연한 색의 큰 박스 하나
+        # 만들자"): one lighter box behind them all - as wide as the bar's band, as high as the cards go
+        cards = [i for i in out if i.kind == 'card']
+        if cards:
+            m = OUTER_PAD * k
+            lo = min(c.y for c in cards) - m
+            hi = max(c.y + c.h for c in cards) + m
+            out.insert(0, Item('card', left_x - CARD_PAD * k - m, lo, inner + 2 * CARD_PAD * k + 2 * m, hi - lo, '', 'outer'))
         return out
     # Preferences > Top Bar Sections off (or a view narrower than a section): the fixed places as plain rows (0.24.216)
     fixed = fixed_rows_layout(inner, k)             # (None, a very narrow view: the old way, all packed)

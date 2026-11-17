@@ -185,7 +185,7 @@ def flow():
         with C.temp_override(window=w, area=a, region=r):
             return top_bar.items(C, r.width, r.height, ui_factor(C, r))
     def bar_h(its_):
-        cards = [i for i in its_ if i.kind == 'card']
+        cards = [i for i in its_ if i.kind == 'card' and i.icon != 'outer']
         return round(max(c.y + c.h for c in cards) - min(c.y for c in cards))
     FIXED = {}
     for _title, _sources, specs in top_bar.common_slots():
