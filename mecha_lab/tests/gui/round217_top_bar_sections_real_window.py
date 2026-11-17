@@ -168,7 +168,6 @@ def flow():
     w, a, r = view3d()
     with C.temp_override(window=w, area=a, region=r):
         bpy.ops.screen.screen_full_area()                    # the 3D view: the whole window (a wide viewport)
-    top_bar.FORCE_SECTIONS[0] = True                         # (Preferences > Top Bar Sections on)
     yield 2.0
     w, a, r = view3d()
     S = C.scene
@@ -185,6 +184,9 @@ def flow():
     def bar():
         with C.temp_override(window=w, area=a, region=r):
             return top_bar.items(C, r.width, r.height, ui_factor(C, r))
+    def bar_h(its_):
+        cards = [i for i in its_ if i.kind == 'card']
+        return round(max(c.y + c.h for c in cards) - min(c.y for c in cards))
     FIXED = {}
     for _title, _sources, specs in top_bar.common_slots():
         if isinstance(specs, list):
@@ -199,24 +201,36 @@ def flow():
         yield 1.5
         yield from wait_draws(3)
         its = bar()
-        heights[tool] = round(its[0].h)
+        heights[tool] = bar_h(its)
         top_bar.FORCE_SECTIONS[0] = False
-        rows_h[tool] = round(bar()[0].h)
-        top_bar.FORCE_SECTIONS[0] = True
+        rows_h[tool] = bar_h(bar())
+        top_bar.FORCE_SECTIONS[0] = None
         for i in its:
             key = (i.kind, i.label)
             if key in FIXED and FIXED[key](dict(action=i.action, prop=i.prop)):
                 where[key].add((round(i.x, 1), round(i.y, 1), round(i.w, 1)))
         shot(f'0{n + 1}_wide_{tool}.png')
-    # the same view with the setting off: plain rows (the sections would need more than two bands here)
-    top_bar.FORCE_SECTIONS[0] = False
-    for n, tool in enumerate(('CUT', 'BASE', 'SMART')):
-        with C.temp_override(window=w, area=a, region=r):
-            bpy.ops.mch.bar_tool(tool=tool)
-        yield 1.5
-        yield from wait_draws(3)
-        shot(f'1{n + 1}_rows_{tool}.png')
-    top_bar.FORCE_SECTIONS[0] = True
+    # Slow Line on (Cut): its Strength / Radius show in a row under the Draw section, nothing moves sideways
+    with C.temp_override(window=w, area=a, region=r):
+        bpy.ops.mch.bar_tool(tool='CUT')
+    yield 1.5
+    yield from wait_draws(3)
+    before = {(i.kind, i.label): round(i.x, 1) for i in bar() if (i.kind, i.label) in FIXED}
+    h_before = bar_h(bar())
+    it = next((i for i in bar() if i.kind == 'seg' and i.label == 'Slow Line'), None)
+    if it is not None:
+        yield from press(it)
+    yield 1.0
+    yield from wait_draws(3)
+    after = {(i.kind, i.label): round(i.x, 1) for i in bar() if (i.kind, i.label) in FIXED}
+    h_after = bar_h(bar())
+    shot('06_wide_CUT_slow_line.png')
+    res['A4'] = bool(S.mch_brush.stab_enable) and ('mini', 'Strength') in after and h_after > h_before \
+        and all(after[k_] == v_ for k_, v_ in before.items())
+    log('A4 REAL click on Slow Line:', S.mch_brush.stab_enable, '| Strength shown', ('mini', 'Strength') in after,
+        '| bar', h_before, '->', h_after, 'px | cells that moved sideways',
+        [k_ for k_, v_ in before.items() if after.get(k_) != v_])
+    S.mch_brush.stab_enable = False
     moved = {k: v for k, v in where.items() if len(v) != 1}
     its = bar()
     titles_above = [i for i in its if i.kind == 'glabel']
@@ -239,10 +253,10 @@ def flow():
     res['A3'] = it is not None and S.mch_cut.targets == 'ACTIVE'
     log('A3 REAL click on Active (the Target section):', S.mch_cut.targets)
     S.mch_cut.targets = 'AUTO'
-    top_bar.FORCE_SECTIONS[0] = None
     i18n.force(None)
     names = {'A1': 'a wide viewport: every fixed cell at one place for 5 tools',
-             'A2': 'the bar is sections: a title above its cells', 'A3': 'a REAL click on a cell in a section lands'}
+             'A2': 'the bar is sections: a title above its cells', 'A3': 'a REAL click on a cell in a section lands',
+             'A4': 'Slow Line on (REAL click): its numbers show in a row under the section, the bar grows down, no cell moves sideways'}
     n = 0
     for k in sorted(names):
         ok = bool(res.get(k))

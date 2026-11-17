@@ -2576,10 +2576,9 @@ class MCH_AddonPreferences(bpy.types.AddonPreferences):
     korean: BoolProperty(name='한글 (Korean)', default=True, update=_language_changed,
                          description='The Mecha Lab screen in Korean (off: English). 메카 랩 화면의 글자를 한글로 '
                                      '보여 줍니다 - 끄면 영어')
-    bar_sections: BoolProperty(name='Top Bar Sections', default=False, update=_sizes_changed,
-                               description='The top bar as sections side by side like the tool menu (a title on top, '
-                                           'two rows of cells) even when they need more than two bands - a higher '
-                                           'bar. Off: sections only while they fit two bands, else plain rows')
+    bar_sections: BoolProperty(name='Top Bar Sections', default=True, update=_sizes_changed,
+                               description='The top bar as sections side by side like the tool menu: a title on top, the '
+                                           'cells under it. Off: plain rows, the name beside its cells (0.24.216)')
     menu_folded: BoolProperty(name='Tool Menu Folded', default=True, update=_sizes_changed,
                               description='The bottom tool menu folded to a small tab (click the tab to open it; the '
                                           'Tool Wheel - V or Alt + right click - has every tool too)')

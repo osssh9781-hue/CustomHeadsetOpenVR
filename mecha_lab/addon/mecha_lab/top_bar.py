@@ -15,6 +15,7 @@ side panel is too narrow.  The tool's own settings are in the side panel (``side
 """
 from __future__ import annotations
 
+import collections
 import math
 
 from . import i18n
@@ -520,31 +521,35 @@ def _slot_width(slot, k):
 # section's cells in two rows under it, a rule between sections.  The places are still fixed (0.24.216).
 TITLE_H = 15.0                # a section's title line
 SPLIT_W = 230.0               # a section wider than this in one row puts its cells in two rows
-BAND_GAP = 8.0                # between two bands of sections
-SEP = 16.0                    # between two sections (the rule is in the middle)
+BAND_GAP = 22.0               # between two bands of sections (their cards: 6 px apart)
+SEP = 22.0                    # between two sections (their cards: 6 px apart)
+CARD_PAD = 8.0                # a section's card round its cells
 SECTION_NAMES = {4: 'Options', 7: 'Surface'}     # the two fixed sections whose group has no name of its own
 LASSO_SECTION = 300.0
-SECTION_BANDS = 2             # the sections are used while the fixed ones fit in this many bands         # the Lasso section's width: its cells flow into the two rows
 
 
 FORCE_SECTIONS = [None]       # tests: True / False whatever the setting says
 
 
 def sections_wanted():
-    """Preferences > Top Bar Sections: the sections also when they need more than two bands (a higher bar)."""
+    """Preferences > Top Bar Sections (on by default): the bar as sections; off: plain rows (0.24.216)."""
     if FORCE_SECTIONS[0] is not None:
         return bool(FORCE_SECTIONS[0])
     from .workspace_ui import pref
-    return bool(pref('bar_sections', False))
+    return bool(pref('bar_sections', True))
 
 
-def band_h(k):
-    return (TITLE_H + 2 * ROW + GAP) * k
+# 0.24.218 (user: "A 가 좋은 듯"): a section is its title and ONE row of cells - the ones that are always there.  The
+# cells that only show when something is switched on (Slow Line's Strength / Radius, the Depth value and floor, a
+# corner's Width / Segments, Surface's Gap, Through's Crease) have their own places in a second row right under their
+# section: the band grows down by a row while one of them shows, nothing moves sideways.
+COND = {('mini', 'Strength'), ('mini', 'Radius'), ('mini', 'Depth'), ('seg', 'Follow'), ('seg', 'Level'), ('seg', 'Flat'),
+        ('mini', 'Width'), ('mini', 'Segments'), ('mini', 'Gap'), ('mini', 'Crease')}
 
 
 def _two_rows(ws, k):
     """Cell widths -> [(row 0 / 1, x, w)] and the section's width: one row when short, else two rows split where
-    the longer one is shortest (from the widths alone)."""
+    the longer one is shortest (from the widths alone) - a tool's own section."""
     gap = GAP * k
     total = sum(ws) + gap * (len(ws) - 1)
     if total <= SPLIT_W * k or len(ws) < 2:
@@ -577,14 +582,21 @@ def _title_w(title, k):
 
 def fixed_layout(room_w, k):
     """Where every fixed section is in a bar ``room_w`` px wide - from the width alone, never from the tool:
-    (bands, [dict(band, x, w, rule, cells=[(row, x, w)] | free=room)]), x from the bar's inner left edge.  None
-    when the bar is narrower than a section."""
+    (bands, [dict(band, x, w, rule, cells=[(row, x, w)] | free=room)]), x from the bar's inner left edge; row 0 =
+    the cells that are always there, row 1 = the ones that come and go (``COND``).  None when the bar is narrower
+    than a section."""
     x, band = 0.0, 0
     out = []
     for title, sources, specs in common_slots():
         tw = max([_title_w(t, k) for t in sources] + [_title_w(SECTION_NAMES.get(len(out), ''), k)])
         if isinstance(specs, list):
-            cells, w = _two_rows([_spec_w(sp_, k) for sp_ in specs], k)
+            cells, xs = [], [0.0, 0.0]
+            for sp_ in specs:
+                row = 1 if (sp_[1], sp_[0]) in COND else 0
+                w = _spec_w(sp_, k)
+                cells.append((row, xs[row], w))
+                xs[row] += w + GAP * k
+            w = max(xs) - GAP * k
             place = dict(cells=cells)
         else:
             w = LASSO_SECTION * k
@@ -693,15 +705,31 @@ def items(context, region_w, region_h, k=1.0, left=None, right=None):
     band_l, band_r = left, min(right, region_w - corner)
     band = max(300.0 * k, band_r - band_l - 24 * k)
     inner = band - 2 * PAD * k
-    fixed = fixed_layout(inner, k)
-    if fixed and (fixed[0] <= SECTION_BANDS or sections_wanted()):   # (more bands: too high a bar - rows, below)
+    fixed = fixed_layout(inner, k) if sections_wanted() else None
+    if fixed:
         n_fixed, places = fixed
-        bh = band_h(k)
-        # the bands under the last section this tool uses are left out (its own sections follow at once); an
-        # empty section above or between used ones stays empty - nothing ever moves into it
-        last = max([pl['band'] for (title, cells), pl in zip(common, places)
-                    if (any(c is not None for c in cells) if 'cells' in pl else bool(cells))] + [-1])
+
+        def used_of(cells, pl):
+            return any(c is not None for c in cells) if 'cells' in pl else bool(cells)
+        # 0.24.218 (user: "이렇게 칸이 비어 있으니까 별로다" -> "칸 내부에서 바로 쪼개지 말고 외부 큰 상자를 목록별로
+        # 쪼개자"): no one big card with empty places in it - every section is a card of its own.  A section the tool
+        # does not use has no card at all (the view shows there); the others stay exactly where they are.
+        # The bands under the last section this tool uses are left out (its own sections follow at once).
+        last = max([pl['band'] for (title, cells), pl in zip(common, places) if used_of(cells, pl)] + [-1])
         n_fixed = last + 1
+        # a band is a title and one row of cells; a second row only while a cell of it shows there
+        rows_in = collections.defaultdict(lambda: 1)
+        lasso_rows = {}
+        for si, ((title, cells), pl) in enumerate(zip(common, places)):
+            if pl['band'] >= n_fixed:
+                continue
+            if 'cells' in pl:
+                if any(c is not None and pr == 1 for c, (pr, _x, _w) in zip(cells, pl['cells'])):
+                    rows_in[pl['band']] = 2
+            elif cells:
+                lasso_rows[si] = _flow_two([_width(c, k) for c in cells], pl['free'], k)
+                if any(pr == 1 for pr, _x, _w in lasso_rows[si]):
+                    rows_in[pl['band']] = 2
         # the tool's own groups: sections of the same kind, in bands under the fixed ones, from the left
         own_places, ox, ob = [], 0.0, n_fixed
         for title, cells in own:
@@ -715,44 +743,51 @@ def items(context, region_w, region_h, k=1.0, left=None, right=None):
             elif ox > 0:
                 ox += SEP * k
             own_places.append(dict(band=ob, x=ox, w=w, rule=rule, cells=cl))
+            if any(pr == 1 for pr, _x, _w in cl):
+                rows_in[ob] = 2
             ox += w
-        n_bands = (ob + 1) if own else n_fixed
-        n_bands = max(n_bands, 1)
+        n_bands = max((ob + 1) if own else n_fixed, 1)
+
+        def bh(b_):
+            return (TITLE_H + rows_in[b_] * ROW + (rows_in[b_] - 1) * GAP) * k
         width = band
-        height = n_bands * bh + (n_bands - 1) * BAND_GAP * k + 2 * PAD * k
+        height = sum(bh(b_) for b_ in range(n_bands)) + (n_bands - 1) * BAND_GAP * k + 2 * PAD * k
         y0 = region_h - TOP * k - inset - height
         x0 = max(band_l + 8 * k, min((region_w - width) / 2.0, band_r - 8 * k - width))
-        out = [Item('card', x0, y0, width, height)]
+        out = []
         left_x = x0 + PAD * k
         top = y0 + height - PAD * k
+        tops = {}
+        yy = top
+        for b_ in range(n_bands):
+            tops[b_] = yy
+            yy -= bh(b_) + BAND_GAP * k
 
-        def section(title, cells, pl):
-            by = top - pl['band'] * (bh + BAND_GAP * k)             # the band's top edge
+        def section(title, cells, pl, flow=None):
+            by = tops[pl['band']]                               # the band's top edge
             sx = left_x + pl['x']
-            if pl['rule']:
-                out.append(Item('vrule', sx - SEP * k / 2 - 0.5 * k, by - bh + 4 * k, 1.0 * k, bh - 8 * k))
+            spots_ = pl['cells'] if 'cells' in pl else (flow or [])
+            # the card: as wide as what is in it now (its place and its cells' places do not change)
+            cw_ = max([cx + cw for c, (cr, cx, cw) in zip(cells, spots_) if c is not None] + [_title_w(title, k)])
+            out.append(Item('card', sx - CARD_PAD * k, by - bh(pl['band']) - CARD_PAD * k, cw_ + 2 * CARD_PAD * k,
+                            bh(pl['band']) + 2 * CARD_PAD * k))
             if title:
                 out.append(Item('glabel', sx, by - TITLE_H * k, pl['w'], TITLE_H * k, title.upper()))
 
             def cy(row):
                 return by - TITLE_H * k - (row + 1) * ROW * k - row * GAP * k
-            if 'cells' in pl:
-                for c, (cr, cx, cw) in zip(cells, pl['cells']):
-                    if c is not None:               # (else: its place stays empty)
-                        out.append(Item(c['kind'], sx + cx, cy(cr), cw, ROW * k, c['label'], c['icon'], c['on'], True,
-                                        c['action'], c['data'], c['prop']))
-            else:
-                for c, (cr, cx, cw) in zip(cells, _flow_two([_width(c, k) for c in cells], pl['free'], k)):
+            spots = pl['cells'] if 'cells' in pl else (flow or [])
+            for c, (cr, cx, cw) in zip(cells, spots):
+                if c is not None:                   # (else: its place stays empty)
                     out.append(Item(c['kind'], sx + cx, cy(cr), cw, ROW * k, c['label'], c['icon'], c['on'], True,
                                     c['action'], c['data'], c['prop']))
         for si, ((title, cells), pl) in enumerate(zip(common, places)):
-            used = any(c is not None for c in cells) if 'cells' in pl else bool(cells)
-            if used and pl['band'] < n_fixed:
-                section(title or SECTION_NAMES.get(si, ''), cells, pl)
+            if used_of(cells, pl) and pl['band'] < n_fixed:
+                section(title or SECTION_NAMES.get(si, ''), cells, pl, lasso_rows.get(si))
         for (title, cells), pl in zip(own, own_places):
             section(title, cells, pl)
         return out
-    # a view too narrow for the sections in two bands: the same fixed places as plain rows (0.24.216) - lower
+    # Preferences > Top Bar Sections off (or a view narrower than a section): the fixed places as plain rows (0.24.216)
     fixed = fixed_rows_layout(inner, k)             # (None, a very narrow view: the old way, all packed)
     if fixed:
         n_fixed, places = fixed

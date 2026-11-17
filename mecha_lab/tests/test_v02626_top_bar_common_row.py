@@ -90,6 +90,11 @@ where = collections.defaultdict(set)
 seen = collections.Counter()
 
 
+def bar_h(its):
+    cards = [i for i in its if i.kind == 'card']
+    return max(c.y + c.h for c in cards) - min(c.y for c in cards)
+
+
 def cell_of(i):
     return dict(kind=i.kind, label=i.label, action=i.action, prop=i.prop, data=i.data, on=i.on, icon=i.icon, width=None)
 
@@ -98,16 +103,19 @@ def record(tag):
     for t in tools:
         TOOL[0] = t
         its = tb.items(C, 2560, 1440, 1.0, left=0.0, right=2560.0)
-        card = its[0]
         for i in its:
             key = (i.kind, i.label)
             if key in FIXED and i.enabled and FIXED[key](cell_of(i)):
-                where[key].add((round(i.x - card.x, 2), round(card.y + card.h - i.y, 2), round(i.w, 2)))
+                where[key].add((round(i.x, 2), round(1440 - i.y, 2), round(i.w, 2)))    # (x, down from the view's top, w)
                 seen[key] += 1
 
 
 B.shape = 'LASSO'; B.outline_corner = 'NONE'; B.stab_enable = False; cut.depth_mode = 'THROUGH'; B.surface_mode = False
 record('default')
+moved = {k: v for k, v in where.items() if len(v) != 1}
+check(f'every fixed cell is at ONE place for all {len(tools)} tools ({len(where)} cells, e.g. Res seen '
+      f'{seen[("mini", "Res")]} times at {sorted(where[("mini", "Res")])}); {len(moved)} move',
+      not moved and len(where) >= 18 and seen[('mini', 'Res')] > 30, moved)
 B.stab_enable = True; cut.depth_mode = 'SURFACE'; B.outline_corner = 'ROUND'; B.surface_mode = True; B.through_mode = True
 record('everything on')
 for sh in ('CIRCLE', 'STROKE', 'RECT'):
@@ -115,14 +123,25 @@ for sh in ('CIRCLE', 'STROKE', 'RECT'):
     record(sh)
 B.shape = 'LASSO'; B.stab_enable = False; cut.depth_mode = 'THROUGH'; B.outline_corner = 'NONE'; B.surface_mode = False
 B.through_mode = False
-moved = {k: v for k, v in where.items() if len(v) != 1}
-check(f'every fixed cell is at ONE place - the same for all {len(tools)} tools and 5 states it was looked at in '
-      f'({len(where)} cells, e.g. Res seen {seen[("mini", "Res")]} times at {sorted(where[("mini", "Res")])}); '
-      f'{len(moved)} move', not moved and len(where) >= 30 and seen[('mini', 'Res')] > 100, moved)
-check('... also the ones that come and go: Slow Line\'s Strength / Radius, the Depth value and floor, the corner Width / '
-      'Segments, Surface\'s Gap', all(k in where for k in (('mini', 'Strength'), ('mini', 'Radius'), ('mini', 'Depth'),
-                                                            ('seg', 'Follow'), ('mini', 'Width'), ('mini', 'Segments'),
-                                                            ('mini', 'Gap'))))
+side = {k: sorted({p_[0] for p_ in v}) for k, v in where.items() if len({p_[0] for p_ in v}) != 1}
+check(f'0.24.218 with everything switched on (Slow Line, From Surface, round corners, Surface, Through) and other '
+      f'shapes: no cell moves SIDEWAYS, ever ({len(where)} cells over {len(tools)} tools x 5 states)', not side, side)
+COND = {k for k in where if k in tb.COND}
+under = {}
+for kind, label, parent in (('mini', 'Strength', ('seg', 'Slow Line')), ('mini', 'Depth', ('seg', 'Through All')),
+                            ('mini', 'Width', ('seg', 'Sharp')), ('mini', 'Gap', ('seg', 'Surface'))):
+    cy_ = min(p_[1] for p_ in where[(kind, label)])
+    py_ = min(p_[1] for p_ in where[parent])
+    under[label] = cy_ > py_                           # (measured down from the bar's top: further down)
+check(f'the cells that come and go have places of their own in a row under their section ({sorted(c[1] for c in COND)}: '
+      f'{under})', len(COND) == len(tb.COND) and all(under.values()))
+TOOL[0] = 'CUT'
+h0 = bar_h(tb.items(C, 2560, 1440, 1.0, left=0.0, right=2560.0))
+B.stab_enable = True
+h1 = bar_h(tb.items(C, 2560, 1440, 1.0, left=0.0, right=2560.0))
+B.stab_enable = False
+check(f'... the bar grows down by a row while one of them shows (Cut: {h0:.0f} -> {h1:.0f} px with Slow Line on) and is '
+      f'back after', h1 > h0 and bar_h(tb.items(C, 2560, 1440, 1.0, left=0.0, right=2560.0)) == h0)
 
 
 def at(width, tool):
@@ -136,16 +155,22 @@ check(f'a place the tool does not use is EMPTY, nothing greyed, nothing moved in
       f'has {len(labels)} cells), and every cell shown can be clicked',
       'Lasso' not in labels and 'Res' not in labels and 'Sketch' not in labels and 'Ortho' in labels
       and all(i.enabled for i in its))
-hs = {t: at(2560, t)[0].h for t in tools}
-check(f'the bar hangs from the top; the rows under the last place a tool uses are left out, so a tool with few '
-      f'settings has a small bar (Smart Move {hs["SMART"]:.0f} px, Cut {hs["CUT"]:.0f} px) - the places above keep '
-      f'their distance from the top (the check before)', hs['SMART'] <= hs['CUT'] and len({round(at(2560, t)[0].y + at(2560, t)[0].h, 2) for t in tools}) == 1)
+hs = {t: bar_h(at(2560, t)) for t in tools}
+its = at(2560, 'SMART')
+cards = [i for i in its if i.kind == 'card']
+n_cut = len([i for i in at(2560, 'CUT') if i.kind == 'card'])
+check(f'0.24.218 every section is a card of its own; a section the tool does not use has NO card (Smart Move: '
+      f'{len(cards)} cards, Cut: {n_cut}) - the view shows there, no empty dark place; the bar is as high as the tool '
+      f'needs (Smart Move {hs["SMART"]:.0f} px, Cut {hs["CUT"]:.0f} px)',
+      1 <= len(cards) < n_cut and hs['SMART'] <= hs['CUT']
+      and all(any(c.x <= i.x and i.x + i.w <= c.x + c.w + 0.01 and c.y <= i.y and i.y + i.h <= c.y + c.h + 0.01 for c in cards)
+              for i in its if i.kind in {'seg', 'mini', 'ibtn', 'drop', 'glabel'}))
 its = at(2560, 'BASE')
-card = its[0]
+left_edge = min(i.x for i in its if i.kind == 'card')
 own = [i for i in its if i.kind == 'glabel' and i.label in {'EDGE', 'SIDES'}]
 fixed_bottom = min(i.y for i in its if (i.kind, i.label) in FIXED and FIXED[(i.kind, i.label)](cell_of(i)))
 check('the tool\'s own groups (Base Mesh: Edge) are under the fixed rows, from the left',
-      bool(own) and all(i.y < fixed_bottom for i in own) and min(i.x for i in own) - card.x < 20)
+      bool(own) and all(i.y < fixed_bottom for i in own) and min(i.x for i in own) - left_edge < 20)
 rows_at = {w_: len({round(i.y, 1) for i in at(w_, 'CUT') if (i.kind, i.label) in FIXED}) for w_ in (2560, 1800, 1300)}
 same_narrow = {}
 for w_ in (1800, 1300):
@@ -154,29 +179,28 @@ for w_ in (1800, 1300):
         its_ = at(w_, t)
         for i in its_:
             if (i.kind, i.label) in FIXED and FIXED[(i.kind, i.label)](cell_of(i)):
-                pos[(i.kind, i.label)].add((round(i.x - its_[0].x, 1), round(its_[0].y + its_[0].h - i.y, 1)))
+                pos[(i.kind, i.label)].add((round(i.x, 1), round(1000 - i.y, 1)))
     same_narrow[w_] = all(len(v) == 1 for v in pos.values())
 check(f'a narrower view: the fixed places take more rows ({rows_at}) - how they are split depends on the width alone, '
       f'so they are still the same for every tool ({same_narrow})', all(same_narrow.values())
       and rows_at[1300] >= rows_at[1800] >= rows_at[2560])
-# 0.24.217 the look: sections side by side (a title on top, two rows of cells, a rule between) while they fit two bands
+# the look: sections side by side like the tool menu - a title on top, its cells under it, a rule between
 its = at(2560, 'CUT')
 res_cell = next(i for i in its if i.kind == 'mini' and i.label == 'Res')
 res_title = next(i for i in its if i.kind == 'glabel' and i.label == 'RESOLUTION')
 apply_cell = next(i for i in its if i.label == 'Apply to Parts')
 names = [i.label for i in its if i.kind == 'glabel']
-check(f'a wide view (2560 px): sections like the tool menu - the title above its cells (Resolution over Res), the '
-      f'section\'s cells in two rows (Apply to Parts under Res), rules between; sections: {names}',
-      res_title.y > res_cell.y and abs(res_title.x - res_cell.x) < 1.0 and apply_cell.y < res_cell.y
-      and abs(apply_cell.x - res_cell.x) < 1.0 and any(i.kind == 'vrule' for i in its)
-      and tb.fixed_layout(2560 - 60, 1.0)[0] <= tb.SECTION_BANDS and 'OPTIONS' in names)
-its = at(1000, 'CUT')
+check(f'sections: the title above its cells (Resolution over Res, Apply to Parts beside it), each in its own card; {names}',
+      res_title.y > res_cell.y and abs(res_title.x - res_cell.x) < 1.0 and abs(apply_cell.y - res_cell.y) < 1.0
+      and apply_cell.x > res_cell.x and len([i for i in its if i.kind == 'card']) >= 6 and 'OPTIONS' in names)
+tb.FORCE_SECTIONS[0] = False
+its = at(2560, 'CUT')
 res_cell = next(i for i in its if i.kind == 'mini' and i.label == 'Res')
 res_title = next(i for i in its if i.kind == 'glabel' and i.label == 'RESOLUTION')
-check(f'a view where the sections would need more than {tb.SECTION_BANDS} bands (1000 px: '
-      f'{tb.fixed_layout(1000 - 60, 1.0)[0]}): the same fixed places as rows, the name beside its cells - a lower bar '
-      f'({at(1000, "CUT")[0].h:.0f} px)', abs(res_title.y - res_cell.y) < 1.0 and res_title.x < res_cell.x
-      and tb.fixed_layout(1000 - 60, 1.0)[0] > tb.SECTION_BANDS)
+check('Preferences > Top Bar Sections off: the plain rows of 0.24.216 (the name beside its cells)',
+      abs(res_title.y - res_cell.y) < 1.0 and res_title.x < res_cell.x and tb.sections_wanted() is False)
+tb.FORCE_SECTIONS[0] = None
+check('... on by default', tb.sections_wanted() is True)
 wide, narrow = at(2560, 'BASE'), at(500, 'BASE')
 check('a view too narrow for a single place (500 px): the groups are packed as before, nothing lost',
       sorted((i.kind, i.label) for i in narrow if i.kind not in {'card', 'vrule', 'glabel'}) ==
