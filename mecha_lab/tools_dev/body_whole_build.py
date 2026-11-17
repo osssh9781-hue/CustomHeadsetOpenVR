@@ -430,6 +430,9 @@ def found_bones(V, N, L, marks):
             else:
                 break
         return names_[k_]
+    d_ua, t_ua = seg_d(V, 'UpperArm.L')               # (how thick the upper arm is round its middle)
+    m_ua = (np.abs(t_ua - 0.6) < 0.15) & (V[:, 0] > 0) & (d_ua < 0.09)
+    arm_r = float(np.quantile(d_ua[m_ua], 0.5)) if m_ua.sum() > 8 else 0.03
     out = []
     counts = {}
     for vi, v in enumerate(V):
@@ -445,11 +448,18 @@ def found_bones(V, N, L, marks):
             dr = (b_ - a_) / np.linalg.norm(b_ - a_)
             if float((v - b_) @ dr) < -0.25 * rise:
                 cn = 'trunk'
+            elif v[2] < b_[2] - 0.2 * rise:           # (under the joint, on the body's side of the arm and standing off
+                ua, ub = bones['UpperArm.' + cn[-1]]  #  its bone: the chest's / the back's edge by the armpit)
+                uab = ub - ua
+                tq = float((v - ua) @ uab) / float(uab @ uab)
+                q_ = ua + uab * min(max(tq, 0.0), 1.0)
+                if tq < 0.22 and float((v - q_) @ dr) < 0 and float(np.linalg.norm(v - q_)) > 1.4 * arm_r:
+                    cn = 'trunk'
         if cn == 'trunk' and abs(v[0]) > 0.02 and v[2] > armpit:    # (the shoulder's top out past its joint: the arm's)
             a_, b_ = bones['Shoulder.L' if v[0] > 0 else 'Shoulder.R']
             dr = (b_ - a_) / np.linalg.norm(b_ - a_)
-            if float((v - b_) @ dr) > -0.1 * rise:
-                cn = 'armL' if v[0] > 0 else 'armR'
+            if float((v - b_) @ dr) > -0.1 * rise and v[2] > b_[2] - 0.2 * rise:    # (the cap over the joint only -
+                cn = 'armL' if v[0] > 0 else 'armR'                                 #  not the ribs' side under it)
         if cn != 'trunk':
             best = along_chain(v, chains[cn])
         elif float((v - head_base) @ hN) > 0 and v[2] > min(chin[2], nape[2]) - 0.05 and \
@@ -457,10 +467,10 @@ def found_bones(V, N, L, marks):
             best = 'Head'
         else:
             best = along_chain(v, ['Pelvis', 'Waist', 'Chest', 'Neck'])
-            if best in ('Chest', 'Neck') and abs(v[0]) > 0.004:    # (the shoulders' share of the chest's top)
-                sn = 'Shoulder.L' if v[0] > 0 else 'Shoulder.R'
-                if float(seg_d(v[None], sn)[0][0]) < float(seg_d(v[None], best)[0][0]):
-                    best = sn
+            if best in ('Chest', 'Neck') and abs(v[0]) > 0.004 and v[2] > sh[2] - 0.25 * rise:
+                sn = 'Shoulder.L' if v[0] > 0 else 'Shoulder.R'    # (the collarbones' share: only the shoulders' TOP -
+                if float(seg_d(v[None], sn)[0][0]) < float(seg_d(v[None], best)[0][0]):    # the chest and the
+                    best = sn                                                              # shoulder blades stay)
         out.append(best)
         counts[cn] = counts.get(cn, 0) + 1
     print('limbs', counts)

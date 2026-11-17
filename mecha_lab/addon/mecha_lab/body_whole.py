@@ -182,6 +182,18 @@ def make(context, height=1.8, location=None, kind='human'):
     wide = np.array([n.split('.')[0] in ('Shoulder', 'UpperArm') for n in names])[B].astype(float)[:, None]
     wide = np.clip(smooth_weights(np.hstack([wide, 1.0 - wide]), E, passes=40)[:, :1] * 1.6, 0.0, 1.0)
     W = W * (1.0 - wide) + Ww * wide
+    # under the armpit the body's own skin (the ribs' side, the chest's and the back's edge) lets go of the arm: any
+    # share of the arm's bones there swings it out like a balloon when the arm lifts - none at the armpit's depth,
+    # all of it back by the shoulder's height
+    zj = float(bones['UpperArm.L'][0][2])
+    keep = np.clip((V[:, 2] - (zj - 0.085)) / 0.075, 0.0, 1.0)
+    keep = keep * keep * (3.0 - 2.0 * keep)
+    body_pt = np.array([n.split('.')[0] in ('Pelvis', 'Waist', 'Chest', 'Neck', 'Shoulder') for n in names])[B]
+    keep = np.where(body_pt, keep, 1.0)
+    for j, n in enumerate(names):
+        if n.split('.')[0] in ('UpperArm', 'Forearm'):
+            W[:, j] *= keep
+    W /= W.sum(1, keepdims=True)
     W[fine] = Wf[fine]
     for j, n in enumerate(names):
         vg = body.vertex_groups.new(name=n)
