@@ -1313,7 +1313,11 @@ def draw(layout, context):
     row = layout.row(align=True)
     row.prop(st, 'height')
     row.operator('mch.bodykit_add', text='Add Body', icon='ADD')
-    layout.operator('mch.bodywhole_add', text='Add One-Piece Human (skin bends at the joints)', icon='ARMATURE_DATA')
+    col = layout.column(align=True)
+    col.label(text='One-Piece Body (skin bends at the joints)', icon='ARMATURE_DATA')
+    row = col.row(align=True)
+    for kid, label in (('human', 'Human'), ('creature', 'Creature'), ('creature2', 'Creature 2')):
+        row.operator('mch.bodywhole_add', text=label).kind = kid
     from . import body_whole                         # 0.24.186 the one-piece body: its own sliders
     if body_whole.draw(layout, context):
         return

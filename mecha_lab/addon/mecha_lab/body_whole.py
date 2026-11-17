@@ -23,7 +23,7 @@ import numpy as np
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, PointerProperty, StringProperty
 from mathutils import Matrix, Quaternion, Vector
 
-FILE = os.path.join(os.path.dirname(__file__), 'body_kits', 'human_whole.npz')
+DIR = os.path.join(os.path.dirname(__file__), 'body_kits')
 KEY = 'mch_bodywhole'                    # on the body mesh and its bones object: json {'rig': name, 'body': name}
 ARM_MOD = 'MCH Body Bones'
 # (bone, slot, parent, from, to) - "from" / "to": a kit part's pivot / end, a midpoint, or a point
@@ -42,93 +42,33 @@ _BUSY = [False]
 _CACHE = {}
 
 
-def load():
-    """(V (n, 3), face sizes, corners, {bone: (head, tail, parent, slot, side)}) - the body 1 tall, feet on 0."""
-    if 'data' in _CACHE:
-        return _CACHE['data']
-    with np.load(FILE, allow_pickle=False) as z:
+KINDS = (('human', 'Human', 'Your human body'), ('creature', 'Creature', 'Your creature (the big-headed one)'),
+         ('creature2', 'Creature 2', 'Your lanky creature (long arms, raised heels)'))
+
+
+def load(kind='human'):
+    """(V (n, 3), face sizes, corners, {bone: (head, tail, parent, slot, side)}, each point's bone (an index)) - the
+    body 1 tall, feet on 0.  The bones and each point's bone are worked out when the body is built
+    (tools_dev/body_whole_build.py)."""
+    if kind in _CACHE:
+        return _CACHE[kind]
+    with np.load(os.path.join(DIR, kind + '_whole.npz'), allow_pickle=False) as z:
         lo, hi = z['Body_box'].astype(np.float64)
         V = z['Body_Q'].astype(np.float64) / 65535.0 * (hi - lo) + lo
         N, L = np.array(z['Body_N']).astype(np.int64), np.array(z['Body_L']).astype(np.int64)
-        parts = {p['name']: p for p in json.loads(str(z['meta']))['parts']}
-    bones = {}
-
-    def P(name, key):
-        return np.array(parts[name][key], float)
-    for base, slot, par in BONES:
-        for side in (('L', 'R') if base in SIDED else ('',)):
-            sfx = f'.{side}' if side else ''
-            if base in ('Waist', 'Chest'):            # (the torso in two: the waist below its middle, the chest above)
-                lo_, hi_ = P('Torso', 'pivot'), P('Torso', 'end')
-                mid_ = lo_ + (hi_ - lo_) * WAIST_AT
-                head, tail = (lo_, mid_) if base == 'Waist' else (mid_, hi_)
-            elif base == 'Neck':
-                head = P('Torso', 'end')
-                tail = np.array([0.0, head[1] - 0.008, HEAD_BASE])
-            elif base == 'Head':
-                nb = P('Torso', 'end')
-                head = np.array([0.0, nb[1] - 0.008, HEAD_BASE])
-                tail = np.array([0.0, nb[1] - 0.02, V[:, 2].max() - 0.01])
-            elif base == 'Shoulder':                  # (the collarbone: from beside the neck's base to the arm's joint)
-                arm = P('UpperArm' + sfx, 'pivot')
-                head = np.array([arm[0] * 0.22, arm[1] - 0.01, arm[2] + 0.012])
-                tail = arm
-            elif base == 'Thigh':                     # (the kit's knee part: the joint in its middle)
-                head, tail = P('Thigh' + sfx, 'pivot'), (P('Knee' + sfx, 'pivot') + P('Knee' + sfx, 'end')) * 0.5
-            elif base == 'Shin':
-                head, tail = (P('Knee' + sfx, 'pivot') + P('Knee' + sfx, 'end')) * 0.5, P('Foot' + sfx, 'pivot')
-            else:
-                head, tail = P(base + sfx, 'pivot'), P(base + sfx, 'end')
-            pname = None if par is None else (par + sfx if par in SIDED else par)
-            bones[base + sfx] = (head, tail, pname, slot, side)
-    _CACHE['data'] = (V, N, L, bones)
-    return _CACHE['data']
+        B = np.array(z['Body_B']).astype(np.int64)
+        meta = json.loads(str(z['meta']))
+    bones = {b['name']: (np.array(b['head'], float), np.array(b['tail'], float), b['parent'], b['slot'], b['side'])
+             for b in meta['bones']}
+    _CACHE[kind] = (V, N, L, bones, B)
+    return _CACHE[kind]
 
 
-def weights(V, bones):
-    """Each point's bone (n, bones; one each - smoothed over the mesh by the caller): the bone of the part-split human
-    kit's part whose surface the point lies on (the same sculpt, cut in parts by the user) - so a fingertip beside the
-    thigh is the hand's, not the thigh's."""
-    from mathutils import kdtree
-    from . import body_kit as bk
-    parts = bk.load('human')
-    labels, pts = [], []
-    for n, p in parts.items():
-        P = p['V'] + np.array(p['pivot'])
-        step = max(1, len(P) // 4000)
-        pts.append(P[::step])
-        labels += [n] * len(P[::step])
-    pts = np.concatenate(pts)
-    kd = kdtree.KDTree(len(pts))
-    for i, q in enumerate(pts):
-        kd.insert(q, i)
-    kd.balance()
+def weights(B, bones):
+    """Each point's bone (n, bones; one each - smoothed over the mesh by the caller)."""
     names = list(bones)
-    col = {n: j for j, n in enumerate(names)}
-    neck = bones['Neck'][0][2]
-    W = np.zeros((len(V), len(names)))
-    for i, v in enumerate(V):
-        part = labels[kd.find(v)[1]]
-        base, _dot, side = part.partition('.')
-        sfx = ('.' + side) if side else ''
-        if base == 'Knee':                            # (the knee part: the thigh above its middle, the shin below)
-            mid = bones['Shin' + sfx][0]
-            ax = bones['Shin' + sfx][1] - mid
-            base = 'Shin' if float((v - mid) @ ax) > 0 else 'Thigh'
-        if base == 'Torso' and v[2] > HEAD_BASE:
-            base = 'Head'
-        elif base == 'Torso' and v[2] > neck:
-            base = 'Neck'
-        elif base == 'Torso' and abs(v[0]) > 0.03 and v[2] > neck - 0.085:
-            sd = 'L' if v[0] > 0 else 'R'             # (the torso's top corners: the shoulder's, by how near its bone)
-            a_, b_ = bones['Shoulder.' + sd][0], bones['Shoulder.' + sd][1]
-            ab = b_ - a_
-            tt = min(max(float((v - a_) @ ab) / float(ab @ ab), 0.0), 1.0)
-            if float(np.linalg.norm(v - (a_ + ab * tt))) < 0.062 and tt > 0.25:
-                base, sfx = 'Shoulder', '.' + sd
-        if base == 'Torso':
-            base = 'Chest' if v[2] > bones['Chest'][0][2] else 'Waist'
-        W[i, col[base + sfx]] = 1.0
+    W = np.zeros((len(B), len(names)))
+    W[np.arange(len(B)), B] = 1.0
     return W, names
 
 
@@ -157,8 +97,8 @@ def pair(ob):
     return bpy.data.objects.get(d['body']), bpy.data.objects.get(d['rig'])
 
 
-def make(context, height=1.8, location=None):
-    V, N, L, bones = load()
+def make(context, height=1.8, location=None, kind='human'):
+    V, N, L, bones, B = load(kind)
     location = Vector(location if location is not None else context.scene.cursor.location)
     me = bpy.data.meshes.new('Body')
     me.vertices.add(len(V))
@@ -178,7 +118,7 @@ def make(context, height=1.8, location=None):
     coll.objects.link(body)
     try:
         from .body_kit import _material
-        me.materials.append(_material('human'))
+        me.materials.append(_material('human' if kind == 'human' else 'creature'))
     except (ImportError, KeyError):
         pass
     # the bones
@@ -206,7 +146,7 @@ def make(context, height=1.8, location=None):
     arm.display_type = 'STICK'
     rig.show_in_front = True
     # the skin: each point on the bones nearest it
-    W, names = weights(V, bones)
+    W, names = weights(B, bones)
     E = np.empty(len(me.edges) * 2, np.int64)
     me.edges.foreach_get('vertices', E)
     W = smooth_weights(W, E.reshape(-1, 2), passes=10)
@@ -218,7 +158,7 @@ def make(context, height=1.8, location=None):
     md = body.modifiers.new(ARM_MOD, 'ARMATURE')
     md.object = rig
     body.parent = rig
-    tag = json.dumps({'body': body.name, 'rig': rig.name})
+    tag = json.dumps({'body': body.name, 'rig': rig.name, 'kind': kind})
     body[KEY] = tag
     rig[KEY] = tag
     rig['mch_joints'] = json.dumps({})
@@ -333,7 +273,7 @@ def _upd_pick(self, context):
 
 
 def _joint_items(self, context):
-    _V, _N, _L, bones = load()
+    bones = load()[3]
     return [(n, n.replace('UpperArm', 'Upper Arm'), '') for n in bones]
 
 
@@ -496,15 +436,16 @@ class MCH_OT_bodywhole_end(bpy.types.Operator):
 class MCH_OT_bodywhole_add(bpy.types.Operator):
     bl_idname = 'mch.bodywhole_add'
     bl_label = 'Add One-Piece Body'
-    bl_description = ('Your whole human body as one mesh on bones: its skin bends at the joints; the same sliders '
+    bl_description = ('A whole body of yours (human or creature) as one mesh on bones: its skin bends at the joints; the same sliders '
                       '(sizes, proportions, joints, poses)')
     bl_options = {'REGISTER', 'UNDO'}
+    kind: EnumProperty(name='Body', items=KINDS, default='human')
 
     def execute(self, context):
         if context.mode != 'OBJECT':
             bpy.ops.object.mode_set(mode='OBJECT')
         try:
-            body, _rig = make(context, context.scene.mch_bodykit_new.height)
+            body, _rig = make(context, context.scene.mch_bodykit_new.height, kind=self.kind)
         except (OSError, KeyError, ValueError) as e:
             self.report({'ERROR'}, f'One-piece body: {e}')
             return {'CANCELLED'}
