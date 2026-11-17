@@ -553,13 +553,73 @@ def _gather(film, me, vp, frame0):
     return len(idx)
 
 
-def perform(context, bag=None):
+MASK_PIN = 'MCH Gather'            # (the cloth modifier's pin group: the gather's, and a masked film's rim)
+
+
+def mask_bag(context, body, loose, points):
+    """0.24.211 (user: "베큠팩도 마스크로 하게 해줘"): the masked region of ``body`` as the film - its own faces made
+    lighter, in world space, lifted off the body (more with Bag: more cloth to suck in) with the rim left on the
+    body.  Returns (mesh, rim point indices)."""
+    import numpy as np
+    from . import cloth_drape as cd
+    from . import core_geometry as cg
+    from . import wrinkle_lines as wl
+    from . import mesh_io as mio
+    faces = cd.masked_faces(body.data)
+    if len(faces) < 3:
+        raise cg.CutError('Vacuum Pack Mask: paint a mask on the mesh first (Paint Mask above, or the ZBRUSH tab)')
+    me = cd.faces_mesh(body.data, faces, 'Vacuum Pack')
+    rim = wl.boundary_verts(me) if len(me.polygons) else np.zeros(0, np.int64)
+    if len(rim):
+        cd.smooth_rim(me)
+        light = cd.light_patch(me, int(points))
+        if light is not None:
+            bpy.data.meshes.remove(me)
+            me = light
+            rim = wl.boundary_verts(me)
+    me.transform(body.matrix_world)
+    me.update()
+    co = mio.read_co(me)
+    nrm = np.array([v.normal for v in me.vertices], np.float64)
+    size = float(np.linalg.norm(co.max(0) - co.min(0)))
+    w = np.ones(len(co))
+    if len(rim):                                      # (0 on the rim, 1 a few rings in: the rim stays on the body)
+        w[rim] = 0.0
+        ed = np.array([e.vertices[:] for e in me.edges], np.int64)
+        a, b = ed[:, 0], ed[:, 1]
+        deg = np.maximum(np.bincount(a, minlength=len(w)) + np.bincount(b, minlength=len(w)), 1)
+        for _i in range(6):
+            mean = (np.bincount(a, weights=w[b], minlength=len(w)) + np.bincount(b, weights=w[a], minlength=len(w))) / deg
+            w = np.minimum(w, (w + mean) * 0.5)
+            w[rim] = 0.0
+    co = co + nrm * (size * (0.012 + 0.05 * loose) * w)[:, None]
+    mio.write_co(me, co)
+    me.update()
+    return me, rim
+
+
+def perform_mask(context, body):
+    """The masked region of ``body`` vacuum packed: the film's rim pinned on the body, the rest sucked on."""
+    from . import cloth_drape as cd
+    from . import core_geometry as cg
+    if cd.sim_active():
+        raise cg.CutError('Cloth Drape: keep (Enter) or drop (Esc) the cloth you have first')
+    if body is None or body.type != 'MESH':
+        raise cg.CutError('Vacuum Pack Mask: the active object must be a mesh with a mask')
+    if context.mode != 'OBJECT':
+        bpy.ops.object.mode_set(mode='OBJECT')
+    vp = context.scene.mch_vacuum
+    me, rim = mask_bag(context, body, vp.bag, vp.points)
+    return perform(context, bag=me, parts=[body], pin=rim)
+
+
+def perform(context, bag=None, parts=None, pin=None):
     """The selected meshes in one bag, ready to be sucked in (Space).  Returns a report."""
     from . import cloth_drape as cd
     from . import core_geometry as cg
     if cd.sim_active():
         raise cg.CutError('Cloth Drape: keep (Enter) or drop (Esc) the cloth you have first')
-    parts = pick_parts(context)
+    parts = parts if parts is not None else pick_parts(context)
     if not parts:
         raise cg.CutError('Vacuum Pack: select the meshes to seal in the bag')
     purge(context)                                    # (an earlier pack's collision copies never cleared: gone)
@@ -579,6 +639,9 @@ def perform(context, bag=None):
     me.materials.append(film_material(vp.film))
     frame0 = context.scene.frame_current
     gathered = _gather(film, me, vp, frame0) if vp.gather != 'NONE' else 0
+    if pin is not None and len(pin):                  # (a masked film: its rim stays where it is)
+        vg = film.vertex_groups.get(MASK_PIN) or film.vertex_groups.new(name=MASK_PIN)
+        vg.add([int(i) for i in pin], 1.0, 'REPLACE')
     cols = _colliders(context, parts, vp.collider_faces, max(size * 0.004, 1e-4))
     cm = film.modifiers.new(CLOTH_MOD, 'CLOTH')
     cm.point_cache.frame_start = frame0
@@ -724,6 +787,35 @@ class MCH_OT_vacuum_pack(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_vacuum_mask(bpy.types.Operator):
+    """Vacuum pack only the masked region of the active mesh (paint the mask with Paint Mask, or in the ZBRUSH tab):
+    the film's rim stays on the mesh, the rest is sucked on - Space runs it, Enter keeps it, Esc drops it"""
+    bl_idname = 'mch.vacuum_mask'
+    bl_label = 'Vacuum Pack Mask'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        return o is not None and o.type == 'MESH' and not is_film(o)
+
+    def execute(self, context):
+        from . import core_geometry as cg
+        try:
+            from . import mecha_mask
+            if mecha_mask.on():                       # (painting in the MECHA screen: out of the mask session first)
+                mecha_mask.end(context)
+        except (ImportError, AttributeError, RuntimeError):
+            pass
+        try:
+            msg = perform_mask(context, context.active_object)
+        except (cg.CutError, ValueError, RuntimeError) as ex:
+            self.report({'WARNING'}, str(ex))
+            return {'CANCELLED'}
+        self.report({'INFO'}, msg)
+        return {'FINISHED'}
+
+
 class MCH_OT_vacuum_purge(bpy.types.Operator):
     """Remove the wire copies an earlier Vacuum Pack left behind (its collision copies of your meshes - they cannot be picked)"""
     bl_idname = 'mch.vacuum_purge'
@@ -795,7 +887,9 @@ def draw(layout, context):
         r.operator('mch.cdrape_control', text='Apply (Enter)').action = 'confirm'
         r.operator('mch.cdrape_control', text='Drop (Esc)').action = 'cancel'
     else:
-        box.operator('mch.vacuum_pack', text='Vacuum Pack Selected', icon='MOD_SHRINKWRAP')
+        r = box.row(align=True)
+        r.operator('mch.vacuum_pack', text='Vacuum Pack Selected', icon='MOD_SHRINKWRAP')
+        r.operator('mch.vacuum_mask', text='Vacuum Pack Mask', icon='MOD_MASK')
     left = len(leftovers(context))
     if left:                                          # (wire copies an earlier pack left: one click and they are gone)
         box.operator('mch.vacuum_purge', text=f'Remove Leftover Copies ({left})', icon='TRASH')
@@ -816,7 +910,7 @@ def draw(layout, context):
     box.row(align=True).prop(vp, 'film', expand=True)
 
 
-CLASSES = (MCH_PG_Vacuum, MCH_OT_vacuum_pack, MCH_OT_vacuum_purge, MCH_OT_vacuum_gather_pick)
+CLASSES = (MCH_PG_Vacuum, MCH_OT_vacuum_pack, MCH_OT_vacuum_mask, MCH_OT_vacuum_purge, MCH_OT_vacuum_gather_pick)
 
 
 def register():

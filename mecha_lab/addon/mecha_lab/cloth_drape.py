@@ -139,8 +139,9 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
         ('STITCH', 'Stitches', 'The drawn lines are seams sewn into the cloth: it is gathered (pulled together) along them')],
         default='TUBES')
     stitch_tight: FloatProperty(name='Tighten', description='Stitches: how much the cloth is pulled together along a seam (0 = a seam with no gather)', default=55.0, min=0.0, max=80.0, subtype='PERCENTAGE')
-    stitch_width: FloatProperty(name='Seam Width', description='Stitches: how wide the gathered band along a line is, as % of the cloth\'s size', default=3.5, min=0.3, max=15.0, subtype='PERCENTAGE')
-    stitch_puff: FloatProperty(name='Puff', description='Stitches: how much the cloth between the seams swells out (the seams stay low: a quilted look); 0 = only the gather', default=90.0, min=0.0, max=200.0, subtype='PERCENTAGE')
+    stitch_width: FloatProperty(name='Seam Width', description='Stitches: how wide the gathered band along a line is, as % of the cloth\'s size', default=2.0, min=0.3, max=15.0, subtype='PERCENTAGE')
+    stitch_puff: FloatProperty(name='Puff', description='Stitches: how much the cloth between the seams swells out (the seams stay low: a quilted look); 0 = only the seam (a plain stitch line)', default=0.0, min=0.0, max=200.0, subtype='PERCENTAGE')
+    stitch_depth: FloatProperty(name='Depth', description='Stitches: how deep the seam sinks into the cloth (the groove of a stitch line)', default=0.0, min=0.0, max=200.0, subtype='PERCENTAGE')
     stitch_stick: BoolProperty(name='Sewn to Body', description='Stitches: the seam is also held on the body where it was drawn (off: only the cloth is gathered, it moves freely)', default=False)
     stretch: FloatProperty(name='Stretch', description='How much the cloth gives when pulled: 0 = cloth (keeps its length), 100 = rubber', default=0.0, min=0.0, max=100.0, subtype='PERCENTAGE')
     self_collide: BoolProperty(name='Self Collision', description='The cloth does not pass through itself (folds lying on each other, a piece falling onto itself). Slower', default=False)
@@ -387,6 +388,50 @@ def set_stitch_paths(me, paths):
         del me[STITCH_PROP]
 
 
+SEAM_DENT = 0.006                # x the cloth's size at Depth 60 %: how far a seam is pressed into the cloth
+
+
+def _free_weight(cloth, passes=8):
+    """0 on the held points (the rim), rising to 1 a few rings in: what may stand off the body."""
+    w = 1.0 - np.clip(np.asarray(cloth.pin, np.float64), 0.0, 1.0)
+    held = w <= 0.0
+    if not np.any(held):
+        return w
+    a, b = cloth.edges[:, 0], cloth.edges[:, 1]
+    deg = np.maximum(np.bincount(a, minlength=len(w)) + np.bincount(b, minlength=len(w)), 1)
+    for _i in range(passes):
+        mean = (np.bincount(a, weights=w[b], minlength=len(w)) + np.bincount(b, weights=w[a], minlength=len(w))) / deg
+        w = np.minimum(w, (w + mean) * 0.5)
+        w[held] = 0.0
+    return w
+
+
+ITER_POINTS = 3000               # up to this many points: ITERATIONS passes; more points -> more passes (0.24.211)
+ITER_MAX = 18
+
+
+def iterations_for(points):
+    """The constraint passes per frame for a cloth of ``points`` points: a finer cloth needs more of them to hold
+    its length (with the same few it stretched like rubber - it sagged off and lay taut ON the body, which showed
+    through - and its fine folds were pulled flat)."""
+    return int(min(ITER_MAX, max(ITERATIONS, round(ITERATIONS * 1.6 * (max(points, 1) / ITER_POINTS) ** 0.5))))
+
+
+def shown(sess):
+    """The cloth's points as they are shown / kept: the simulation's, with the seams pressed in (0.24.211, user:
+    "퍼프는 안 넣었으면 좋겠어, 스티치에 내가 원하는 건 박음질이야" - a stitch line is a thin dent in the fabric; a cloth
+    lying on the body cannot sink there by itself, the body is in the way)."""
+    co = sess['cloth'].co
+    seam, dent = sess.get('seam'), sess.get('seam_dent', 0.0)
+    if seam is None or dent <= 0:
+        return co
+    # (the cloth round the seam stands that little higher - its thickness - and the seam stays down: pressing the
+    #  seam itself down went through the body, which showed in the groove)
+    w = sess.get('seam_w')
+    lift = dent * (1.0 - np.clip(seam, 0.0, 1.0) ** 2)
+    return co + sess['seam_dir'] * (lift if w is None else lift * w)[:, None]
+
+
 def stitch(cloth, co, paths, width, tight, stick):
     """Seams along ``paths`` (the cloth's space): the cloth's edges inside ``width`` of a line are shortened by up to
     ``tight`` (most on the line, fading to its sides) - the fabric is gathered there; ``stick``: the points on the
@@ -589,7 +634,9 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
         sco, snrm = np.concatenate(pts), np.concatenate(nms)
     if not len(sco):
         raise cg.CutError('The body is nowhere near the cloth')
-    grid = cloth_pbd.GridCollider(sco - snrm * (gap - margin) if gap > margin else sco, snrm, cell=cell, band=GRID_BAND)
+    # (0.24.211: the surface is no longer moved in by gap - margin: a fine cloth - margin = half the gap - then
+    #  rested ON the body, which showed through it; now it rests the margin above, as a coarser cloth always did)
+    grid = cloth_pbd.GridCollider(sco, snrm, cell=cell, band=GRID_BAND)
     sess = dict(cloth=cloth, grid=grid, margin=margin, friction=st.stick / 100.0, damping=damping, wrap=wrap, tubes=tubes,
                 stitches=stitches,
                 spacing=spacing,
@@ -600,9 +647,14 @@ def build(context, target, me, nb, size, st, to_cloth=None, pin_sel=False, gdir_
                 gdir=wl._gravity_dir(gdir_ob or target), size=size, frames=st.frames, frame=0, points=n, collider=int(len(sco)),
                 grid_time=time.perf_counter() - t, stage='run')
 
-    if stitches and not pad_on and getattr(st, 'stitch_puff', 0.0) > 0:      # 0.24.208 between the seams it swells
-        sess.update(puff=size * 0.004 * st.stitch_puff / 50.0, puff_dir=nrm.copy(),     # (0.24.210: over gravity too -
-                    puff_max=size * 0.09 * max(0.15, st.slack / 100.0) ** 0.5, seam=np.asarray(cloth.seam, np.float64))
+    if stitches:                                      # 0.24.211 a stitch line: the seam sinks (Depth), no swelling
+        sess.update(seam=np.asarray(cloth.seam, np.float64), seam_dir=nrm.copy(),       # unless Puff is set
+                    seam_down=size * 0.004 * getattr(st, 'stitch_depth', 0.0) / 50.0,
+                    seam_dent=size * SEAM_DENT * getattr(st, 'stitch_depth', 0.0) / 60.0,
+                    seam_w=_free_weight(cloth))
+        if not pad_on and getattr(st, 'stitch_puff', 0.0) > 0:
+            sess.update(puff=size * 0.004 * st.stitch_puff / 50.0, puff_dir=nrm.copy(),
+                        puff_max=size * 0.09 * max(0.15, st.slack / 100.0) ** 0.5)
     if pad_on:                                        # the padding's puff: the cells (or the whole area: Whole) blow up
         cell = st.pad_size / 100.0 if st.pad_pattern != 'NONE' else 1.0
         sess.update(puff=size * 0.0015 * st.pad_puff / 50.0, puff_dir=nrm.copy(),
@@ -674,10 +726,11 @@ def advance(sess, st):
         if sess.get('seam') is not None:                                      # (a seam is not blown up)
             free = free * (1.0 - np.clip(sess['seam'], 0.0, 1.0))
         f = sess['puff_dir'] * (sess['puff'] * room * free)[:, None]
-        if sess.get('seam') is not None:              # 0.24.210 ... and is drawn down toward the body: a clear groove
-            f = f - sess['puff_dir'] * (sess['puff'] * SEAM_DOWN * np.clip(sess['seam'], 0.0, 1.0) * (1.0 - cloth.pin))[:, None]
         force = f if force is None else force + f
-    cloth.step(force=force, gravity=g, damping=sess['damping'], iterations=ITERATIONS,
+    if sess.get('seam') is not None and sess.get('seam_down', 0.0) > 0:      # 0.24.211 the seam sinks: a groove
+        f = -sess['seam_dir'] * (sess['seam_down'] * np.clip(sess['seam'], 0.0, 1.0) * (1.0 - cloth.pin))[:, None]
+        force = f if force is None else force + f
+    cloth.step(force=force, gravity=g, damping=sess['damping'], iterations=iterations_for(cloth.n),
                keep_rate=KEEP_RATE if st.keep > 0 else 0.0)
     sess['frame'] += 1
     return cloth.co
@@ -775,7 +828,7 @@ def grab_move_event(context, event):
     offset = grab['inv'] @ (hit - grab['mouse0'])            # the hand's move in the cloth's space (view plane)
     grab_move(sess, grab, np.array(offset[:], np.float64), bool(SIM.get('running')))
     if not SIM.get('running'):
-        mio.write_co(ob.data, sess['cloth'].co)
+        mio.write_co(ob.data, shown(sess))
         ob.data.update()
 
 
@@ -791,7 +844,7 @@ def drape(context, target, me, nb, size, st, frames=None, sew=None, pin_idx=None
     sess = build(context, target, me, nb, size, st, sew=sew, pin_idx=pin_idx)
     for _ in range(frames if frames is not None else st.frames):
         advance(sess, st)
-    mio.write_co(me, sess['cloth'].co)
+    mio.write_co(me, shown(sess))
     me.update()
     info = dict(points=sess['points'], collider=sess['collider'], frames=sess['frame'], time=time.perf_counter() - t,
                 grid_cells=sess['grid'].cells, inside=int((sess['grid'].distance(sess['cloth'].co) < sess['margin'] * 0.5).sum()))
@@ -1100,6 +1153,127 @@ def light_patch(me, target_points):
     return new
 
 
+GRID_WRAP = 0.03                 # Drape Mask: more of the region than this facing away -> it cannot be laid flat
+GRID_PX = 2000.0                 # the flat outline's size in "pixels" (the lasso's patch maker works in pixels)
+
+
+def grid_patch(me, body, st):
+    """0.24.211 (user: "라쏘로 만들면 주름이 더 얇게 나오는데 마스크로 만들면 왤케 두꺼워?"): the masked patch ``me``
+    (the body's own faces, its local space) made again the way a lasso's cloth is - an even grid of quads, its
+    columns running down (gravity), laid on the region from straight in front of it.  The mask's cloth was uneven
+    triangles: those cannot fold along a line, so the folds came out broad; the grid folds thin like the lasso's.
+    Returns a new Mesh, or None when the region wraps round the body (it cannot be laid flat: the old way)."""
+    import bmesh
+    from mathutils.bvhtree import BVHTree
+    from . import armor_plate as ap
+    if not len(me.polygons):
+        return None
+    co = mio.read_co(me).astype(np.float64)
+    fn = np.empty(len(me.polygons) * 3)
+    me.polygons.foreach_get('normal', fn)
+    fa = np.empty(len(me.polygons))
+    me.polygons.foreach_get('area', fa)
+    fn = fn.reshape(-1, 3)
+    n = (fn * fa[:, None]).sum(0)
+    if np.linalg.norm(n) < 1e-12:
+        return None
+    n /= np.linalg.norm(n)
+    if float(fa[fn @ n < 0.12].sum()) > GRID_WRAP * float(fa.sum()):
+        return None
+    up = np.array(body.matrix_world.inverted_safe().to_3x3() @ Vector((0.0, 0.0, 1.0)))
+    v = up - n * float(up @ n)
+    if np.linalg.norm(v) < 1e-3:                         # (seen from above / below: any direction across)
+        v = np.cross(n, (1.0, 0.0, 0.0))
+    v /= np.linalg.norm(v)
+    u = np.cross(v, n)
+    c0 = co.mean(0)
+    loops3 = [co[lp] for lp in rim_loops_idx(me) if len(lp) >= 3]
+    if not loops3:
+        return None
+    flat = [np.stack([(lp - c0) @ u, (lp - c0) @ v], axis=1) for lp in loops3]
+    lo = np.min([f.min(0) for f in flat], axis=0)
+    hi = np.max([f.max(0) for f in flat], axis=0)
+    extent = max(float((hi - lo).max()), 1e-9)
+    px = GRID_PX / extent
+    area = sum(abs(cg.signed_area([tuple(q) for q in f])) for f in flat[:1]) * px * px
+    if st.mask_points > 0:                               # (Cloth Points given: about that many)
+        spacing = math.sqrt(max(area, 1.0) / float(min(st.mask_points, max(len(co), 16))))   # (never more than the body has there)
+    else:                                                # (as a lasso: Cloth Detail % of the outline's size)
+        spacing = GRID_PX * st.spacing / 100.0
+    loops, rim_xy, rim_co = [], [], []
+    for f, l3 in zip(flat, loops3):                      # the rim: a point every cell (a dense body's rim is far
+        closed = np.concatenate([f, f[:1]]) * px         # finer than the cloth: its steps would be spikes)
+        seg = np.linalg.norm(np.diff(closed, axis=0), axis=1)
+        at = np.concatenate(([0.0], np.cumsum(seg)))
+        k = max(8, int(round(at[-1] / max(spacing, 1e-9))))
+        t = np.linspace(0.0, at[-1], k, endpoint=False)
+        loops.append([(float(np.interp(q, at, closed[:, 0])), float(np.interp(q, at, closed[:, 1]))) for q in t])
+        c3 = np.concatenate([l3, l3[:1]])
+        for q in t:
+            rim_xy.append((float(np.interp(q, at, closed[:, 0])), float(np.interp(q, at, closed[:, 1]))))
+            rim_co.append([float(np.interp(q, at, c3[:, j])) for j in range(3)])
+    rim_xy, rim_co = np.array(rim_xy), np.array(rim_co)
+    try:
+        groups = cg.prepare_loops(loops)
+    except cg.CutError:
+        return None
+    pts, tris, _nb = ap.screen_patch(groups, spacing=spacing, min_spacing=2.0)
+    if not tris:
+        return None
+    src = bmesh.new()
+    try:
+        src.from_mesh(me)
+        tree = BVHTree.FromBMesh(src)
+    finally:
+        src.free()
+    depth = float(((co - c0) @ n).max()) + extent        # (the rays start in front of everything of the region)
+    nv = Vector(n)
+    cos, nrms = [], []
+    for x, y in pts:
+        base = c0 + u * (x / px) + v * (y / px)
+        loc, nr, _i, _d = tree.ray_cast(Vector(base + n * depth), -nv)
+        near = int(np.argmin((rim_xy[:, 0] - x) ** 2 + (rim_xy[:, 1] - y) ** 2))
+        d2 = (rim_xy[near, 0] - x) ** 2 + (rim_xy[near, 1] - y) ** 2
+        if loc is None or d2 < (spacing * 0.25) ** 2:    # (on / past the rim: the rim itself, not what lies behind it)
+            loc, nr, _i, _d = tree.find_nearest(Vector(rim_co[near]))
+        if nr.dot(nv) < 0:
+            nr = -nr
+        cos.append(loc)
+        nrms.append(nr.normalized())
+    new = ap.build_region(pts, tris, cos, nrms, quads=True)
+    new.name = me.name
+    store_uv(new, pts)
+    smooth_rim(new, 12)                                  # (the last ripple out of the rim)
+    rim = wl.boundary_verts(new)
+    if len(rim):                                         # (... and the rim back on the body)
+        nc = mio.read_co(new)
+        for i in rim:
+            loc = tree.find_nearest(Vector(nc[i]))[0]
+            if loc is not None:
+                nc[i] = loc
+        mio.write_co(new, nc)
+        new.update()
+    new.polygons.foreach_set('use_smooth', np.ones(len(new.polygons), bool))
+    new.update()
+    return new
+
+
+def mask_patch(me, body, st):
+    """The lighter, even cloth for the masked faces ``me``: the lasso's grid where the region can be laid flat, else
+    the even triangles (``light_patch``).  A new Mesh or None (``me`` is light enough as it is)."""
+    if st.mask_points > 0 and st.mask_points >= len(me.vertices) * 0.9:
+        return None                                      # (more asked than the body has there: its faces as they are)
+    try:
+        grid = grid_patch(me, body, st)
+    except (cg.CutError, ValueError, RuntimeError):
+        grid = None
+    if grid is not None and len(grid.polygons) > 3 and len(wl.boundary_verts(grid)):
+        return grid
+    if grid is not None:
+        bpy.data.meshes.remove(grid)
+    return light_patch(me, mask_target_points(st, 0.0))
+
+
 def mask_target_points(st, size):
     """Drape Mask's point count: the Cloth Points setting, or (0) what Cloth Detail would give a lasso of this size."""
     if st.mask_points > 0:
@@ -1123,7 +1297,7 @@ def rebuild_mask(context):
         return False
     me = faces_mesh(body.data, faces)
     smooth_rim(me)
-    light = light_patch(me, mask_target_points(st, 0.0))
+    light = mask_patch(me, body, st)
     if light is not None:
         bpy.data.meshes.remove(me)
         me = light
@@ -1161,7 +1335,7 @@ def perform_masked(context, body):
         raise cg.CutError('Drape Mask: the masked region has no open edge (a closed shell): mask a patch, not all of it')
     dense = len(me.vertices)
     smooth_rim(me)                                           # 0.24.193 the stair steps out of the rim
-    light = light_patch(me, mask_target_points(st, 0.0))     # 0.24.95 lighter, even cloth (the body stays dense)
+    light = mask_patch(me, body, st)                         # 0.24.95 lighter, even cloth; 0.24.211 the lasso's grid
     if light is not None:
         bpy.data.meshes.remove(me)
         me = light
@@ -1180,7 +1354,8 @@ def perform_masked(context, body):
     context.view_layer.objects.active = ob
     surface = co.copy()
     try:
-        sess = build(context, body, me, 0, size, st, offset_lift=True, free=bool(st.mask_free))
+        sess = build(context, body, me, 0, size, st, offset_lift=True, free=bool(st.mask_free),
+                     tether=False)      # 0.24.211 no rubber sag with many points (fine folds stay)
     except Exception:
         bpy.data.objects.remove(ob)
         bpy.data.meshes.remove(me)
@@ -1893,7 +2068,7 @@ def perform_mesh(context, cloth, body):
         bpy.data.meshes.remove(backup)
         raise
     surface = co.copy()
-    mio.write_co(me, sess['cloth'].co)
+    mio.write_co(me, shown(sess))
     me.update()
     SIM.clear()
     SIM.update(ob=cloth.name, target=body.name, nb=0, size=size, sess=sess, running=False, done=False, want=None,
@@ -1982,7 +2157,7 @@ def perform_wrap(context, body):
     context.view_layer.objects.active = ob
     surface = co.copy()
     sess = build(context, body, me, 0, size, st, to_cloth=None, pin_sel=False, gdir_ob=body, wrap=True)
-    mio.write_co(me, sess['cloth'].co)
+    mio.write_co(me, shown(sess))
     me.update()
     SIM.clear()
     SIM.update(ob=ob.name, target=body.name, nb=0, size=size, sess=sess, running=False, done=False, want=None,
@@ -2046,7 +2221,7 @@ def _snapshot(st):
                                           'wrap_tight', 'use_lines', 'stop_at_pins', 'two_sides', 'puff', 'wrinkles',
                                           'padding', 'pad_pattern', 'pad_size', 'pad_puff', 'trim', 'trim_width',
                                           'collide_with', 'use_proxy', 'proxy_faces',
-                                          'cape_length', 'cape_flare', 'cape_gather', 'cape_pleats', 'cape_folds', 'cape_heading', 'cape_sides', 'spacing', 'neck_style', 'neck_pin_top', 'neck_bottom', 'neck_top', 'mask_free', 'stretch', 'self_collide', 'line_mode', 'stitch_tight', 'stitch_width', 'stitch_puff', 'stitch_stick', 'mask_points', 'offset'))
+                                          'cape_length', 'cape_flare', 'cape_gather', 'cape_pleats', 'cape_folds', 'cape_heading', 'cape_sides', 'spacing', 'neck_style', 'neck_pin_top', 'neck_bottom', 'neck_top', 'mask_free', 'stretch', 'self_collide', 'line_mode', 'stitch_tight', 'stitch_width', 'stitch_puff', 'stitch_depth', 'stitch_stick', 'mask_points', 'offset'))
 
 
 def restart(context):
@@ -2075,7 +2250,7 @@ def restart(context):
         c = sess['cloth']
         sewn = c.pin >= 1
         c.co[sewn] = c.init[sewn] = c.prev[sewn] = SIM['surface'][sewn]
-    mio.write_co(me, sess['cloth'].co)
+    mio.write_co(me, shown(sess))
     me.update()
     SIM.update(sess=sess, running=True, done=False, start=sess['cloth'].init.copy(), snapshot=_snapshot(st))
     return True
@@ -2093,7 +2268,7 @@ def step(context):
         SIM['done'] = True
         return False
     advance(sess, settings(context))
-    mio.write_co(ob.data, sess['cloth'].co)
+    mio.write_co(ob.data, shown(sess))
     ob.data.update()
     return True
 
@@ -3054,9 +3229,7 @@ def draw(layout, context):
     r = sb.row(align=True)
     r.prop(st, 'stitch_tight', slider=True)
     r.prop(st, 'stitch_width', slider=True)
-    r = sb.row(align=True)
-    r.prop(st, 'stitch_puff', slider=True)
-    r.prop(st, 'stitch_stick', toggle=True, icon='PINNED')
+    sb.row().prop(st, 'stitch_stick', toggle=True, icon='PINNED')
     if st.use_lines:                                     # 0.24.208 what the lines are: tubes, or seams in the cloth
         box.row(align=True).prop(st, 'line_mode', expand=True)
     wst = wl.settings(context)

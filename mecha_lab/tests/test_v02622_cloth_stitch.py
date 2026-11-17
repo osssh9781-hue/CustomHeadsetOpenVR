@@ -13,8 +13,9 @@ fresh()
 mecha_lab.register()
 C = bpy.context
 st = cd.settings(C)
-check('the settings: Lines = Tubes by default (as before), Stitches with Tighten 55 %, Seam Width, Puff 90 % (0.24.210: stronger), Sewn to Body off',
-      st.line_mode == 'TUBES' and abs(st.stitch_tight - 55.0) < 1e-6 and abs(st.stitch_puff - 90.0) < 1e-6
+check('the settings: Lines = Tubes by default (as before), Stitches with Tighten 55 %, Seam Width, no groove and no puff (0.24.211: only the gather), Sewn to Body off',
+      st.line_mode == 'TUBES' and abs(st.stitch_tight - 55.0) < 1e-6 and abs(st.stitch_puff) < 1e-6
+      and abs(st.stitch_depth) < 1e-6
       and st.stitch_stick is False)
 bpy.ops.mesh.primitive_grid_add(x_subdivisions=80, y_subdivisions=80, size=2.0)
 body = C.active_object
@@ -91,14 +92,26 @@ check(f'a seam drawn on the laid cloth (no line on the body, Use Lines off): kep
       f'again with it ({n_before} -> {sess.get("stitches", 0)} seam points), and it still waits (not running)',
       n_before == 0 and len(cd.stitch_paths(ob.data)) == 1 and sess.get('stitches', 0) > 20
       and cd.SIM.get('running') is False and float(np.asarray(sess['cloth'].scale_e).min()) < 0.6)
-for _i in range(50):
-    cd.step(C)
-c = mio.read_co(ob.data)
-on = (np.abs(start[:, 1]) < 0.012) & (np.abs(start[:, 0]) < 0.35)
-between = (np.abs(np.abs(start[:, 1]) - 0.3) < 0.05) & (np.abs(start[:, 0]) < 0.35)
-dz = float(c[between, 2].mean() - c[on, 2].mean())
-check(f'... draped: the seam is a groove - the cloth beside it stands {dz:.3f} higher than the cloth on it',
-      dz > 0.01 and bool(np.all(np.isfinite(c))))
+def seam_span(tight):
+    st.stitch_tight = tight
+    cd.stitch_refresh(C)
+    o = bpy.data.objects[cd.SIM['ob']]
+    s0 = cd.SIM['sess']['cloth'].init.copy()
+    for _i in range(50):
+        cd.step(C)
+    c = mio.read_co(o.data)
+    near = (np.abs(s0[:, 1]) < 0.03) & (np.abs(s0[:, 0]) < 0.4)
+    far = (np.abs(s0[:, 1]) > 0.25) & (np.abs(s0[:, 0]) < 0.35)
+    return (float(np.ptp(c[near, 0]) / np.ptp(s0[near, 0])), float(c[far, 2].mean() - s0[far, 2].mean()),
+            bool(np.all(np.isfinite(c))), cd.SIM['sess'].get('seam_dent', 0.0))
+
+
+lo, hi = seam_span(15.0), seam_span(75.0)
+st.stitch_tight = 55.0
+check(f'0.24.211 a stitch only pulls the cloth together along the line, and Tighten sets how much: the cloth along the '
+      f'seam x{lo[0]:.2f} at 15 %, x{hi[0]:.2f} at 75 %; no groove pressed in ({hi[3]:.4f}) and nothing swells (away '
+      f'from the seam {hi[1]:+.3f}: not above)',
+      hi[0] < lo[0] - 0.02 and hi[3] == 0.0 and hi[1] < 0.005 and lo[2] and hi[2])
 cd.cancel(C)
 cd.perform_masked(C, body)
 ob = bpy.data.objects[cd.SIM['ob']]

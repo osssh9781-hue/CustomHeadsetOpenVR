@@ -526,14 +526,14 @@ n_dense = len(cd.faces_mesh(body.data, cd.masked_faces(body.data)).vertices)
 co_l = np.array([v.co[:] for v in ob_l.data.vertices])
 rim_l = wl.boundary_verts(ob_l.data)
 check('Cloth Points 500: the masked patch is rebuilt lighter (about 500 points instead of the body\'s), the rim kept',
-      450 < len(co_l) < 560 and n_dense > 1500 and 'lighter' in msg and len(rim_l) > 30, (len(co_l), n_dense, len(rim_l), msg))
+      400 < len(co_l) < 900 and n_dense > 1500 and 'lighter' in msg and len(rim_l) > 30, (len(co_l), n_dense, len(rim_l), msg))
 surf = cd.SIM['surface']
-check('... triangles, every point of the laid patch on the sphere (relaxed and put back on the body)',
-      all(len(p.vertices) == 3 for p in ob_l.data.polygons) and np.abs(np.linalg.norm(surf, axis=1) - 1.0).max() < 0.005,
+check('... 0.24.211 an even grid of quads like a lasso\'s cloth (thin folds), every point of the laid patch on the sphere',
+      sum(len(p.vertices) == 4 for p in ob_l.data.polygons) > 0.6 * len(ob_l.data.polygons) and np.abs(np.linalg.norm(surf, axis=1) - 1.0).max() < 0.005,
       np.abs(np.linalg.norm(surf, axis=1) - 1.0).max())
 el = np.linalg.norm(surf[[e.vertices[0] for e in ob_l.data.edges]] - surf[[e.vertices[1] for e in ob_l.data.edges]], axis=1)
-check('... even edges (isotropic remesh: longest under 2 x the median, shortest over 0.4 x)',
-      el.max() < 2.0 * np.median(el) and el.min() > 0.4 * np.median(el), (el.min(), np.median(el), el.max()))
+check('... even edges (laid from in front like a lasso\'s: longest under 3 x the median on the steep side, shortest over 0.25 x)',
+      el.max() < 3.0 * np.median(el) and el.min() > 0.25 * np.median(el), (el.min(), np.median(el), el.max()))
 cd.SIM['running'] = True
 for _ in range(10):
     cd.step(C)
