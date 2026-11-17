@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## 0.24.195 — GoZ (실험): ZBrush 로 바로 보내고 바로 받기 (2026-11-17)
+
+- (사용자: "GoZ 로 하면 안 되는 거야?" / "그렇게 하자") ZBrush 브릿지 창 아래 **GoZ (experimental)** 칸. OBJ 방식은 그대로 둠.
+  - **Send (GoZ)**: 고른 메쉬를 ZBrush 의 GoZ 공용 폴더(Public\Pixologic\GoZProjects\Default)에 .GoZ 파일로 쓰고 목록
+    (GoZ_ObjectList.txt)에 적은 뒤, ZBrush 가 가진 도우미(GoZBrushFromApp)를 불러 ZBrush 가 읽게 함. 5각 이상 면은 삼각형으로,
+    폴리페인트(활성 색, 점 단위)와 폴리그룹(재질 번호, 또는 전에 받은 폴리그룹)도 같이 감.
+  - **Import (GoZ)**: ZBrush 에서 GoZ 버튼을 눌러 보낸 것을 읽음 — 여기서 보낸 오브젝트는 메쉬만 바뀌고(자리 · 재질 유지,
+    옛 메쉬는 _preZBrush 로 보관), 처음 보는 것은 새 오브젝트로. 폴리그룹은 면 속성 mch_polygroup, 폴리페인트는 색 속성으로.
+  - **Auto**: 켜 두면 ZBrush 가 보낼 때마다 알아서 가져옴(1초마다 목록 파일을 살핌, Blender 를 끄거나 버튼을 끄면 멈춤).
+  - **Set Up GoZ for Blender**: ZBrush 의 GoZ 프로그램 목록에 Blender 가 나오도록 GoZApps\Blender 폴더에 작은 글 파일 두 개
+    (GoZ_Info.txt, GoZ_Config.txt)를 씀. **이 버튼을 누를 때만** 쓰고, 다른 것은 건드리지 않음. 누른 뒤 ZBrush 를 다시 켬.
+- 파일 형식: Maxon 이 공개한 문서가 없어, 공개 애드온 GoB 가 읽고 쓰는 방식(32바이트 머리말 뒤에 꼬리표 · 길이 · 개수 · 내용
+  묶음)을 보고 직접 새로 작성함.
+- 확인: test_v02616 12/12(새로 만듦 — 파일을 쓰고 다시 읽어 같음, 모르는 묶음은 건너뜀, 좌표축 변환 뒤에도 면이 바깥을 봄,
+  ZBrush 가 바꾼 것처럼 파일을 고쳐 가져오면 같은 오브젝트의 메쉬가 바뀜, Set Up 이 두 파일만 씀), test_v02615 8/8, test_v02455
+  11/11. 실제 창 round195 3/3(5.2.3, 5.3.0 — Auto 가 바뀐 파일을 혼자 가져옴).
+- **확인 못 한 것(중요)**: ZBrush 가 없는 Linux 에서 만들었으므로 **실제 ZBrush 와는 한 번도 주고받아 보지 못함**. ZBrush 가 이
+  .GoZ 파일을 여는지, GoZBrushFromApp 이 기대대로 동작하는지, ZBrush 의 GoZ 목록에 Blender 가 뜨는지, ZBrush 가 쓴 파일을 이
+  코드가 읽는지, 크기 / 방향이 맞는지는 사용자 컴퓨터에서 처음 확인됨. UV · 마스크 · 서브디비전 단계는 주고받지 않음.
+
 ## 0.24.194 — ZBrush 브릿지: ZBrush 를 알아서 찾음 · Send 가 ZBrush 를 켜고 파일 경로를 복사 (2026-11-17)
 
 - (사용자: "지브러시 브릿지 만든 거 어떻게 연동해? 에드온에서 지브러시 알아서 찾아 주는 거 못 만들어?") 브릿지 창에

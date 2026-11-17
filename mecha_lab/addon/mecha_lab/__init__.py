@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
     "author": "OpenAI / ChatGPT, Claude Code",
-    "version": (0, 24, 194),
+    "version": (0, 24, 195),
     "blender": (4, 3, 0),
     "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
     "description": "Cut, Split, Base Mesh, Boolean, Face Extract, Armor Sculpt, Molding, Cable, Hollow, curve arrays, Mirror",
@@ -2059,6 +2059,8 @@ def _register():
     base_mesh.register()
     loft_surface.register()
     zbrush_bridge.register()
+    from . import goz_bridge                         # 0.24.195 GoZ (experimental)
+    goz_bridge.register()
     subd_plane.register()
     deform_tools.register()
     primitive_tools.register()
@@ -2350,6 +2352,7 @@ def _unregister_steps():
         ('primitive_tools', primitive_tools.unregister),
         ('deform_tools', deform_tools.unregister),
         ('subd_plane', subd_plane.unregister),
+        ('goz_bridge', __import__(__name__ + '.goz_bridge', fromlist=['x']).unregister),
         ('zbrush_bridge', zbrush_bridge.unregister),
         ('loft_surface', loft_surface.unregister),
         ('base_mesh', base_mesh.unregister),

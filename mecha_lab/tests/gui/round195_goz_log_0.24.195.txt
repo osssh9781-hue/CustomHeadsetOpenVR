@@ -1,0 +1,6 @@
+send {'FINISHED'} listed ['/tmp/mch_goz_gui_egdafy41/GoZProjects/Default/Cube.GoZ'] watch {'FINISHED'} {'on': True, 'mtime': 1794929044.1174836}
+after 4 s with Auto on: the cube is 6.0 wide (was 2)
+PASS 1 Send (GoZ): the .GoZ file and the list written
+PASS 2 Auto: the changed file ZBrush would write came in by itself (the cube three times as big)
+PASS 3 Auto off again
+3/3 passed

@@ -880,8 +880,9 @@ def draw_zbrush(layout, context):
         box = _section(layout, 'Sent objects', 'OUTLINER')
         for name, fname, state in rows[:20]:
             box.label(text=f'{name}  [{state}]', icon='CHECKMARK' if state == 'CHANGED' else 'DOT')
-    goz = zbrush_bridge.detect_goz()
-    _hint(layout, 'OBJ bridge, NOT GoZ' + (f' (GoZ found: {goz}, unused)' if goz else ''),
+    from . import goz_bridge                            # 0.24.195 GoZ (experimental), next to the OBJ bridge
+    goz_bridge.draw(layout, context)
+    _hint(layout, 'Above: OBJ bridge (files, by hand)',
           'Each object = its own OBJ (no auto Join)', 'ZBrush: Tool > Import, work,',
           'then Tool > Export to the SAME file', 'Back here: Import Back')
 
