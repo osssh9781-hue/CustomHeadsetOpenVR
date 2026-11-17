@@ -177,7 +177,11 @@ def make(context, height=1.8, location=None, kind='human'):
     E = E.reshape(-1, 2)
     fine = np.array([n in dg_ or n.startswith('Hand') for n in names])[B]
     Wf = smooth_weights(W, E, passes=2)               # (the fingers are small: their skin less blurred)
-    W = smooth_weights(W, E, passes=18)
+    Ww = smooth_weights(W, E, passes=110)             # (round the shoulders: the skin shared over a wide band, so a
+    W = smooth_weights(W, E, passes=18)               #  lifted arm takes the shoulder muscle and the chest's edge along)
+    wide = np.array([n.split('.')[0] in ('Shoulder', 'UpperArm') for n in names])[B].astype(float)[:, None]
+    wide = np.clip(smooth_weights(np.hstack([wide, 1.0 - wide]), E, passes=40)[:, :1] * 1.6, 0.0, 1.0)
+    W = W * (1.0 - wide) + Ww * wide
     W[fine] = Wf[fine]
     for j, n in enumerate(names):
         vg = body.vertex_groups.new(name=n)

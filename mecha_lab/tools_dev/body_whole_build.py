@@ -30,7 +30,7 @@ PARENT = {'Waist': 'Pelvis', 'Chest': 'Waist', 'Neck': 'Chest', 'Head': 'Neck', 
           'Foot': 'Shin'}
 
 
-def read(path, faces=FACES):
+def read(path, faces=FACES, unsub=0):
     """(V, face sizes, corners, bmesh) of every mesh of the file joined, light; raw coordinates."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.fbx(filepath=path)
@@ -47,7 +47,11 @@ def read(path, faces=FACES):
     bpy.context.scene.collection.objects.link(ob)
     tris = sum(len(p.vertices) - 2 for p in me.polygons)
     md = ob.modifiers.new('D', 'DECIMATE')
-    md.ratio = min(faces / tris, 1.0)
+    if unsub:                                         # (a clean all-quad retopo: its own coarser levels, quads kept)
+        md.decimate_type = 'UNSUBDIV'
+        md.iterations = unsub
+    else:
+        md.ratio = min(faces / tris, 1.0)
     dg = bpy.context.evaluated_depsgraph_get()
     m2 = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), depsgraph=dg)
     V = np.array([v.co[:] for v in m2.vertices])
@@ -206,7 +210,12 @@ def found_bones(V, N, L, marks):
     knee = lg[ok][np.argmax(off[ok])]
     # the arm: the shoulder joint inside the body's top corner over the armpit, the elbow as the knee
     top = V[(V[:, 0] > 0) & (V[:, 2] > armpit) & (V[:, 2] < armpit + 0.1)]
-    sh = np.array([np.quantile(top[:, 0], 0.9) - 0.035, top[:, 1].mean(), armpit + 0.035])
+    xq = float(np.quantile(top[:, 0], 0.9))
+    cap = V[(V[:, 0] > xq - 0.05) & (V[:, 2] > armpit) & (V[:, 2] < armpit + 0.22)]
+    rise = float(cap[:, 2].max()) - armpit            # (how high the shoulder stands over the armpit)
+    # the joint high in the shoulder (under its top), so little of it lies above to sink into the neck when lifted
+    sh = np.array([xq - max(0.035, 0.4 * rise), top[:, 1].mean(), armpit + max(0.035, 0.6 * rise)])
+    print('shoulder: armpit', round(armpit, 3), 'rise', round(rise, 3), 'joint', np.round(sh, 3))
     ar = arm[arm[:, 2] > wrist[2] + 0.02]
     ax = (wrist - sh) / np.linalg.norm(wrist - sh)
     off = np.linalg.norm((ar - sh) - np.outer((ar - sh) @ ax, ax), axis=1)
@@ -356,9 +365,14 @@ def found_bones(V, N, L, marks):
     counts = {}
     for vi, v in enumerate(V):
         cn = own.get(vi, 'trunk')
-        if cn != 'trunk':                             # (before the limb's first joint: the body's)
+        if cn.startswith('leg'):                      # (before the limb's first joint: the body's)
             a_, b_ = bones[chains[cn][0]]
             if float((v - a_) @ (b_ - a_)) < 0:
+                cn = 'trunk'
+        elif cn.startswith('arm'):                    # (the arm: all that lies OUT from the shoulder joint - the
+            a_, b_ = bones['Shoulder.' + cn[-1]]      #  shoulder muscle over it goes up with the arm, not the body)
+            dr = (b_ - a_) / np.linalg.norm(b_ - a_)
+            if float((v - b_) @ dr) < -0.012:
                 cn = 'trunk'
         best, bd = None, 1e9
         for n in chains[cn]:
@@ -554,6 +568,9 @@ def add_digits(V, N, L, bones, lab):
         _co, j, dist = kd.find(V[i])
         if dist < 0.006:
             new = lab[left[j]][:-1] + 'R'
+            grp = lambda x: 'a' if x[:4] in ('Hand', 'Fing', 'Fore') else 'f' if x[:4] in ('Foot', 'Toes', 'Shin') else x  # noqa: E731
+            if grp(new) != grp(lab[i]):               # (the thigh's skin beside the hand stays the thigh's)
+                continue
             moved += new != lab[i]
             lab[int(i)] = new
     print('right side: points given their twin\'s bone', moved)
@@ -598,7 +615,8 @@ def auto_marks(V):
 
 
 def main(kind, path, extra=None):
-    V, N, L = read(path)
+    V, N, L = read(path, unsub=int(extra) if kind == 'creature' and extra else 0)
+    print('faces', len(N), 'quads', int((N == 4).sum()))
     V, shift, H = normalise(V)
     if kind == 'creature2':
         Vh, _n, _l = read(extra, faces=10 ** 9)
@@ -705,6 +723,11 @@ def main(kind, path, extra=None):
             print('crumbs removed: points', len(small))
         before = len(bm.faces)
         bmesh.ops.holes_fill(bm, edges=[e for e in bm.edges if e.is_boundary], sides=0)
+        bm.verts.index_update()                       # (a closing face must not tie the hand to the leg again)
+        bad = [f for f in bm.faces if {1, 2} <= {int(cls[v.index]) for v in f.verts}]
+        if bad:
+            bmesh.ops.delete(bm, geom=bad, context='FACES_ONLY')
+            print('closing faces across the cut removed', len(bad))
         bmesh.ops.triangulate(bm, faces=[f for f in bm.faces if len(f.verts) > 4])
         bm.normal_update()
         bm.verts.index_update()
