@@ -253,9 +253,26 @@ def flow():
     res['A3'] = it is not None and S.mch_cut.targets == 'ACTIVE'
     log('A3 REAL click on Active (the Target section):', S.mch_cut.targets)
     S.mch_cut.targets = 'AUTO'
+    # 0.24.225 the Options section's 한글 switch: a REAL click -> English, another -> Korean again
+    it = next((i for i in bar() if i.kind == 'seg' and i.label == top_bar.LANG_LABEL), None)
+    l0 = i18n.lang()
+    if it is not None:
+        yield from press(it)
+    yield from wait_draws(3)
+    l1 = i18n.lang()
+    shot('07_english.png')
+    it = next((i for i in bar() if i.kind == 'seg' and i.label == top_bar.LANG_LABEL), None)
+    if it is not None:
+        yield from press(it)
+    yield from wait_draws(3)
+    l2 = i18n.lang()
+    shot('08_korean_again.png')
+    res['A5'] = (l0, l1, l2) == ('KO', 'EN', 'KO')
+    log('A5 REAL clicks on the 한글 switch:', l0, '->', l1, '->', l2)
     i18n.force(None)
     names = {'A1': 'a wide viewport: every fixed cell at one place for 5 tools',
              'A2': 'the bar is sections: a title above its cells', 'A3': 'a REAL click on a cell in a section lands',
+             'A5': 'the 한글 switch in Options: a REAL click switches to English, another back to Korean',
              'A4': 'Slow Line on (REAL click): its numbers show in a row under the section, the bar grows down, no cell moves sideways'}
     n = 0
     for k in sorted(names):

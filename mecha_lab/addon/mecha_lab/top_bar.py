@@ -181,7 +181,9 @@ def groups(context, tool):
         out += smart_move.top_bar_groups(context, tool)
     from .workspace_ui import _ORTHO_LOCK_KEY
     locked = bool(context.workspace and context.workspace.get(_ORTHO_LOCK_KEY, False))
-    out.append(('', [_cell('seg', 'Ortho', locked, ('op', 'mch.ortho_lock', {}))]))
+    out.append(('', [_cell('seg', 'Ortho', locked, ('op', 'mch.ortho_lock', {})),
+                     # 0.24.225 (user: "옵션에 한글 영어 바꾸는 토글 버튼도 만들어 줘")
+                     _cell('seg', LANG_LABEL, i18n.lang() == 'KO', ('op', 'mch.toggle_language', {}))]))
     return out
 
 
@@ -430,6 +432,7 @@ def _seg_w(label):
     return i18n.vlen(label) * 7.0 + 24.0
 
 
+LANG_LABEL = '한글'              # the Options section's 한글 / English switch (lit = Korean)
 LASSO_ROOM = 560.0            # the Lasso group's place: as wide as its longest set (Free Draw: four numbers)
 
 
@@ -456,7 +459,8 @@ def common_slots():
                                seg('From Surface', _is_enum('depth_mode', 'SURFACE')), mini('Depth', 'depth', 130),
                                seg('Follow', _is_enum('depth_floor', 'FOLLOW')), seg('Level', _is_enum('depth_floor', 'LEVEL')),
                                seg('Flat', _is_enum('depth_floor', 'FLAT'))]),
-        ('', ('',), [seg('Auto Apply', _is_prop('auto_apply')), seg('Ortho', _is_op('mch.ortho_lock'))]),
+        ('', ('',), [seg('Auto Apply', _is_prop('auto_apply')), seg('Ortho', _is_op('mch.ortho_lock')),
+                     seg(LANG_LABEL, _is_op('mch.toggle_language'))]),
         ('Resolution', ('Resolution',), [mini('Res', 'geo_res', 120), seg('Apply to Parts', _is_op('mch.apply_resolution'))]),
         ('Corners', ('Corners',), [seg('Sharp', _is_enum('outline_corner', 'NONE')), seg('Round', _is_enum('outline_corner', 'ROUND')),
                                    seg('Chamfer', _is_enum('outline_corner', 'CHAMFER')), mini('Width', 'outline_radius', 130),

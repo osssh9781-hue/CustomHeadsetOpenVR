@@ -710,6 +710,29 @@ class MCH_OT_ui_colour(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_toggle_language(bpy.types.Operator):
+    """0.24.225 한글 / English: switch the language of Mecha Lab's own screen (the same switch as Preferences > 한글)"""
+    bl_idname = 'mch.toggle_language'
+    bl_label = '한글 / English'
+    bl_options = {'INTERNAL'}
+
+    def execute(self, context):
+        from . import i18n, workspace_ui
+        p = workspace_ui.prefs()
+        if p is not None and hasattr(p, 'korean'):
+            p.korean = not p.korean                    # (its update lays everything out again)
+            try:
+                context.preferences.is_dirty = True    # kept with the preferences
+            except (AttributeError, TypeError):
+                pass
+        else:                                          # (no preferences - tests: for this run only)
+            i18n.force('EN' if i18n.lang() == 'KO' else 'KO')
+            from . import side_panel
+            side_panel.dirty()
+        bump()
+        return {'FINISHED'}
+
+
 class MCH_OT_side_page(bpy.types.Operator):
     """Show the tool's settings, the Mech Shader, the Creature Shader, the decals, the HDRI or the random base shapes
     in the Mecha Lab side panel"""
@@ -927,7 +950,7 @@ class MCH_OT_ui_menu_release(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
 
-CLASSES = (MCH_OT_ui_hover, MCH_OT_ui_scroll, MCH_PT_ui_value, MCH_OT_ui_colour, MCH_MT_ui_choice, MCH_OT_side_page, MCH_OT_menu_fold,
+CLASSES = (MCH_OT_ui_hover, MCH_OT_ui_scroll, MCH_PT_ui_value, MCH_OT_ui_colour, MCH_OT_toggle_language, MCH_MT_ui_choice, MCH_OT_side_page, MCH_OT_menu_fold,
            MCH_OT_ui_menu_release)
 _keymaps = []
 

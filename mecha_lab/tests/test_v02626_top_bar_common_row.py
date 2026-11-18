@@ -77,8 +77,8 @@ n_before = sum(len(v) for v in before.values())
 check(f'every cell of 0.24.213 is still in the bar, the same (kind, name, on / off, what a click does, its setting) - '
       f'{n_before:,} checked over {len(before)} tool states, {len(gone)} gone',
       not gone and set(states) == set(before), gone[:4])
-kinds = {json.loads(k)[0] for k in new}
-check(f'the only new things are group names shown a second time ({sorted(set(json.loads(k)[1] for k in new))}: Press Cut\'s '
+kinds = {json.loads(k)[0] for k in new if json.loads(k)[1] != tb.LANG_LABEL}     # (0.24.225 + the 한글 switch)
+check(f'the only new things are the 한글 switch and group names shown a second time ({sorted(set(json.loads(k)[1] for k in new))}: Press Cut\'s '
       f'own Line / Lasso switch stays with the tool\'s own groups)', kinds <= {'glabel'})
 
 # one place per cell: over every tool and every state it is shown in
@@ -230,7 +230,7 @@ check('... on by default', tb.sections_wanted() is True)
 # 0.24.219 Options at the bar's top right; the section names bright and bigger
 its = at(2560, 'CUT')
 cards = [i for i in its if i.kind == 'card']
-opt = next(i for i in its if i.kind == 'seg' and i.label == 'Ortho')
+opt = next(i for i in its if i.kind == 'seg' and i.label == tb.LANG_LABEL)     # (0.24.225 the last cell: 한글)
 opt_title = next(i for i in its if i.kind == 'glabel' and i.label == 'OPTIONS')
 top_band = max(i.y for i in its if i.kind in {'seg', 'ibtn', 'mini'})
 right_most = max(i.x + i.w for i in its if i.kind in {'seg', 'ibtn', 'mini'} and abs(i.y - top_band) < 1.0)
@@ -258,4 +258,20 @@ wide, narrow = at(2560, 'BASE'), at(500, 'BASE')
 check('a view too narrow for a single place (500 px): the groups are packed as before, nothing lost',
       sorted((i.kind, i.label) for i in narrow if i.kind not in {'card', 'vrule', 'glabel'}) ==
       sorted((i.kind, i.label) for i in wide if i.kind not in {'card', 'vrule', 'glabel'}))
+# 0.24.225 the Options section's 한글 / English switch
+from mecha_lab import i18n  # noqa: E402
+its = at(2560, 'CUT')
+sw = next((i for i in its if i.kind == 'seg' and i.label == tb.LANG_LABEL), None)
+i18n.force('EN')
+on_en = next(i for i in at(2560, 'CUT') if i.label == tb.LANG_LABEL).on
+bpy.ops.mch.toggle_language()
+lang1 = i18n.lang()
+on_ko = next(i for i in at(2560, 'CUT') if i.label == tb.LANG_LABEL).on
+bpy.ops.mch.toggle_language()
+lang2 = i18n.lang()
+i18n.force('EN')
+check(f'0.24.225 Options has a 한글 switch in every tool with a bar; a click switches Korean / English (EN -> {lang1} -> '
+      f'{lang2}), lit while Korean',
+      sw is not None and sw.action == ('op', 'mch.toggle_language', {}) and not on_en and on_ko and lang1 == 'KO'
+      and lang2 == 'EN' and all(any(i.label == tb.LANG_LABEL for i in at(2560, t)) for t in tools))
 summary()
