@@ -463,7 +463,7 @@ def dock_items(context, region_w, region_h, k=1.0):
     rule = 14 * kk
     w = n * tw + (n - 1) * gap + rule * (len(tiles) - n) + 2 * pad
     # 0.24.226 (user: "옵션은 여기다가 그냥 넣어 줘"): the top bar's Options (Auto Apply, Ortho, 한글) at the dock's right end
-    opts, ow = [], 0.0
+    opts, ow, goz, gws = [], 0.0, [], []
     try:
         from . import top_bar
         if top_bar.on(context) and top_bar.sections_wanted():
@@ -473,8 +473,13 @@ def dock_items(context, region_w, region_h, k=1.0):
                              data=None, prop='', width=None))
             ows = [top_bar._width(c, k) for c in opts]
             ow = (rule + sum(ows) + top_bar.GAP * k * (len(ows) - 1)) if opts else 0.0
+            # 0.24.229 (user: "이거 고즈 버튼 여기로 옮겨 줘"): GoZ Send / Import after Options (off the corner card)
+            goz = [dict(kind='seg', label=lb, icon='', on=False, action=('op', op_, {}), data=None, prop='', width=None)
+                   for lb, op_ in (('Send', 'mch.goz_send'), ('Import', 'mch.goz_import'))]
+            gws = [top_bar._width(c, k) for c in goz]
+            ow += rule + sum(gws) + top_bar.GAP * k * (len(gws) - 1)
     except (ImportError, AttributeError, KeyError, TypeError, ReferenceError):
-        opts, ow = [], 0.0
+        opts, ow, goz, gws = [], 0.0, [], []
     w += ow
     h = th + 2 * pad
     x0, y0 = max(left_inset(context) + 8 * k, (region_w - w) / 2.0), bottom_taken(context, k, region_w)
@@ -502,6 +507,15 @@ def dock_items(context, region_w, region_h, k=1.0):
             out.append(Item(c['kind'], x, base, cw, row_h, c['label'], c['icon'], c['on'], True, c['action'], c['data'],
                             c['prop']))
             x += cw + top_bar.GAP * k
+        if goz:
+            x -= top_bar.GAP * k
+            out.append(Item('vrule', x + rule / 2 - 0.5 * k, y0 + pad + 6 * kk, 1.0 * k, th - 12 * kk))
+            x += rule
+            out.append(Item('glabel', x, base + row_h, 120 * k, title_h, 'GOZ', 'title'))
+            for c, cw in zip(goz, gws):
+                out.append(Item(c['kind'], x, base, cw, row_h, c['label'], c['icon'], c['on'], True, c['action'],
+                                c['data'], c['prop']))
+                x += cw + top_bar.GAP * k
     return out
 
 

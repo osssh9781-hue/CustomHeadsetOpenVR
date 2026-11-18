@@ -900,6 +900,15 @@ def items(context, region_w, region_h, k=1.0):
 CORNER_W, CORNER_SEG = 210.0, 99.0
 
 
+def _goz_in_dock(context):
+    """0.24.229 Are GoZ Send / Import in the bottom bar (the bar with Select and Options is shown)?"""
+    try:
+        from . import ui_bars
+        return ui_bars._fold_in_dock(context) and not zs.on(context)
+    except (ImportError, AttributeError, KeyError, TypeError, ReferenceError):
+        return False
+
+
 def corner_box(context, region_w, region_h, k):
     """(x, y, w, h) of the MECHA LAB / ZBRUSH card in the top right corner (left of Blender's navigation gizmo
     and an overlapping sidebar)."""
@@ -908,7 +917,8 @@ def corner_box(context, region_w, region_h, k):
     rows = 2 if getattr(context, 'mode', '') == 'SCULPT' and not mecha_mask.ON[0] else 4       # 0.24.77 + VIEW Wire | Solo on MECHA LAB; 0.24.124 + 3D MOUSE
     if zs.style() == 'ZBRUSH':
         rows += 1                                                      # 0.24.79 + NAV ZBrush | Blender
-    rows += 1                                                          # 0.24.198 + GOZ Send | Import
+    if not _goz_in_dock(context):
+        rows += 1                                                      # 0.24.198 + GOZ Send | Import
     w, h = CORNER_W * k, rows * ROW * k + (rows - 1) * GAP * k + 2 * PAD * k
     gizmo = 0.0
     try:
@@ -993,6 +1003,8 @@ def corner_items(context, region_w, region_h, k=1.0):
         out.append(Item('seg', x0 + PAD * k + lw3 + 2 * GAP * k + s3, y, s3, ROW * k, 'Parts', '', parts, True,
                         ('op', 'mch.ndof_parts', {'on': True})))
     # 0.24.198 (user: "여기다가만 고즈 버튼 넣어 주라, 고즈 센드 임포트"): GoZ on the card, every screen
+    if _goz_in_dock(context):                 # 0.24.229 (user: "고즈 버튼 여기로 옮겨 줘"): in the bottom bar's end
+        return out
     y -= ROW * k + GAP * k
     out.append(Item('glabel', x0 + PAD * k, y, lw, ROW * k, 'GOZ'))
     out.append(Item('seg', x0 + PAD * k + lw + GAP * k, y, s2, ROW * k, 'Send', '', False, True,

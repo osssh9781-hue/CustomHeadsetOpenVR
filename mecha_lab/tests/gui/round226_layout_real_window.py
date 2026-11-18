@@ -224,6 +224,13 @@ def flow():
     yield from wait_draws(3)
     shot('04b_CUT_slow_line_stroke.png')
     bar_card = top()[0]
+    from mecha_lab import zb_ui
+    with C.temp_override(window=w, area=a, region=r):
+        corner = zb_ui.corner_items(C, r.width, r.height, k)
+    dl = [i.label for i in dock() if i.kind in {'seg', 'glabel'}]
+    res['C9'] = dl[-3:] == ['GOZ', 'Send', 'Import'] and not any(i.label in {'GOZ', 'Send', 'Import'} for i in corner) \
+        and dock()[0].x + dock()[0].w <= r.width
+    log('C9 dock end', dl[-7:], '| corner card rows', sorted({i.label for i in corner if i.kind == 'glabel'}))
     dk_ = dock()[0]
     res['C8'] = abs((bar_card.x + bar_card.w / 2) - (dk_.x + dk_.w / 2)) < 2.0 and abs((bar_card.x + bar_card.w / 2) - r.width / 2) < 2.0
     log('C8 top bar centre', round(bar_card.x + bar_card.w / 2), '| dock centre', round(dk_.x + dk_.w / 2), '| view', r.width / 2)
@@ -350,6 +357,7 @@ def flow():
              'C5': 'a REAL right click opens the Tool Wheel; it stays when the mouse leaves; a REAL click on another menu closes it and lands there',
              'C7': 'Blender\'s tool settings row: the active tool\'s icon is not shown in MECHA LAB (only that icon differs)',
              'C8': 'the top bar is centred in the view, on the same middle as the bar with Select',
+             'C9': 'GoZ Send / Import are at the end of the bar with Select, no longer on the corner card',
              'C6': 'the tool menu\'s open button is in the dock\'s Options; a REAL click opens the menu and the row + bar go up'}
     n = 0
     for kk_ in sorted(names):
