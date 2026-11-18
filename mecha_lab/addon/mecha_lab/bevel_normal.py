@@ -182,6 +182,9 @@ def _radius_update(self, context):
         mod = ob.modifiers.get(REAL) if ob.type == 'MESH' else None
         if mod is not None:
             mod.width = r
+            weld = ob.modifiers.get(WELD)
+            if weld is not None:
+                weld.merge_threshold = max(1e-5, r * 0.01)
 
 
 @bpy.app.handlers.persistent
@@ -240,25 +243,96 @@ class MCH_OT_bevel_normal_add(bpy.types.Operator):
 REAL = 'MCH Bevel Real'
 
 
-def make_real(ob, width, segments=3):
+TRIES = (dict(miter_outer='MITER_ARC', weld=False),              # (0.24.238 a result that sticks out of the part:
+         dict(miter_outer='MITER_SHARP', weld=False),            #  the next one; Weld first takes out doubled points
+         dict(miter_outer='MITER_SHARP', weld=True),
+         dict(miter_outer='MITER_SHARP', weld=True, segments=1))
+WELD = 'MCH Bevel Weld'
+
+
+def helper(ob, context=None):
+    """0.24.238 Is ``ob`` a helper, not a part: a live cutter / gap, shown as wire or bounds, not rendered, or the
+    operand of another object's Boolean?  (Make Real leaves those alone - beveling a cutter made spikes.)"""
+    if ob.name.startswith(('MCH_Cutter', 'MCH_GapIn', 'MCH_GapOut')) or ob.display_type in {'WIRE', 'BOUNDS'} \
+            or ob.hide_render:
+        return True
+    scene = context.scene if context is not None else bpy.context.scene
+    for o in scene.objects:
+        for m in getattr(o, 'modifiers', ()):
+            if m.type == 'BOOLEAN' and (getattr(m, 'object', None) is ob
+                                        or (m.operand_type == 'COLLECTION' and m.collection is not None
+                                            and ob.name in m.collection.objects)):
+                return True
+    return False
+
+
+def sticks_out(ob, width, context=None):
+    """How far the made-real mesh reaches off the part's own surface (0 = all on it).  A bevel only cuts corners,
+    so a point farther off than about the width is a spike."""
+    import bmesh
+    from mathutils.bvhtree import BVHTree
+    mod = ob.modifiers.get(REAL)
+    if mod is None:
+        return 0.0
+    ctx = context or bpy.context
+    keep = mod.show_viewport
+    mod.show_viewport = False                          # (the surface without it)
+    ctx.view_layer.update()
+    dg = ctx.evaluated_depsgraph_get()
+    bm = bmesh.new()
+    try:
+        bm.from_object(ob, dg)
+        tree = BVHTree.FromBMesh(bm)
+    finally:
+        bm.free()
+    mod.show_viewport = keep
+    ctx.view_layer.update()
+    me = ob.evaluated_get(ctx.evaluated_depsgraph_get()).data
+    far = 0.0
+    for v in me.vertices:
+        hit = tree.find_nearest(v.co)
+        if hit[0] is not None:
+            far = max(far, hit[3])
+    return far
+
+
+def make_real(ob, width, segments=3, context=None):
     """0.24.236 (user: "이렇게 베벨로 바뀐 메쉬를 진짜 그런 형태로 바꿀 수는 없나?") the rounded look made real geometry:
     a live Bevel modifier on ``ob`` (Angle 30°, Width as the look's Radius, Segments, Harden Normals, no overlap) at
     the end of its stack - editable, and baked by Apply Modifiers like any other; the shading bevel goes off on it (no
-    double rounding).  Returns the modifier."""
-    mod = ob.modifiers.get(REAL)
-    if mod is None:
-        mod = ob.modifiers.new(REAL, 'BEVEL')
-    mod.width = width
-    mod.segments = segments
-    mod.limit_method = 'ANGLE'
-    mod.angle_limit = 0.5236
-    mod.profile = 0.5
-    mod.use_clamp_overlap = True
-    mod.harden_normals = True
-    mod.miter_outer = 'MITER_ARC'
-    ob[PROP] = 0.0
+    double rounding).
+    0.24.238 (user, a render with long spikes): the result is checked - no point may end up farther off the part's
+    surface than the width; if one does, safer settings are tried (sharp miters, doubled points welded first, one
+    segment); if none is clean the modifier is taken off again.  Returns the modifier, or None."""
+    for t in TRIES:
+        mod = ob.modifiers.get(REAL)
+        if mod is None:
+            mod = ob.modifiers.new(REAL, 'BEVEL')
+        weld = ob.modifiers.get(WELD)
+        if t['weld'] and weld is None:
+            weld = ob.modifiers.new(WELD, 'WELD')
+            weld.merge_threshold = max(1e-5, width * 0.01)
+            ob.modifiers.move(ob.modifiers.find(WELD), ob.modifiers.find(REAL))
+        elif not t['weld'] and weld is not None:
+            ob.modifiers.remove(weld)
+        mod.width = width
+        mod.segments = t.get('segments', segments)
+        mod.limit_method = 'ANGLE'
+        mod.angle_limit = 0.5236
+        mod.profile = 0.5
+        mod.use_clamp_overlap = True
+        mod.harden_normals = True
+        mod.miter_outer = t['miter_outer']
+        ob.update_tag()
+        if sticks_out(ob, width, context) <= width * 1.5 + 1e-6:
+            ob[PROP] = 0.0
+            return mod
+    for name in (REAL, WELD):                          # (none clean: as it was)
+        m = ob.modifiers.get(name)
+        if m is not None:
+            ob.modifiers.remove(m)
     ob.update_tag()
-    return mod
+    return None
 
 
 class MCH_OT_bevel_normal_real(bpy.types.Operator):
@@ -280,10 +354,19 @@ class MCH_OT_bevel_normal_real(bpy.types.Operator):
             self.report({'WARNING'}, 'Make Real: select the meshes first')
             return {'CANCELLED'}
         r = float(context.scene.mch_bevel_normal_radius)
+        done, skipped, failed = [], [], []
         for ob in obs:
-            make_real(ob, r, self.segments)
-        self.report({'INFO'}, f'Bevel made real on {len(obs)} mesh(es) (a live Bevel modifier - Apply Modifiers bakes it)')
-        return {'FINISHED'}
+            if helper(ob, context):                  # 0.24.238 cutters / wire helpers: left alone
+                skipped.append(ob.name)
+                continue
+            (done if make_real(ob, r, self.segments, context) is not None else failed).append(ob.name)
+        msg = f'Bevel made real on {len(done)} mesh(es)'
+        if skipped:
+            msg += f'; {len(skipped)} helper(s) skipped (cutters / wire)'
+        if failed:
+            msg += f'; no clean bevel on {", ".join(failed[:3])} - left as it was'
+        self.report({'WARNING'} if failed else {'INFO'}, msg)
+        return {'FINISHED'} if done else {'CANCELLED'}
 
 
 CLASSES = (MCH_OT_bevel_normal_remove, MCH_OT_bevel_normal_add, MCH_OT_bevel_normal_real)

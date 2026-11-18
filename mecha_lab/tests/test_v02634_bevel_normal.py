@@ -115,6 +115,36 @@ check(f'Make Real: a live Bevel modifier on the selected (faces {f0} -> {f1}), R
       f'shading bevel off; the base mesh unchanged',
       mod is not None and mod.limit_method == 'ANGLE' and f1 > f0 and abs(mod.width - 0.08) < 1e-6 and a[bn.PROP] == 0.0
       and np.allclose(mio.read_co(a.data), co0[a.name]))
+# 0.24.238 (user: Make Real made long spikes): helpers left alone, the result checked, safer settings tried
+real_so = bn.sticks_out
+far0 = bn.sticks_out(a, 0.08)
+check(f'the made-real cube stays on its own surface ({far0:.4f} off)', far0 < 0.08 * 1.5)
+bpy.ops.mesh.primitive_cube_add(location=(0, 0, 0.9), size=0.4)
+cut = C.active_object
+cut.display_type = 'WIRE'
+m_ = a.modifiers.new('Cut', 'BOOLEAN'); m_.object = cut
+a.modifiers.move(a.modifiers.find('Cut'), 0)
+for o in S.objects:
+    o.select_set(o in (a, cut))
+C.view_layer.objects.active = a
+a.modifiers.remove(a.modifiers[bn.REAL])
+bpy.ops.mch.bevel_normal_real()
+check('a cutter selected with the part is left alone (no bevel on it); the part gets it', cut.modifiers.get(bn.REAL) is None
+      and a.modifiers.get(bn.REAL) is not None and bn.helper(cut, C) and not bn.helper(a, C))
+a.modifiers.remove(a.modifiers['Cut'])
+cme = cut.data
+bpy.data.objects.remove(cut)
+bpy.data.meshes.remove(cme)          # (its mesh would still hold the base material)
+seen = []
+bn.sticks_out = lambda ob, w, ctx=None: (seen.append(ob.modifiers[bn.REAL].miter_outer) or (1.0 if len(seen) == 1 else 0.0))
+mod = bn.make_real(a, 0.08)
+check(f'spikes with the first settings: the next ones are used ({seen})', mod is not None and mod.miter_outer == 'MITER_SHARP'
+      and len(seen) == 2)
+bn.sticks_out = lambda ob, w, ctx=None: 1.0
+mod = bn.make_real(a, 0.08)
+check('spikes whatever the settings: the bevel is taken off again, the part as it was',
+      mod is None and a.modifiers.get(bn.REAL) is None and a.modifiers.get(bn.WELD) is None)
+bn.sticks_out = real_so
 S.mch_bevel_normal = False
 check('off: every node out, the bump linked to the shader again, the base material gone, the switches gone',
       nt.nodes.get(bn.NODE) is None and nt.nodes.get(bn.VALUE) is None
