@@ -104,6 +104,13 @@ mod = a.modifiers.get(bn.REAL)
 C.view_layer.update()
 f1 = len(a.evaluated_get(C.evaluated_depsgraph_get()).data.polygons)
 S.mch_bevel_normal_radius = 0.08
+for o in S.objects:
+    o.select_set(False)
+none_ok = bpy.ops.mch.bevel_normal_real.poll()
+for o in S.objects:
+    o.select_set(o is a)
+check(f'0.24.237 Make Real: nothing selected - it does nothing (selected only); b keeps no modifier ({none_ok})',
+      not none_ok and b.modifiers.get(bn.REAL) is None and c.modifiers.get(bn.REAL) is None)
 check(f'Make Real: a live Bevel modifier on the selected (faces {f0} -> {f1}), Radius wide, the slider moves it, its '
       f'shading bevel off; the base mesh unchanged',
       mod is not None and mod.limit_method == 'ANGLE' and f1 > f0 and abs(mod.width - 0.08) < 1e-6 and a[bn.PROP] == 0.0

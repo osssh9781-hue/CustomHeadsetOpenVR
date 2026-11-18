@@ -262,19 +262,22 @@ def make_real(ob, width, segments=3):
 
 
 class MCH_OT_bevel_normal_real(bpy.types.Operator):
-    """Make the rounded edges real geometry: a live Bevel modifier, Radius wide (on the selected meshes, or - none
-    selected - on every mesh that has Bevel Normal on); Apply Modifiers bakes it"""
+    """Make the rounded edges real geometry on the SELECTED meshes only: a live Bevel modifier, Radius wide; Apply
+    Modifiers bakes it"""
     bl_idname = 'mch.bevel_normal_real'
     bl_label = 'Make Bevel Real'
     bl_options = {'REGISTER', 'UNDO'}
 
     segments: bpy.props.IntProperty(name='Segments', default=3, min=1, max=12)
 
+    @classmethod
+    def poll(cls, context):                          # 0.24.237 (user: "베벨 메이크 리얼은 셀렉트만 되게") selected only
+        return any(o.type == 'MESH' for o in context.selected_objects)
+
     def execute(self, context):
-        sel = [o for o in context.selected_objects if o.type == 'MESH']
-        obs = sel or [o for o in context.scene.objects if o.type == 'MESH' and o.get(PROP) == 1.0]
+        obs = [o for o in context.selected_objects if o.type == 'MESH']
         if not obs:
-            self.report({'WARNING'}, 'Make Real: select meshes, or turn Bevel Normal on first')
+            self.report({'WARNING'}, 'Make Real: select the meshes first')
             return {'CANCELLED'}
         r = float(context.scene.mch_bevel_normal_radius)
         for ob in obs:
