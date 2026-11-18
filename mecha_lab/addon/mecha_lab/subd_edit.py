@@ -7,6 +7,7 @@ edges over it:
   Shift + drag an edge (or any inner edge): the edge moves;
 * Alt + click a point: it goes (its faces join; a corner's face goes with it - never the last face);
 * Ctrl + click an edge: its crease on / off (the Crease value of the window);
+* a dragged point near another one snaps onto it (green) and joins it when let go (0.24.232; Ctrl held: no snap);
 * a click on another SubD Plane: that one is edited.
 
 Every change is one undo step (Ctrl+Z).
@@ -21,8 +22,9 @@ from . import tool_state as ts
 
 PICK_POINT = 14.0           # px at UI scale 1
 PICK_EDGE = 10.0
+SNAP = 16.0                 # px at UI scale 1: a dragged point this near another one snaps onto it (and joins it)
 HOVER = {'ob': None, 'kind': None, 'index': -1}      # what is under the mouse ('V' point / 'E' edge)
-DRAG = {'on': False}
+DRAG = {'on': False, 'snap': []}      # snap: [(dragged index, target index)] while dragging
 
 
 def tool_on(context):
@@ -188,6 +190,13 @@ class MCH_OT_subd_edit(bpy.types.Operator):
                 self.idx = self._extrude(ob, idx)
                 self.extruded = True
         self.orig = [mw @ me.vertices[i].co.copy() for i in self.idx]
+        # 0.24.232 (user: "그 점끼리 만나서 내가 가져다 대면 자동으로 붙게 해 줘") the points a dragged one may snap onto:
+        # all the others (not the dragged ones, nor - pulling a face out - the edge it comes out of)
+        skip = set(self.idx) | (set(me.edges[idx].vertices) if kind == 'E' else set())
+        pts = _screen(context, ob)
+        self.others = [(i, p) for i, p in enumerate(pts) if i not in skip and p is not None]
+        self.snap_px = SNAP * _k(context)
+        DRAG['snap'] = []
         centre = sum(self.orig, Vector()) / len(self.orig)
         self.depth = centre
         self.anchor = _view_point(context, xy, centre)
@@ -269,13 +278,32 @@ class MCH_OT_subd_edit(bpy.types.Operator):
             delta = p - self.anchor
             inv = self.ob.matrix_world.inverted_safe()
             me = self.ob.data
+            from bpy_extras import view3d_utils
+            snaps = []
             for i, w in zip(self.idx, self.orig):
                 me.vertices[i].co = inv @ (w + delta)
+                q = view3d_utils.location_3d_to_region_2d(context.region, context.region_data, w + delta)
+                if q is None or event.ctrl:                 # (Ctrl held: no snapping)
+                    continue
+                best = None
+                for j, pj in self.others:
+                    d = ((pj[0] - q.x) ** 2 + (pj[1] - q.y) ** 2) ** 0.5
+                    if d <= self.snap_px and (best is None or d < best[0]):
+                        best = (d, j)
+                if best is not None:
+                    me.vertices[i].co = me.vertices[best[1]].co.copy()
+                    snaps.append((i, best[1]))
+            DRAG['snap'] = snaps
             me.update()
             context.region.tag_redraw()
             return {'RUNNING_MODAL'}
         if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
             DRAG['on'] = False
+            snaps, DRAG['snap'] = DRAG['snap'], []
+            if snaps and self.moved:
+                n = self._weld(snaps)
+                if n:
+                    self.report({'INFO'}, f'SubD Plane: {n} point(s) joined')
             if not self.moved and self.extruded:        # a click on an edge, no drag: nothing pulled out
                 self._restore()
                 bpy.data.meshes.remove(self.backup)
@@ -284,11 +312,38 @@ class MCH_OT_subd_edit(bpy.types.Operator):
             return {'FINISHED'}
         if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
             DRAG['on'] = False
+            DRAG['snap'] = []
             self._restore()
             bpy.data.meshes.remove(self.backup)
             context.region.tag_redraw()
             return {'CANCELLED'}
         return {'RUNNING_MODAL'}
+
+    def _weld(self, snaps):
+        """The snapped points become one with the points they sit on.  Returns how many were joined."""
+        me = self.ob.data
+        bm = bmesh.new()
+        try:
+            bm.from_mesh(me)
+            bm.verts.ensure_lookup_table()
+            tmap = {}
+            for i, j in snaps:
+                if i != j and i < len(bm.verts) and j < len(bm.verts):
+                    tmap[bm.verts[i]] = bm.verts[j]
+            if not tmap:
+                return 0
+            bmesh.ops.weld_verts(bm, targetmap=tmap)
+            loose = [v for v in bm.verts if not v.link_faces]
+            if loose:
+                bmesh.ops.delete(bm, geom=loose, context='VERTS')
+            if not bm.faces:
+                return 0
+            bm.to_mesh(me)
+        finally:
+            bm.free()
+        me.update()
+        HOVER.update(kind=None, index=-1)
+        return len(tmap)
 
     def _restore(self):
         me = self.ob.data
@@ -302,6 +357,7 @@ class MCH_OT_subd_edit(bpy.types.Operator):
 
     def cancel(self, context):
         DRAG['on'] = False
+        DRAG['snap'] = []
 
 
 # ---- drawing --------------------------------------------------------------------------------------------------
@@ -348,6 +404,11 @@ def _draw():
             gpu.state.point_size_set(14.0 * k)
             b = batch_for_shader(sh, 'POINTS', {'pos': [tuple(co[HOVER['index']])]})
             sh.uniform_float('color', (1.0, 0.92, 0.2, 1.0))
+            b.draw(sh)
+        if DRAG.get('snap'):                            # (where a dragged point will join: green)
+            gpu.state.point_size_set(18.0 * k)
+            b = batch_for_shader(sh, 'POINTS', {'pos': [tuple(co[j]) for _i, j in DRAG['snap'] if j < len(co)]})
+            sh.uniform_float('color', (0.3, 1.0, 0.45, 1.0))
             b.draw(sh)
         gpu.state.point_size_set(1.0)
         gpu.state.blend_set('NONE')

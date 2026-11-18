@@ -920,6 +920,7 @@ def draw_subd(layout, context):
         row.operator('mch.subd_apply_all', icon='CHECKMARK')
     _hint(layout, 'Drag a point: move it.  Drag an outline edge: a new face out of it (Shift: move the edge)',
           'Alt + click a point: remove it.  Ctrl + click an edge: crease on / off',
+          'Bring a point onto another: it snaps and joins it (Ctrl while dragging: no snap)',
           'Simple and Catmull-Clark work together (two sliders)', 'Order: Simple -> Catmull-Clark -> Solidify')
 
 

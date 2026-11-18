@@ -282,7 +282,37 @@ def flow():
     ob = bpy.data.objects.get(ob.name) or C.active_object
     res['D6'] = len(ob.data.vertices) == nv2 and C.mode == 'OBJECT'
     log('D6 REAL Ctrl+Z: points', len(ob.data.vertices), '| mode', C.mode)
-    names = {'D1': 'a REAL drag of a point moves it (Object Mode)',
+    # 0.24.232 a point brought onto another snaps and joins it; with Ctrl held it does not
+    me = ob.data
+    lone = min(range(len(me.vertices)), key=lambda i: me.vertices[i].co.x)          # the far left point
+    nbr = {v for e in me.edges if lone in e.vertices for v in e.vertices if v != lone}      # (a corner joined to its
+    goal = min(nbr, key=lambda i: (me.vertices[i].co - me.vertices[lone].co).length)      # neighbour: a triangle)
+    a_co, g_co = me.vertices[lone].co.copy(), me.vertices[goal].co.copy()
+    nv3 = len(me.vertices)
+    off = (g_co - a_co)
+    yield from drag(scr(a_co), scr(g_co + off.normalized() * 0.03), mods=('ctrl',))     # (near, Ctrl: no snap)
+    me = ob.data
+    no_snap = len(me.vertices) == nv3 and (me.vertices[lone].co - g_co).length > 0.01
+    log('D8 REAL Ctrl + drag next to a point: points', nv3, '->', len(me.vertices), '| apart by',
+        round((me.vertices[lone].co - g_co).length, 3))
+    xdo('key', 'ctrl+z')
+    yield 1.5
+    ob = bpy.data.objects.get(ob.name) or C.active_object
+    me = ob.data
+    log('   D7 before', [tuple(round(c, 2) for c in v.co) for v in me.vertices], [tuple(p.vertices) for p in me.polygons], 'lone', lone, 'goal', goal)
+    yield from drag(scr(me.vertices[lone].co), scr(g_co + off.normalized() * 0.03))      # (near: snaps, joins)
+    me = ob.data
+    log('   D7 after', [tuple(round(c, 2) for c in v.co) for v in me.vertices], [tuple(p.vertices) for p in me.polygons])
+    joined = len(me.vertices) == nv3 - 1 and any((v.co - g_co).length < 1e-5 for v in me.vertices) \
+        and len(me.polygons) == 2 and sorted(len(p_.vertices) for p_ in me.polygons) == [3, 4]
+    res['D7'] = joined
+    res['D8'] = no_snap
+    log('D7 REAL drag of a point onto another (let go a little off it): points', nv3, '->', len(me.vertices),
+        '| faces', len(me.polygons))
+    shot('06_points_joined.png')
+    names = {'D7': 'a point dragged near another snaps onto it and joins it when let go (the quad becomes a triangle)',
+             'D8': 'with Ctrl held while dragging it does not snap',
+             'D1': 'a REAL drag of a point moves it (Object Mode)',
              'D2': 'a REAL drag of an outline edge pulls a new face out of it',
              'D3': 'a REAL Shift + drag of an edge moves it (no new face)',
              'D4': 'a REAL Ctrl + click on an edge creases it',

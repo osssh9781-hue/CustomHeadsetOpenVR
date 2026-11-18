@@ -1,0 +1,28 @@
+tool SUBD native mecha.subd_plane object MCH_SubDPlane points 4 faces 1 mode OBJECT
+shot 01_plane.png True
+D1 REAL drag of a corner point: moved by (0.598, 0.299, 0.0) | mode OBJECT
+shot 02_point_moved.png True
+D2 REAL drag of an outline edge: faces 1 -> 2 | points 4 -> 6 | reaches x -1.3
+shot 03_face_pulled_out.png True
+   before D3 verts [(-0.5, -0.5, 0.0), (0.5, -0.5, 0.0), (-0.5, 0.5, 0.0), (1.1, 0.8, 0.0), (-1.3, -0.5, 0.0), (-1.3, 0.5, 0.0)] edge (5, 4) view (0.0, 0.0, 0.0)
+   after D3 verts [(-0.5, -0.5, 0.0), (0.5, -0.5, 0.0), (-0.5, 0.5, 0.0), (1.1, 0.8, 0.0), (-1.3, 0.0, 0.0), (-1.3, 1.0, 0.0)] view (0.0, 0.0, 0.0) last op ['MCH_OT_subd_edit', 'MCH_OT_subd_edit', 'MCH_OT_subd_edit']
+D3 REAL Shift + drag of an edge: faces 2 -> 2 | edge middle y 0.0 -> 0.501
+D4 REAL Ctrl + click an edge: crease 1.0
+shot 04_crease.png True
+D5 REAL Alt + click a point: points 6 -> 5
+shot 05_point_removed.png True
+D6 REAL Ctrl+Z: points 6 | mode OBJECT
+D8 REAL Ctrl + drag next to a point: points 6 -> 6 | apart by 0.032
+   D7 before [(-0.5, -0.5, 0.0), (0.5, -0.5, 0.0), (-0.5, 0.5, 0.0), (1.1, 0.8, 0.0), (-1.3, 0.0, 0.0), (-1.3, 1.0, 0.0)] [(0, 1, 3, 2), (0, 2, 5, 4)] lone 4 goal 0
+   D7 after [(-0.5, -0.5, 0.0), (0.5, -0.5, 0.0), (-0.5, 0.5, 0.0), (1.1, 0.8, 0.0), (-1.3, 1.0, 0.0)] [(0, 1, 3, 2), (0, 2, 4)]
+D7 REAL drag of a point onto another (let go a little off it): points 6 -> 5 | faces 2
+shot 06_points_joined.png True
+PASS D1 a REAL drag of a point moves it (Object Mode)
+PASS D2 a REAL drag of an outline edge pulls a new face out of it
+PASS D3 a REAL Shift + drag of an edge moves it (no new face)
+PASS D4 a REAL Ctrl + click on an edge creases it
+PASS D5 a REAL Alt + click on a point removes it
+PASS D6 Ctrl+Z brings it back; never Edit Mode
+PASS D7 a point dragged near another snaps onto it and joins it when let go (the quad becomes a triangle)
+PASS D8 with Ctrl held while dragging it does not snap
+8/8 passed
