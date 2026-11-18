@@ -1,0 +1,19 @@
+shot 01_press_bar.png True
+B1 REAL click on the stamp cell: card open True | tiles 56
+shot 02_card_open.png True
+B2 the mouse left the card: still open True
+shot 03_mouse_away.png True
+B3 REAL click on a stamp: MCH_BUILTIN_PENTAGON -> MCH_BUILTIN_SCALE_A | wanted MCH_BUILTIN_SCALE_A | card open False
+shot 04_picked_closed.png True
+B4 the X: opened True | open after False | shape kept True
+shot 05_value_popup.png True
+B5 value popup typed at once: Size size 60.0 -> 37.0
+shot 06_value_typed.png True
+shot 07_colour_dialog.png True
+shot 08_colour_dialog_mouse_away.png True
+PASS B1 a REAL click on the stamp cell opens our own card with the stamp pictures
+PASS B2 the card stays when the mouse leaves it
+PASS B3 a REAL click on a stamp picks it and closes the card
+PASS B4 the X closes the card, nothing picked
+PASS B5 a number bar's value popup takes typing at once (REAL keys, no extra click)
+5/5 passed

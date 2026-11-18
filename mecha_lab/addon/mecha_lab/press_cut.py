@@ -2470,6 +2470,20 @@ class MCH_OT_press_pick_shape(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def stamp_tiles(layout, context):
+    """0.24.223 the stamps as picture tiles (the drawn picker card)."""
+    from . import cut_presets, mecha_menu, panel_capture
+    st = context.scene.mch_press
+    layout.label(text='Stamp  (Shift + draw: your own)')
+    entries = []
+    for stem, name, _desc, icon, _i in cut_presets.preset_items(st, context):
+        if stem == 'NONE':
+            continue
+        entries.append((name.split(' (')[0][:12], mecha_menu._stamp_path(stem), icon,
+                        stem == st.shape and not st.drawn, 'mch.press_pick_shape', {'stem': stem}))
+    panel_capture.tiles(layout, entries, columns=8)
+
+
 class MCH_OT_press_shape_grid(bpy.types.Operator):
     """0.24.95 (user: "여기 썸네일 만들어 주기로 한 건 어디 갔어?") The stamps as a grid of pictures (the top bar's stamp
     button): the 13 shapes, the 50 mech form-blocking stamps and the imported ones"""
@@ -2478,6 +2492,13 @@ class MCH_OT_press_shape_grid(bpy.types.Operator):
     bl_options = {'INTERNAL'}
 
     def invoke(self, context, event):
+        try:                                   # 0.24.223 our own card: it stays when the mouse leaves; a pick or
+            from . import float_card, top_bar  # the X closes it
+            if top_bar.on(context):
+                float_card.open('Press Cut Stamps', stamp_tiles, width=760)
+                return {'FINISHED'}
+        except (ImportError, AttributeError, ReferenceError):
+            pass
         return context.window_manager.invoke_popup(self, width=900)      # (0.24.177 bigger pictures, 8 a row)
 
     def execute(self, context):

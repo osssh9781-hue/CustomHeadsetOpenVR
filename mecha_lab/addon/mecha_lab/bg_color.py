@@ -1081,7 +1081,8 @@ class MCH_OT_bg_ramp(bpy.types.Operator):
             return {'CANCELLED'}
         if bpy.app.background:
             return self.execute(context)
-        return context.window_manager.invoke_popup(self, width=340)
+        # 0.24.223 a dialog: it stays when the mouse leaves it (OK closes it)
+        return context.window_manager.invoke_props_dialog(self, width=340)
 
     def draw(self, context):
         lay = self.layout

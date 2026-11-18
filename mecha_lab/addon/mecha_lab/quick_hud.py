@@ -595,6 +595,7 @@ class MCH_PT_quick_value(bpy.types.Panel):
         its = items(context)
         if i < len(its):
             data, prop = its[i]
+            self.layout.activate_init = True       # 0.24.223 the number is ready to type at once
             self.layout.prop(data, prop)
             self.layout.label(text='Ctrl + click a slider: default', icon='INFO')
 

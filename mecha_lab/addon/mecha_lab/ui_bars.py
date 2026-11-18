@@ -507,6 +507,9 @@ def _build_all(context, region, k):
         if bottom_bar.ui_active(context):              # 0.24.60 MECHA LAB | ZBRUSH card
             from . import zb_ui
             out += zb_ui.corner_items(context, region.width, region.height, k)
+        from . import float_card                       # 0.24.223 a picker card, on top of everything
+        if float_card.is_open():
+            out += float_card.items(context, region.width, region.height, k)
     except (AttributeError, KeyError, TypeError, ReferenceError):
         return out
     return out
@@ -568,6 +571,11 @@ def run(context, item):
     a = item.action
     kind = a[0]
     msg = ''
+    from . import float_card
+    if kind == 'float_close':
+        float_card.close()
+        return ''
+    picked = float_card.is_open() and float_card.holds(context, item)   # 0.24.223 a pick closes the picker card
     from . import mecha_mask                         # 0.24.200 Paint Mask: any other button ends it first (back to
     if mecha_mask.ON[0] and not (kind in {'number', 'bool', 'enum'}              # Object Mode), then does its job
                                  or (kind == 'op' and a[1] == 'mch.mecha_mask')):
@@ -614,6 +622,8 @@ def run(context, item):
     except (RuntimeError, TypeError, ValueError, AttributeError, KeyError, ReferenceError) as ex:
         print('Mecha UI:', a, ex)
         msg = str(ex).splitlines()[0][:120] if str(ex) else ''
+    if picked and kind not in {'fold', 'number'}:
+        float_card.close()
     side_panel.dirty()
     return msg
 
@@ -634,8 +644,14 @@ def open_value(context, item):
     if bpy.app.background or getattr(context, 'window', None) is None:    # (no real window: call_panel crashes)
         return
     try:
+        from . import live_ref
+        data = live_ref.resolve(item.ref)
+        rna = data.bl_rna.properties.get(item.prop) if data is not None else None
+        if rna is not None and rna.subtype in {'COLOR', 'COLOR_GAMMA'}:
+            bpy.ops.mch.ui_colour('INVOKE_DEFAULT')    # 0.24.223 the colour picker: a dialog that stays (OK closes)
+            return
         bpy.ops.wm.call_panel(name='MCH_PT_ui_value', keep_open=False)
-    except RuntimeError:
+    except (RuntimeError, AttributeError, ReferenceError):
         pass
 
 
@@ -660,9 +676,38 @@ class MCH_PT_ui_value(bpy.types.Panel):
                 from . import color_pick                # (the wheel, Hue / Saturation / Value, Pick - the eyedropper)
                 color_pick.draw(self.layout, data, prop)
                 return
+            self.layout.activate_init = True       # 0.24.223 the number is ready to type at once
             self.layout.prop(data, prop)
         except (TypeError, ReferenceError):
             pass
+
+
+class MCH_OT_ui_colour(bpy.types.Operator):
+    """0.24.223 Pick a colour: the wheel, Hue / Saturation / Value and the eyedropper - the window stays open when
+    the mouse leaves it (OK closes it)"""
+    bl_idname = 'mch.ui_colour'
+    bl_label = 'Colour'
+    bl_options = {'INTERNAL'}
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self, width=300)
+
+    def draw(self, context):
+        data, prop = EDIT
+        from . import live_ref, color_pick
+        data = live_ref.resolve(data)
+        if data is None:
+            return
+        try:
+            rna = data.bl_rna.properties.get(prop)
+            self.layout.label(text=rna.name if rna is not None else 'Colour')
+            color_pick.draw(self.layout, data, prop)
+        except (TypeError, ReferenceError, AttributeError):
+            pass
+
+    def execute(self, context):
+        bump()
+        return {'FINISHED'}
 
 
 class MCH_OT_side_page(bpy.types.Operator):
@@ -803,10 +848,11 @@ class MCH_OT_ui_scroll(bpy.types.Operator):
     bl_options = {'INTERNAL'}
 
     def invoke(self, context, event):
-        from . import layers_panel, side_panel, zb_ui
+        from . import layers_panel, side_panel, zb_ui, float_card
         try:
             x, y = event.mouse_region_x, event.mouse_region_y
-            panel = side_panel if side_panel.over(context, x, y) else \
+            panel = float_card if float_card.over(context, x, y) else \
+                side_panel if side_panel.over(context, x, y) else \
                 layers_panel if layers_panel.over(context, x, y) else \
                 zb_ui if zb_ui.over_shelf(context, x, y) else None
             if panel is None:
@@ -881,7 +927,7 @@ class MCH_OT_ui_menu_release(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
 
-CLASSES = (MCH_OT_ui_hover, MCH_OT_ui_scroll, MCH_PT_ui_value, MCH_MT_ui_choice, MCH_OT_side_page, MCH_OT_menu_fold,
+CLASSES = (MCH_OT_ui_hover, MCH_OT_ui_scroll, MCH_PT_ui_value, MCH_OT_ui_colour, MCH_MT_ui_choice, MCH_OT_side_page, MCH_OT_menu_fold,
            MCH_OT_ui_menu_release)
 _keymaps = []
 
@@ -898,6 +944,11 @@ def release_refs():
     structs, since 0.24.132; this makes doubly sure nothing cached outlives the data it was built from."""
     _MEMO.update(key=None, time=0.0, items=[])
     EDIT[:] = [None, '']
+    try:
+        from . import float_card
+        float_card.CARD.clear()
+    except (ImportError, AttributeError):
+        pass
     try:
         from . import side_panel
         side_panel._CACHE.update(key=None, time=0.0, trees=(None, None))

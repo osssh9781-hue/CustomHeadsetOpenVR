@@ -561,6 +561,9 @@ def draw(items, hover, S, context):
             c = G.card_color()
             # 0.24.222 (user: "상단 바 너무 연한데 - 내부 슬라이더 색 정도로 해 줘"): the grey of a slider's own bar
             G.rounded_rect(it.x, it.y, it.w, it.h, 24 * S, (BTN_BG[0], BTN_BG[1], BTN_BG[2], c[3]))
+        elif it.kind == 'card' and it.icon == 'solid':    # 0.24.223 a picker card over the other cards: not see-through
+            c = G.card_color()
+            G.rounded_rect(it.x, it.y, it.w, it.h, 18 * S, (c[0], c[1], c[2], 1.0))
         elif it.kind == 'card':
             G.rounded_rect(it.x, it.y, it.w, it.h, 18 * S, G.card_color())
         elif it.kind == 'title':
