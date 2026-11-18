@@ -93,6 +93,9 @@ check(f'Idle: the chest rises and falls ({np.ptp(ch) * 1000:.0f} mm), the feet s
 
 
 # export to Unreal
+other = bpy.data.actions.new('Somebody_Else_Walk')      # (another rig's action in the file: not this rig's)
+fc = other.fcurves.new('pose.bones["hips"].location', index=0) if hasattr(other, 'fcurves') else None
+other.use_fake_user = True
 tmp = tempfile.mkdtemp()
 path = os.path.join(tmp, 'hero_UE.fbx')
 r = bpy.ops.mch.loco_export(filepath=path)
@@ -105,10 +108,11 @@ meshes = [o for o in C.scene.objects if o.type == 'MESH']
 bn = set(arms[0].data.bones.keys()) if arms else set()
 acts = list(bpy.data.actions)
 rng = max((a.frame_range[1] - a.frame_range[0]) for a in acts) if acts else 0
-check(f'it comes back: the rig with its deform bones under one root ({len(bn)}: no IK / pole controls - Unreal\'s root bone on top), the mesh, '
+check(f'only this rig\'s own animations ({[a.name.split("|")[-1] for a in acts]}); it comes back: the rig with its deform bones under one root ({len(bn)}: no IK / pole controls - Unreal\'s root bone on top), the mesh, '
       f'{len(acts)} animation(s), the longest {rng:.0f} frames',
       len(arms) == 1 and meshes and not any(n.endswith(('_ik', '_pole')) for n in bn) and 'root' in bn
-      and {'hips', 'thigh.L', 'foot.R'} <= bn and len(acts) >= 2 and rng >= F - 2)
+      and {'hips', 'thigh.L', 'foot.R'} <= bn and len(acts) == 2 and rng >= F - 2
+      and not any('Somebody' in a.name for a in acts))
 
 # quadruped trot
 fresh(); S = C.scene

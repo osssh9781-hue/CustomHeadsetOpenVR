@@ -298,15 +298,34 @@ def export_unreal(context, arm, path):
         o.hide_set(False)
         o.select_set(True)
     context.view_layer.objects.active = arm
+    # 0.24.245 only this rig's own animations (others in the file would match its bone names too): each one an NLA
+    # strip for the export (one take each), put back after
+    ad = arm.animation_data or arm.animation_data_create()
+    mine = [a for a in bpy.data.actions if a.name.startswith(arm.name + '_')]
+    keep_action = ad.action
+    tracks = []
+    for a_ in mine:
+        t = ad.nla_tracks.new()
+        t.name = a_.name
+        st_ = t.strips.new(a_.name, int(a_.frame_range[0]), a_)
+        st_.name = a_.name
+        tracks.append(t)
+    ad.action = None
     try:
         r = bpy.ops.export_scene.fbx(
             filepath=path, use_selection=True, object_types={'ARMATURE', 'MESH'},
             apply_unit_scale=True, apply_scale_options='FBX_SCALE_NONE', axis_forward='-Z', axis_up='Y',
             add_leaf_bones=False, use_armature_deform_only=True, primary_bone_axis='Y', secondary_bone_axis='X',
-            bake_anim=True, bake_anim_use_all_actions=True, bake_anim_use_nla_strips=False,
+            bake_anim=True, bake_anim_use_all_actions=False, bake_anim_use_nla_strips=bool(mine),
             bake_anim_force_startend_keying=True, bake_anim_simplify_factor=0.0, mesh_smooth_type='FACE',
             use_mesh_modifiers=True)
     finally:
+        for t in tracks:
+            try:
+                ad.nla_tracks.remove(t)
+            except (RuntimeError, ReferenceError):
+                pass
+        ad.action = keep_action
         for o in list(context.selected_objects):
             o.select_set(False)
         for o in keep_sel:
