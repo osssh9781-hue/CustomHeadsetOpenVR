@@ -559,7 +559,8 @@ def draw(items, hover, S, context):
         hot = it is hover and it.clickable()
         if it.kind == 'card' and it.icon == 'outer':      # 0.24.220 the lighter box that holds the top bar's section cards
             c = G.card_color()
-            G.rounded_rect(it.x, it.y, it.w, it.h, 24 * S, (0.46, 0.47, 0.52, min(1.0, c[3] * 0.80)))
+            # 0.24.222 (user: "상단 바 너무 연한데 - 내부 슬라이더 색 정도로 해 줘"): the grey of a slider's own bar
+            G.rounded_rect(it.x, it.y, it.w, it.h, 24 * S, (BTN_BG[0], BTN_BG[1], BTN_BG[2], c[3]))
         elif it.kind == 'card':
             G.rounded_rect(it.x, it.y, it.w, it.h, 18 * S, G.card_color())
         elif it.kind == 'title':
