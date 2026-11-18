@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
     "author": "OpenAI / ChatGPT, Claude Code",
-    "version": (0, 24, 233),
+    "version": (0, 24, 234),
     "blender": (4, 3, 0),
     "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
     "description": "Cut, Split, Base Mesh, Boolean, Face Extract, Armor Sculpt, Molding, Cable, Hollow, curve arrays, Mirror",
@@ -12,7 +12,7 @@ import bpy
 from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform, radial_array,
                mirror_tools, cut_presets, mask_tools, workspace_ui, ui_tool_settings,
                base_mesh, loft_surface, zbrush_bridge, subd_plane, deform_tools, primitive_tools,
-               addon_safety, self_test, face_extract, edge_molding, bool_bevel, subd_edit, hair_shape, face_pop, bend_any, render_hidden, hollow_shell, along_curve, cable, bottom_bar, station_primitive, station_gizmos,
+               addon_safety, self_test, face_extract, edge_molding, bool_bevel, subd_edit, bevel_normal, usage_docs, hair_shape, face_pop, bend_any, render_hidden, hollow_shell, along_curve, cable, bottom_bar, station_primitive, station_gizmos,
                primitive_place, primitive_hud, line_hud, armor_plate, random_panels, mirror_hud, highpoly, mesh_tools, live_queue, lasso_sketch,
                cloth_wrinkle, last_used, last_op, live_stack, keymap_check, robot_base, detail_stamp, surface_lasso,
                curve_tube, creature_shell, cloth_sim, box_hide, plate_detail, screw_stamp, wrinkle_lines, cloth_drape, vacuum_pack, lowpoly, fold_patch,
@@ -2074,6 +2074,7 @@ def _register():
     edge_molding.register()
     bool_bevel.register()                         # 0.24.178 Boolean Bevel
     subd_edit.register()                          # 0.24.231 SubD Plane edited in Object Mode
+    bevel_normal.register()                       # 0.24.234 Bevel Normal on every mesh
     hair_shape.register()                         # 0.24.179 hair in a sculpted shape
     face_pop.register()                           # 0.24.179 Face Pop
     bend_any.register()                           # 0.24.180 Bend any part, later
@@ -2348,6 +2349,7 @@ def _unregister_steps():
         ('bend_any', bend_any.unregister),
         ('render_hidden', render_hidden.unregister),
         ('hair_shape', hair_shape.unregister),
+        ('bevel_normal', bevel_normal.unregister),
         ('subd_edit', subd_edit.unregister),
         ('bool_bevel', bool_bevel.unregister),
         ('edge_molding', edge_molding.unregister),

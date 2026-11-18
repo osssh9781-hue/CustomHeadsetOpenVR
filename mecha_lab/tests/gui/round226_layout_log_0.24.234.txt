@@ -1,0 +1,34 @@
+region 2775 1966 k 1.444
+shot 01_CUT.png True
+shot 02_BASE.png True
+shot 03_SMART.png True
+shot 04_CDRAPE.png True
+C1 the LASSO bar in 4 tools: same places True | Cut cells 5 | dim in Smart Move ['Lasso', 'Sketch', 'Sharp', 'Res', 'Selected']
+shot 04b_CUT_slow_line_stroke.png True
+C9 dock end ['Tools', 'GOZ', 'Send', 'Import', 'BEVEL', 'Bevel Normal', 'Remove Selected'] | corner card rows ['3D MOUSE', 'NAV', 'STYLE', 'VIEW']
+C10 REAL clicks: Bevel Normal on True | Remove Selected True | off again True
+C8 top bar centre 1388 | dock centre 1388 | view 1387.5
+top bar (Slow Line + Stroke): height 153 px = 106 at scale 1 | width 1745
+C2 bottom: boxes 4 [(317, 370), (699, 682), (1392, 430), (1834, 624)] | dock y 290 row top 279 | dock options ['Auto Apply', 'Ortho', '한글', 'Tools', 'Send', 'Import', 'Bevel Normal', 'Remove Selected'] | row titles ['CUT', 'DEPTH', 'SURFACE', 'SETTINGS', 'ACTIONS', 'SHADING', 'RESOLUTION', 'SYMMETRY', 'GROUPS', 'REPETITION', 'VISIBILITY']
+C3 REAL click on Symmetry X: 0 -> 1 ['MIRROR']
+shot 05_symmetry_x.png True
+shot 06_english.png True
+C4 REAL clicks on 한글 in the dock: KO -> EN -> KO
+shot 07_right_click_wheel.png True
+C5 REAL right click: wheel open True | still open after the mouse left True | a REAL click on Ortho: closed True Ortho False -> True
+shot 08_menu_open.png True
+C6 open button in Options (not lit), no pill at the bottom True | menu open True | dock y 290 -> 522
+shot 09_tool_row_no_icon.png True
+shot 10_tool_row_blender_icon.png True
+C7 tool settings row: what differs with / without our patch (the icon) (1374, 2, 1389, 17) | row (380, 39, 3155, 58)
+PASS C1 the LASSO bar alone at the top, the same places in every tool; dim in a tool without them (Smart Move)
+PASS C10 the dock's BEVEL: REAL clicks - Bevel Normal on, Remove Selected, off again
+PASS C2 the bar with Select (with Ortho, 한글) above a row of 4 boxes: the tool's own at the left, then the actions
+PASS C3 a REAL click on an action button works (Symmetry X: a Mirror modifier)
+PASS C4 REAL clicks on 한글 in the dock: English and back
+PASS C5 a REAL right click opens the Tool Wheel; it stays when the mouse leaves; a REAL click on another menu closes it and lands there
+PASS C6 the tool menu's open button is in the dock's Options; a REAL click opens the menu and the row + bar go up
+PASS C7 Blender's tool settings row: the active tool's icon is not shown in MECHA LAB (only that icon differs)
+PASS C8 the top bar is centred in the view, on the same middle as the bar with Select
+PASS C9 GoZ Send / Import are at the end of the bar with Select, no longer on the corner card
+10/10 passed

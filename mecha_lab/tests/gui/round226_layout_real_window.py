@@ -228,9 +228,27 @@ def flow():
     with C.temp_override(window=w, area=a, region=r):
         corner = zb_ui.corner_items(C, r.width, r.height, k)
     dl = [i.label for i in dock() if i.kind in {'seg', 'glabel'}]
-    res['C9'] = dl[-3:] == ['GOZ', 'Send', 'Import'] and not any(i.label in {'GOZ', 'Send', 'Import'} for i in corner) \
+    gi = dl.index('GOZ') if 'GOZ' in dl else -9
+    res['C9'] = dl[gi:gi + 3] == ['GOZ', 'Send', 'Import'] and not any(i.label in {'GOZ', 'Send', 'Import'} for i in corner) \
         and dock()[0].x + dock()[0].w <= r.width
     log('C9 dock end', dl[-7:], '| corner card rows', sorted({i.label for i in corner if i.kind == 'glabel'}))
+    # 0.24.234 the dock's BEVEL: a REAL click on Bevel Normal, then Remove Selected
+    it = next((i for i in dock() if i.kind == 'seg' and i.label == 'Bevel Normal'), None)
+    if it is not None:
+        yield from press(it)
+    yield from wait_draws(2)
+    on1 = S.mch_bevel_normal and C.active_object is not None and C.active_object.get('mch_bevel_n') == 1.0
+    it = next((i for i in dock() if i.kind == 'seg' and i.label == 'Remove Selected'), None)
+    if it is not None:
+        yield from press(it)
+    yield from wait_draws(2)
+    off1 = C.active_object.get('mch_bevel_n') == 0.0 and S.mch_bevel_normal
+    it = next((i for i in dock() if i.kind == 'seg' and i.label == 'Bevel Normal'), None)
+    if it is not None:
+        yield from press(it)
+    yield from wait_draws(2)
+    res['C10'] = on1 and off1 and not S.mch_bevel_normal and 'mch_bevel_n' not in C.active_object
+    log('C10 REAL clicks: Bevel Normal on', on1, '| Remove Selected', off1, '| off again', not S.mch_bevel_normal)
     dk_ = dock()[0]
     res['C8'] = abs((bar_card.x + bar_card.w / 2) - (dk_.x + dk_.w / 2)) < 2.0 and abs((bar_card.x + bar_card.w / 2) - r.width / 2) < 2.0
     log('C8 top bar centre', round(bar_card.x + bar_card.w / 2), '| dock centre', round(dk_.x + dk_.w / 2), '| view', r.width / 2)
@@ -358,6 +376,7 @@ def flow():
              'C7': 'Blender\'s tool settings row: the active tool\'s icon is not shown in MECHA LAB (only that icon differs)',
              'C8': 'the top bar is centred in the view, on the same middle as the bar with Select',
              'C9': 'GoZ Send / Import are at the end of the bar with Select, no longer on the corner card',
+             'C10': 'the dock\'s BEVEL: REAL clicks - Bevel Normal on, Remove Selected, off again',
              'C6': 'the tool menu\'s open button is in the dock\'s Options; a REAL click opens the menu and the row + bar go up'}
     n = 0
     for kk_ in sorted(names):

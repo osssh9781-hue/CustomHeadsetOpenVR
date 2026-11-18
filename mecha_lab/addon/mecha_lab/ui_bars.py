@@ -463,7 +463,7 @@ def dock_items(context, region_w, region_h, k=1.0):
     rule = 14 * kk
     w = n * tw + (n - 1) * gap + rule * (len(tiles) - n) + 2 * pad
     # 0.24.226 (user: "옵션은 여기다가 그냥 넣어 줘"): the top bar's Options (Auto Apply, Ortho, 한글) at the dock's right end
-    opts, ow, goz, gws = [], 0.0, [], []
+    opts, ow, goz, gws, goz_groups = [], 0.0, [], [], []
     try:
         from . import top_bar
         if top_bar.on(context) and top_bar.sections_wanted():
@@ -478,9 +478,30 @@ def dock_items(context, region_w, region_h, k=1.0):
                    for lb, op_ in (('Send', 'mch.goz_send'), ('Import', 'mch.goz_import'))]
             gws = [top_bar._width(c, k) for c in goz]
             ow += rule + sum(gws) + top_bar.GAP * k * (len(gws) - 1)
+            # 0.24.234 (user: "토글 버튼으로 전체 메쉬에 베벨 노말 … 중앙 메뉴에, 두께는 슬라이더로" / "선택한 거 베벨 노말
+            # 지우는 것도"): Bevel Normal on / off, its Radius, Remove from the selected
+            sc = context.scene
+            if hasattr(sc, 'mch_bevel_normal'):
+                bev = [dict(kind='seg', label='Bevel Normal', icon='', on=bool(sc.mch_bevel_normal), action=('bool',),
+                            data=sc, prop='mch_bevel_normal', width=None),
+                       dict(kind='mini', label='Radius', icon='', on=False, action=('number',), data=sc,
+                            prop='mch_bevel_normal_radius', width=150),
+                       dict(kind='seg', label='Remove Selected', icon='', on=False,
+                            action=('op', 'mch.bevel_normal_remove', {}), data=None, prop='', width=None)]
+                bws = [top_bar._width(c, k) for c in bev]
+                ow += rule + sum(bws) + top_bar.GAP * k * (len(bws) - 1)
+                goz_groups = [('GOZ', goz, gws), ('BEVEL', bev, bws)]
+            else:
+                goz_groups = [('GOZ', goz, gws)]
     except (ImportError, AttributeError, KeyError, TypeError, ReferenceError):
-        opts, ow, goz, gws = [], 0.0, [], []
+        opts, ow, goz, gws, goz_groups = [], 0.0, [], [], []
     w += ow
+    # 0.24.234 too wide for the view (Options, GoZ, Bevel at its end): the big tiles narrower, to fit
+    room_w = region_w - 2 * (left_inset(context) + 10 * k)      # (centred: as much room on both sides)
+    if w > room_w and n:
+        cut = min((w - room_w) / n, tw * 0.35)
+        tw -= cut
+        w -= cut * n
     h = th + 2 * pad
     x0, y0 = max(left_inset(context) + 8 * k, (region_w - w) / 2.0), bottom_taken(context, k, region_w)
     y0 += _row_h(context, k, region_w)               # 0.24.226 above the row of boxes
@@ -507,12 +528,14 @@ def dock_items(context, region_w, region_h, k=1.0):
             out.append(Item(c['kind'], x, base, cw, row_h, c['label'], c['icon'], c['on'], True, c['action'], c['data'],
                             c['prop']))
             x += cw + top_bar.GAP * k
-        if goz:
+        for gname, gcells, gw_ in goz_groups:        # GOZ, BEVEL (0.24.234)
+            if not gcells:
+                continue
             x -= top_bar.GAP * k
             out.append(Item('vrule', x + rule / 2 - 0.5 * k, y0 + pad + 6 * kk, 1.0 * k, th - 12 * kk))
             x += rule
-            out.append(Item('glabel', x, base + row_h, 120 * k, title_h, 'GOZ', 'title'))
-            for c, cw in zip(goz, gws):
+            out.append(Item('glabel', x, base + row_h, 120 * k, title_h, gname, 'title'))
+            for c, cw in zip(gcells, gw_):
                 out.append(Item(c['kind'], x, base, cw, row_h, c['label'], c['icon'], c['on'], True, c['action'],
                                 c['data'], c['prop']))
                 x += cw + top_bar.GAP * k
