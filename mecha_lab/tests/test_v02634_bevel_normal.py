@@ -145,6 +145,24 @@ mod = bn.make_real(a, 0.08)
 check('spikes whatever the settings: the bevel is taken off again, the part as it was',
       mod is None and a.modifiers.get(bn.REAL) is None and a.modifiers.get(bn.WELD) is None)
 bn.sticks_out = real_so
+# 0.24.239 garbage points (as in the user's FBX: x = 3.45e30) are caught: by the check, and in the mesh itself
+import math  # noqa: E402
+bpy.ops.mesh.primitive_cube_add(location=(0, -3, 0))
+g = C.active_object
+lo_, hi_ = np.array([-1.0, -1, -1]), np.array([1.0, 1, 1])
+ok_pts = np.array([[0.9, 0.9, 0.9], [-1.0, 0, 0]])
+check('the box check: points of a bevel pass; a point at 3.45e30 (as in the user\'s FBX) or not finite is a spike',
+      not bn.out_of_box(ok_pts, lo_, hi_, 0.05) and bn.out_of_box(np.array([[3.45e30, 0, 0]]), lo_, hi_, 0.05)
+      and bn.out_of_box(np.array([[np.nan, 0, 0]]), lo_, hi_, 0.05))
+g.data.vertices[0].co.x = 3.45e30
+for o in S.objects:
+    o.select_set(o is g)
+C.view_layer.objects.active = g
+bpy.ops.mch.bevel_normal_real()
+check('a mesh that already has a garbage point: left alone, said', bn.broken_points(g) == 1 and g.modifiers.get(bn.REAL) is None)
+gme = g.data
+bpy.data.objects.remove(g)
+bpy.data.meshes.remove(gme)
 S.mch_bevel_normal = False
 check('off: every node out, the bump linked to the shader again, the base material gone, the switches gone',
       nt.nodes.get(bn.NODE) is None and nt.nodes.get(bn.VALUE) is None

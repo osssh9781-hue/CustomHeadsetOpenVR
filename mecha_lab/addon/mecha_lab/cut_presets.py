@@ -708,6 +708,14 @@ class MCH_OT_pick_stamp_shape(bpy.types.Operator):
 def draw_builtin_row(layout, columns=9):
     """The built-in shape buttons (small icons) for the shape palette - 0.24.95 a grid (63 shapes: the 50 mech
     form-blocking shapes too), not one long row."""
+    if getattr(layout, 'is_mecha_window', False):    # 0.24.239 (user: "이거 썸네일이 없어") our window: picture tiles
+        from . import panel_capture, mecha_menu
+        import bpy as _bpy
+        cur = getattr(_bpy.context.scene, 'mch_png_preset', '')
+        entries = [(name.split(' (')[0][:12], mecha_menu._stamp_path(stem), 0, stem == cur, 'mch.pick_stamp_shape',
+                    {'stem': stem}) for stem, name, _loops in builtin_shapes()]
+        panel_capture.tiles(layout, entries, columns=6)
+        return None
     grid = layout.grid_flow(row_major=True, columns=columns, even_columns=True, even_rows=True, align=True)
     for stem, name, _loops in builtin_shapes():
         iid = preset_icon(stem)

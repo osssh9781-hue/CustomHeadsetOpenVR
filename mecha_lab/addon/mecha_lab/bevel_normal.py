@@ -288,12 +288,65 @@ def sticks_out(ob, width, context=None):
     mod.show_viewport = keep
     ctx.view_layer.update()
     me = ob.evaluated_get(ctx.evaluated_depsgraph_get()).data
+    import math
+    import numpy as np
+    co = np.empty(len(me.vertices) * 3)
+    me.vertices.foreach_get('co', co)
+    co = co.reshape(-1, 3)
+    # 0.24.239 (user's second FBX: 3,125 points at x = 3.45e30 - Blender's Bevel had made garbage points; the nearest
+    # search found nothing for them and they were let through): a point that is not finite, or far outside the part's
+    # own box, is a spike at once
+    lo, hi = _box(ob, ctx)
+    if out_of_box(co, lo, hi, width):
+        return math.inf
     far = 0.0
-    for v in me.vertices:
-        hit = tree.find_nearest(v.co)
-        if hit[0] is not None:
-            far = max(far, hit[3])
+    for v in co:
+        hit = tree.find_nearest(v)
+        if hit[0] is None:
+            return math.inf
+        far = max(far, hit[3])
     return far
+
+
+def out_of_box(co, lo, hi, width):
+    """Is any point not finite, or outside the box (``lo``, ``hi``) by more than a little?"""
+    import numpy as np
+    if not len(co):
+        return False
+    pad = max(width * 4.0, float(np.max(hi - lo)) * 0.02)
+    return bool(not np.isfinite(co).all() or (co < lo - pad).any() or (co > hi + pad).any())
+
+
+def _box(ob, ctx):
+    """(min, max) of ``ob``'s evaluated mesh without the made-real bevel (local space)."""
+    import numpy as np
+    mod = ob.modifiers.get(REAL)
+    keep = mod.show_viewport if mod is not None else None
+    if mod is not None:
+        mod.show_viewport = False
+        ctx.view_layer.update()
+    me = ob.evaluated_get(ctx.evaluated_depsgraph_get()).data
+    co = np.empty(len(me.vertices) * 3)
+    me.vertices.foreach_get('co', co)
+    co = co.reshape(-1, 3)
+    if mod is not None:
+        mod.show_viewport = keep
+        ctx.view_layer.update()
+    if not len(co):
+        return np.zeros(3), np.zeros(3)
+    good = co[np.isfinite(co).all(1)]
+    return (good.min(0), good.max(0)) if len(good) else (np.zeros(3), np.zeros(3))
+
+
+def broken_points(ob, ctx=None):
+    """How many points of ``ob``'s own mesh (no modifiers) are not finite or absurdly far (> 1e6) - a mesh broken
+    before the bevel."""
+    import numpy as np
+    me = ob.data
+    co = np.empty(len(me.vertices) * 3)
+    me.vertices.foreach_get('co', co)
+    co = co.reshape(-1, 3)
+    return int(((~np.isfinite(co)).any(1) | (np.abs(co) > 1e6).any(1)).sum())
 
 
 def make_real(ob, width, segments=3, context=None):
@@ -358,6 +411,10 @@ class MCH_OT_bevel_normal_real(bpy.types.Operator):
         for ob in obs:
             if helper(ob, context):                  # 0.24.238 cutters / wire helpers: left alone
                 skipped.append(ob.name)
+                continue
+            nb = broken_points(ob)                   # 0.24.239 the mesh itself already has garbage points
+            if nb:
+                failed.append(f'{ob.name} ({nb} broken points in the mesh itself - Fix Mesh first)')
                 continue
             (done if make_real(ob, r, self.segments, context) is not None else failed).append(ob.name)
         msg = f'Bevel made real on {len(done)} mesh(es)'
