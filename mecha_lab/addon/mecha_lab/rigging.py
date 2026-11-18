@@ -37,7 +37,9 @@ SPRING_KEY = 'mch_spring'      # on the armature: {chain root bone: [stiffness, 
 KINDS = [('BODY', 'Human', 'A standing body (feet on the ground, facing -Y): spine, arms, legs, IK'),
          ('QUAD', 'Quadruped', 'A four-legged body (head toward -Y): spine, neck, head, four legs, tail, IK'),
          ('MECHA', 'Mecha', 'Rigid parts: one bone per selected part, the parts ride their bones'),
-         ('CHAIN', 'Chain', 'A tail / tentacle / hair lock: bones along it, Jiggle')]
+         ('CHAIN', 'Chain', 'A tail / tentacle / hair lock: bones along it, Jiggle'),
+         ('AUTO', 'Auto Creature', 'Any creature: its legs found where it touches the ground (any number), its tails, '
+                                   'arms and tentacles as swaying chains - no template')]
 
 
 class MCH_PG_Rig(bpy.types.PropertyGroup):
@@ -632,7 +634,7 @@ def controls(arm):
     for pb in arm.pose.bones:
         n = pb.name
         if n.endswith('_ik'):
-            pb.custom_shape = ring_foot if n.startswith('foot') else ring_wrist
+            pb.custom_shape = ring_foot if (n.startswith('foot') or '.foot_ik' in n) else ring_wrist
             col = 'THEME01'
         elif n.endswith('_pole'):
             pb.custom_shape = ball
@@ -1211,7 +1213,7 @@ def after_edit(context, arm, kept=()):
             attach(o, arm, o[PART_KEY])
             o.matrix_world = mw
         return f'{arm.name}: {len(keep)} parts back on their bones'
-    if kind in {'BODY', 'QUAD'}:
+    if kind in {'BODY', 'QUAD', 'AUTO'}:
         sync_ik(context, arm)
     meshes = {mesh for mesh, _m, _w in kept}
     n = 0
@@ -1351,6 +1353,15 @@ class MCH_OT_rig_make(bpy.types.Operator):
                 msg = (f'{arm.name}: {len(arm.data.bones)} bones' + (' with IK' if st.ik else '')
                        + (f', {act.name} bound ({"automatic" if how == "auto" else "nearest-bone"} weights)' if how else ''))
                 _show(context, arm)
+            elif st.kind == 'AUTO':                    # 0.24.246 any creature
+                if act.type != 'MESH':
+                    raise RuntimeError('Select the creature mesh')
+                from . import auto_creature
+                arm, info = auto_creature.build(context, act)
+                how = bind(context, act, arm) if st.bind else ''
+                msg = (f'{arm.name}: {info["legs"]} legs, {info["chains"]} tails / arms / tentacles, {info["bones"]} bones'
+                       + (f', {act.name} bound ({"automatic" if how == "auto" else "nearest-bone"} weights)' if how else ''))
+                _show(context, arm)
             elif st.kind == 'MECHA':
                 arm = build_mecha(context, sel or [act])
                 msg = (f'{arm.name}: {len(arm.data.bones) - 1} parts, each on its bone - click a part with the Rig '
@@ -1407,7 +1418,7 @@ class MCH_OT_rig_bind(bpy.types.Operator):
                 n += 1
             self.report({'INFO'}, f'{n} parts on their bones again')
             return {'FINISHED'}
-        moved = sync_ik(context, arm) if arm.get(RIG_KEY) in {'BODY', 'QUAD'} else 0    # 0.24.242
+        moved = sync_ik(context, arm) if arm.get(RIG_KEY) in {'BODY', 'QUAD', 'AUTO'} else 0    # 0.24.242
         mesh = ob if ob.type == 'MESH' else bpy.data.objects.get(arm.get(BODY_KEY, ''))
         if mesh is None:
             mesh = next((o for o in context.selected_objects if o.type == 'MESH'), None)
@@ -1669,6 +1680,10 @@ def draw(layout, context):
         box.label(text='Select the body (feet on the ground, facing -Y)', icon='INFO')
     elif st.kind == 'MECHA':
         box.label(text='Select the parts; then click a part: its joint', icon='INFO')
+    elif st.kind == 'AUTO':
+        r = col.row(align=True)
+        r.prop(st, 'bind', toggle=True)
+        box.label(text='Select the creature (standing on the ground): legs, tails, arms found', icon='INFO')
     else:
         r = col.row(align=True)
         r.prop(st, 'bones')
@@ -1690,7 +1705,7 @@ def draw(layout, context):
         r.operator('mch.rig_edit', text='Edit Bones').mode = 'EDIT'
         r.operator('mch.rig_edit', text='Pose').mode = 'POSE'
         r.operator('mch.rig_bind', text='Bind')
-        if arm.get(RIG_KEY) in {'BODY', 'QUAD'}:
+        if arm.get(RIG_KEY) in {'BODY', 'QUAD', 'AUTO'}:
             r = box.row(align=True)
             r.operator('mch.rig_mirror', text='Mirror L -> R').side = 'L'
             r.operator('mch.rig_mirror', text='Mirror R -> L').side = 'R'

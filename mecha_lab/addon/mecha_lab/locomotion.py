@@ -14,6 +14,7 @@ own bones (an Action ``<rig>_<Gait>``), so Blender plays it, edits it, and the F
 Export to Unreal: the rig, its meshes and every action as one FBX made for Unreal (deform bones only, no leaf
 bones, the animation baked onto the deform bones - the IK is not needed there).
 """
+import json
 import math
 import os
 
@@ -53,15 +54,19 @@ def settings(context):
 # --- the rig, read -----------------------------------------------------------------------------------------------------
 
 def legs_of(arm):
-    """[(foot ik bone, phase group)] and the kind ('BODY' / 'QUAD')."""
+    """[(foot ik bone, phase group)] and the kind ('BODY' / 'QUAD' / 'AUTO')."""
     kind = arm.get('mch_rig')
     b = arm.data.bones
+    if kind == 'AUTO':
+        return [n + '.foot_ik' for n in json.loads(arm.get('mch_legs', '[]')) if n + '.foot_ik' in b], 'AUTO'
     if kind == 'QUAD':
         return [n for n in ('footF.L_ik', 'footF.R_ik', 'footB.L_ik', 'footB.R_ik') if n in b], 'QUAD'
     return [n for n in ('foot.L_ik', 'foot.R_ik') if n in b], 'BODY'
 
 
 def leg_length(arm):
+    if arm.get('mch_rig') == 'AUTO' and arm.get('mch_leg_len'):
+        return float(arm['mch_leg_len'])
     b = arm.data.bones
     hip = b.get('thigh.L') or b.get('legB.L') or b.get('legF.L')
     foot = b.get('foot.L') or b.get('footB.L') or b.get('footF.L')
@@ -89,6 +94,19 @@ def foot_offset(p, duty, stride, lift):
     t = (p - duty) / (1.0 - duty)
     s = 0.5 - 0.5 * math.cos(math.pi * t)              # (eases out of and into the ground)
     return (-0.5 + s) * D, lift * math.sin(math.pi * t)
+
+
+def auto_phases(arm, feet, gait):
+    """0.24.246 any number of legs: round the body in turn, neighbours opposite (4: trot-like, 6: tripod-like);
+    an odd count: evenly round."""
+    b = arm.data.bones
+    c = sum((b[n].head_local for n in feet), Vector((0, 0, 0))) / max(1, len(feet))   # (the feet's middle)
+    ang = {n: math.atan2(b[n].head_local.y - c.y, b[n].head_local.x - c.x) for n in feet}
+    order = sorted(feet, key=lambda n: ang[n])
+    if len(order) % 2 == 0:
+        return {n: (0.5 * (i % 2) + (0.0 if gait == 'RUN' else 0.12 * (i // 2) / max(1, len(order) // 2))) % 1.0
+                for i, n in enumerate(order)}
+    return {n: i / len(order) for i, n in enumerate(order)}
 
 
 def plan(arm, st, fps=24.0):
@@ -126,8 +144,8 @@ def _set_world(arm, pb, M):
 def make_cycle(context, arm, st):
     """Key one cycle (or Loops cycles) on ``arm``.  Returns (action, info)."""
     kind = arm.get('mch_rig')
-    if kind not in {'BODY', 'QUAD'}:
-        raise RuntimeError('Auto Animation works on a Human / Quadruped rig made by the Rig tool')
+    if kind not in {'BODY', 'QUAD', 'AUTO'}:
+        raise RuntimeError('Auto Animation works on a Human / Quadruped / Auto Creature rig made by the Rig tool')
     feet, kind = legs_of(arm)
     if st.gait != 'IDLE' and not feet:
         raise RuntimeError('This rig has no foot IK controls (make it with IK on)')
@@ -153,12 +171,15 @@ def make_cycle(context, arm, st):
         pb.rotation_quaternion = (1, 0, 0, 0)
         pb.scale = (1, 1, 1)
     context.view_layer.update()
-    phases = PHASES.get((kind, 'RUN' if st.gait == 'RUN' else 'WALK'), {})
+    phases = (auto_phases(arm, feet, st.gait) if kind == 'AUTO'
+              else PHASES.get((kind, 'RUN' if st.gait == 'RUN' else 'WALK'), {}))
     duty = DUTY['RUN' if st.gait == 'RUN' else 'WALK']
     L, stride = P['L'], P['stride']
-    body = 'hips' if kind == 'BODY' else 'pelvis'
+    body = {'BODY': 'hips', 'QUAD': 'pelvis', 'AUTO': 'body'}[kind]
     chest = 'chest'
     tail = sorted(n for n in pbs.keys() if n.startswith('tail.'))
+    auto_chains = [sorted(n for n in pbs.keys() if n.startswith(c + '.') and n[len(c) + 1:].isdigit())
+                   for c in json.loads(arm.get('mch_chains', '[]'))] if kind == 'AUTO' else []
     chain_roots = [b.name for b in arm.data.bones if b.use_deform and not b.use_connect and b.parent is not None
                    and b.parent.name in {body, 'pelvis', 'hips'} and any(c.use_connect for c in b.children)
                    and not b.name.startswith(('thigh', 'leg', 'spine', 'tail'))]
@@ -194,7 +215,7 @@ def make_cycle(context, arm, st):
             pb.matrix = M
             _key(pb, frame)
         context.view_layer.update()
-        if chest in pbs and chest != body:
+        if chest in pbs and chest != body and kind != 'AUTO':
             pb = pbs[chest]
             if st.gait == 'IDLE':
                 ang = math.radians(2.2 * st.bob) * math.sin(cyc)        # (breathing: the chest lifts)
@@ -206,7 +227,7 @@ def make_cycle(context, arm, st):
                 pb.rotation_quaternion = (1.0, 0.0, 0.0, 0.0)
             _key(pb, frame, rot=True)
         for hn in ('head', 'neck'):
-            if hn in pbs:
+            if hn in pbs and kind != 'AUTO':
                 pb = pbs[hn]
                 a = (math.radians(1.5) * math.sin(cyc * 0.5 + 0.7) if st.gait == 'IDLE'
                      else math.radians(2.0 * st.bob) * math.cos(2 * cyc))
@@ -241,10 +262,11 @@ def make_cycle(context, arm, st):
                     pb.matrix = Matrix.Translation((0, sw - travel, lift)) @ rest[n]
                 _key(pb, frame)
         # tails and chains: a swing that lags down their length
-        for chain in ([tail] if tail else []) + [_chain(arm, c) for c in chain_roots]:
+        for chain in ([tail] if tail else []) + [_chain(arm, c) for c in chain_roots if kind != 'AUTO'] + auto_chains:
             for i, n in enumerate(chain):
                 pb = pbs[n]
                 amp = math.radians((4.0 if st.gait == 'IDLE' else 9.0) * st.tail) * (0.6 + 0.4 * i / max(1, len(chain) - 1))
+                amp *= min(1.0, 4.0 / max(1, len(chain)))     # 0.24.246 (a long chain: the swing shared out)
                 a = amp * math.sin(cyc * (0.5 if st.gait == 'IDLE' else 1.0) - 0.6 * i)
                 pb.rotation_quaternion = Matrix.Rotation(a, 3, 'Z').to_quaternion()
                 _key(pb, frame)
@@ -356,7 +378,7 @@ class MCH_OT_loco_make(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         a = _rig(context)
-        return a is not None and a.get('mch_rig') in {'BODY', 'QUAD'}
+        return a is not None and a.get('mch_rig') in {'BODY', 'QUAD', 'AUTO'}
 
     def execute(self, context):
         if context.mode != 'OBJECT':
@@ -408,7 +430,7 @@ class MCH_OT_loco_export(bpy.types.Operator):
 def draw(layout, context):
     st = settings(context)
     arm = _rig(context)
-    if st is None or arm is None or arm.get('mch_rig') not in {'BODY', 'QUAD'}:
+    if st is None or arm is None or arm.get('mch_rig') not in {'BODY', 'QUAD', 'AUTO'}:
         return
     from . import panel_capture as pc
     box = layout.box()
