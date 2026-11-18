@@ -503,6 +503,7 @@ def _build_all(context, region, k):
             out += side_panel.items(context, region.width, region.height, k)
         if top_bar.on(context):
             out += top_bar.items(context, region.width, region.height, k)
+            out += top_bar.items(context, region.width, region.height, k, part='BOTTOM')   # 0.24.226 the tool's block
         from . import bottom_bar
         if bottom_bar.ui_active(context):              # 0.24.60 MECHA LAB | ZBRUSH card
             from . import zb_ui

@@ -643,38 +643,39 @@ BLOCK_NAMES = {8: 'Shape Settings'}   # (the group named Lasso: the block has th
 BLOCK_TITLE_H = 24.0
 BLOCK_PAD = 14.0                      # the block card round its parts
 BLOCK_GAP = 12.0                      # between two bands of parts inside the block
-COL_GAP = 26.0                        # between the block and the column at the right
+BLOCK_SEP = 8.0                       # between the two blocks
+BLOCK_SHARE = 0.62                    # the LASSO block: at most this much of the bar's width
+BOTTOM_GAP = 10.0                     # the tool's block: this far above the bottom dock
+SIDE_TITLE = 'Settings'               # the block at the right: Options, Depth, Surface and the tool's own
 
 
 def block_layout(room_w, k):
-    """Where every fixed section is in a bar ``room_w`` px wide - from the width alone, never from the tool:
-    ([per slot: dict(col, band, x, w, cells=[(row, x, w)] | free=room)], {col: x}).  col 0 = the LASSO block (its
-    parts flow in bands, x from the block's inner left), col 1 = the column at the right (a section a band).  None
-    when the bar is too narrow."""
+    """Where the LASSO block's parts are in a bar ``room_w`` px wide - from the width alone, never from the tool:
+    ([per slot: dict(band, x, w, cells=[(row, x, w)] | free=room) - None for the slots of the block at the right],
+    the block's inner width).  The block is as wide as its parts need (at most ``BLOCK_SHARE`` of the bar); the rest
+    of the bar is the block at the right.  None when the bar is too narrow."""
     slots = common_slots()
     sized = [_slot_size(si, slot, k) for si, slot in enumerate(slots)]
-    side_w = max(sized[si][1] for si in SIDE_SLOTS)
-    pad = (BLOCK_PAD - CARD_PAD) * k
-    left_w = room_w - side_w - COL_GAP * k - 2 * pad
-    if left_w < max(sized[si][1] for si in BLOCK_SLOTS):
+    side_min = max(sized[si][1] for si in SIDE_SLOTS) + 2 * BLOCK_PAD * k
+    widest = max(sized[si][1] for si in BLOCK_SLOTS)
+    most = min(room_w * BLOCK_SHARE, room_w + 2 * CARD_PAD * k - side_min - BLOCK_SEP * k) - 2 * BLOCK_PAD * k
+    most = max(most, widest)
+    if most + 2 * BLOCK_PAD * k + BLOCK_SEP * k + side_min > room_w + 2 * CARD_PAD * k:
         return None
     out = [None] * len(slots)
-    x, band = 0.0, 0
+    x, band, extent = 0.0, 0, 0.0
     for si in BLOCK_SLOTS:
         place, w = sized[si]
-        if x > 0 and x + SEP * k + w > left_w:
+        if x > 0 and x + SEP * k + w > most:
             band += 1
             x = 0.0
         elif x > 0:
             x += SEP * k
-        place.update(col=0, band=band, x=x, w=w)
+        place.update(band=band, x=x, w=w)
         out[si] = place
         x += w
-    for n, si in enumerate(SIDE_SLOTS):
-        place, w = sized[si]
-        place.update(col=1, band=n, x=0.0, w=w)
-        out[si] = place
-    return out, {0: pad, 1: room_w - side_w, 2: 0.0}
+        extent = max(extent, x)
+    return out, extent
 
 
 def fixed_rows_layout(room_w, k):
@@ -733,8 +734,9 @@ def fixed_rows_layout(room_w, k):
     return row + 1, out
 
 
-def items(context, region_w, region_h, k=1.0, left=None, right=None):
-    """The bar as Mecha Menu Items (region px)."""
+def items(context, region_w, region_h, k=1.0, left=None, right=None, part='TOP'):
+    """The bar as Mecha Menu Items (region px).  ``part``: 'TOP' the bar at the top (0.24.226: the LASSO block);
+    'BOTTOM' the tool's own block above the bottom dock (nothing when the bar is not in sections)."""
     from .mecha_menu import Item
     tool = ts.effective_tool(context)
     gs = groups(context, tool)
@@ -769,139 +771,133 @@ def items(context, region_w, region_h, k=1.0, left=None, right=None):
     if fixed:
         # 0.24.224 (user: "모양 그리기 모서리 해상도는 다 공통이잖아 - 한 묶음으로 라쏘 칸으로 묶어 줘, 왼쪽으로 블록 하나
         # 만들어 줘, 이름은 써 주고" / "대상까지도"): the drawing sections in ONE block at the left (LASSO, each part
-        # with its name); Options / Depth / Surface in a column at the right, each a card; the tool's own under them.
-        places, col_x = fixed
+        # with its name, each at its own place for every tool).
+        # 0.24.226 (user: "배치가 빈 곳이 이상한데, 그리고 오른쪽도 한 박스로 묶어 줘 - 저긴 변동성이 있는 거야"): the
+        # block is as wide as its parts; everything else (Options, Depth, Surface, the tool's own) is ONE block at its
+        # right that takes the rest of the bar - what the tool has, packed from the left, no empty places.
+        places, extent = fixed
+        slots = common_slots()
 
         def used_of(cells, pl):
             return any(c is not None for c in cells) if 'cells' in pl else bool(cells)
-        rows_in = collections.defaultdict(lambda: 1)       # (column, band) -> rows of cells
+        rows_in = collections.defaultdict(lambda: 1)       # (block, band) -> rows of cells
         lasso_rows = {}
         last = {0: -1, 1: -1}
-        for si, ((title, cells), pl) in enumerate(zip(common, places)):
+        for si in BLOCK_SLOTS:
+            (title, cells), pl = common[si], places[si]
             if not used_of(cells, pl):
                 continue
-            key = (pl['col'], pl['band'])
-            last[pl['col']] = max(last[pl['col']], pl['band'])
+            last[0] = max(last[0], pl['band'])
             if 'cells' in pl:
                 if any(c is not None and pr == 1 for c, (pr, _x, _w) in zip(cells, pl['cells'])):
-                    rows_in[key] = 2
+                    rows_in[(0, pl['band'])] = 2
             else:
                 lasso_rows[si] = _flow_two([_width(c, k) for c in cells], pl['free'], k)
                 if any(pr == 1 for pr, _x, _w in lasso_rows[si]):
-                    rows_in[key] = 2
-
-        def bh(key):
-            return (TITLE_H + rows_in[key] * ROW + (rows_in[key] - 1) * GAP) * k
-        # the edge sections (GN Edge / Edge Finish / Base Mesh's Edge - user: "모양 그리기 엣지 모서리 해상도는 다
-        # 공통"): parts of the block too, in its bands after the fixed ones
+                    rows_in[(0, pl['band'])] = 2
+        # the edge sections (GN Edge / Edge Finish / Base Mesh's Edge): parts of the LASSO block too, after the fixed ones
         eg = edge_groups(context, tool)
         edge_own = [g for g in own if any(g[0] == t and g[1] == c for t, c in eg)]
         own = [g for g in own if not any(g is e for e in edge_own)]
-        left_w = col_x[1] - COL_GAP * k - 2 * col_x[0]
-        edge_places, ex, eb = [], 0.0, last[0] + 1
-        for title, cells in edge_own:
+
+        def flow(parts, room_, col, band0):
+            """[(title, cells, spots, width)] into bands of ``room_`` px: [dict(band, x, w, cells)], last band."""
+            out_, x_, b_ = [], 0.0, band0
+            for _t, _c, spots_, w_ in parts:
+                if x_ > 0 and x_ + SEP * k + w_ > room_:
+                    b_ += 1
+                    x_ = 0.0
+                elif x_ > 0:
+                    x_ += SEP * k
+                out_.append(dict(band=b_, x=x_, w=w_, cells=spots_))
+                if any(pr == 1 for pr, _x, _w in spots_):
+                    rows_in[(col, b_)] = 2
+                x_ += w_
+            return out_, (b_ if parts else band0 - 1)
+
+        def two(title, cells):
             cl, w = _two_rows([_width(c, k) for c in cells], k)
-            w = max(w, _title_w(title, k))
-            if ex > 0 and ex + SEP * k + w > left_w:
-                eb += 1
-                ex = 0.0
-            elif ex > 0:
-                ex += SEP * k
-            edge_places.append(dict(col=0, band=eb, x=ex, w=w, cells=cl))
-            if any(pr == 1 for pr, _x, _w in cl):
-                rows_in[(0, eb)] = 2
-            ex += w
-        if edge_own:
+            return (title, cells, cl, max(w, _title_w(title, k)))
+        edge_parts = [two(t, c) for t, c in edge_own]
+        edge_places, eb = flow(edge_parts, extent, 0, last[0] + 1)
+        if edge_parts:
             last[0] = eb
-        gaps = {0: BLOCK_GAP * k, 1: BAND_GAP * k}
+        has_left = last[0] >= 0
+        # the block at the right: Options, Depth, Surface - only the cells the tool has, packed - then the tool's own
+        side_parts = []
+        for si in SIDE_SLOTS:
+            title, cells = common[si]
+            xs, spots, shown = [0.0, 0.0], [], []
+            for c, sp_ in zip(cells, slots[si][2]):
+                if c is None:
+                    continue
+                row = 1 if (sp_[1], sp_[0]) in COND else 0
+                w = _spec_w(sp_, k)
+                spots.append((row, xs[row], w))
+                shown.append(c)
+                xs[row] += w + GAP * k
+            if shown:
+                name = title or SECTION_NAMES.get(si, '')
+                side_parts.append((name, shown, spots, max(max(xs) - GAP * k, _title_w(name, k))))
+        side_parts += [two(t, c) for t, c in own]
+        # 0.24.226 (user: "변동성 있는 메뉴도 다 내려놓고, 모든 공통인 라쏘랑 지금 왼쪽에 묶어 놓은 것만 위에 놓으면"): the
+        # LASSO block alone at the top; the tool's block - what changes from tool to tool - at the bottom, above the dock
+        room_b = inner - 2 * BLOCK_PAD * k
+        side_places, last[1] = flow(side_parts, room_b, 1, 0)
+
+        def bh(key):
+            return (TITLE_H + rows_in[key] * ROW + (rows_in[key] - 1) * GAP) * k
 
         def col_h(col):
             n = last[col] + 1
-            return sum(bh((col, b_)) for b_ in range(n)) + max(0, n - 1) * gaps[col] if n else 0.0
-        head = (BLOCK_TITLE_H + BLOCK_PAD) * k
-        left_h = (col_h(0) + head + (BLOCK_PAD - 2 * CARD_PAD) * k) if last[0] >= 0 else 0.0   # (to the block's inner edge)
-        fixed_h = max(left_h, col_h(1))
-        # the tool's own groups: sections in bands under the fixed part, from the left
-        own_places, ox, ob = [], 0.0, 0
-        for title, cells in own:
-            cl, w = _two_rows([_width(c, k) for c in cells], k)
-            w = max(w, _title_w(title, k))
-            if ox > 0 and ox + SEP * k + w > inner:
-                ob += 1
-                ox = 0.0
-            elif ox > 0:
-                ox += SEP * k
-            own_places.append(dict(col=2, band=ob, x=ox, w=w, cells=cl))
-            if any(pr == 1 for pr, _x, _w in cl):
-                rows_in[(2, ob)] = 2
-            ox += w
-        n_own = (ob + 1) if own else 0
-        own_h = sum(bh((2, b_)) for b_ in range(n_own)) + max(0, n_own - 1) * BAND_GAP * k
-        width = band
-        height = fixed_h + own_h + (BAND_GAP * k if fixed_h and own_h else 0.0) + 2 * PAD * k
-        y0 = region_h - TOP * k - inset - height
-        x0 = max(band_l + 8 * k, min((region_w - width) / 2.0, band_r - 8 * k - width))
+            return sum(bh((col, b_)) for b_ in range(n)) + max(0, n - 1) * BLOCK_GAP * k if n else 0.0
+        head = BLOCK_TITLE_H * k
+        x0 = max(band_l + 8 * k, min((region_w - band) / 2.0, band_r - 8 * k - band))
         out = []
-        left_x = x0 + PAD * k
-        top = y0 + height - PAD * k
-        tops = {}
-        for col in (0, 1):
-            yy = top - (head - CARD_PAD * k if col == 0 else 0.0)
+
+        def block(col, parts, places_, name, card_x, card_top, w):
+            """One block: its card, its name, its parts (title over cells)."""
+            card_h = col_h(col) + head + 2 * BLOCK_PAD * k
+            out.append(Item('card', card_x, card_top - card_h, w, card_h))
+            out.append(Item('glabel', card_x + BLOCK_PAD * k, card_top - BLOCK_PAD * k - head + 4 * k, 200 * k,
+                            head, name.upper(), 'block'))
+            tops, yy = {}, card_top - BLOCK_PAD * k - head
             for b_ in range(last[col] + 1):
-                tops[(col, b_)] = yy
-                yy -= bh((col, b_)) + gaps[col]
-        yy = top - fixed_h - (BAND_GAP * k if fixed_h else 0.0)
-        for b_ in range(n_own):
-            tops[(2, b_)] = yy
-            yy -= bh((2, b_)) + BAND_GAP * k
-        block_at = len(out)
-
-        def section(title, cells, pl, flow=None, card=True):
-            key = (pl['col'], pl['band'])
-            by = tops[key]                                      # the band's top edge
-            sx = left_x + col_x[pl['col']] + pl['x']
-            spots = pl['cells'] if 'cells' in pl else (flow or [])
-            # the card: as wide as what is in it now (its place and its cells' places do not change)
-            cw_ = max([cx + cw for c, (cr, cx, cw) in zip(cells, spots) if c is not None] + [_title_w(title, k)])
-            if card:
-                out.append(Item('card', sx - CARD_PAD * k, by - bh(key) - CARD_PAD * k, cw_ + 2 * CARD_PAD * k,
-                                bh(key) + 2 * CARD_PAD * k))
-            if title:                               # (icon 'title': drawn bigger and bright - a section's name)
-                out.append(Item('glabel', sx, by - TITLE_H * k, pl['w'], TITLE_H * k, title.upper(), 'title'))
-
-            def cy(row):
-                return by - TITLE_H * k - (row + 1) * ROW * k - row * GAP * k
-            for c, (cr, cx, cw) in zip(cells, spots):
-                if c is not None:                   # (else: its place stays empty)
-                    out.append(Item(c['kind'], sx + cx, cy(cr), cw, ROW * k, c['label'], c['icon'], c['on'], True,
-                                    c['action'], c['data'], c['prop']))
-            return sx + cw_
-        # the LASSO block first (one card, its parts inside without cards of their own), then the cards
-        right_edge = 0.0
-        for si, ((title, cells), pl) in enumerate(zip(common, places)):
-            if pl['col'] == 0 and used_of(cells, pl):
-                right_edge = max(right_edge, section(BLOCK_NAMES.get(si, title), cells, pl, lasso_rows.get(si), card=False))
-        for (title, cells), pl in zip(edge_own, edge_places):
-            right_edge = max(right_edge, section(title, cells, pl, card=False))
-        if last[0] >= 0:
-            bx = left_x - CARD_PAD * k
-            out.insert(block_at, Item('card', bx, top - left_h - CARD_PAD * k, right_edge + BLOCK_PAD * k - bx,
-                                      left_h + 2 * CARD_PAD * k))
-            out.insert(block_at + 1, Item('glabel', left_x + (BLOCK_PAD - CARD_PAD) * k, top - (BLOCK_TITLE_H - 2) * k,
-                                          200 * k, BLOCK_TITLE_H * k, BLOCK_TITLE.upper(), 'block'))
-        for si, ((title, cells), pl) in enumerate(zip(common, places)):
-            if pl['col'] == 1 and used_of(cells, pl):
-                section(title or SECTION_NAMES.get(si, ''), cells, pl)
-        for (title, cells), pl in zip(own, own_places):
-            section(title, cells, pl)
-        # 0.24.220 one box behind them all - as wide as the bar's band, as high as the cards go
-        cards = [i for i in out if i.kind == 'card']
-        if cards:
-            m = OUTER_PAD * k
-            lo = min(c.y for c in cards) - m
-            hi = max(c.y + c.h for c in cards) + m
-            out.insert(0, Item('card', left_x - CARD_PAD * k - m, lo, inner + 2 * CARD_PAD * k + 2 * m, hi - lo, '', 'outer'))
+                tops[b_] = yy
+                yy -= bh((col, b_)) + BLOCK_GAP * k
+            for (title, cells, spots), pl in zip(parts, places_):
+                by = tops[pl['band']]
+                sx = card_x + BLOCK_PAD * k + pl['x']
+                if title:                           # (icon 'title': drawn bigger and bright - a part's name)
+                    out.append(Item('glabel', sx, by - TITLE_H * k, pl['w'], TITLE_H * k, title.upper(), 'title'))
+                for c, (cr, cx, cw) in zip(cells, spots):
+                    if c is not None:               # (else: its place stays empty)
+                        out.append(Item(c['kind'], sx + cx, by - TITLE_H * k - (cr + 1) * ROW * k - cr * GAP * k, cw,
+                                        ROW * k, c['label'], c['icon'], c['on'], True, c['action'], c['data'], c['prop']))
+        if part == 'TOP':
+            if not has_left:
+                return []
+            parts, pls = [], []
+            for si in BLOCK_SLOTS:
+                (title, cells), pl = common[si], places[si]
+                if used_of(cells, pl):
+                    parts.append((BLOCK_NAMES.get(si, title), cells, pl['cells'] if 'cells' in pl else lasso_rows.get(si, [])))
+                    pls.append(pl)
+            parts += [(t, c, sp_) for t, c, sp_, _w in edge_parts]
+            pls += edge_places
+            block(0, parts, pls, BLOCK_TITLE, x0, region_h - TOP * k - inset, extent + 2 * BLOCK_PAD * k)
+            return out
+        if not side_parts:
+            return []
+        w = max(pl['x'] + pl['w'] for pl in side_places) + 2 * BLOCK_PAD * k      # as wide as what is in it
+        floor = ui_bars.dock_top(context, k, region_w)
+        card_h = col_h(1) + head + 2 * BLOCK_PAD * k
+        t = ts.TOOL_BY_ID.get(tool)
+        block(1, [(t_, c, sp_) for t_, c, sp_, _w in side_parts], side_places, t[1] if t else SIDE_TITLE,
+              x0 + (band - w) / 2.0, floor + BOTTOM_GAP * k + card_h, w)
         return out
+    if part != 'TOP':
+        return []
     # Preferences > Top Bar Sections off (or a view narrower than a section): the fixed places as plain rows (0.24.216)
     fixed = fixed_rows_layout(inner, k)             # (None, a very narrow view: the old way, all packed)
     if fixed:
@@ -1021,7 +1017,8 @@ def holds(context, item):
     if region is None or not on(context):
         return False
     from .ui_gpu import ui_factor
-    its = items(context, region.width, region.height, ui_factor(context, region))
+    k = ui_factor(context, region)
+    its = items(context, region.width, region.height, k) + items(context, region.width, region.height, k, part='BOTTOM')
     return any(i.kind == item.kind and i.prop == item.prop and abs(i.x - item.x) < 1.0 and abs(i.y - item.y) < 1.0
                for i in its)
 
