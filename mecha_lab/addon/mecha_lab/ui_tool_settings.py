@@ -495,6 +495,55 @@ def draw_library(layout, context):
     _hint(layout, 'Saved as individual .blend files', 'FBX / Asset Browser cutters: not implemented')
 
 
+_AREA = {}
+
+
+def _voxel_shown(context, ob, points):
+    """0.24.243 (user: "리메시만 들어가면 버벅") the window's "about N points (voxel ...)" line: the mesh's area was
+    measured on every redraw of the window (0.1 s on half a million faces, more on a big sculpt) - now kept until
+    the mesh's point / face count changes, or 3 s passed."""
+    import time
+    from . import mesh_area_local
+    try:
+        me = ob.data
+        key = (ob.name, me.name, len(me.vertices), len(me.polygons), len(ob.modifiers))
+    except (AttributeError, ReferenceError):
+        return 0.0
+    now = time.monotonic()
+    hit = _AREA.get(ob.name)
+    if hit is None or hit[0] != key or now - hit[2] > 3.0:
+        hit = (key, mesh_area_local(context, ob, voxel_weighted=True), now)
+        _AREA[ob.name] = hit
+    a = hit[1]
+    if a <= 0.0 or points <= 0:
+        return 0.0
+    return max(1e-4, (a / float(points)) ** 0.5)
+
+
+_KEYS = {'t': -9.0, 'v': []}
+
+
+def _remesh_keys(context):
+    """0.24.243 the Run Key row: the keymaps were read through on every redraw of the window (17 ms) - kept 3 s."""
+    import time
+    from . import workspace_ui as wsui
+    now = time.monotonic()
+    if now - _KEYS['t'] > 3.0:
+        try:
+            _KEYS['v'] = [(km, it) for km, it in wsui.hotkey_items(context) if wsui.hotkey_id(it)[1] == 'REMESH']
+        except (AttributeError, ReferenceError, TypeError):
+            _KEYS['v'] = []
+        _KEYS['t'] = now
+    out = []
+    for km, it in _KEYS['v']:
+        try:
+            it.type                                  # (still there)
+            out.append((km, it))
+        except ReferenceError:
+            _KEYS['t'] = -9.0
+    return out
+
+
 def draw_remesh(layout, context):
     s = context.scene.mch_settings
     layout.operator('mch.sculpt_move', icon='BRUSH_DATA')
@@ -513,7 +562,7 @@ def draw_remesh(layout, context):
         ob = context.active_object
         act, _tot = point_counts(context)
         if ob is not None and ob.type == 'MESH' and act:
-            v = voxel_for_points(context, ob, s.target_points)
+            v = _voxel_shown(context, ob, s.target_points)
             layout.label(text=f'Now {points_text(act)} points  ->  about {points_text(s.target_points)}  '
                                    f'(voxel {v:.4f})')
     else:
@@ -527,8 +576,7 @@ def draw_remesh(layout, context):
     layout.operator('mch.one_click_remesh', text='REMESH + SMOOTH', icon='MOD_REMESH')
     # 0.24.20 a key that runs it right away (from any tool); Save in the Hotkeys box keeps it
     from . import workspace_ui as wsui
-    for _km, item in wsui.hotkey_items(context):
-        if wsui.hotkey_id(item)[1] == 'REMESH':
+    for _km, item in _remesh_keys(context):
             row = layout.row(align=True)
             row.label(text='Run Key', icon='EVENT_R')
             row.prop(item, 'type', text='', full_event=True)
@@ -538,6 +586,8 @@ def draw_remesh(layout, context):
     from . import lowpoly, quad_remesh
     quad_remesh.draw(layout, context)                # 0.24.48 quads that keep the cut / boolean edges
     lowpoly.draw(layout, context)                    # 0.23.22 sculpt -> low poly base mesh
+    from . import retopo_bake                        # 0.24.241 Retopo + Bake (0.24.243 last: the sections above keep
+    retopo_bake.draw(layout, context)                # their colours - user: "리메시에서 메뉴창 색도 달라")
 
 
 def draw_surface_curve(layout, context):

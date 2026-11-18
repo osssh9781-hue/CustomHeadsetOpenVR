@@ -878,8 +878,6 @@ def draw(layout, context):
     st = settings(context)
     if st is None:
         return
-    from . import retopo_bake                        # 0.24.241 low poly + UVs + maps in one click
-    retopo_bake.draw(layout, context)
     box = layout.box()
     box.label(text='BAKE MAPS  (high -> low)', icon='TEXTURE')
     col = box.column(align=True)
@@ -928,6 +926,8 @@ def draw(layout, context):
         box.label(text=txt, icon='CHECKMARK')
     except RuntimeError:
         box.label(text='Select a part + its BakeHP copy, or low (active) + high', icon='INFO')
+    from . import retopo_bake                        # 0.24.241 Retopo + Bake (0.24.243 last: the sections above keep
+    retopo_bake.draw(layout, context)                # their colours)
 
 
 CLASSES = (MCH_PG_BakeMaps, MCH_OT_bake_maps)
