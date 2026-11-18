@@ -100,6 +100,21 @@ def pick(cx, cy, k, grp, open_idx, mx, my):
     return ('group', gi)
 
 
+def outer_radius(st):
+    """How far from its middle the open wheel reaches (the tools' arcs of the open group, else the groups' ring)."""
+    items = layout(st['cx'], st['cy'], st['k'], st['groups'], st['open'])
+    return max([math.hypot(it['x'] - st['cx'], it['y'] - st['cy']) + it['r'] for it in items]
+               + [(R_GROUP + B_GROUP) * st['k']]) + 30.0 * st['k']
+
+
+def pick_bubble(st, mx, my):
+    """The bubble right under the mouse (not by direction), or None."""
+    for it in layout(st['cx'], st['cy'], st['k'], st['groups'], st['open']):
+        if math.hypot(mx - it['x'], my - it['y']) <= it['r'] * 1.08:
+            return it
+    return None
+
+
 def fit_centre(mx, my, w, h, k):
     """The wheel's middle: the mouse, kept far enough from the region's edges for the groups' ring to show."""
     m = (R_GROUP + B_GROUP + 8.0) * k
@@ -309,6 +324,8 @@ class MCH_OT_radial_menu(bpy.types.Operator):
         if not STATE or context.area is None:
             _close(context)
             return {'CANCELLED'}
+        if event.type == 'RIGHTMOUSE' and self.key != 'RIGHTMOUSE' and event.value != 'PRESS':
+            return {'RUNNING_MODAL'}          # 0.24.227 (the right click that opened it being let go: it stays)
         if event.type == 'ESC' or (event.type == 'RIGHTMOUSE' and self.key != 'RIGHTMOUSE'):
             _close(context)
             return {'CANCELLED'}
@@ -330,6 +347,31 @@ class MCH_OT_radial_menu(bpy.types.Operator):
             _close(context)                                   # the key again: close
             return {'CANCELLED'}
         if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
+            # 0.24.227 (user: "우클릭하고 내가 다른 메뉴를 클릭해야 사라지게"): a click on another menu of ours (a bar, a
+            # box, a panel) or far outside the wheel closes it - and that click goes on to what is under it
+            mx, my = self._mouse(event)
+            st = STATE
+            far = math.hypot(mx - st['cx'], my - st['cy']) > outer_radius(st)
+            on_card, item = False, None
+            try:
+                from . import ui_bars
+                with context.temp_override(region=self.region):
+                    on_card, item = ui_bars.hit(context, mx, my)
+            except (ImportError, AttributeError, TypeError, ReferenceError, RuntimeError):
+                on_card, item = False, None
+            if on_card and pick_bubble(st, mx, my) is None:
+                _close(context)
+                if item is not None and item.action and item.action[0] != 'number':
+                    try:                      # (a button: it does its job now; a number bar: the next press drags it)
+                        with context.temp_override(region=self.region):
+                            ui_bars.run(context, item)
+                        ui_bars.bump()
+                    except (AttributeError, TypeError, ReferenceError, RuntimeError) as ex:
+                        print('Tool Wheel -> menu click:', ex)
+                return {'FINISHED'}
+            if far:
+                _close(context)
+                return {'CANCELLED', 'PASS_THROUGH'}
             h = self._hover(context, event)
             if h is None:                                     # the middle: Select <-> the tool
                 _close(context)

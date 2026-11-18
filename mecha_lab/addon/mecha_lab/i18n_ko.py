@@ -8484,6 +8484,7 @@ KO = {
     'Toolbar Size': '툴바 크기',
     'Toolbar unavailable here (': '여기서는 툴바를 쓸 수 없습니다 (',
     'Toolbar unavailable here (#); use G / R / S': '여기서는 툴바를 쓸 수 없습니다 (#); G / R / S를 사용하세요',
+    'Tools': '도구',
     'Tools (fallback list)': '도구 (대체 목록)',
     'Tools (left list)': '도구 (왼쪽 목록)',
     'Tools you use show up here': '사용한 도구가 여기에 표시됩니다',

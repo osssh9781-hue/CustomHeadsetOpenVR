@@ -274,6 +274,17 @@ def select_rmb_ok(context):
             and context.area.type == 'VIEW_3D' and bottom_bar.in_select(context))
 
 
+def tool_rmb_ok(context):
+    """A right click in a Mecha tool opens the Tool Wheel: MECHA LAB, Object Mode, the 3D view, the row of boxes on."""
+    try:
+        from . import bottom_bar, bottom_row
+        from .workspace_ui import pref
+        return (pref('rmb_actions', True) and bottom_bar.ui_active(context) and context.area is not None
+                and context.area.type == 'VIEW_3D' and context.mode == 'OBJECT' and bottom_row.on(context))
+    except (ImportError, AttributeError, KeyError, TypeError, ReferenceError):
+        return False
+
+
 class MCH_PT_actions_popup(bpy.types.Panel):
     bl_idname = 'MCH_PT_actions_popup'
     bl_label = 'MECHA LAB | Actions'
@@ -301,7 +312,9 @@ class MCH_OT_actions_menu(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return select_rmb_ok(context)      # elsewhere RMB keeps Blender's meaning
+        # 0.24.227 (user: "왜 셀렉트가 아니라 작업 메뉴 들어가면 우클릭 레디얼이 안 떠?"): also in a tool whose own keymap
+        # has no right button (Smart Move, Press Cut, Boolean Bevel ...) while the row of boxes is on - the Tool Wheel
+        return select_rmb_ok(context) or tool_rmb_ok(context)      # elsewhere RMB keeps Blender's meaning
 
     def invoke(self, context, event):
         from . import zb_sculpt

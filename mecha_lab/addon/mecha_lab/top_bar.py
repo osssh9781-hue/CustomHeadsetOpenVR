@@ -733,8 +733,8 @@ def fixed_rows_layout(room_w, k):
 
 
 BAR_SCALE = 0.8               # the LASSO bar's cells: this much of the other bars' size
-BAR_PAD = 8.0                 # 0.24.227 the thin LASSO bar: its card round the rows
-BAR_GAP = 6.0                 # between two rows of the bar
+BAR_PAD = 13.0                # 0.24.227 the thin LASSO bar: its card round the rows
+BAR_GAP = 8.0                 # between two rows of the bar
 BAR_SEP = 20.0                # between two parts in a row
 BAR_FIXED = (0, 1, 6, 5, 2)   # Shape, Draw, Corners, Resolution, Target: one place each, for every tool
 

@@ -274,16 +274,30 @@ def flow():
     yield 2.0
     opened = radial_menu.is_open()
     shot('07_right_click_wheel.png')
-    xdo('key', 'Escape')
-    yield 1.0
-    res['C5'] = opened and not radial_menu.is_open()
-    log('C5 REAL right click: wheel open', opened, '| after Esc', radial_menu.is_open())
-    # the menu's open button beside the key legend; a REAL click opens the menu, the row and the dock go up
+    # it stays: the mouse moves far away, time passes
+    xdo('mousemove', int(r.x + r.width * 0.2), int(w.height - (r.y + r.height * 0.75)))
+    yield 2.0
+    stays = radial_menu.is_open()
+    # a REAL click on another menu (the dock's Ortho): the wheel closes AND the click lands
+    from mecha_lab.workspace_ui import _ORTHO_LOCK_KEY
+    lock0 = bool(C.workspace.get(_ORTHO_LOCK_KEY, False))
+    it = next((i for i in dock() if i.kind == 'seg' and i.label == 'Ortho'), None)
+    if it is not None:
+        yield from press(it)
+    yield from wait_draws(3)
+    lock1 = bool(C.workspace.get(_ORTHO_LOCK_KEY, False))
+    closed = not radial_menu.is_open()
+    if it is not None and lock1 != lock0:
+        yield from press(next(i for i in dock() if i.kind == 'seg' and i.label == 'Ortho'))     # (back)
+    res['C5'] = opened and stays and closed and lock1 != lock0
+    log('C5 REAL right click: wheel open', opened, '| still open after the mouse left', stays,
+        '| a REAL click on Ortho: closed', closed, 'Ortho', lock0, '->', lock1)
+    # the tool menu's open button is in the dock's Options; a REAL click opens the menu, the row and the dock go up
+    fold = next((i for i in dock() if i.kind == 'seg' and i.label == 'Tools'), None)
     with C.temp_override(window=w, area=a, region=r):
-        leg = key_legend.box(C, k)
-        fold = next((i for i in ub.menu_items(C, r.width, r.height, k) if i.kind == 'tbtn'), None)
+        no_pill = ub.menu_items(C, r.width, r.height, k) == []
+    beside = fold is not None and not fold.on and no_pill
     y_dock0 = dock()[0].y
-    beside = leg is not None and fold is not None and fold.x >= leg[0] + leg[2] and fold.x - (leg[0] + leg[2]) < 40 * k
     if fold is not None:
         yield from press(fold)
     yield from wait_draws(3)
@@ -292,7 +306,7 @@ def flow():
     rw1 = row()
     c1 = [i for i in rw1 if i.kind == 'card']
     res['C6'] = beside and not ub.menu_folded() and y_dock1 > y_dock0 + 50 and all(dock()[0].y >= c.y + c.h for c in c1)
-    log('C6 open button beside the legend', beside, '| menu open', not ub.menu_folded(), '| dock y', round(y_dock0), '->',
+    log('C6 open button in Options (not lit), no pill at the bottom', beside, '| menu open', not ub.menu_folded(), '| dock y', round(y_dock0), '->',
         round(y_dock1))
     with C.temp_override(window=w, area=a, region=r):
         ub.set_menu_folded(True)
@@ -330,9 +344,9 @@ def flow():
              'C2': 'the bar with Select (with Ortho, 한글) above a row of 4 boxes: the tool\'s own at the left, then the actions',
              'C3': 'a REAL click on an action button works (Symmetry X: a Mirror modifier)',
              'C4': 'REAL clicks on 한글 in the dock: English and back',
-             'C5': 'a REAL right click opens the Tool Wheel; Esc closes it',
+             'C5': 'a REAL right click opens the Tool Wheel; it stays when the mouse leaves; a REAL click on another menu closes it and lands there',
              'C7': 'Blender\'s tool settings row: the active tool\'s icon is not shown in MECHA LAB (only that icon differs)',
-             'C6': 'the menu\'s open button is beside the key legend; a REAL click opens the menu and the row + bar go up'}
+             'C6': 'the tool menu\'s open button is in the dock\'s Options; a REAL click opens the menu and the row + bar go up'}
     n = 0
     for kk_ in sorted(names):
         ok = bool(res.get(kk_))

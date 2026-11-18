@@ -277,14 +277,8 @@ def menu_items(context, region_w, region_h, k=1.0):
     if menu_folded():                 # 0.24.207 folded: one small tab at the bottom (a click opens the menu)
         w, h = FOLD_W * kk, FOLD_H * kk
         x0, y0 = max(left + 8 * k, (region_w - w) / 2.0), 8 * k
-        if _fold_by_legend(context):   # 0.24.226 (user: "기존 메뉴 여는 버튼은 기능 설명 창 근처로"): right of
-            try:                       # the key legend card, wherever that is
-                from . import key_legend
-                b = key_legend.box(context, k)
-                if b is not None:
-                    x0, y0 = b[0] + b[2] + 8 * k, b[1]
-            except (ImportError, AttributeError, KeyError, TypeError, ReferenceError):
-                pass
+        if _fold_in_dock(context):     # 0.24.227 its open button is in the dock's Options: nothing here
+            return []
         return [Item('card', x0, y0, w, h),
                 Item('tbtn', x0 + 3 * kk, y0 + 3 * kk, w - 6 * kk, h - 6 * kk, 'TOOLS  (open)', '', False, True,
                      ('op', 'mch.menu_fold', {}))]
@@ -322,11 +316,11 @@ def menu_items(context, region_w, region_h, k=1.0):
     return out
 
 
-def _fold_by_legend(context):
-    """0.24.226 Is the folded menu's open button beside the key legend (a legend shows, the row of boxes is on)?"""
+def _fold_in_dock(context):
+    """0.24.227 Is the tool menu's open button in the dock's Options (the dock with Options is shown)?"""
     try:
-        from . import key_legend, bottom_row
-        return bottom_row.on(context) and key_legend._stroke_tool(context) is not None
+        from . import bottom_row
+        return bottom_row.on(context)
     except (ImportError, AttributeError, KeyError, TypeError, ReferenceError):
         return False
 
@@ -341,7 +335,7 @@ def bottom_taken(context, k=1.0, region_w=None):
         region_w = region.width
     kk = k * strip_scale()
     if menu_folded():
-        if _fold_by_legend(context):          # (its open button is beside the key legend: no row of its own)
+        if _fold_in_dock(context):            # (its open button is in the dock's Options: no row of its own)
             return 8 * k
         return 8 * k + FOLD_H * kk + 8 * k
     h = menu_layout(region_w, kk, ts.grouped_tools(), left_inset(context))[5]
@@ -474,6 +468,9 @@ def dock_items(context, region_w, region_h, k=1.0):
         from . import top_bar
         if top_bar.on(context) and top_bar.sections_wanted():
             opts = top_bar.option_cells(context)
+            # 0.24.227 (user: "툴 오픈은 여기 옵션 쪽에다 놔 줘"): the tool menu's open / fold button, lit while open
+            opts.append(dict(kind='seg', label='Tools', icon='', on=not menu_folded(), action=('op', 'mch.menu_fold', {}),
+                             data=None, prop='', width=None))
             ows = [top_bar._width(c, k) for c in opts]
             ow = (rule + sum(ows) + top_bar.GAP * k * (len(ows) - 1)) if opts else 0.0
     except (ImportError, AttributeError, KeyError, TypeError, ReferenceError):
