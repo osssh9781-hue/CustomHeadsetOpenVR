@@ -378,6 +378,8 @@ def quad_joints(V):
         top = np.array([c[0], c[1], z(0.6)])
         knee = _centre(V, _slab(V, 2, z(0.32), 0.03 * H) & col, (c[0], c[1], z(0.32)))
         ankle = _centre(V, _slab(V, 2, z(0.08), 0.03 * H) & col, (c[0], c[1], z(0.08)))
+        # 0.24.244 a dead straight leg: IK cannot tell which way to bend it - the knee a little toward the pole
+        knee[1] = min(knee[1], 0.5 * (top[1] + ankle[1]) - 0.02 * H)
         toe = np.array([ankle[0], ankle[1] - 0.08 * H, lo[2]])
         J[f'leg{tag}.L'] = top
         J[f'shin{tag}.L'] = knee
@@ -1699,6 +1701,8 @@ def draw(layout, context):
             r.operator('mch.rig_piston', text='Piston (2 parts)')
         r.operator('mch.rig_jiggle', text='Jiggle On').on = True
         r.operator('mch.rig_jiggle', text='Jiggle Off').on = False
+        from . import locomotion                 # 0.24.244 Auto Animation + Unreal FBX
+        locomotion.draw(layout, context)
         if arm.get(RIG_KEY) == 'MECHA':
             sub = layout.box()
             sub.label(text='TURN LIMIT  (the active part)', icon='CON_ROTLIMIT')
