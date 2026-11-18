@@ -1,0 +1,21 @@
+tool SUBD native mecha.subd_plane object MCH_SubDPlane points 4 faces 1 mode OBJECT
+shot 01_plane.png True
+D1 REAL drag of a corner point: moved by (0.598, 0.299, 0.0) | mode OBJECT
+shot 02_point_moved.png True
+D2 REAL drag of an outline edge: faces 1 -> 2 | points 4 -> 6 | reaches x -1.3
+shot 03_face_pulled_out.png True
+   before D3 verts [(-0.5, -0.5, 0.0), (0.5, -0.5, 0.0), (-0.5, 0.5, 0.0), (1.1, 0.8, 0.0), (-1.3, -0.5, 0.0), (-1.3, 0.5, 0.0)] edge (5, 4) view (0.0, 0.0, 0.0)
+   after D3 verts [(-0.5, -0.5, 0.0), (0.5, -0.5, 0.0), (-0.5, 0.5, 0.0), (1.1, 0.8, 0.0), (-1.3, 0.0, 0.0), (-1.3, 1.0, 0.0)] view (0.0, 0.0, 0.0) last op ['MCH_OT_subd_edit', 'MCH_OT_subd_edit', 'MCH_OT_subd_edit']
+D3 REAL Shift + drag of an edge: faces 2 -> 2 | edge middle y 0.0 -> 0.501
+D4 REAL Ctrl + click an edge: crease 1.0
+shot 04_crease.png True
+D5 REAL Alt + click a point: points 6 -> 5
+shot 05_point_removed.png True
+D6 REAL Ctrl+Z: points 6 | mode OBJECT
+PASS D1 a REAL drag of a point moves it (Object Mode)
+PASS D2 a REAL drag of an outline edge pulls a new face out of it
+PASS D3 a REAL Shift + drag of an edge moves it (no new face)
+PASS D4 a REAL Ctrl + click on an edge creases it
+PASS D5 a REAL Alt + click on a point removes it
+PASS D6 Ctrl+Z brings it back; never Edit Mode
+6/6 passed

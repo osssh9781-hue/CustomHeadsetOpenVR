@@ -29,6 +29,8 @@ EXTRA = {
     'BASE': ['Enter   make the sketch,  Alt+Enter   cut it in'],
     'CBASE': ['Enter   make the sketch,  Alt+Enter   cut it in'],
     'CUT': ['T   targets: auto / selected'],
+    'SUBD': ['Drag a point   move it,  drag an outline edge   a new face out of it (Shift: move the edge)',
+             'Alt + click a point   remove it,  Ctrl + click an edge   crease on / off'],
     'TUBE': ['Shift + click another part (the curve stays orange)   the part is repeated along the curve'],
     'SPLIT': ['T   targets: auto / selected'],
     'PRESS': ['Hold LMB on a part   a mesh grows out of the surface - taller the longer you hold,  release   keep',

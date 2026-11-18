@@ -182,8 +182,8 @@ def coplanar_cached(context, st, now=None):
     now = time.monotonic() if now is None else now
     m = pp.ghost_matrix(st.location if st.placed else context.scene.cursor.location, st.rotation)
     verts, faces, smooth = pp.st_shape(st)
-    key = pp.ghost_signature(st)
-    if _COPLANAR['key'] == key and now - _COPLANAR['t'] < 2.0:
+    key = (pp.ghost_signature(st), pp.VERSION[0])      # 0.24.231 looked at again only when the ghost or a mesh changed
+    if _COPLANAR['key'] == key:                         # (it was every 2 s: a high-poly scene froze each time)
         return _COPLANAR['faces']
     if _COPLANAR['key'] != key and now - _COPLANAR['t'] < 0.2:
         return _COPLANAR['faces']

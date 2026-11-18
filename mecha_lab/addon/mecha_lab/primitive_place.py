@@ -35,6 +35,7 @@ import math
 
 import bmesh
 import bpy
+import numpy as np
 from bpy.props import (BoolProperty, EnumProperty, FloatProperty, FloatVectorProperty, IntProperty,
                        PointerProperty, StringProperty)
 from mathutils import Matrix, Quaternion, Vector
@@ -752,19 +753,58 @@ def _world_bounds(ob, depsgraph):
             Vector((max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts))))
 
 
+_BVH = {}                 # 0.24.231 object name -> (key, bvh, verts): built once, again only when that mesh changed
+VERSION = [0]             # bumped whenever a mesh / an object moves (the HUD's coplanar faces look again)
+
+
 def _bvh_world(ob, depsgraph):
+    """(BVH of the evaluated mesh in world space, its world points) - cached until the object changes.
+    0.24.231 (user: "프리미티브 열었는데 렉이 너무 심해"): it was built again from Python lists on every look (the HUD
+    looked every 2 s, twice): a high-poly sculpt froze the view for seconds each time."""
     from mathutils.bvhtree import BVHTree
+    key = (ob.data.as_pointer() if ob.data is not None else 0, tuple(tuple(r) for r in ob.matrix_world))
+    hit = _BVH.get(ob.name)
+    if hit is not None and hit[0] == key:
+        return hit[1], hit[2]
     ev = _lc_full(ob, depsgraph)
     me = ev.to_mesh()
     try:
         mw = ev.matrix_world
-        verts = [mw @ v.co for v in me.vertices]
+        n = len(me.vertices)
+        co = np.empty(n * 3, np.float64)
+        me.vertices.foreach_get('co', co)
+        co = co.reshape(-1, 3) @ np.array(mw.to_3x3()).T + np.array(mw.translation)
+        verts = [Vector(c) for c in co.tolist()]
         polys = [tuple(p.vertices) for p in me.polygons]
     finally:
         ev.to_mesh_clear()
     if not polys:
         return None, []
-    return BVHTree.FromPolygons(verts, polys), verts
+    bvh = BVHTree.FromPolygons(verts, polys)
+    _BVH[ob.name] = (key, bvh, verts)
+    return bvh, verts
+
+
+@bpy.app.handlers.persistent
+def _changed(scene, depsgraph):
+    """A mesh changed (edit, sculpt, modifier, moved): its cached BVH goes."""
+    try:
+        gone = False
+        for u in depsgraph.updates:
+            idb = u.id
+            if isinstance(idb, bpy.types.Object) and (u.is_updated_geometry or u.is_updated_transform):
+                gone = _BVH.pop(idb.original.name, None) is not None or gone
+            elif isinstance(idb, bpy.types.Mesh) and u.is_updated_geometry:
+                name = idb.original.name
+                for k in [k for k, o in ((k, bpy.data.objects.get(k)) for k in _BVH)
+                          if o is None or o.data is None or o.data.name == name]:
+                    _BVH.pop(k, None)
+                    gone = True
+        if gone:
+            VERSION[0] += 1
+    except (ReferenceError, AttributeError, RuntimeError):
+        _BVH.clear()
+        VERSION[0] += 1
 
 
 def _inside(bvh, point):
@@ -1660,10 +1700,27 @@ def register():
     bpy.types.WindowManager.mch_place = PointerProperty(type=MCH_PG_Place)
     if not bpy.app.background and _draw_handle is None:
         _draw_handle = bpy.types.SpaceView3D.draw_handler_add(_draw_ghost, (), 'WINDOW', 'POST_VIEW')
+    if _changed not in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.append(_changed)
+    for h in (bpy.app.handlers.load_post, bpy.app.handlers.undo_post, bpy.app.handlers.redo_post):
+        if _clear not in h:
+            h.append(_clear)
+
+
+@bpy.app.handlers.persistent
+def _clear(*_a):
+    _BVH.clear()
+    VERSION[0] += 1
 
 
 def unregister():
     global _draw_handle
+    for h in (bpy.app.handlers.depsgraph_update_post, bpy.app.handlers.load_post, bpy.app.handlers.undo_post,
+              bpy.app.handlers.redo_post):
+        for f in (_changed, _clear):
+            if f in h:
+                h.remove(f)
+    _BVH.clear()
     if _draw_handle is not None:
         try:
             bpy.types.SpaceView3D.draw_handler_remove(_draw_handle, 'WINDOW')

@@ -22,10 +22,10 @@ C = bpy.context
 S = C.scene
 TOP = cg.OrthoProjector(Quaternion(), pixels_per_unit=100.0)        # (looking down: 100 px = 1, (500, 500) = origin)
 icons = os.path.join(os.path.dirname(pd.__file__), 'icons')
-check('the tool: Plate Detail 4 in Surface detail (after Detail 3), its icon, window, HUD, Alt line, the shared lasso',
+check('the tool: Plate Detail 4 in Creature (after Creature Plate - 0.24.231), its icon, window, HUD, Alt line, the shared lasso',
       'DETAIL4' in ts.TOOL_BY_ID and ts.TOOL_BY_ID['DETAIL4'][3] == 'detail4'
       and os.path.isfile(os.path.join(icons, 'detail4.png'))
-      and dict(ts.TOOL_GROUPS)['Surface detail'].index('DETAIL4') == dict(ts.TOOL_GROUPS)['Surface detail'].index('DETAIL3') + 1
+      and dict(ts.TOOL_GROUPS)['Creature'].index('DETAIL4') == dict(ts.TOOL_GROUPS)['Creature'].index('CPLATE') + 1   # (0.24.231 with the creature tools)
       and uts.DRAWERS.get('DETAIL4') is not None and 'DETAIL4' in qh.SPEC and 'DETAIL4' in kl.ALT
       and 'DETAIL4' in ll.MODES and 'DETAIL4' in lsk.MODES and 'DETAIL4' in tr.PICKING and 'DETAIL4' in ts.SHAPE_TOOLS
       and 'DETAIL4' in bpy.ops.mch.cut_stroke.get_rna_type().properties['mode'].enum_items.keys()

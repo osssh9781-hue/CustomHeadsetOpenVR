@@ -912,15 +912,15 @@ def draw_subd(layout, context):
     col.prop(p, 'offset', slider=True)
     col.prop(p, 'even_thickness')
     col.prop(p, 'use_creases')
-    box = _section(layout, 'Edge Crease (Edit Mode)', 'EDGESEL')
+    box = _section(layout, 'Edge Crease (Ctrl + click an edge)', 'EDGESEL')
     box.prop(context.scene.mch_subd, 'crease_value', slider=True)
-    box.operator('mch.subd_set_crease', icon='EDGESEL')
     if ob is not None:
         row = layout.row()
         row.scale_y = 1.3
         row.operator('mch.subd_apply_all', icon='CHECKMARK')
-    _hint(layout, 'Simple and Catmull-Clark work together (two sliders)', 'Tab: Edit Mode, E: extrude edges',
-          'Order: Simple -> Catmull-Clark -> Solidify')
+    _hint(layout, 'Drag a point: move it.  Drag an outline edge: a new face out of it (Shift: move the edge)',
+          'Alt + click a point: remove it.  Ctrl + click an edge: crease on / off',
+          'Simple and Catmull-Clark work together (two sliders)', 'Order: Simple -> Catmull-Clark -> Solidify')
 
 
 def draw_primitive(layout, context):

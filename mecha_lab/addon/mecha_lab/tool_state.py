@@ -74,8 +74,9 @@ TOOLS = (
     ('OMASS', 'Creature Base Mesh 2', 'Draw an outline: a big organic lump in that shape, of the matter you pick - Rock, '
      'Big Scale, Mushroom, Crystal, Coral, Bone, Shell, Lava Rock, Flesh, Ice, Sponge, Bark; live (Thickness, Back, '
      'Lumps, Detail, its Pattern, colours), Enter keeps it', 'omass', 'OUTLINER_OB_META', 'mecha.organic_mass', 'OK'),
-    ('SUBD', 'SubD Plane', 'Plane with live Simple + Catmull-Clark subdivision and Solidify; extrude edges '
-     'in Edit Mode to build armour panels', 'subd', 'MOD_SUBSURF', None, 'OK'),
+    ('SUBD', 'SubD Plane', 'Plane with live Simple + Catmull-Clark subdivision and Solidify; edit it right here '
+     '(0.24.231, no Edit Mode): drag a point, drag an outline edge to pull a new face out', 'subd', 'MOD_SUBSURF',
+     'mecha.subd_plane', 'OK'),
     ('PLATE', 'Armor Plate', 'Draw a lasso on a mesh: a separate armour plate made of new clean faces '
      '(no retopology); mouse wheel while drawing = profile', 'armor', 'MOD_SOLIDIFY', 'mecha.armor_plate', 'OK'),
     ('CPLATE', 'Creature Plate', 'Draw a lasso on a mesh: a rounded plate laid on the surface - Puff / Ridge / '
@@ -260,11 +261,11 @@ DRAW_TOOLS |= {'GREEBLE', 'CGREEBLE'}   # 0.24.154 + Greeble / Scale Line (Shift
 TOOL_GROUPS = (
     ('Block-out', ('BASE', 'CBASE', 'OMASS', 'SUBD', 'PRIMITIVE')),
     ('Cut', ('CUT', 'SPLIT', 'PRESS', 'HIDE', 'BOOLEAN', 'BBEVEL', 'FUSE', 'PERF')),
-    ('Surface detail', ('GSCULPT', 'GREEBLE', 'PLATE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'SDRAW', 'SCREW', 'EXTRACT', 'FPOP', 'MHOLE', 'MOLDING', 'BELT')),
+    ('Surface detail', ('GSCULPT', 'GREEBLE', 'PLATE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'SDRAW', 'SCREW', 'EXTRACT', 'FPOP', 'MHOLE', 'MOLDING', 'BELT')),
     ('Move', ('CMOVE', 'CPATH', 'SMOVE', 'SMART', 'POSE', 'REMESH')),
     ('Symmetry & repeat', ('MIRROR', 'RSYM', 'RADIAL', 'ARRAY')),
     ('Curves', ('TUBE', 'TUBE_SAME', 'SCURVE', 'CABLE', 'MMUSCLE', 'ALONG', 'LOFT')),
-    ('Creature', ('CPLATE', 'CGREEBLE', 'FGREEBLE', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER', 'HAIR', 'FUR', 'WING', 'MEMBRANE', 'BODYKIT', 'MUSCLE')),
+    ('Creature', ('CPLATE', 'DETAIL4', 'CGREEBLE', 'FGREEBLE', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER', 'HAIR', 'FUR', 'WING', 'MEMBRANE', 'BODYKIT', 'MUSCLE')),
     ('Weathering', ('WDIRT', 'WDUST', 'WLEAF', 'WSNOW')),                  # 0.24.158 click a shape: dirt / dust / ...
     ('3D Print', ('PMEASURE', 'PCUT')),                                    # 0.24.164 measure; cut with connection pins
     ('Cloth', ('WRINKLE', 'CDRAPE', 'MEMBRANE', 'WLINES', 'CAPE', 'SCAPE', 'GARMENT', 'HOOD', 'SCARF')),
