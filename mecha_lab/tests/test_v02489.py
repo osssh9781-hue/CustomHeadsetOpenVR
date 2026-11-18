@@ -18,7 +18,7 @@ C = bpy.context
 S = C.scene
 select_only(cube('A'))
 W, H = 2000, 1100
-HP = 1500          # the side panel's tests: a tall viewport (the bottom main menu takes the lower part)
+HP = 1700          # the side panel's tests: a tall viewport (the bottom main menu takes the lower part)
 TOOL = ['CUT']
 real_tool = ts.effective_tool
 ts.effective_tool = lambda c: TOOL[0]
