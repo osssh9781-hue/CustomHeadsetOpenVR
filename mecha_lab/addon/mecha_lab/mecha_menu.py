@@ -812,6 +812,16 @@ def _draw_new(it, hot, S, white, dim):
         kx = sx + (sw - sh + 3 * S if it.on else 3 * S)
         G.rounded_rect(kx, sy + 3 * S, sh - 6 * S, sh - 6 * S, (sh - 6 * S) / 2, G.TEXT)
         return None
+    if k == 'tbtn' and it.icon == 'primary':      # 0.24.230 a main action button: it stands out, also when it
+        on_ = it.enabled                          # cannot be pressed now (still readable)
+        edge = (1.0, 0.62, 0.16, 1.0 if on_ else 0.55)
+        fill = (0.42, 0.24, 0.06, 1.0) if (hot and on_) else ((0.30, 0.17, 0.05, 1.0) if on_ else (0.2, 0.16, 0.12, 1.0))
+        G.rounded_rect(x, y, w, h, h / 2, edge)
+        G.rounded_rect(x + 1.5 * S, y + 1.5 * S, w - 3 * S, h - 3 * S, (h - 3 * S) / 2, fill)
+        col = (1.0, 0.86, 0.6, 1.0) if on_ else (0.85, 0.74, 0.58, 0.8)
+        G.text(x + 14 * S, y + h / 2, '\u25b6', 11 * S, edge)
+        G.text(x + w / 2 + 8 * S, y + h / 2, G.fit(it.label, 13 * S, w - 44 * S), 13 * S, col, 'CENTER')
+        return None
     if k == 'tbtn':                       # a panel button (operator / menu)
         alert = it.icon == 'alert'
         bg = G.ACCENT if it.on else ((0.55, 0.3, 0.08, 1.0) if alert else (BTN_HOT if hot else (0.2, 0.205, 0.225, 1.0)))

@@ -168,6 +168,17 @@ def thumb(kind, sid):
         return path, 0
 
 
+def primary(row):
+    """0.24.230 (user: "드레이프 마스크 같은 중요한 작동 키는 잘 보이게 해 줘") mark ``row`` as holding a main action
+    button - the one that DOES the tool's job.  The Mecha window draws it tall, in its own colour with a play mark,
+    readable even while it cannot be pressed; Blender's own panels: a taller row."""
+    if getattr(row, 'is_mecha_window', False):
+        row.mch_primary = True
+    else:
+        row.scale_y = 1.3
+    return row
+
+
 def tiles(layout, entries, columns=4, scale=3.4):
     """0.24.177 picture tiles (user: "프레스 컷에서 스탬프 썸넬 보기가 쉽지가 않삼"; "썸네일도 좀 만들어 줘"):
     ``entries`` = [(label, png path or '', icon_value or 0, on, operator idname, {props})].  The Mecha window draws them

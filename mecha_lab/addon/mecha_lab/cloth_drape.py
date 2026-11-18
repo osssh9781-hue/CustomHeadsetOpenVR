@@ -1258,6 +1258,270 @@ def grid_patch(me, body, st):
     return new
 
 
+WRAP_GAP = math.radians(25.0)     # Drape Mask round the body: an opening wider than this = unrolled as one sheet
+WRAP_BINS = 72
+
+
+def wrap_chart(me, body):
+    """How the masked region ``me`` goes round the body: dict(c, a, e1, e2, R, sign, cut) - the axis it wraps round
+    (point ``c``, direction ``a``, ``e1`` / ``e2`` across), its mean radius, ``sign`` (+1 / -1: which way along the
+    axis is up) and ``cut`` (the angle in the middle of the region's opening; None = it goes all the way round).
+    None when the region does not wrap round one axis (its faces do not look away from it)."""
+    co = mio.read_co(me).astype(np.float64)
+    nf = len(me.polygons)
+    fn = np.empty(nf * 3)
+    me.polygons.foreach_get('normal', fn)
+    fc = np.empty(nf * 3)
+    me.polygons.foreach_get('center', fc)
+    fa = np.empty(nf)
+    me.polygons.foreach_get('area', fa)
+    fn, fc = fn.reshape(-1, 3), fc.reshape(-1, 3)
+    if float(fa.sum()) < 1e-12:
+        return None
+    w_, vecs = np.linalg.eigh((fn * fa[:, None]).T @ fn)
+    a = vecs[:, 0]                                       # (the normals turn round it: the direction they have least of)
+    up = np.array(body.matrix_world.inverted_safe().to_3x3() @ Vector((0.0, 0.0, 1.0)))
+    sign = -1.0 if float(a @ up) < 0 else 1.0
+    e1 = np.cross(a, (1.0, 0.0, 0.0))
+    if np.linalg.norm(e1) < 0.3:
+        e1 = np.cross(a, (0.0, 1.0, 0.0))
+    e1 /= np.linalg.norm(e1)
+    e2 = np.cross(a, e1)
+    p2 = np.stack([fc @ e1, fc @ e2], axis=1)
+    n2 = np.stack([fn @ e1, fn @ e2], axis=1)
+    ln = np.linalg.norm(n2, axis=1)
+    ok = ln > 0.3
+    if float(fa[ok].sum()) < 0.5 * float(fa.sum()):
+        return None
+    t = np.stack([-n2[ok, 1], n2[ok, 0]], axis=1) / ln[ok, None]      # (across each face's normal line)
+    wt = fa[ok]
+    A = (t * wt[:, None]).T @ t
+    b = (t * (wt * (t * p2[ok]).sum(1))[:, None]).sum(0)
+    if abs(np.linalg.det(A)) < 1e-12 * max(float(wt.sum()) ** 2, 1e-30):
+        return None
+    c2 = np.linalg.solve(A, b)                           # the point every normal line passes nearest to
+    c = e1 * c2[0] + e2 * c2[1] + a * float((fc @ a * fa).sum() / fa.sum())
+    rel = fc - c
+    rad = np.stack([rel @ e1, rel @ e2], axis=1)
+    r = np.linalg.norm(rad, axis=1)
+    out = (rad * n2).sum(1) / np.maximum(r * np.maximum(ln, 1e-9), 1e-12)
+    if float(fa[out > 0.25].sum()) < 0.9 * float(fa.sum()):          # (faces must look away from the axis)
+        return None
+    R = float((r * fa).sum() / fa.sum())
+    th = np.arctan2(rad[:, 1], rad[:, 0])
+    hist = np.zeros(WRAP_BINS)
+    np.add.at(hist, ((th + math.pi) / (2 * math.pi) * WRAP_BINS).astype(int) % WRAP_BINS, fa)
+    empty = hist < 1e-9 * float(fa.sum())
+    cut = None
+    if empty.any():
+        best, run, start = (0, 0), 0, 0
+        dbl = np.concatenate([empty, empty])
+        for i, e in enumerate(dbl):
+            if e:
+                if run == 0:
+                    start = i
+                run += 1
+                if run > best[0]:
+                    best = (min(run, WRAP_BINS), start)
+            else:
+                run = 0
+        if best[0] * 2 * math.pi / WRAP_BINS >= WRAP_GAP:
+            cut = -math.pi + (best[1] + best[0] / 2.0) * 2 * math.pi / WRAP_BINS
+    # the way round measured ALONG the body (it is seldom a circle: a torso is wider than deep) - the radius at every
+    # angle, and the length along the outline from the cut
+    rs, ws = np.zeros(WRAP_BINS), np.zeros(WRAP_BINS)
+    bi = ((th + math.pi) / (2 * math.pi) * WRAP_BINS).astype(int) % WRAP_BINS
+    np.add.at(rs, bi, r * fa)
+    np.add.at(ws, bi, fa)
+    have = ws > 1e-9 * float(fa.sum())
+    centres = -math.pi + (np.arange(WRAP_BINS) + 0.5) * 2 * math.pi / WRAP_BINS
+    rb = rs[have] / ws[have]
+    tb = centres[have]
+    tt = np.linspace(0.0, 2 * math.pi, 721)                       # (from the cut; from angle 0 when it is closed)
+    world = tt + (cut if cut is not None else 0.0)
+    rr = np.interp(np.mod(world + math.pi, 2 * math.pi) - math.pi, np.concatenate([tb - 2 * math.pi, tb, tb + 2 * math.pi]),
+                   np.tile(rb, 3))
+    dr = np.gradient(rr, tt)
+    ds = np.sqrt(rr * rr + dr * dr)
+    arc = np.concatenate(([0.0], np.cumsum((ds[1:] + ds[:-1]) * 0.5 * np.diff(tt))))
+    return dict(c=c, a=a, e1=e1, e2=e2, R=R, sign=sign, cut=cut, rmax=float(r.max()), co=co, tt=tt, arc=arc)
+
+
+def _wrap_flat(ch, P):
+    """Points -> (angle from the cut in 0 .. 2 pi, height along the axis - up positive, radius)."""
+    rel = np.asarray(P, np.float64) - ch['c']
+    x, y = rel @ ch['e1'], rel @ ch['e2']
+    th = np.arctan2(y, x)
+    th = np.mod(th - (ch['cut'] if ch['cut'] is not None else 0.0), 2 * math.pi)
+    return th, (rel @ ch['a']) * ch['sign'], np.hypot(x, y)
+
+
+def _wrap_arc(ch, th):
+    """Angle (from the cut) -> the length along the body's outline."""
+    return np.interp(th, ch['tt'], ch['arc'])
+
+
+def _wrap_angle(ch, s_):
+    """The length along the body's outline -> angle (from the cut)."""
+    return float(np.interp(s_, ch['arc'], ch['tt']))
+
+
+def _wrap_ray(ch, th, h, tree):
+    """The body point at (angle, height): a ray from outside toward the axis; (location, normal) or (None, None)."""
+    ang = th + (ch['cut'] if ch['cut'] is not None else 0.0)
+    radial = ch['e1'] * math.cos(ang) + ch['e2'] * math.sin(ang)
+    base = ch['c'] + ch['a'] * (h * ch['sign'])
+    far = ch['rmax'] * 3.0 + 1e-6                        # (only as far as the axis: never the other side of the body)
+    loc, nr, _i, _d = tree.ray_cast(Vector(base + radial * far), Vector(-radial), far)
+    if loc is None:
+        return None, None, base + radial * ch['R'], radial
+    return loc, nr, base + radial * ch['R'], radial
+
+
+def wrap_patch(me, body, st):
+    """0.24.230 the masked patch ``me`` that goes ROUND the body, as an even grid of quads unrolled round its axis:
+    the columns run along the axis (down, when the axis stands up), the rows go round.  An opening in it (it does not
+    close round the body) = one sheet with the lasso's patch maker in (angle x radius, height); all the way round = a
+    band between its two rims, closed.  A new Mesh, or None (it does not wrap round one axis / more than two rims)."""
+    import bmesh
+    from mathutils.bvhtree import BVHTree
+    from . import armor_plate as ap
+    if not len(me.polygons):
+        return None
+    ch = wrap_chart(me, body)
+    if ch is None:
+        return None
+    co = ch['co']
+    loops_i = [lp for lp in rim_loops_idx(me) if len(lp) >= 3]
+    if not loops_i:
+        return None
+    R = ch['R']
+    area = float(sum(p.area for p in me.polygons))
+    target = mask_target_points(st, 0.0)
+    target = int(min(target, max(len(co), 16)))
+    step = math.sqrt(max(area, 1e-12) / max(target, 16))             # the grid's cell, in the body's units
+    src = bmesh.new()
+    try:
+        src.from_mesh(me)
+        tree = BVHTree.FromBMesh(src)
+    finally:
+        src.free()
+
+    def on_body(th, h):
+        loc, nr, guess, radial = _wrap_ray(ch, th, h, tree)
+        if loc is None:
+            loc, nr, _i, _d = tree.find_nearest(Vector(guess))
+        if loc is None:
+            return Vector(guess), Vector(radial)
+        nr = Vector(nr)
+        if nr.dot(Vector(radial)) < 0:
+            nr = -nr
+        return Vector(loc), nr.normalized()
+    if ch['cut'] is not None:                            # ---- an open wrap: one sheet in (angle x R, height)
+        flat3 = [co[lp] for lp in loops_i]
+        flat = []
+        for l3 in flat3:
+            th, h, _r = _wrap_flat(ch, l3)
+            flat.append(np.stack([_wrap_arc(ch, th), h], axis=1))
+        lo = np.min([f.min(0) for f in flat], axis=0)
+        hi = np.max([f.max(0) for f in flat], axis=0)
+        extent = max(float((hi - lo).max()), 1e-9)
+        px = GRID_PX / extent
+        spacing = step * px
+        loops, rim_xy, rim_co = [], [], []
+        for f, l3 in zip(flat, flat3):
+            closed = np.concatenate([f, f[:1]]) * px
+            seg = np.linalg.norm(np.diff(closed, axis=0), axis=1)
+            at = np.concatenate(([0.0], np.cumsum(seg)))
+            k = max(8, int(round(at[-1] / max(spacing, 1e-9))))
+            t = np.linspace(0.0, at[-1], k, endpoint=False)
+            loops.append([(float(np.interp(q, at, closed[:, 0])), float(np.interp(q, at, closed[:, 1]))) for q in t])
+            c3 = np.concatenate([l3, l3[:1]])
+            for q in t:
+                rim_xy.append((float(np.interp(q, at, closed[:, 0])), float(np.interp(q, at, closed[:, 1]))))
+                rim_co.append([float(np.interp(q, at, c3[:, j])) for j in range(3)])
+        rim_xy, rim_co = np.array(rim_xy), np.array(rim_co)
+        groups = cg.prepare_loops(loops)
+        pts, tris, _nb = ap.screen_patch(groups, spacing=spacing, min_spacing=2.0)
+        if not tris:
+            return None
+        cos, nrms = [], []
+        for x, y in pts:
+            near = int(np.argmin((rim_xy[:, 0] - x) ** 2 + (rim_xy[:, 1] - y) ** 2))
+            d2 = (rim_xy[near, 0] - x) ** 2 + (rim_xy[near, 1] - y) ** 2
+            loc, nr = on_body(_wrap_angle(ch, x / px), y / px)
+            if d2 < (spacing * 0.25) ** 2:               # (on the rim: the rim itself)
+                l2, n2, _i, _d = tree.find_nearest(Vector(rim_co[near]))
+                if l2 is not None:
+                    loc = l2
+            cos.append(loc)
+            nrms.append(nr)
+        new = ap.build_region(pts, tris, cos, nrms, quads=True)
+        store_uv(new, pts)
+    else:                                                # ---- all the way round: a closed band between two rims
+        if len(loops_i) != 2:
+            return None
+        curves = []
+        for lp in loops_i:
+            th, h, _r = _wrap_flat(ch, co[lp])
+            if float(np.ptp(np.unwrap(th))) < 1.5 * math.pi and abs(float(np.unwrap(np.concatenate([th, th[:1]]))[-1]
+                                                                          - th[0])) < math.pi:
+                return None                              # (a rim that does not go round the axis: a hole, not an end)
+            o = np.argsort(th)
+            curves.append((np.concatenate([th[o] - 2 * math.pi, th[o], th[o] + 2 * math.pi]), np.tile(h[o], 3),
+                           float(h.mean()), np.tile(co[lp][o], (3, 1))))
+        curves.sort(key=lambda c_: c_[2])
+        (t_lo, h_lo, m_lo, x_lo), (t_hi, h_hi, m_hi, x_hi) = curves
+        girth = float(ch['arc'][-1])
+        nt = max(8, int(round(girth / step)))
+        nr_ = max(2, int(round((m_hi - m_lo) / step)))
+        cos, nrms, pts = [], [], []
+        for j in range(nt):
+            th = _wrap_angle(ch, girth * j / nt)        # (equal steps along the body, not equal angles)
+            lo_, hi_ = float(np.interp(th, t_lo, h_lo)), float(np.interp(th, t_hi, h_hi))
+            for i in range(nr_ + 1):
+                h = lo_ + (hi_ - lo_) * i / nr_
+                loc, nrm = on_body(th, h)
+                if i in (0, nr_):                        # (a rim point: on the mask's own rim, exactly)
+                    tx, xx = (t_lo, x_lo) if i == 0 else (t_hi, x_hi)
+                    loc = Vector([float(np.interp(th, tx, xx[:, d_])) for d_ in range(3)])
+                cos.append(loc)
+                nrms.append(nrm)
+                pts.append((girth * j / nt, h))
+        faces = []
+        for j in range(nt):
+            j2 = (j + 1) % nt
+            for i in range(nr_):
+                faces.append((j * (nr_ + 1) + i, j2 * (nr_ + 1) + i, j2 * (nr_ + 1) + i + 1, j * (nr_ + 1) + i + 1))
+        new = bpy.data.meshes.new('MCH_PlateRegion')
+        new.from_pydata([tuple(c_) for c_ in cos], [], faces)
+        new.update()
+        fnn = np.empty(len(new.polygons) * 3)
+        new.polygons.foreach_get('normal', fnn)
+        fnn = fnn.reshape(-1, 3)
+        want = np.array([np.mean([nrms[v] for v in f], axis=0) for f in faces])
+        if float(((fnn * want).sum(1) > 0).mean()) < 0.5:
+            new.flip_normals()
+            new.update()
+        store_uv(new, pts)
+    new.name = me.name
+    if ch['cut'] is not None:
+        smooth_rim(new, 12)
+    rim = wl.boundary_verts(new) if ch['cut'] is not None else []
+    if len(rim):                                         # (the rim back on the body)
+        nc = mio.read_co(new)
+        for i in rim:
+            loc = tree.find_nearest(Vector(nc[i]))[0]
+            if loc is not None:
+                nc[i] = loc
+        mio.write_co(new, nc)
+        new.update()
+    new.polygons.foreach_set('use_smooth', np.ones(len(new.polygons), bool))
+    new.update()
+    new.validate()
+    return new
+
+
 def mask_patch(me, body, st):
     """The lighter, even cloth for the masked faces ``me``: the lasso's grid where the region can be laid flat, else
     the even triangles (``light_patch``).  A new Mesh or None (``me`` is light enough as it is)."""
@@ -1266,6 +1530,16 @@ def mask_patch(me, body, st):
     try:
         grid = grid_patch(me, body, st)
     except (cg.CutError, ValueError, RuntimeError):
+        grid = None
+    if grid is not None and len(grid.polygons) > 3 and len(wl.boundary_verts(grid)):
+        return grid
+    if grid is not None:
+        bpy.data.meshes.remove(grid)
+    # 0.24.230 (user: "마스크 할 때 뒷면까지 그린 것도 잔주름 잘 나오게"): a mask that goes round the body cannot be laid
+    # flat - it is unrolled round the body instead (a band / a sleeve / a wrap), again as a grid of quads
+    try:
+        grid = wrap_patch(me, body, st)
+    except (cg.CutError, ValueError, RuntimeError, np.linalg.LinAlgError):
         grid = None
     if grid is not None and len(grid.polygons) > 3 and len(wl.boundary_verts(grid)):
         return grid
@@ -3198,23 +3472,26 @@ def draw(layout, context):
     n_tk = len(tacks_of(act)) if act is not None else 0
     r.operator('mch.cdrape_tack', text=f'Tack Pins ({n_tk}): cloth point, then body point', icon='PINNED')
     r.operator('mch.cdrape_tack_clear', text='', icon='X')
-    r = box.row()
+    from . import panel_capture as _pc                    # 0.24.230 the main action buttons stand out
+    r = _pc.primary(box.row())
     r.enabled = not live
     r.operator('mch.cdrape_mesh', text='Drape This Mesh (on the other selected / its tack pins)', icon='MOD_CLOTH')
     from . import mecha_mask                              # 0.24.200 paint the mask right here (the screen stays)
     mecha_mask.draw(box, context)
-    r = box.row()
+    r = _pc.primary(box.row())
     r.enabled = not live
     r.operator('mch.cdrape_mask', text='Drape Mask (masked faces lift off as the cloth)', icon='MOD_MASK')
+    r = box.row()                                         # (its Points: the next row - the button has the whole width)
+    r.enabled = not live
     r.prop(st, 'mask_points', text='Points')
     box.row().prop(st, 'mask_free', toggle=True, text='Drape Mask: Fall Free (not held at the rim)', icon='UNPINNED')
-    r = box.row(align=True)
+    r = _pc.primary(box.row(align=True))
     r.enabled = not live
     r.operator('mch.cdrape_wrap', text='Wrap This Mesh (like a wrapping cloth)', icon='MOD_SHRINKWRAP')
     r = box.row(align=True)
     r.prop(st, 'wrap_tight', slider=True)
     r.prop(st, 'wrap_points')
-    r = box.row(align=True)
+    r = _pc.primary(box.row(align=True))
     r.enabled = not live
     r.operator('mch.cdrape_sew_copy', text='Sew Copy (plate copied, edges sewn)', icon='MOD_SOLIDIFY')
     box.prop(st, 'puff', slider=True)

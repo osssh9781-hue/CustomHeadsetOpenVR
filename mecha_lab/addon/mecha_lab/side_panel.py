@@ -346,9 +346,10 @@ def _cells(node, tool):
             except (AttributeError, ValueError, KeyError):
                 text = idname
         big = float(node.parent.attrs.get('scale_y', 1.0)) >= 1.2 if node.parent else False
+        main = bool(node.parent.attrs.get('mch_primary')) if node.parent else False     # 0.24.230 a main action
         out.append(('tbtn', text, bool(node.opts.get('depress')),
                     ('op', idname, dict(node.opts.get('props', {}))), None, None,
-                    active, big, node.state('alert', False)))
+                    active, big or main, node.state('alert', False), main))
     elif node.kind == 'menu':
         out.append(('tbtn', (node.opts.get('text') or 'Menu') + '  ▾', False, ('menu', node.opts['name']), None,
                     None, active))
@@ -418,6 +419,8 @@ class Builder:
         return (i18n.vlen(label) * 5.8 + 16.0) * self.k
 
     def _h(self, c):
+        if c[0] == 'tbtn' and len(c) > 9 and c[9]:
+            return 38.0 * self.k                      # (a main action button)
         if c[0] == 'tbtn' and len(c) > 7 and c[7]:
             return 34.0 * self.k
         return ROW * self.k
@@ -427,6 +430,8 @@ class Builder:
         it = self.Item(kind, x, y, w, h, label, '', on, bool(active), action, data, prop or '')
         if kind == 'tbtn' and len(c) > 8 and c[8]:
             it.icon = 'alert'
+        if kind == 'tbtn' and len(c) > 9 and c[9]:
+            it.icon = 'primary'
         return it
 
     def note(self, c, x, w):
