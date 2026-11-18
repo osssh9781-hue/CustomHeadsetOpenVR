@@ -108,7 +108,8 @@ kb = key_legend.box(CTX, 1.0)
 CTX.region = Ctx.region
 kn = key_legend.box(CTX, 1.0)
 lay_floor = lp.frame(CTX, W, H, 1.0)[3]
-key_legend._stroke_tool = real_stroke
+key_legend._stroke_tool = lambda c: None      # (0.24.233 the usage card shows for Cut too now; the Layers checks below
+#  are about the panel alone - as before, with no card in this headless test)
 check('Key legend: in the bottom left corner beside the main menu on a wide screen',
       kb is not None and kb[1] < 20 and kb[0] < 40, kb[:4] if kb else None)
 check('... above the menu + actions when the menu leaves no room beside it; the Layers panel stays above it',
@@ -240,7 +241,7 @@ check('Quick HUD: not shown while the side panel shows the same settings (folded
       hidden and not back)
 src = inspect.getsource(key_legend.box)
 check('Key legend: the card fits the key column + the widest text (a long text ran out of it)',
-      'keyw + what_w' in src)
+      "(keyw if r[0] == 'kv' else 0.0)" in src)        # (0.24.233 each row: key column + its text)
 
 # --- number bars: the fill follows the mouse ------------------------------------------------------------------------
 from mecha_lab import base_mesh, ui_values as uv

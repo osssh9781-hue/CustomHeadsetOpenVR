@@ -950,6 +950,12 @@ class MCH_OT_bool_bevel_draw(bpy.types.Operator):
     def invoke(self, context, event):
         from . import geo_sculpt as gs
         xy = (event.mouse_region_x, event.mouse_region_y)
+        try:                                            # 0.24.233 a press on the usage card / a bar: theirs
+            from . import key_legend, ui_bars
+            if key_legend.card_hit(context, *xy) or ui_bars.hit(context, *xy)[0]:
+                return {'PASS_THROUGH'}
+        except (ImportError, AttributeError, TypeError, ReferenceError):
+            pass
         hit = _pick(context, xy)
         first = None
         if hit is not None:

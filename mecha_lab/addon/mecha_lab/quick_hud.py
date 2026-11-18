@@ -346,6 +346,9 @@ class MCH_OT_quick_hud_press(bpy.types.Operator):
     def invoke(self, context, event):
         try:                                            # 0.24.124 the key legend card: its title folds / opens it
             from . import key_legend
+            if key_legend.search_hit(context, event.mouse_region_x, event.mouse_region_y):
+                bpy.ops.mch.usage_search('INVOKE_DEFAULT')     # 0.24.233 the card's Search
+                return {'FINISHED'}
             if key_legend.title_hit(context, event.mouse_region_x, event.mouse_region_y):
                 key_legend.toggle(context)
                 return {'FINISHED'}

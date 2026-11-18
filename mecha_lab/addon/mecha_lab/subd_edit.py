@@ -157,6 +157,12 @@ class MCH_OT_subd_edit(bpy.types.Operator):
         if context.region is None or context.region.type != 'WINDOW':
             return {'PASS_THROUGH'}
         xy = (event.mouse_region_x, event.mouse_region_y)
+        try:                                            # (a press on the usage card / a bar: theirs)
+            from . import key_legend, ui_bars
+            if key_legend.card_hit(context, *xy) or ui_bars.hit(context, *xy)[0]:
+                return {'PASS_THROUGH'}
+        except (ImportError, AttributeError, TypeError, ReferenceError):
+            pass
         ob = target(context)
         h = pick(context, ob, xy) if ob is not None else None
         if h is None:                                   # another SubD Plane under the mouse: edit that one

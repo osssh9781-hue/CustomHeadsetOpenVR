@@ -137,7 +137,14 @@ def _stroke_tool(context):
     except (AttributeError, KeyError, TypeError):
         return None
     native = ts.native_tool_id(context) or ''
-    return tid if native.startswith('mecha.') and tid in ts.TOOL_BY_ID else None
+    if tid in ts.TOOL_BY_ID and (native.startswith('mecha.') or tid in _usage().DOCS):
+        return tid                                   # (0.24.233 every tool with a usage entry, click tools too)
+    return None
+
+
+def _usage():
+    from . import usage_docs
+    return usage_docs
 
 
 def folded(context):
@@ -164,7 +171,7 @@ def title_hit(context, x, y):
     x0, y0, w, h, rows, _keyw = b
     k = _k(context)
     lh, pad = 20 * k, 12 * k
-    return x0 <= x <= x0 + w and y0 + h - pad - lh - 4 * k <= y <= y0 + h
+    return x0 <= x <= x0 + w and y0 + h - pad - lh - 4 * k <= y <= y0 + h and not search_hit(context, x, y)
 
 
 def card_hit(context, x, y):
@@ -188,6 +195,73 @@ def _width(s, size):
     return blf.dimensions(0, _tr(s))[0]
 
 
+TEXT_MAX = 430.0          # 0.24.233 a usage line wider than this (px at scale 1) goes on in the next row
+
+
+def _wrap(text, width, size):
+    """``text`` cut into lines no wider than ``width`` px (at words; a very long word is cut)."""
+    if _width(text, size) <= width:
+        return [text]
+    out, cur = [], ''
+    for word in text.split(' '):
+        test = (cur + ' ' + word).strip()
+        if cur and _width(test, size) > width:
+            out.append(cur)
+            cur = word
+        else:
+            cur = test
+    if cur:
+        out.append(cur)
+    return out or [text]
+
+
+def card_rows(tid, k, fold):
+    """[(kind, key, text)] of the card: kind 'title' / 'head' / 'kv' / 'text'; long texts wrapped."""
+    t = ts.TOOL_BY_ID.get(tid)
+    name = t[1] if t else tid
+    rows = _usage().card_rows(tid, name)
+    if rows is None:                                 # (no usage entry yet: the keys as before)
+        old = lines(tid)
+        rows = [('title', '', old[0])] + [('kv', ln.partition('   ')[0], ln.partition('   ')[2]) for ln in old[1:]]
+    if fold:
+        return rows[:1]
+    size = 12 * k
+    out = [rows[0]]
+    for kind, key, text in rows[1:]:
+        if kind in ('kv', 'text'):
+            for n, part in enumerate(_wrap(_tr(text), TEXT_MAX * k, size)):
+                out.append((kind, key if n == 0 else '', part))
+        else:
+            out.append((kind, key, text))
+    return out
+
+
+def _search_w(k):
+    return _width(_search_label(), 11 * k) + 18 * k
+
+
+def _search_label():
+    from . import i18n
+    return '검색' if i18n.lang() == 'KO' else 'Search'
+
+
+def search_box(context, k=None):
+    """(x, y, w, h) of the card's Search pill (on its title line), or None."""
+    b = box(context, k)
+    if b is None:
+        return None
+    k = _k(context) if k is None else k
+    x, y, w, h, _rows, _kw = b
+    lh, pad = 20 * k, 12 * k
+    sw = _search_w(k)
+    return x + w - pad - 22 * k - sw, y + h - pad - lh + 1 * k, sw, lh - 2 * k
+
+
+def search_hit(context, x, y):
+    sb = search_box(context)
+    return sb is not None and sb[0] <= x <= sb[0] + sb[2] and sb[1] <= y <= sb[1] + sb[3]
+
+
 def box(context, k=None):
     """(x, y, w, h, rows, keyw) of the card in region px, or None when no legend shows.
     0.24.59 the bottom left corner, left of the main menu (above the menu and the actions when they are in
@@ -198,20 +272,18 @@ def box(context, k=None):
         return None
     from . import ui_gpu as G, ui_bars
     k = G.ui_factor(context) if k is None else k
-    rows = lines(tid)
+    rows = card_rows(tid, k, folded(context))
     size, lh, pad = 12 * k, 20 * k, 12 * k
+    title_w = _width(rows[0][2], 13 * k) + 34 * k + _search_w(k) + 2 * pad
     if folded(context):                              # 0.24.124 only the title line (a small card)
-        rows = rows[:1]
         keyw = 0.0
-        w = _width(rows[0], 13 * k) + 34 * k + 2 * pad
-        h = lh + 2 * pad
+        w = title_w
     else:
-        keyw = max(_width(t.partition('   ')[0], size) for t in rows[1:]) + 16 * k
-        what_w = max(_width(t.partition('   ')[2], size) for t in rows[1:])
-        # the texts start at the key column, so the card is key column + the widest text (was per row: a short key
-        # with a long text ran out of the card)
-        w = max(keyw + what_w, _width(rows[0], 13 * k), keyw + 120 * k) + 2 * pad
-        h = lh * len(rows) + 2 * pad
+        keys = [r[1] for r in rows if r[0] == 'kv' and r[1]]
+        keyw = (max(_width(t, size) for t in keys) + 16 * k) if keys else 0.0
+        texts = [_width(r[2], size) + (keyw if r[0] == 'kv' else 0.0) for r in rows[1:]]
+        w = max([title_w] + texts + [keyw + 120 * k]) + 2 * pad
+    h = lh * len(rows) + 2 * pad
     left = ui_bars.left_inset(context)
     if region is None:                               # (no viewport region: the old bottom left place)
         x, y = left + 14 * k, 90 * k
@@ -248,17 +320,26 @@ def _draw():
         G.rounded_rect(x - 1, y - 1, w + 2, h + 2, 12 * k, G.card_color(edge=True))
         G.rounded_rect(x, y, w, h, 12 * k, G.card_color())
         fold = folded(context)
-        for i, t in enumerate(rows):
+        for i, (kind, key, text) in enumerate(rows):
             ty = y + h - pad - lh * (i + 0.5)
-            if i == 0:
-                G.text(x + pad, ty, t, 13 * k, G.ORANGE)
-                # the fold / open mark at the right end of the title (click the title line)
+            if kind == 'title':
+                G.text(x + pad, ty, text, 13 * k, G.ORANGE)
+                # the fold / open mark at the right end of the title (click the title line); Search beside it
                 G.text(x + w - pad - 10 * k, ty, '\u25b8' if fold else '\u25be', 13 * k, G.TEXT_DIM)
+                sb = search_box(context, k)
+                if sb is not None:
+                    G.rounded_rect(sb[0], sb[1], sb[2], sb[3], sb[3] / 2, (0.2, 0.205, 0.225, 1.0))
+                    G.text(sb[0] + sb[2] / 2, sb[1] + sb[3] / 2, _search_label(), 11 * k, G.TEXT, 'CENTER')
                 continue
-            key, _sep, what = t.partition('   ')
+            if kind == 'head':                       # 0.24.233 a part of the usage: What / How / Keys ...
+                G.text(x + pad, ty - 2 * k, text, 10.5 * k, (0.96, 0.78, 0.36, 1.0))
+                continue
+            if kind == 'text':
+                G.text(x + pad, ty, text, size, G.TEXT)
+                continue
             alt = key.startswith('Alt')
             G.text(x + pad, ty, key, size, (1.0, 0.45, 0.5, 1.0) if alt else G.TEXT)
-            G.text(x + pad + keyw, ty, what, size, G.TEXT_DIM if not alt else G.TEXT)
+            G.text(x + pad + keyw, ty, text, size, G.TEXT_DIM if not alt else G.TEXT)
     except Exception:            # never break viewport drawing
         pass
     from . import ui_gpu
@@ -276,9 +357,61 @@ class MCH_OT_legend_fold(bpy.types.Operator):
         return {'FINISHED'}
 
 
+_SEARCH_ITEMS = []
+
+
+def _search_items(self, context):
+    _SEARCH_ITEMS[:] = [(ident, text, '') for ident, text in _usage().search_entries(ts.TOOLS)]
+    return _SEARCH_ITEMS
+
+
+class MCH_OT_usage_search(bpy.types.Operator):
+    """0.24.233 Search how to use the tools (type a word - Korean or English: a tool, a key, a setting); the tool
+    you pick is switched on and its usage card opened"""
+    bl_idname = 'mch.usage_search'
+    bl_label = 'Search Usage'
+    bl_options = {'INTERNAL'}
+    bl_property = 'entry'
+    entry: bpy.props.EnumProperty(name='Usage', items=_search_items)
+
+    @classmethod
+    def poll(cls, context):
+        return getattr(context, 'mode', '') == 'OBJECT'
+
+    def invoke(self, context, event):
+        context.window_manager.invoke_search_popup(self)
+        return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        tid = str(self.entry).split('|')[0]
+        if tid not in ts.TOOL_BY_ID:
+            return {'CANCELLED'}
+        from .workspace_ui import activate_mecha_tool
+        try:
+            activate_mecha_tool(context, tid)
+        except (RuntimeError, AttributeError, KeyError) as ex:
+            self.report({'WARNING'}, str(ex).splitlines()[0][:120])
+        context.window_manager.mch_legend_min = False      # (its card opened)
+        for w in context.window_manager.windows:
+            for a in w.screen.areas:
+                if a.type == 'VIEW_3D':
+                    a.tag_redraw()
+        self.report({'INFO'}, ts.TOOL_BY_ID[tid][1])
+        return {'FINISHED'}
+
+
+_keymaps = []
+
+
 def register():
     global _handle
     bpy.utils.register_class(MCH_OT_legend_fold)
+    bpy.utils.register_class(MCH_OT_usage_search)
+    wm = bpy.context.window_manager
+    kc = wm.keyconfigs.addon if wm else None
+    if kc is not None:                                 # 0.24.233 Ctrl+Shift+F: search the usage
+        km = kc.keymaps.new(name='3D View', space_type='VIEW_3D')
+        _keymaps.append((km, km.keymap_items.new('mch.usage_search', 'F', 'PRESS', ctrl=True, shift=True)))
     # 0.24.132 (user: "툴 설명은 디폴트로 접혀 있는 게 좋을 것 같아") folded by default: only the title line, a click opens it
     bpy.types.WindowManager.mch_legend_min = bpy.props.BoolProperty(
         name='Key Legend Folded', default=True, description='The key legend card folded to its title (click the title)')
@@ -288,6 +421,16 @@ def register():
 
 def unregister():
     global _handle
+    for km, kmi in _keymaps:
+        try:
+            km.keymap_items.remove(kmi)
+        except (ReferenceError, RuntimeError):
+            pass
+    _keymaps.clear()
+    try:
+        bpy.utils.unregister_class(MCH_OT_usage_search)
+    except RuntimeError:
+        pass
     if _handle is not None:
         try:
             bpy.types.SpaceView3D.draw_handler_remove(_handle, 'WINDOW')
