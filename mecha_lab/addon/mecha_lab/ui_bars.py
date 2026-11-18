@@ -921,6 +921,86 @@ def hovered(context, items):
     return None
 
 
+# 0.24.240 (user: "메쉬 잡고 뷰포트에서 이동시키는데 너무 버벅거리지") a moved mesh redraws the viewport every frame, and
+# every frame drew all our cards again (some 160 texts, 110 boxes).  Now what is drawn is kept in a picture and only
+# drawn again when something in it changed (an item, its value, the hover, the size); else the picture is laid on.
+_PIC = {}                  # region pointer -> [signature, texture, time drawn, size, framebuffer]
+PIC_MAX_AGE = 1.0          # drawn again at least this often (a thumbnail loaded later, a unit change ...)
+PIC_ON = True
+
+
+def _value(it):
+    prop = getattr(it, 'prop', '')
+    if prop:
+        try:
+            v = getattr(it.data, prop)
+        except (AttributeError, ReferenceError, TypeError, KeyError):
+            return None
+        if isinstance(v, (str, int, float, bool)) or v is None:
+            return v
+        try:
+            return tuple(v)
+        except TypeError:
+            return str(v)
+    raw = it.ref
+    if raw is None or isinstance(raw, (str, int, float, bool, tuple)):
+        return raw
+    if isinstance(raw, dict):
+        return repr(raw)
+    return id(raw)
+
+
+def picture_key(region, items, hover, k, mode):
+    hi = next((n for n, it in enumerate(items) if it is hover), -1)
+    return (region.width, region.height, round(k, 4), mode, hi,
+            tuple((it.kind, round(it.x, 1), round(it.y, 1), round(it.w, 1), round(it.h, 1), it.label, it.icon,
+                   it.on, it.enabled, _value(it)) for it in items))
+
+
+def _cached_draw(region, items, hover, k, mode, context, draw):
+    """Draw ``items`` from the kept picture (drawn again into it first when needed).  False: draw directly."""
+    if not PIC_ON:
+        return False
+    try:
+        import time
+        import gpu
+        from mathutils import Matrix
+        from gpu_extras.presets import draw_texture_2d
+        w, h = int(region.width), int(region.height)
+        if w < 2 or h < 2:
+            return False
+        ptr = region.as_pointer()
+        key = picture_key(region, items, hover, k, mode)
+        now = time.monotonic()
+        pic = _PIC.get(ptr)
+        if pic is None or pic[3] != (w, h):
+            # sRGB like the viewport's own buffer: see-through colours mix the same way (a plain buffer: darker)
+            tex = gpu.types.GPUTexture((w, h), format='SRGB8_A8')
+            pic = _PIC[ptr] = [None, tex, 0.0, (w, h), gpu.types.GPUFrameBuffer(color_slots=(tex,))]
+        if pic[0] != key or now - pic[2] > PIC_MAX_AGE:
+            fb = pic[4]
+            with fb.bind():
+                fb.clear(color=(0.0, 0.0, 0.0, 0.0))
+                with gpu.matrix.push_pop(), gpu.matrix.push_pop_projection():
+                    gpu.matrix.load_identity()
+                    gpu.matrix.load_projection_matrix(Matrix(((2.0 / w, 0, 0, -1.0), (0, 2.0 / h, 0, -1.0),
+                                                              (0, 0, 1.0, 0), (0, 0, 0, 1.0))))
+                    draw(items, hover, k, context)
+                gpu.state.blend_set('NONE')
+            pic[0], pic[2] = key, now
+        gpu.state.blend_set('ALPHA_PREMULT')
+        draw_texture_2d(pic[1], (0, 0), w, h, is_scene_linear_with_rec709_srgb_target=True)   # (read back linear)
+        gpu.state.blend_set('NONE')
+        return True
+    except Exception:
+        _PIC.pop(getattr(region, 'as_pointer', lambda: 0)(), None)
+        return False
+
+
+def free_pictures():
+    _PIC.clear()
+
+
 def _draw():
     try:
         context = bpy.context
@@ -946,7 +1026,10 @@ def _draw():
                 else:
                     ui_gpu.ACCENT, mecha_menu.FILL = zb_sculpt.ORANGE, zb_sculpt.ORANGE_FILL
             try:
-                draw(items, hovered(context, items), ui_factor(context, context.region), context)
+                hov = hovered(context, items)
+                k_ = ui_factor(context, context.region)
+                if not _cached_draw(context.region, items, hov, k_, (orange, ui_gpu.ACCENT), context, draw):
+                    draw(items, hov, k_, context)
             finally:
                 ui_gpu.ACCENT, mecha_menu.FILL = keep
         from . import toast                       # 0.24.82 short messages above the bottom toolbar
@@ -1077,9 +1160,23 @@ _keymaps = []
 
 
 @bpy.app.handlers.persistent
-def _dirty_handler(*_args):
+def _dirty_handler(*args):
+    # 0.24.240 a mesh only moved (G / R / S, every frame of it): nothing our cards show changed - not rebuilt for
+    # it (they still are within MEMO_TTL); any other change (a value, geometry, shading, scene) rebuilds them
+    dg = args[1] if len(args) > 1 else None
+    if dg is not None and moved_only(dg):
+        return
     from . import side_panel
     side_panel.dirty()
+
+
+def moved_only(depsgraph):
+    try:
+        ups = list(depsgraph.updates)
+        return bool(ups) and all(isinstance(u.id, bpy.types.Object) and u.is_updated_transform
+                                 and not u.is_updated_geometry and not u.is_updated_shading for u in ups)
+    except (AttributeError, ReferenceError, RuntimeError):
+        return False
 
 
 def release_refs():
@@ -1152,6 +1249,7 @@ def unregister():
         tool_header_icon.unregister()
     except (ImportError, AttributeError):
         pass
+    free_pictures()
     global _handle
     if _handle is not None:
         try:
