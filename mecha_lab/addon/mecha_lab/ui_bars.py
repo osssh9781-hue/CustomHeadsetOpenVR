@@ -487,7 +487,10 @@ def dock_items(context, region_w, region_h, k=1.0):
                        dict(kind='mini', label='Radius', icon='', on=False, action=('number',), data=sc,
                             prop='mch_bevel_normal_radius', width=150),
                        dict(kind='seg', label='Remove Selected', icon='', on=False,
-                            action=('op', 'mch.bevel_normal_remove', {}), data=None, prop='', width=None)]
+                            action=('op', 'mch.bevel_normal_remove', {}), data=None, prop='', width=None),
+                       # 0.24.236 (user: "베벨로 바뀐 메쉬를 진짜 그런 형태로 바꿀 수는 없나?")
+                       dict(kind='seg', label='Make Real', icon='', on=False,
+                            action=('op', 'mch.bevel_normal_real', {}), data=None, prop='', width=None)]
                 bws = [top_bar._width(c, k) for c in bev]
                 ow += rule + sum(bws) + top_bar.GAP * k * (len(bws) - 1)
                 goz_groups = [('GOZ', goz, gws), ('BEVEL', bev, bws)]

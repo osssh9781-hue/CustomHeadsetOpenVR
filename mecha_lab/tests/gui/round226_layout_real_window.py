@@ -243,11 +243,17 @@ def flow():
         yield from press(it)
     yield from wait_draws(2)
     off1 = C.active_object.get('mch_bevel_n') == 0.0 and S.mch_bevel_normal
+    it = next((i for i in dock() if i.kind == 'seg' and i.label == 'Make Real'), None)
+    if it is not None:
+        yield from press(it)
+    yield from wait_draws(2)
+    real1 = C.active_object.modifiers.get('MCH Bevel Real') is not None
+    log('C10b REAL click on Make Real: a Bevel modifier', real1)
     it = next((i for i in dock() if i.kind == 'seg' and i.label == 'Bevel Normal'), None)
     if it is not None:
         yield from press(it)
     yield from wait_draws(2)
-    res['C10'] = on1 and off1 and not S.mch_bevel_normal and 'mch_bevel_n' not in C.active_object
+    res['C10'] = real1 and on1 and off1 and not S.mch_bevel_normal and 'mch_bevel_n' not in C.active_object
     log('C10 REAL clicks: Bevel Normal on', on1, '| Remove Selected', off1, '| off again', not S.mch_bevel_normal)
     dk_ = dock()[0]
     res['C8'] = abs((bar_card.x + bar_card.w / 2) - (dk_.x + dk_.w / 2)) < 2.0 and abs((bar_card.x + bar_card.w / 2) - r.width / 2) < 2.0

@@ -93,6 +93,21 @@ half = on_a_b.shape[1] // 2
 right = diff[:, half:]
 check(f'a real Cycles render: switching b on changes only b\'s side of the picture (b: {right.max():.3f}, a: '
       f'{diff[:, :half - 10].max():.3f})', right.max() > 0.05 and diff[:, :half - 10].max() < 0.02)
+# 0.24.236 Make Real: a live Bevel modifier, the slider drives its width, the shading bevel off on it
+for o in S.objects:
+    o.select_set(o is a)
+C.view_layer.objects.active = a
+dg = C.evaluated_depsgraph_get()
+f0 = len(a.evaluated_get(dg).data.polygons)
+bpy.ops.mch.bevel_normal_real()
+mod = a.modifiers.get(bn.REAL)
+C.view_layer.update()
+f1 = len(a.evaluated_get(C.evaluated_depsgraph_get()).data.polygons)
+S.mch_bevel_normal_radius = 0.08
+check(f'Make Real: a live Bevel modifier on the selected (faces {f0} -> {f1}), Radius wide, the slider moves it, its '
+      f'shading bevel off; the base mesh unchanged',
+      mod is not None and mod.limit_method == 'ANGLE' and f1 > f0 and abs(mod.width - 0.08) < 1e-6 and a[bn.PROP] == 0.0
+      and np.allclose(mio.read_co(a.data), co0[a.name]))
 S.mch_bevel_normal = False
 check('off: every node out, the bump linked to the shader again, the base material gone, the switches gone',
       nt.nodes.get(bn.NODE) is None and nt.nodes.get(bn.VALUE) is None

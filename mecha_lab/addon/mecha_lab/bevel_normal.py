@@ -176,7 +176,12 @@ def _on_update(self, context):
 
 
 def _radius_update(self, context):
-    set_radius(context, float(self.mch_bevel_normal_radius))
+    r = float(self.mch_bevel_normal_radius)
+    set_radius(context, r)
+    for ob in context.scene.objects:                 # 0.24.236 the made-real bevels follow the slider too (until applied)
+        mod = ob.modifiers.get(REAL) if ob.type == 'MESH' else None
+        if mod is not None:
+            mod.width = r
 
 
 @bpy.app.handlers.persistent
@@ -232,7 +237,53 @@ class MCH_OT_bevel_normal_add(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_OT_bevel_normal_remove, MCH_OT_bevel_normal_add)
+REAL = 'MCH Bevel Real'
+
+
+def make_real(ob, width, segments=3):
+    """0.24.236 (user: "이렇게 베벨로 바뀐 메쉬를 진짜 그런 형태로 바꿀 수는 없나?") the rounded look made real geometry:
+    a live Bevel modifier on ``ob`` (Angle 30°, Width as the look's Radius, Segments, Harden Normals, no overlap) at
+    the end of its stack - editable, and baked by Apply Modifiers like any other; the shading bevel goes off on it (no
+    double rounding).  Returns the modifier."""
+    mod = ob.modifiers.get(REAL)
+    if mod is None:
+        mod = ob.modifiers.new(REAL, 'BEVEL')
+    mod.width = width
+    mod.segments = segments
+    mod.limit_method = 'ANGLE'
+    mod.angle_limit = 0.5236
+    mod.profile = 0.5
+    mod.use_clamp_overlap = True
+    mod.harden_normals = True
+    mod.miter_outer = 'MITER_ARC'
+    ob[PROP] = 0.0
+    ob.update_tag()
+    return mod
+
+
+class MCH_OT_bevel_normal_real(bpy.types.Operator):
+    """Make the rounded edges real geometry: a live Bevel modifier, Radius wide (on the selected meshes, or - none
+    selected - on every mesh that has Bevel Normal on); Apply Modifiers bakes it"""
+    bl_idname = 'mch.bevel_normal_real'
+    bl_label = 'Make Bevel Real'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    segments: bpy.props.IntProperty(name='Segments', default=3, min=1, max=12)
+
+    def execute(self, context):
+        sel = [o for o in context.selected_objects if o.type == 'MESH']
+        obs = sel or [o for o in context.scene.objects if o.type == 'MESH' and o.get(PROP) == 1.0]
+        if not obs:
+            self.report({'WARNING'}, 'Make Real: select meshes, or turn Bevel Normal on first')
+            return {'CANCELLED'}
+        r = float(context.scene.mch_bevel_normal_radius)
+        for ob in obs:
+            make_real(ob, r, self.segments)
+        self.report({'INFO'}, f'Bevel made real on {len(obs)} mesh(es) (a live Bevel modifier - Apply Modifiers bakes it)')
+        return {'FINISHED'}
+
+
+CLASSES = (MCH_OT_bevel_normal_remove, MCH_OT_bevel_normal_add, MCH_OT_bevel_normal_real)
 
 
 def register():
