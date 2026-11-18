@@ -136,4 +136,42 @@ check(f'three meshes selected: Retopo makes a low for each ({[len(lo.data.polygo
 r = bpy.ops.mch.retopo_bake()
 check('Bake bakes each one onto its own low', r == {'FINISHED'} and all(any(n.type == 'TEX_IMAGE' for m in lo.data.materials if m
       and m.node_tree for n in m.node_tree.nodes) for lo in lows))
+# 0.24.248 even quads on a rough rock (Keep Hard Edges off), the hard edges kept on a hard part when on
+import bmesh as _bm
+def quality(me):
+    b_ = _bm.new(); b_.from_mesh(me)
+    q = sum(1 for f in b_.faces if len(f.verts) == 4) / max(1, len(b_.faces))
+    L = np.array([e.calc_length() for e in b_.edges])
+    ang = [abs(np.degrees(l.calc_angle()) - 90) for f in b_.faces if len(f.verts) == 4 for l in f.loops]
+    b_.free()
+    return q, float(np.percentile(L, 97.5) / max(np.percentile(L, 2.5), 1e-9)), float(np.mean(ang))
+bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=6, radius=1.0, location=(8, 0, 0))
+rk = C.active_object; rk.name = 'Rock'; rk.scale = (1.5, 0.9, 0.8)
+for ns, st_ in ((0.9, 0.35), (0.25, 0.12), (0.07, 0.04)):
+    t_ = bpy.data.textures.new('n', 'VORONOI' if ns < 0.3 else 'CLOUDS'); t_.noise_scale = ns
+    d_ = rk.modifiers.new('D', 'DISPLACE'); d_.texture = t_; d_.strength = st_; d_.texture_coords = 'GLOBAL'
+for o in list(C.selected_objects):
+    o.select_set(False)
+rk.select_set(True); C.view_layer.objects.active = rk
+S.mch_rb_method, S.mch_rb_faces, S.mch_rb_hard = 'QUAD', 2500, False
+bpy.ops.mch.retopo_make()
+q, spread, adev = quality(C.active_object.data)
+check(f'a rough rock, Keep Hard Edges off: even quads ({q:.0%} quads, edges within {spread:.1f}x, corners {adev:.1f} deg off square)',
+      q > 0.9 and spread < 2.5 and adev < 10.0)
+bpy.ops.mesh.primitive_cube_add(size=2.0, location=(14, 0, 0))
+cb = C.active_object; cb.name = 'Block'
+cb.modifiers.new('S', 'SUBSURF').levels = 3
+cb.modifiers['S'].subdivision_type = 'SIMPLE'
+for o in list(C.selected_objects):
+    o.select_set(False)
+cb.select_set(True); C.view_layer.objects.active = cb
+S.mch_rb_faces, S.mch_rb_hard = 600, True
+bpy.ops.mch.retopo_make()
+lowb = C.active_object
+P = np.array([lowb.matrix_world @ v.co for v in lowb.data.vertices])
+corners = [np.array((14 + x, y, z)) for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)]
+cd = max(float(np.min(np.linalg.norm(P - c_, axis=1))) for c_ in corners)
+check(f'a hard block, Keep Hard Edges on: its corners kept (farthest corner {cd * 100:.1f} cm off)', cd < 0.05)
+S.mch_rb_hard = False
+
 summary()

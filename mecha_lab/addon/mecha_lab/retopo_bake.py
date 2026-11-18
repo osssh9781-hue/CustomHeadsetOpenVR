@@ -19,7 +19,7 @@ import time
 
 import bpy
 import numpy as np
-from bpy.props import EnumProperty, IntProperty
+from bpy.props import BoolProperty, EnumProperty, IntProperty
 
 HIGH_KEY = 'mch_rb_high'        # on the low: the name of its high
 
@@ -181,7 +181,10 @@ def make_low_steps(context, high, faces, method='QUAD', low=None):
         except ImportError:
             engine = False
         if engine:
-            note = qf.remesh_object(low, max(4, int(faces)), all_quads=False, crease_deg=30.0) or ''
+            # 0.24.248 (user: "고르지 않은 면을 손봐 줘") on a rough sculpt every 30-degree crease was kept as an edge the
+            # quads had to follow - 60 % quads, edges 4x apart; without (Hard Edges off) 95 % quads, even (1.5x)
+            hard = bool(getattr(context.scene, 'mch_rb_hard', False))
+            note = qf.remesh_object(low, max(4, int(faces)), all_quads=False, crease_deg=30.0 if hard else 180.0) or ''
         if not engine or len(low.data.polygons) == before:
             from . import quad_remesh as qr         # (old QuadriFlow way, in place)
             st = context.scene.mch_quadremesh
@@ -478,6 +481,8 @@ def draw(layout, context):
     box.row(align=True).prop(S, 'mch_rb_method', expand=True)
     col = box.column(align=True)
     col.prop(S, 'mch_rb_faces')
+    if S.mch_rb_method == 'QUAD' and hasattr(S, 'mch_rb_hard'):
+        col.prop(S, 'mch_rb_hard', toggle=True)
     r = pc.primary(box.row(align=True))
     r.scale_y = 1.3
     many = len(items) > 1
@@ -515,6 +520,10 @@ def register():
     bpy.types.Scene.mch_rb_faces = IntProperty(
         name='Faces', default=5000, min=50, max=200000,
         description='About how many faces the low poly gets')
+    bpy.types.Scene.mch_rb_hard = BoolProperty(
+        name='Keep Hard Edges', default=False,
+        description='Quad: the quads follow the sharp edges (hard-surface parts).  Off: even quads over the whole '
+                    'shape (sculpts, creatures, rocks)')
     bpy.types.Scene.mch_rb_method = EnumProperty(
         name='Method', default='QUAD',
         items=[('QUAD', 'Quad', 'Quad remesh: the edge flow follows the shape'),
@@ -523,7 +532,7 @@ def register():
 
 
 def unregister():
-    for a in ('mch_rb_faces', 'mch_rb_method'):
+    for a in ('mch_rb_faces', 'mch_rb_method', 'mch_rb_hard'):
         if hasattr(bpy.types.Scene, a):
             delattr(bpy.types.Scene, a)
     for c in reversed(CLASSES):
