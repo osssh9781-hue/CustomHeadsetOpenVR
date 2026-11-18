@@ -142,6 +142,15 @@ def _stroke_tool(context):
     return None
 
 
+def _legend_allowed(context):
+    from .workspace_ui import pref
+    from . import bottom_bar
+    try:
+        return pref('key_legend', True) and bottom_bar.ui_active(context)
+    except (AttributeError, KeyError, TypeError):
+        return False
+
+
 def _usage():
     from . import usage_docs
     return usage_docs
@@ -155,6 +164,13 @@ def folded(context):
 
 def toggle(context):
     wm = context.window_manager
+    if FEATURE[0] is not None:                       # (0.24.235 a section's usage open: its title closes it)
+        FEATURE[0] = None
+        for w in wm.windows:
+            for a in w.screen.areas:
+                if a.type == 'VIEW_3D':
+                    a.tag_redraw()
+        return wm.mch_legend_min
     wm.mch_legend_min = not bool(getattr(wm, 'mch_legend_min', True))
     for w in wm.windows:
         for a in w.screen.areas:
@@ -215,8 +231,28 @@ def _wrap(text, width, size):
     return out or [text]
 
 
+FEATURE = [None]          # 0.24.235 a page section's usage shown in the card ("?" on its title), or None
+
+
+def show_feature(context, key):
+    """The card shows the usage of page section ``key`` (opened); the same "?" again: back to the tool's."""
+    FEATURE[0] = None if FEATURE[0] == key else key
+    wm = context.window_manager
+    if FEATURE[0] is not None:
+        wm.mch_legend_min = False
+    for w in wm.windows:
+        for a in w.screen.areas:
+            if a.type == 'VIEW_3D':
+                a.tag_redraw()
+
+
 def card_rows(tid, k, fold):
     """[(kind, key, text)] of the card: kind 'title' / 'head' / 'kv' / 'text'; long texts wrapped."""
+    if FEATURE[0] is not None and _usage().feature_rows(FEATURE[0]) is not None:
+        rows = _usage().feature_rows(FEATURE[0])
+        if fold:
+            return rows[:1]
+        return _wrapped(rows, k)
     t = ts.TOOL_BY_ID.get(tid)
     name = t[1] if t else tid
     rows = _usage().card_rows(tid, name)
@@ -225,6 +261,10 @@ def card_rows(tid, k, fold):
         rows = [('title', '', old[0])] + [('kv', ln.partition('   ')[0], ln.partition('   ')[2]) for ln in old[1:]]
     if fold:
         return rows[:1]
+    return _wrapped(rows, k)
+
+
+def _wrapped(rows, k):
     size = 12 * k
     out = [rows[0]]
     for kind, key, text in rows[1:]:
@@ -268,6 +308,8 @@ def box(context, k=None):
     the way on a narrow screen); with the tool strip on the left (Tool Menu Place = Left): right of it."""
     tid = _stroke_tool(context)
     region = getattr(context, 'region', None)
+    if tid is None and FEATURE[0] is not None and _legend_allowed(context):
+        tid = ''                                     # (0.24.235 a page section's usage: shown in Select too)
     if tid is None:
         return None
     from . import ui_gpu as G, ui_bars
@@ -325,7 +367,8 @@ def _draw():
             if kind == 'title':
                 G.text(x + pad, ty, text, 13 * k, G.ORANGE)
                 # the fold / open mark at the right end of the title (click the title line); Search beside it
-                G.text(x + w - pad - 10 * k, ty, '\u25b8' if fold else '\u25be', 13 * k, G.TEXT_DIM)
+                G.text(x + w - pad - 10 * k, ty, '\u00d7' if FEATURE[0] is not None else ('\u25b8' if fold else '\u25be'),
+                       13 * k, G.TEXT_DIM)
                 sb = search_box(context, k)
                 if sb is not None:
                     G.rounded_rect(sb[0], sb[1], sb[2], sb[3], sb[3] / 2, (0.2, 0.205, 0.225, 1.0))
@@ -384,6 +427,16 @@ class MCH_OT_usage_search(bpy.types.Operator):
 
     def execute(self, context):
         tid = str(self.entry).split('|')[0]
+        if tid.startswith('F:'):                         # 0.24.235 a page section: that page, its usage card
+            key = tid[2:]
+            try:
+                bpy.ops.mch.side_page(page=key.partition(':')[0])
+            except (RuntimeError, TypeError, AttributeError):
+                pass
+            FEATURE[0] = None
+            show_feature(context, key)
+            return {'FINISHED'}
+        FEATURE[0] = None
         if tid not in ts.TOOL_BY_ID:
             return {'CANCELLED'}
         from .workspace_ui import activate_mecha_tool

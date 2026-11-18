@@ -694,6 +694,26 @@ def frame(region_w, region_h, k, context=None):
     return x0, top, w
 
 
+def _help_marks(rows, pg, k):
+    """0.24.235 (user: "?표 카드도 붙여 줘") the big section titles of a page (Mech / Creature / Decals / Render /
+    Shapes) that have a usage entry get a small "?" at their right: a click shows that usage card."""
+    from .mecha_menu import Item
+    from . import usage_docs
+    out = []
+    for it in rows:
+        out.append(it)
+        if it.kind != 'shead':
+            continue
+        key = usage_docs.feature_key(pg, it.label)
+        if key is None:
+            continue
+        bw = 24 * k
+        it.w -= bw + 6 * k
+        out.append(Item('pbtn', it.x + it.w + 6 * k, it.y + (it.h - bw) / 2, bw, bw, '?', '', False, True,
+                        ('usage_help', key)))
+    return out
+
+
 def layout(context, region_w, region_h, k=1.0):
     """{'items': [...], 'clip': (x, y, w, h) of the scrolled rows or None, 'content': rows height, 'view': ...}."""
     from .mecha_menu import Item
@@ -713,6 +733,8 @@ def layout(context, region_w, region_h, k=1.0):
                    ('minimise',))
         return {'items': [card, tab], 'clip': None, 'content': 0.0, 'view': 0.0}
     rows, h = content(context, tool, x0 + PAD * k, w - 2 * PAD * k, k)
+    if mat_page:                                 # 0.24.235 a "?" on the sections that have a usage card
+        rows = _help_marks(rows, pg, k)
     try:                                         # 0.24.59 above the bottom main menu
         from . import ui_bars
         floor = ui_bars.panel_floor(context, k, region_w, x0)

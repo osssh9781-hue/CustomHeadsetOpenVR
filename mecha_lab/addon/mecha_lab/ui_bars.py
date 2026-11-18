@@ -724,6 +724,9 @@ def run(context, item):
             open_menu(a[1])
         elif kind == 'fold':
             side_panel.toggle_fold(a[1], a[2])
+        elif kind == 'usage_help':                # 0.24.235 a section's "?": its usage card
+            from . import key_legend
+            key_legend.show_feature(context, a[1])
         elif kind == 'minimise':
             wm = context.window_manager
             wm.mch_side_min = not wm.mch_side_min

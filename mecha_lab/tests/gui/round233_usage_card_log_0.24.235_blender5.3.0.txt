@@ -1,0 +1,27 @@
+E1 REAL click on the Cut card title: open True | height 64 -> 728
+shot 01_cut_card_ko.png True
+shot 02_cut_card_en.png True
+E2 SubD Plane (a click tool): the card shows True
+shot 03_subd_card_ko.png True
+E3 REAL click on the card body: the plate unchanged True
+shot 04_search_popup.png True
+shot 05_search_typed.png True
+E4 REAL Search click + "subd crease" + Enter: tool SUBD | card open True
+shot 06_after_search.png True
+shot 07_ctrl_shift_f.png True
+E5 REAL Ctrl+Shift+F + "stamp" + Enter: tool PRESS
+shot 08_folded.png True
+E6 folded card height 64 | REAL click on the Tire & Wheel "?": SHAPES:TIRE & WHEEL | card height 439
+shot 09_tire_help.png True
+E7 REAL click on its title: closed True
+shot 10_FUR_card.png True
+shot 11_GREEBLE_card.png True
+shot 12_MIRROR_card.png True
+PASS E1 a REAL click on the card title opens the usage (Cut)
+PASS E2 a click tool (SubD Plane) has the card too
+PASS E3 a REAL click on the card is the card's, never an edit
+PASS E4 the card's Search: REAL typing + Enter switches to that tool, its card open
+PASS E5 Ctrl+Shift+F opens the search
+PASS E6 closed: the title only; a REAL click on a page section's "?" (Tire & Wheel) shows its card
+PASS E7 a REAL click on that card's title closes it
+7/7 passed

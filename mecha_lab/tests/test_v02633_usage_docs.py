@@ -11,8 +11,8 @@ from mecha_lab import panel_capture as pc, ui_tool_settings as uts, top_bar as t
 
 mecha_lab.register(); fresh()
 C = bpy.context
-check(f'usage for {len(ud.DOCS)} tools, every one a real tool with what / how / keys / settings in Korean and English',
-      len(ud.DOCS) >= 10 and all(t in ts.TOOL_BY_ID for t in ud.DOCS)
+check(f'usage for {len(ud.DOCS)} of {len(ts.TOOLS)} tools, every one a real tool with what / how / keys / settings in Korean and English',
+      len(ud.DOCS) == len(ts.TOOLS) and all(t in ts.TOOL_BY_ID for t in ud.DOCS)
       and all(all(p in d for p in ('what', 'how', 'keys', 'opts')) for d in ud.DOCS.values())
       and all(len(d['what']) == 2 and all(len(x) == 2 for x in d['how']) and all(len(x) == 3 for x in d['keys'])
               and all(len(x) == 3 for x in d['opts']) for d in ud.DOCS.values()))
@@ -70,5 +70,34 @@ check(f'search: {len(ents)} entries - every tool by name, every usage line in bo
       and any('모서리' in e[1] for e in ents) and any('Crease' in e[1] for e in ents))
 check('Ctrl+Shift+F and the card\'s Search open the search', hasattr(bpy.types, 'MCH_OT_usage_search')
       and any(k.idname == 'mch.usage_search' and k.ctrl and k.shift for _km, k in kl._keymaps))
+# 0.24.235 the pages' sections: a "?" on their titles, their usage cards
+from mecha_lab import side_panel as sp, mech_shader_ui as msu, random_shapes as rs, ui_bars as ub  # noqa: E402
+pages = {'MATERIAL': msu.content, 'HDRI': msu.hdri_content, 'CREATURE': msu.creature_page, 'DECALS': msu.decal_page,
+         'SHAPES': rs.page}
+bad, shown = {}, {}
+for key, d in ud.FEATURES.items():
+    pg = key.partition(':')[0]
+    its, _h = pages[pg](C, 0, 300, 1.0)
+    words = ' | '.join(str(i.label) for i in its).lower()
+    heads = [i for i in its if i.kind == 'shead' and ud.feature_key(pg, i.label) == key]
+    shown[key] = bool(heads)
+    for name, _ko, _en in d['opts']:
+        for part in re.split(r'\s*/\s*', name):
+            if part and part.lower() not in words:
+                bad.setdefault(key, []).append(part)
+check(f'{len(ud.FEATURES)} page sections have a usage; each one\'s title found on its page, every setting it names on '
+      f'that page (missing: {bad}; titles not found: {[k for k, v in shown.items() if not v]})',
+      len(ud.FEATURES) >= 10 and all(shown.values()) and not bad)
+marked = sp._help_marks(rs.page(C, 0, 300, 1.0)[0], 'SHAPES', 1.0)
+qs = [i for i in marked if i.kind == 'pbtn' and i.label == '?']
+check(f'the Shapes page: a "?" on each such title ({len(qs)})', len(qs) == sum(1 for k in ud.FEATURES if k.startswith('SHAPES:')))
+ub.run(C, qs[0])
+rows = kl.card_rows('', 1.0, False)
+check(f'a click on "?" shows that section\'s card ({rows[0][2]}), again: back to the tool\'s',
+      kl.FEATURE[0] == qs[0].action[1] and rows[0][0] == 'title' and len(rows) > 4)
+ub.run(C, qs[0])
+check('... (closed)', kl.FEATURE[0] is None)
+ents = ud.search_entries(ts.TOOLS)
+check('search finds the sections too', any(e[0].startswith('F:SHAPES:TIRE') for e in ents))
 i18n.force('EN')
 summary()

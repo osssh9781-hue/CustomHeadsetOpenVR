@@ -162,15 +162,28 @@ def ko_terms(text):
     return _TERM.sub(one, text)
 
 
+FEATURES = {}          # 'PAGE:SECTION TITLE' -> entry (as DOCS, plus name=(Korean, English)); filled below
+
+
+def feature_key(page, label):
+    """The FEATURES key for a section title shown on ``page`` (its count / extra words after it ignored), or None."""
+    lab = ' '.join(str(label).split()).upper()
+    for key in FEATURES:
+        pg, _sep, title = key.partition(':')
+        if pg == page and (lab == title or lab.startswith(title + ' ')):
+            return key
+    return None
+
+
 def lang_index():
     from . import i18n
     return 0 if i18n.lang() == 'KO' else 1
 
 
-def card_rows(tool_id, name):
-    """The key legend card's rows for ``tool_id`` (None when there is no entry): [(kind, key, text)] with kind
-    'title' / 'head' / 'kv' / 'text'."""
-    d = DOCS.get(tool_id)
+def card_rows(tool_id, name, entry=None, common=True):
+    """The key legend card's rows for ``tool_id`` (or the given ``entry``; None when there is none):
+    [(kind, key, text)] with kind 'title' / 'head' / 'kv' / 'text'."""
+    d = entry if entry is not None else DOCS.get(tool_id)
     if d is None:
         return None
     li = lang_index()
@@ -189,10 +202,19 @@ def card_rows(tool_id, name):
         else:
             for key, ko, en in v:
                 out.append(('kv', key, say((ko, en)[li])))
-    out.append(('head', '', ('공통', 'All tools')[li]))
-    for key, ko, en in COMMON:
-        out.append(('kv', key, (ko, en)[li]))
+    if common:
+        out.append(('head', '', ('공통', 'All tools')[li]))
+        for key, ko, en in COMMON:
+            out.append(('kv', key, (ko, en)[li]))
     return out
+
+
+def feature_rows(key):
+    """The card's rows for a page section's usage (FEATURES[key]), or None."""
+    d = FEATURES.get(key)
+    if d is None:
+        return None
+    return card_rows(None, d['name'][lang_index()], entry=d, common=False)
 
 
 def search_entries(tools):
@@ -219,4 +241,25 @@ def search_entries(tools):
                 for tx in texts:
                     out.append((f'{tid}|{n}', f'{name}  -  {tx}'))
                     n += 1
+    for key, d in FEATURES.items():                  # 0.24.235 the pages' sections too
+        name = ' / '.join(dict.fromkeys(d['name']))
+        n = 0
+        for part in ORDER:
+            v = d.get(part)
+            if not v:
+                continue
+            for line in ([v] if part == 'what' else v):
+                texts = [f'{line[0]}  {line[1]}', f'{line[0]}  {line[2]}'] if len(line) == 3 else list(line)
+                for tx in texts:
+                    out.append((f'F:{key}|{n}', f'{name}  -  {tx}'))
+                    n += 1
     return out
+
+
+try:                                                 # 0.24.235 the other tools and the pages' sections
+    from .usage_docs_more import DOCS_MORE, FEATURES_MORE
+    for _k, _v in DOCS_MORE.items():
+        DOCS.setdefault(_k, _v)
+    FEATURES.update(FEATURES_MORE)
+except ImportError:
+    pass

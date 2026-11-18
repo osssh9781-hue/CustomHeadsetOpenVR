@@ -231,14 +231,14 @@ def flow():
     yield from click_at(sb[0] + sb[2] / 2, sb[1] + sb[3] / 2)
     yield 1.0
     shot('04_search_popup.png')
-    xdo('type', '--delay', '90', 'crease')
+    xdo('type', '--delay', '90', 'subd crease')      # (0.24.235: "crease" alone also finds Wrinkle Lines now)
     yield 1.5
     shot('05_search_typed.png')
     xdo('key', 'Return')
     yield 2.0
     yield from wait_draws(3)
     res['E4'] = ts2.effective_tool(C) == 'SUBD' and not C.window_manager.mch_legend_min
-    log('E4 REAL Search click + "crease" + Enter: tool', ts2.effective_tool(C), '| card open', not C.window_manager.mch_legend_min)
+    log('E4 REAL Search click + "subd crease" + Enter: tool', ts2.effective_tool(C), '| card open', not C.window_manager.mch_legend_min)
     shot('06_after_search.png')
     # Ctrl+Shift+F
     C.window_manager.mch_legend_min = True
@@ -253,8 +253,64 @@ def flow():
     yield 2.0
     res['E5'] = ts2.effective_tool(C) == 'PRESS'
     log('E5 REAL Ctrl+Shift+F + "stamp" + Enter: tool', ts2.effective_tool(C))
+    # 0.24.235 closed (folded): just the title line; the "?" of a page section; more tools' cards
+    with C.temp_override(window=w, area=a, region=r):
+        bpy.ops.mch.bar_tool(tool='CUT')
+    C.window_manager.mch_legend_min = True
+    yield 1.5
+    yield from wait_draws(3)
+    bf = card()
+    shot('08_folded.png')
+    from mecha_lab import side_panel as sp2, key_legend as kl2
+    with C.temp_override(window=w, area=a, region=r):
+        bpy.ops.mch.side_page(page='SHAPES')
+    ub.bump()
+    yield 1.5
+    yield from wait_draws(3)
+    with C.temp_override(window=w, area=a, region=r):
+        q = next((i for i in sp2.items(C, r.width, r.height, ui_factor(C, r)) if i.kind == 'pbtn' and i.label == '?'
+                  and 'TIRE' in i.action[1]), None)
+    if q is None:                                   # (scroll down to it)
+        for _i in range(30):
+            with C.temp_override(window=w, area=a, region=r):
+                sp2.scroll_by(C, r.width, r.height, ui_factor(C, r), 150)
+            yield from wait_draws(1)
+            with C.temp_override(window=w, area=a, region=r):
+                q = next((i for i in sp2.items(C, r.width, r.height, ui_factor(C, r)) if i.kind == 'pbtn' and i.label == '?'
+                          and 'TIRE' in i.action[1]), None)
+            if q is not None:
+                yield from wait_draws(2)
+                with C.temp_override(window=w, area=a, region=r):
+                    q = next((i for i in sp2.items(C, r.width, r.height, ui_factor(C, r)) if i.kind == 'pbtn'
+                              and i.label == '?' and 'TIRE' in i.action[1]), None)
+                break
+    if q is not None:
+        yield from press(q)
+    yield from wait_draws(3)
+    bt = card()
+    res['E6'] = bf is not None and bf[3] < 80 and q is not None and kl2.FEATURE[0] == 'SHAPES:TIRE & WHEEL' and bt is not None \
+        and bt[3] > 200
+    log('E6 folded card height', round(bf[3]) if bf else None, '| REAL click on the Tire & Wheel "?":', kl2.FEATURE[0],
+        '| card height', round(bt[3]) if bt else None)
+    shot('09_tire_help.png')
+    b9 = card()
+    yield from click_at(b9[0] + 30, b9[1] + b9[3] - 20)          # its title: closed
+    yield from wait_draws(2)
+    res['E7'] = kl2.FEATURE[0] is None
+    log('E7 REAL click on its title: closed', kl2.FEATURE[0] is None)
+    with C.temp_override(window=w, area=a, region=r):
+        bpy.ops.mch.side_page(page='TOOL')
+    for n_, t_ in enumerate(('FUR', 'GREEBLE', 'MIRROR')):
+        with C.temp_override(window=w, area=a, region=r):
+            bpy.ops.mch.bar_tool(tool=t_)
+        C.window_manager.mch_legend_min = False
+        yield 1.5
+        yield from wait_draws(3)
+        shot(f'1{n_}_{t_}_card.png')
     i18n.force(None)
-    names = {'E1': 'a REAL click on the card title opens the usage (Cut)',
+    names = {'E6': 'closed: the title only; a REAL click on a page section\'s "?" (Tire & Wheel) shows its card',
+             'E7': 'a REAL click on that card\'s title closes it',
+             'E1': 'a REAL click on the card title opens the usage (Cut)',
              'E2': 'a click tool (SubD Plane) has the card too',
              'E3': 'a REAL click on the card is the card\'s, never an edit',
              'E4': 'the card\'s Search: REAL typing + Enter switches to that tool, its card open',
