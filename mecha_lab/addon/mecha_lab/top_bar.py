@@ -656,11 +656,9 @@ def block_layout(room_w, k):
     of the bar is the block at the right.  None when the bar is too narrow."""
     slots = common_slots()
     sized = [_slot_size(si, slot, k) for si, slot in enumerate(slots)]
-    side_min = max(sized[si][1] for si in SIDE_SLOTS) + 2 * BLOCK_PAD * k
     widest = max(sized[si][1] for si in BLOCK_SLOTS)
-    most = min(room_w * BLOCK_SHARE, room_w + 2 * CARD_PAD * k - side_min - BLOCK_SEP * k) - 2 * BLOCK_PAD * k
-    most = max(most, widest)
-    if most + 2 * BLOCK_PAD * k + BLOCK_SEP * k + side_min > room_w + 2 * CARD_PAD * k:
+    most = room_w + 2 * CARD_PAD * k - 2 * BLOCK_PAD * k      # 0.24.226 the long form: the whole bar is the block
+    if most < widest:
         return None
     out = [None] * len(slots)
     x, band, extent = 0.0, 0, 0.0
@@ -795,6 +793,7 @@ def items(context, region_w, region_h, k=1.0, left=None, right=None, part='TOP')
                 lasso_rows[si] = _flow_two([_width(c, k) for c in cells], pl['free'], k)
                 if any(pr == 1 for pr, _x, _w in lasso_rows[si]):
                     rows_in[(0, pl['band'])] = 2
+        last[0] = max(last[0], max(places[si]['band'] for si in BLOCK_SLOTS if 'cells' in places[si]))   # (all there)
         # the edge sections (GN Edge / Edge Finish / Base Mesh's Edge): parts of the LASSO block too, after the fixed ones
         eg = edge_groups(context, tool)
         edge_own = [g for g in own if any(g[0] == t and g[1] == c for t, c in eg)]
@@ -873,15 +872,22 @@ def items(context, region_w, region_h, k=1.0, left=None, right=None, part='TOP')
                 for c, (cr, cx, cw) in zip(cells, spots):
                     if c is not None:               # (else: its place stays empty)
                         out.append(Item(c['kind'], sx + cx, by - TITLE_H * k - (cr + 1) * ROW * k - cr * GAP * k, cw,
-                                        ROW * k, c['label'], c['icon'], c['on'], True, c['action'], c['data'], c['prop']))
+                                        ROW * k, c['label'], c['icon'], c['on'], not c.get('off'), c['action'],
+                                        c['data'], c['prop']))
         if part == 'TOP':
-            if not has_left:
-                return []
             parts, pls = [], []
             for si in BLOCK_SLOTS:
                 (title, cells), pl = common[si], places[si]
-                if used_of(cells, pl):
-                    parts.append((BLOCK_NAMES.get(si, title), cells, pl['cells'] if 'cells' in pl else lasso_rows.get(si, [])))
+                if 'cells' in pl:
+                    # (user: "상단 바는 라쏘 안 쓰는 것도 걍 들어가 있게"): every part is there in every tool - a
+                    # cell the tool does not have is shown dim (no click); the ones that come and go stay hidden
+                    cells = [c if c is not None or (sp_[1], sp_[0]) in COND else
+                             dict(kind=sp_[1], label=sp_[0], icon=sp_[2], on=False, action=None, data=None, prop='', off=True)
+                             for c, sp_ in zip(cells, slots[si][2])]
+                    parts.append((BLOCK_NAMES.get(si, title or slots[si][0]), cells, pl['cells']))
+                    pls.append(pl)
+                elif cells:
+                    parts.append((BLOCK_NAMES.get(si, title), cells, lasso_rows.get(si, [])))
                     pls.append(pl)
             parts += [(t, c, sp_) for t, c, sp_, _w in edge_parts]
             pls += edge_places
