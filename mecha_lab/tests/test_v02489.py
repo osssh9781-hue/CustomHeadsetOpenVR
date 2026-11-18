@@ -54,7 +54,16 @@ check('... the Cut panel as a tree: its settings, boxes, buttons', {'gn_finish',
 
 # --- top bar -------------------------------------------------------------------------------------------------------
 items = fresh_items('CUT')
-bar = tb.items(CTX, W, H, 1.0)
+
+def bar_all():
+    """0.24.226 the bar is in three places: the LASSO bar (top), the tool's box (bottom), Options (the dock)."""
+    from mecha_lab.mecha_menu import Item
+    its = [i for i in tb.items(CTX, W, H, 1.0) if i.enabled] + tb.items(CTX, W, H, 1.0, part='BOTTOM')
+    return its + [Item(c['kind'], 0, 0, 10, 10, c['label'], c['icon'], c['on'], True, c['action'], c['data'], c['prop'])
+                  for c in tb.option_cells(CTX)]
+
+
+bar = bar_all()
 shapes = [i for i in bar if i.kind == 'ibtn']
 check('Top bar: the shapes as big icons (all of them, the one in use on), at the top middle',
       len(shapes) == len(ts.SHAPES) and sum(i.on for i in shapes) == 1 and bar[0].y + bar[0].h > H - 20
@@ -64,11 +73,11 @@ check('... Line / Sketch / Slow Line, Target, Depth, Auto Apply, Surface, Ortho 
       {'Line', 'Sketch', 'Slow Line', 'Auto', 'Selected', 'Active', 'Through All', 'From Surface', 'Auto Apply',
        'Surface', 'Ortho'} <= labels, sorted(labels))
 TOOL[0] = 'BASE'
-bar_b = tb.items(CTX, W, H, 1.0)
+bar_b = bar_all()
 lb = {i.label for i in bar_b if i.kind == 'seg'}
 check('Base Mesh: no Depth / Auto Apply (not its settings)', 'Through All' not in lb and 'Auto Apply' not in lb)
 S.mch_brush.line_mode = True
-bar_b = tb.items(CTX, W, H, 1.0)
+bar_b = bar_all()
 check('... Line on: its width, caps, Taper, Pressure, Attach Ends join the bar', any(i.kind == 'mini' and
       i.prop == 'line_width' for i in bar_b) and any(i.kind == 'drop' and i.prop == 'line_caps' for i in bar_b)
       and {'Taper', 'Pressure', 'Attach Ends'} <= {i.label for i in bar_b})

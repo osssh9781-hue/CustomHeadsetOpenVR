@@ -1,0 +1,22 @@
+region 2775 1966 k 1.444
+shot 01_CUT.png True
+shot 02_BASE.png True
+shot 03_SMART.png True
+shot 04_CDRAPE.png True
+C1 the LASSO bar in 4 tools: same places True | Cut cells 5 | dim in Smart Move ['Lasso', 'Sketch', 'Sharp', 'Res', 'Selected']
+C2 bottom: boxes 4 [(317, 370), (699, 682), (1392, 430), (1834, 624)] | dock y 290 row top 279 | dock options ['Auto Apply', 'Ortho', '한글'] | row titles ['CUT', 'DEPTH', 'SURFACE', 'SETTINGS', 'ACTIONS', 'SHADING', 'RESOLUTION', 'SYMMETRY', 'GROUPS', 'REPETITION', 'VISIBILITY']
+C3 REAL click on Symmetry X: 0 -> 1 ['MIRROR']
+shot 05_symmetry_x.png True
+shot 06_english.png True
+C4 REAL clicks on 한글 in the dock: KO -> EN -> KO
+shot 07_right_click_wheel.png True
+C5 REAL right click: wheel open True | after Esc False
+shot 08_menu_open.png True
+C6 open button beside the legend True | menu open True | dock y 290 -> 522
+PASS C1 the LASSO bar alone at the top, the same places in every tool; dim in a tool without them (Smart Move)
+PASS C2 the bar with Select (with Ortho, 한글) above a row of 4 boxes: the tool's own at the left, then the actions
+PASS C3 a REAL click on an action button works (Symmetry X: a Mirror modifier)
+PASS C4 REAL clicks on 한글 in the dock: English and back
+PASS C5 a REAL right click opens the Tool Wheel; Esc closes it
+PASS C6 the menu's open button is beside the key legend; a REAL click opens the menu and the row + bar go up
+6/6 passed

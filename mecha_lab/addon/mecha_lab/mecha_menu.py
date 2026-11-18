@@ -1186,7 +1186,16 @@ def near(items, x, y, margin):
 
 
 def open_menu(context, source=''):
-    """Open the Mecha Menu (False if it could not be opened here).  ``source``: what opened it (status bar)."""
+    """Open the Mecha Menu (False if it could not be opened here).  ``source``: what opened it (status bar).
+    0.24.226 (user: "우클릭은 이제 알트 우클릭을 우클릭으로"): a right click opens the Tool Wheel instead while the
+    popup's own things are on the screen (the row of boxes at the bottom)."""
+    if source.startswith('right click'):
+        try:
+            from . import bottom_row
+            if bottom_row.on(context):
+                return bpy.ops.mch.radial_menu('INVOKE_DEFAULT', held=False) == {'RUNNING_MODAL'}
+        except (RuntimeError, ImportError, AttributeError):
+            pass
     try:
         return bpy.ops.mch.mecha_menu('INVOKE_DEFAULT', source=source) == {'RUNNING_MODAL'}
     except RuntimeError:

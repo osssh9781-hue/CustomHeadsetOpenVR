@@ -180,7 +180,9 @@ def flow():
 
     def bar():
         with C.temp_override(window=w, area=a, region=r):
-            return top_bar.items(C, r.width, r.height, ui_factor(C, r))
+            kk_ = ui_factor(C, r)       # (0.24.226: the top LASSO bar + the tool's box at the bottom)
+            from mecha_lab import bottom_row
+            return [i for i in top_bar.items(C, r.width, r.height, kk_) if i.enabled] + bottom_row.items(C, r.width, r.height, kk_)
 
     def card():
         with C.temp_override(window=w, area=a, region=r):

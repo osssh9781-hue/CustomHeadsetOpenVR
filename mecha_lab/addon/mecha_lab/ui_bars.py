@@ -277,6 +277,14 @@ def menu_items(context, region_w, region_h, k=1.0):
     if menu_folded():                 # 0.24.207 folded: one small tab at the bottom (a click opens the menu)
         w, h = FOLD_W * kk, FOLD_H * kk
         x0, y0 = max(left + 8 * k, (region_w - w) / 2.0), 8 * k
+        if _fold_by_legend(context):   # 0.24.226 (user: "기존 메뉴 여는 버튼은 기능 설명 창 근처로"): right of
+            try:                       # the key legend card, wherever that is
+                from . import key_legend
+                b = key_legend.box(context, k)
+                if b is not None:
+                    x0, y0 = b[0] + b[2] + 8 * k, b[1]
+            except (ImportError, AttributeError, KeyError, TypeError, ReferenceError):
+                pass
         return [Item('card', x0, y0, w, h),
                 Item('tbtn', x0 + 3 * kk, y0 + 3 * kk, w - 6 * kk, h - 6 * kk, 'TOOLS  (open)', '', False, True,
                      ('op', 'mch.menu_fold', {}))]
@@ -314,6 +322,15 @@ def menu_items(context, region_w, region_h, k=1.0):
     return out
 
 
+def _fold_by_legend(context):
+    """0.24.226 Is the folded menu's open button beside the key legend (a legend shows, the row of boxes is on)?"""
+    try:
+        from . import key_legend, bottom_row
+        return bottom_row.on(context) and key_legend._stroke_tool(context) is not None
+    except (ImportError, AttributeError, KeyError, TypeError, ReferenceError):
+        return False
+
+
 def bottom_taken(context, k=1.0, region_w=None):
     """0.24.59 Region px from the bottom the main menu takes (0 when the tiles are on the left) - the bottom
     toolbar, key legend, actions card and side panel stay above it."""
@@ -324,6 +341,8 @@ def bottom_taken(context, k=1.0, region_w=None):
         region_w = region.width
     kk = k * strip_scale()
     if menu_folded():
+        if _fold_by_legend(context):          # (its open button is beside the key legend: no row of its own)
+            return 8 * k
         return 8 * k + FOLD_H * kk + 8 * k
     h = menu_layout(region_w, kk, ts.grouped_tools(), left_inset(context))[5]
     return 8 * k + h + 8 * k
@@ -462,6 +481,7 @@ def dock_items(context, region_w, region_h, k=1.0):
     w += ow
     h = th + 2 * pad
     x0, y0 = max(left_inset(context) + 8 * k, (region_w - w) / 2.0), bottom_taken(context, k, region_w)
+    y0 += _row_h(context, k, region_w)               # 0.24.226 above the row of boxes
     out = [Item('card', x0, y0, w, h)]
     x = x0 + pad
     for c in tiles:
@@ -493,7 +513,38 @@ def dock_top(context, k=1.0, region_w=None):
     base = bottom_taken(context, k, region_w)
     if not base or not actions_on(context):
         return base
-    return base + (DOCK_H + 16.0) * k * strip_scale() + 8 * k
+    return base + _row_h(context, k, region_w) + (DOCK_H + 16.0) * k * strip_scale() + 8 * k
+
+
+def panel_floor(context, k, region_w, x_left):
+    """0.24.226 How low a panel at the view's right (from ``x_left``) may reach: down to the row of boxes when the
+    dock (centred above the row) ends left of it - else above the dock as before."""
+    top = dock_top(context, k, region_w)
+    rh = _row_h(context, k, region_w)
+    if rh <= 0:
+        return top
+    try:
+        region = getattr(context, 'region', None)
+        d = dock_items(context, region_w, region.height if region is not None else 1000, k)[0]
+        if d.x + d.w + 8 * k <= x_left:
+            return bottom_taken(context, k, region_w) + rh
+    except (AttributeError, IndexError, KeyError, TypeError, ReferenceError):
+        pass
+    return top
+
+
+def _row_h(context, k, region_w=None):
+    """0.24.226 the height of the row of boxes under the dock (0 when it is not shown)."""
+    try:
+        from . import bottom_row
+        region = getattr(context, 'region', None)
+        if region_w is None:
+            if region is None:
+                return 0.0
+            region_w = region.width
+        return bottom_row.height(context, region_w, k)
+    except (ImportError, AttributeError, KeyError, TypeError, ReferenceError):
+        return 0.0
 
 
 def _build_all(context, region, k):
@@ -525,7 +576,11 @@ def _build_all(context, region, k):
             out += side_panel.items(context, region.width, region.height, k)
         if top_bar.on(context):
             out += top_bar.items(context, region.width, region.height, k)
-            out += top_bar.items(context, region.width, region.height, k, part='BOTTOM')   # 0.24.226 the tool's block
+        from . import bottom_row                       # 0.24.226 the tool's box + the action boxes, under the dock
+        if bottom_row.on(context):
+            out += bottom_row.items(context, region.width, region.height, k)
+        elif top_bar.on(context):
+            out += top_bar.items(context, region.width, region.height, k, part='BOTTOM')
         from . import bottom_bar
         if bottom_bar.ui_active(context):              # 0.24.60 MECHA LAB | ZBRUSH card
             from . import zb_ui
@@ -628,6 +683,9 @@ def run(context, item):
             # 0.24.65 like a click on a Blender button: an operator that changes the model gets its undo step
             # (from here, inside the click handler, Blender had dropped it - Ctrl+Z then jumped further back)
             getattr(getattr(bpy.ops, mod), name)('INVOKE_DEFAULT', True, **a[2])
+        elif kind == 'mop':                       # 0.24.226 an action button (the right-click popup's): as there
+            mod, name = a[1].split('.')
+            getattr(getattr(bpy.ops, mod), name)('INVOKE_DEFAULT' if a[3] else 'EXEC_DEFAULT', True, **a[2])
         elif kind == 'menu':
             open_menu(a[1])
         elif kind == 'fold':

@@ -32,6 +32,10 @@ def jsonable(v):
 
 def grab():
     its = tb.items(C, 2560, 1440, 1.0, left=0.0, right=2560.0)
+    # 0.24.226 the bar is in three places now: the LASSO bar at the top, the tool's box at the bottom, Options in the dock
+    its = its + tb.items(C, 2560, 1440, 1.0, left=0.0, right=2560.0, part='BOTTOM') + [
+        types.SimpleNamespace(kind=c['kind'], label=c['label'], on=c['on'], action=c['action'], data=c['data'],
+                              prop=c['prop'], icon=c['icon'], enabled=True) for c in tb.option_cells(C)]
     out = []
     for i in its:
         if i.kind in {'card', 'vrule'}: continue
@@ -81,197 +85,130 @@ kinds = {json.loads(k)[0] for k in new if json.loads(k)[1] != tb.LANG_LABEL}    
 check(f'the only new things are the 한글 switch and group names shown a second time ({sorted(set(json.loads(k)[1] for k in new))}: Press Cut\'s '
       f'own Line / Lasso switch stays with the tool\'s own groups)', kinds <= {'glabel'})
 
-# one place per cell: over every tool and every state it is shown in
-FIXED = {}
-for title, sources, specs in tb.common_slots():
-    if isinstance(specs, list):
-        for label, kind, _icon, _w, match in specs:
-            FIXED[(kind, label)] = match
+# --- 0.24.226: the LASSO bar alone at the top (long, in every tool); the rest in the tool's box; Options in the dock ---
+BLOCK = {}
+slots = tb.common_slots()
+for si in tb.BLOCK_SLOTS:
+    if isinstance(slots[si][2], list):
+        for label, kind, _icon, _w, match in slots[si][2]:
+            BLOCK[(kind, label)] = match
+
+
+def top(t, w=2560):
+    TOOL[0] = t
+    return tb.items(C, w, 1440, 1.0, left=0.0, right=float(w))
+
+
+def bottom(t, w=2560):
+    TOOL[0] = t
+    return tb.items(C, w, 1440, 1.0, left=0.0, right=float(w), part='BOTTOM')
+
+
 where = collections.defaultdict(set)
-seen = collections.Counter()
-
-
-def bar_h(its):
-    cards = [i for i in its if i.kind == 'card' and i.icon != 'outer']
-    return max(c.y + c.h for c in cards) - min(c.y for c in cards)
-
-
-def cell_of(i):
-    return dict(kind=i.kind, label=i.label, action=i.action, prop=i.prop, data=i.data, on=i.on, icon=i.icon, width=None)
-
-
-def record(tag):
-    for t in tools:
-        TOOL[0] = t
-        its = tb.items(C, 2560, 1440, 1.0, left=0.0, right=2560.0)
-        for i in its:
-            key = (i.kind, i.label)
-            if key in FIXED and i.enabled and FIXED[key](cell_of(i)):
-                where[key].add((round(i.x, 2), round(1440 - i.y, 2), round(i.w, 2)))    # (x, down from the view's top, w)
-                seen[key] += 1
-
-
+always = collections.Counter()
 B.shape = 'LASSO'; B.outline_corner = 'NONE'; B.stab_enable = False; cut.depth_mode = 'THROUGH'; B.surface_mode = False
-record('default')
-moved = {k: v for k, v in where.items() if len(v) != 1}
-check(f'every fixed cell is at ONE place for all {len(tools)} tools ({len(where)} cells, e.g. Res seen '
-      f'{seen[("mini", "Res")]} times at {sorted(where[("mini", "Res")])}); {len(moved)} move',
-      not moved and len(where) >= 18 and seen[('mini', 'Res')] > 30, moved)
-B.stab_enable = True; cut.depth_mode = 'SURFACE'; B.outline_corner = 'ROUND'; B.surface_mode = True; B.through_mode = True
-record('everything on')
-for sh in ('CIRCLE', 'STROKE', 'RECT'):
-    B.shape = sh
-    record(sh)
-B.shape = 'LASSO'; B.stab_enable = False; cut.depth_mode = 'THROUGH'; B.outline_corner = 'NONE'; B.surface_mode = False
-B.through_mode = False
-side = {k: sorted({p_[0] for p_ in v}) for k, v in where.items() if len({p_[0] for p_ in v}) != 1}
-check(f'0.24.218 with everything switched on (Slow Line, From Surface, round corners, Surface, Through) and other '
-      f'shapes: no cell moves SIDEWAYS, ever ({len(where)} cells over {len(tools)} tools x 5 states)', not side, side)
-COND = {k for k in where if k in tb.COND}
-under = {}
-for kind, label, parent in (('mini', 'Strength', ('seg', 'Slow Line')), ('mini', 'Depth', ('seg', 'Through All')),
-                            ('mini', 'Width', ('seg', 'Sharp')), ('mini', 'Gap', ('seg', 'Surface'))):
-    cy_ = min(p_[1] for p_ in where[(kind, label)])
-    py_ = min(p_[1] for p_ in where[parent])
-    under[label] = cy_ > py_                           # (measured down from the bar's top: further down)
-check(f'the cells that come and go have places of their own in a row under their section ({sorted(c[1] for c in COND)}: '
-      f'{under})', len(COND) == len(tb.COND) and all(under.values()))
-TOOL[0] = 'CUT'
-h0 = bar_h(tb.items(C, 2560, 1440, 1.0, left=0.0, right=2560.0))
-B.stab_enable = True
-h1 = bar_h(tb.items(C, 2560, 1440, 1.0, left=0.0, right=2560.0))
-B.stab_enable = False
-check(f'... the bar grows down by a row while one of them shows (Cut: {h0:.0f} -> {h1:.0f} px with Slow Line on) and is '
-      f'back after', h1 > h0 and bar_h(tb.items(C, 2560, 1440, 1.0, left=0.0, right=2560.0)) == h0)
-
-
-def at(width, tool):
-    TOOL[0] = tool
-    return tb.items(C, width, 1000, 1.0, left=0.0, right=float(width))
-
-
-its = at(2560, 'SMART')
-labels = {i.label for i in its if i.kind in {'seg', 'ibtn', 'mini'}}
-check(f'a place the tool does not use is EMPTY, nothing greyed, nothing moved in (Smart Move: no shapes, no Res; it '
-      f'has {len(labels)} cells), and every cell shown can be clicked',
-      'Lasso' not in labels and 'Res' not in labels and 'Sketch' not in labels and 'Ortho' in labels
-      and all(i.enabled for i in its))
-hs = {t: bar_h(at(2560, t)) for t in tools}
-its = at(2560, 'SMART')
-cards = [i for i in its if i.kind == 'card' and i.icon != 'outer']
-n_cut = len([i for i in at(2560, 'CUT') if i.kind == 'card' and i.icon != 'outer'])
-blocks = {t: [i for i in at(2560, t) if i.kind == 'glabel' and i.icon == 'block'] for t in ('SMART', 'CUT', 'BASE')}
-its = at(2560, 'SMART')
-check(f'0.24.218 a section the tool does not use has NO card (Smart Move: {len(cards)} cards, no LASSO block; Cut: '
-      f'{n_cut} cards with the block) - the view shows there, no empty dark place; the bar is as high as the tool '
-      f'needs (Smart Move {hs["SMART"]:.0f} px, Cut {hs["CUT"]:.0f} px)',
-      len(cards) >= 1 and n_cut >= 4 and not blocks['SMART'] and len(blocks['CUT']) == 1 and hs['SMART'] <= hs['CUT']
-      and all(any(c.x <= i.x and i.x + i.w <= c.x + c.w + 0.01 and c.y <= i.y and i.y + i.h <= c.y + c.h + 0.01 for c in cards)
-              for i in its if i.kind in {'seg', 'mini', 'ibtn', 'drop', 'glabel'}))
-its = at(2560, 'BASE')
-left_edge = min(i.x for i in its if i.kind == 'card' and i.icon != 'outer')
-own = [i for i in its if i.kind == 'glabel' and i.label in {'EDGE', 'SIDES'}]
-fixed_bottom = min(i.y for i in its if (i.kind, i.label) in FIXED and FIXED[(i.kind, i.label)](cell_of(i)))
-check('the tool\'s own groups (Base Mesh: Edge) are under the fixed rows, from the left',
-      bool(own) and all(i.y < fixed_bottom for i in own) and min(i.x for i in own) - left_edge < 20)
-rows_at = {w_: len({round(i.y, 1) for i in at(w_, 'CUT') if (i.kind, i.label) in FIXED}) for w_ in (2560, 1800, 1300)}
-same_narrow = {}
-for w_ in (1800, 1300):
-    pos = collections.defaultdict(set)
+for state in range(3):
+    if state == 1:
+        B.stab_enable = True; B.outline_corner = 'ROUND'
+    if state == 2:
+        B.shape = 'CIRCLE'
     for t in tools:
-        its_ = at(w_, t)
-        for i in its_:
-            if (i.kind, i.label) in FIXED and FIXED[(i.kind, i.label)](cell_of(i)):
-                pos[(i.kind, i.label)].add((round(i.x, 1), round(1000 - i.y, 1)))
-    same_narrow[w_] = all(len(v) == 1 for v in pos.values())
-check(f'a narrower view: the fixed places take more rows ({rows_at}) - how they are split depends on the width alone, '
-      f'so they are still the same for every tool ({same_narrow})', all(same_narrow.values())
-      and rows_at[1300] >= rows_at[1800] >= rows_at[2560])
-# the look: sections side by side like the tool menu - a title on top, its cells under it, a rule between
-its = at(2560, 'CUT')
-res_cell = next(i for i in its if i.kind == 'mini' and i.label == 'Res')
-res_title = next(i for i in its if i.kind == 'glabel' and i.label == 'RESOLUTION')
-apply_cell = next(i for i in its if i.label == 'Apply to Parts')
+        for i in top(t):
+            key = (i.kind, i.label)
+            if key in BLOCK and key not in tb.COND and (not i.enabled or BLOCK[key](
+                    dict(kind=i.kind, label=i.label, action=i.action, prop=i.prop))):   # (not GN Edge's Chamfer)
+                where[key].add((round(i.x, 2), round(1440 - i.y, 2), round(i.w, 2)))
+                always[key] += 1
+B.shape = 'LASSO'; B.stab_enable = False; B.outline_corner = 'NONE'
+moved = {k: v for k, v in where.items() if len(v) != 1}
+n_fixed = len([k for k in BLOCK if k not in tb.COND])
+check(f'the LASSO bar: every cell that is always there ({n_fixed}: the shapes, Line / Sketch / Slow Line, the corners, Res, '
+      f'the targets) is in the bar for EVERY tool ({len(tools)} tools x 3 states) at ONE place; {len(moved)} move',
+      not moved and len(where) == n_fixed and all(v == 3 * len(tools) for v in always.values()), moved)
+its = top('SMART')
+dim = [i.label for i in its if not i.enabled and i.kind in {'ibtn', 'seg', 'mini'}]
+check(f'a tool that does not use the lasso (Smart Move) has the bar too - its cells are dim, no click ({len(dim)} dim)',
+      len(dim) >= 15 and all(i.action is None for i in its if not i.enabled)
+      and not any(i.clickable() for i in its if not i.enabled))
+its = top('CUT')
 names = [i.label for i in its if i.kind == 'glabel']
-block_card = [i for i in its if i.kind == 'card' and i.icon != 'outer'][0]
-block_parts = ['SHAPE', 'DRAW', 'CORNERS', 'RESOLUTION', 'TARGET', 'GN EDGE', 'EDGE FINISH']
-side_parts = ['OPTIONS', 'DEPTH', 'SURFACE']
-
-
-def inside(c, i):
-    return c.x <= i.x and i.x + i.w <= c.x + c.w + 0.01 and c.y <= i.y and i.y + i.h <= c.y + c.h + 0.01
-
-
-check(f'sections: the title above its cells (Resolution over Res, Apply to Parts beside it); {names}',
-      res_title.y > res_cell.y and abs(res_title.x - res_cell.x) < 1.0 and abs(apply_cell.y - res_cell.y) < 1.0
-      and apply_cell.x > res_cell.x and 'OPTIONS' in names)
-titles = {i.label: i for i in its if i.kind == 'glabel'}
-check(f'0.24.224 the LASSO block: ONE card at the left holds Shape, Draw, Corners, Resolution, Target and the edge '
-      f'sections, each with its name ({[n for n in block_parts if n in titles]}); Options / Depth / Surface are cards '
-      f'of their own at its right',
-      names[0] == 'LASSO' and all(n in titles and inside(block_card, titles[n]) for n in block_parts)
-      and all(inside(block_card, i) for i in its if i.kind in {'ibtn'} or i.label in {'Sketch', 'Sharp', 'Res', 'Selected'})
-      and all(n in titles and not inside(block_card, titles[n]) and titles[n].x > block_card.x + block_card.w
-              for n in side_parts)
-      and block_card.x == min(c.x for c in its if c.kind == 'card' and c.icon != 'outer'))
-base = at(2560, 'BASE')
-bc = [i for i in base if i.kind == 'card' and i.icon != 'outer'][0]
-check('... Base Mesh: its Edge section is in the block too',
-      any(i.kind == 'glabel' and i.label == 'EDGE' and inside(bc, i) for i in base))
-its = at(2560, 'CUT')
-tb.FORCE_SECTIONS[0] = False
-its = at(2560, 'CUT')
+cards = [i for i in its if i.kind == 'card']
+check(f'the top bar is ONE card - LASSO with its parts named ({names}); no Options / Depth / Surface in it',
+      len(cards) == 1 and names[0] == 'LASSO' and all(n in names for n in ('SHAPE', 'DRAW', 'CORNERS', 'RESOLUTION',
+                                                                            'TARGET', 'GN EDGE', 'EDGE FINISH'))
+      and not {'OPTIONS', 'DEPTH', 'SURFACE'} & set(names)
+      and all(cards[0].x <= i.x and i.x + i.w <= cards[0].x + cards[0].w + 0.01 for i in its if i.kind in {'ibtn', 'seg', 'mini'}))
 res_cell = next(i for i in its if i.kind == 'mini' and i.label == 'Res')
 res_title = next(i for i in its if i.kind == 'glabel' and i.label == 'RESOLUTION')
-check('Preferences > Top Bar Sections off: the plain rows of 0.24.216 (the name beside its cells)',
-      abs(res_title.y - res_cell.y) < 1.0 and res_title.x < res_cell.x and tb.sections_wanted() is False)
+shape_y = next(i for i in its if i.kind == 'ibtn').y
+check('the long form: a part\'s name above its cells; Shape, Draw, Corners and Resolution side by side in the first band',
+      res_title.y > res_cell.y and abs(res_title.x - res_cell.x) < 1.0 and abs(res_cell.y - shape_y) < 1.0)
+B.stab_enable = True
+its2 = top('CUT')
+B.stab_enable = False
+st = next((i for i in its2 if i.kind == 'mini' and i.label == 'Strength'), None)
+slow = next(i for i in its2 if i.label == 'Slow Line')
+same_x = {(i.kind, i.label): round(i.x, 1) for i in its if i.kind in {'ibtn', 'seg'}} == \
+    {(i.kind, i.label): round(i.x, 1) for i in its2 if i.kind in {'ibtn', 'seg'}}
+check('a cell that comes and goes (Slow Line: Strength) shows in a row under its part; nothing moves sideways',
+      st is not None and st.y < slow.y and same_x)
+bt = bottom('CUT')
+bn = [i.label for i in bt if i.kind == 'glabel']
+check(f'the tool\'s box (bottom): its name and what changes from tool to tool ({bn}) - one card, no Options',
+      len([i for i in bt if i.kind == 'card']) == 1 and bn[0] == 'CUT' and 'DEPTH' in bn and 'OPTIONS' not in bn
+      and all(i.enabled for i in bt))
+sm = [i.label for i in bottom('SMART') if i.kind == 'glabel']
+check(f'... Smart Move: its own sections ({sm})', len(sm) >= 3 and sm[0] == 'SMART MOVE')
+TOOL[0] = 'CUT'
+oc = [c['label'] for c in tb.option_cells(C)]
+TOOL[0] = 'SMART'
+os_ = [c['label'] for c in tb.option_cells(C)]
+check(f'Options (for the dock): Cut {oc}, Smart Move {os_}',
+      oc == ['Auto Apply', 'Ortho', tb.LANG_LABEL] and os_ == ['Ortho', tb.LANG_LABEL])
+# the row of boxes under the dock
+from mecha_lab import bottom_row, mecha_menu as mm, ui_bars  # noqa: E402
+TOOL[0] = 'CUT'
+bpy.ops.mesh.primitive_cube_add()
+bx = bottom_row.boxes(C, 2560, 1440, 1.0)
+acts = [i for _w, _h, its_ in bx for i in its_ if i.kind == 'abtn']
+want = sum(len(b) for _s, b in mm.ACTIONS)
+titles = [[i.label for i in its_ if i.kind == 'glabel' and i.icon == 'title'] for _w, _h, its_ in bx]
+check(f'the row of boxes: the tool\'s box first, then the right-click popup\'s actions in three boxes ({titles[1:]}); '
+      f'every action of the popup is there ({len(acts)} of {want})',
+      len(bx) == 4 and bx[0][2][1].label == 'CUT' and len(acts) >= want
+      and all(a.action[0] in {'mop', 'tool'} for a in acts)
+      and 'ACTIONS' in titles[1] and 'SYMMETRY' in titles[2] and 'GROUPS' in titles[3])
+ob = C.active_object
+it = next(i for i in acts if i.action[0] == 'mop' and i.action[1] == 'mch.actions_mirror' and i.action[2].get('axis') == 0)
+n0 = len(ob.modifiers)
+ui_bars.run(C, it)
+check(f'a click on an action button runs it (Symmetry X: {n0} -> {len(C.active_object.modifiers)} modifiers)',
+      len(C.active_object.modifiers) == n0 + 1)
+import inspect  # noqa: E402
+check('a right click opens the Tool Wheel while the row is on (mecha_menu.open_menu); the dock sits above the row',
+      'radial_menu' in inspect.getsource(mm.open_menu) and '_row_h' in inspect.getsource(ui_bars.dock_items)
+      and '_row_h' in inspect.getsource(ui_bars.dock_top))
+# Preferences > Top Bar Sections off: the plain rows of 0.24.216, everything in the top bar
+tb.FORCE_SECTIONS[0] = False
+its = top('CUT')
+check('Top Bar Sections off: the plain rows as before (Ortho in the top bar, nothing at the bottom)',
+      any(i.label == 'Ortho' for i in its) and bottom('CUT') == [] and tb.sections_wanted() is False)
 tb.FORCE_SECTIONS[0] = None
 check('... on by default', tb.sections_wanted() is True)
-# 0.24.219 Options at the bar's top right; the section names bright and bigger
-its = at(2560, 'CUT')
-cards = [i for i in its if i.kind == 'card']
-opt = next(i for i in its if i.kind == 'seg' and i.label == tb.LANG_LABEL)     # (0.24.225 the last cell: 한글)
-opt_title = next(i for i in its if i.kind == 'glabel' and i.label == 'OPTIONS')
-top_band = max(i.y for i in its if i.kind in {'seg', 'ibtn', 'mini'})
-right_most = max(i.x + i.w for i in its if i.kind in {'seg', 'ibtn', 'mini'} and abs(i.y - top_band) < 1.0)
-check(f'Options (Auto Apply, Ortho) is at the top right of the bar: in the first band, the last cell at its right end '
-      f'(x {opt.x + opt.w:.0f} of {right_most:.0f})', abs(opt.y - top_band) < 1.0 and abs(opt.x + opt.w - right_most) < 1.0
-      and opt.x > 2560 * 0.5)
-pos = set()
-for t in tools:
-    for i in at(2560, t):
-        if i.kind == 'seg' and i.label == 'Ortho':
-            pos.add((round(i.x, 1), round(1000 - i.y, 1)))
-check(f'... the same place in every tool ({sorted(pos)})', len(pos) == 1)
-outer = [i for i in its if i.kind == 'card' and i.icon == 'outer']
-inner_cards = [i for i in its if i.kind == 'card' and i.icon != 'outer']
-widths = {round(next(i for i in at(2560, t) if i.kind == 'card' and i.icon == 'outer').w, 1) for t in tools}
-xs = {round(next(i for i in at(2560, t) if i.kind == 'card' and i.icon == 'outer').x, 1) for t in tools}
-check(f'0.24.220 one lighter box holds all the section cards (it is drawn first; every card inside it), the same '
-      f'width and left edge for every tool ({sorted(widths)} px at {sorted(xs)})',
-      len(outer) == 1 and its[0] is outer[0] and len(widths) == 1 and len(xs) == 1
-      and all(outer[0].x <= c.x and c.x + c.w <= outer[0].x + outer[0].w + 0.01 and outer[0].y <= c.y
-              and c.y + c.h <= outer[0].y + outer[0].h + 0.01 for c in inner_cards))
-check('the section names are drawn as titles (bigger, bright) - every section of the bar',
-      all(i.icon in {'title', 'block'} for i in its if i.kind == 'glabel') and tb.TITLE_H >= 18)
-wide, narrow = at(2560, 'BASE'), at(500, 'BASE')
-check('a view too narrow for a single place (500 px): the groups are packed as before, nothing lost',
-      sorted((i.kind, i.label) for i in narrow if i.kind not in {'card', 'vrule', 'glabel'}) ==
-      sorted((i.kind, i.label) for i in wide if i.kind not in {'card', 'vrule', 'glabel'}))
-# 0.24.225 the Options section's 한글 / English switch
+wide, narrow = top('BASE'), top('BASE', 500)
+check('a view too narrow for the bar (500 px): the groups packed as before, nothing lost',
+      {'Ortho', 'Res', 'Flat'} <= {i.label for i in narrow} and bottom('BASE', 500) == [])
+# 0.24.225 the 한글 / English switch
 from mecha_lab import i18n  # noqa: E402
-its = at(2560, 'CUT')
-sw = next((i for i in its if i.kind == 'seg' and i.label == tb.LANG_LABEL), None)
+TOOL[0] = 'CUT'
 i18n.force('EN')
-on_en = next(i for i in at(2560, 'CUT') if i.label == tb.LANG_LABEL).on
+on_en = next(c for c in tb.option_cells(C) if c['label'] == tb.LANG_LABEL)['on']
 bpy.ops.mch.toggle_language()
 lang1 = i18n.lang()
-on_ko = next(i for i in at(2560, 'CUT') if i.label == tb.LANG_LABEL).on
+on_ko = next(c for c in tb.option_cells(C) if c['label'] == tb.LANG_LABEL)['on']
 bpy.ops.mch.toggle_language()
 lang2 = i18n.lang()
 i18n.force('EN')
-check(f'0.24.225 Options has a 한글 switch in every tool with a bar; a click switches Korean / English (EN -> {lang1} -> '
-      f'{lang2}), lit while Korean',
-      sw is not None and sw.action == ('op', 'mch.toggle_language', {}) and not on_en and on_ko and lang1 == 'KO'
-      and lang2 == 'EN' and all(any(i.label == tb.LANG_LABEL for i in at(2560, t)) for t in tools))
+check(f'the 한글 switch: a click switches Korean / English (EN -> {lang1} -> {lang2}), lit while Korean',
+      not on_en and on_ko and lang1 == 'KO' and lang2 == 'EN')
 summary()

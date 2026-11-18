@@ -219,6 +219,13 @@ def box(context, k=None):
         menu_x = max(left + 8 * k, (region.width - mw) / 2.0)
         if x + w + 10 * k > menu_x:                  # no room beside the menu: above it and the actions
             y = ui_bars.dock_top(context, k, region.width) + 6 * k
+        elif not folded(context):                    # 0.24.226 open, over the row of boxes: above them and the dock
+            try:
+                from . import bottom_row
+                if bottom_row.on(context):
+                    y = ui_bars.dock_top(context, k, region.width) + 6 * k
+            except (ImportError, AttributeError):
+                pass
     else:                                            # 0.24.58 right of the left tool strip, above the toolbar
         x, y = left + 14 * k + ui_bars.strip_width(context, k), 90 * k
     return x, y, w, h, rows, keyw

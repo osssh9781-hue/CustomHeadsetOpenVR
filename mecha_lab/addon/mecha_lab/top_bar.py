@@ -898,7 +898,7 @@ def items(context, region_w, region_h, k=1.0, left=None, right=None, part='TOP')
         if not side_parts:
             return []
         w = max(pl['x'] + pl['w'] for pl in side_places) + 2 * BLOCK_PAD * k      # as wide as what is in it
-        floor = ui_bars.dock_top(context, k, region_w)
+        floor = ui_bars.bottom_taken(context, k, region_w)    # (bottom_row moves the box to its place in the row)
         card_h = col_h(1) + head + 2 * BLOCK_PAD * k
         t = ts.TOOL_BY_ID.get(tool)
         block(1, [(t_, c, sp_) for t_, c, sp_, _w in side_parts], side_places, t[1] if t else SIDE_TITLE,

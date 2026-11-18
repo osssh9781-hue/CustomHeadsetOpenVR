@@ -42,7 +42,12 @@ cut = S.mch_cut
 def bar(tool):
     TOOL[0] = tool
     sp.dirty()
-    return tb.items(CTX, W, H, 1.0)
+    # 0.24.226 the bar is in three places: the LASSO bar (top; a dim cell = one the tool does not have), the tool's box
+    # (bottom) and Options (the dock)
+    from mecha_lab.mecha_menu import Item
+    its = [i for i in tb.items(CTX, W, H, 1.0) if i.enabled] + tb.items(CTX, W, H, 1.0, part='BOTTOM')
+    return its + [Item(c['kind'], 0, 0, 10, 10, c['label'], c['icon'], c['on'], True, c['action'], c['data'], c['prop'])
+                  for c in tb.option_cells(CTX)]
 
 
 def groups(tool):
