@@ -80,7 +80,7 @@ for name, was in before.items():
 n_before = sum(len(v) for v in before.values())
 check(f'every cell of 0.24.213 is still in the bar, the same (kind, name, on / off, what a click does, its setting) - '
       f'{n_before:,} checked over {len(before)} tool states, {len(gone)} gone',
-      not gone and set(states) == set(before), gone[:4])
+      not gone and set(before) <= set(states), gone[:4])        # (0.24.241 a new tool adds states)
 kinds = {json.loads(k)[0] for k in new if json.loads(k)[1] != tb.LANG_LABEL}     # (0.24.225 + the 한글 switch)
 check(f'the only new things are the 한글 switch and group names shown a second time ({sorted(set(json.loads(k)[1] for k in new))}: Press Cut\'s '
       f'own Line / Lasso switch stays with the tool\'s own groups)', kinds <= {'glabel'})

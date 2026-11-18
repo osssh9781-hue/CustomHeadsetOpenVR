@@ -76,4 +76,64 @@ check(f'faces point outward ({inside} of 400 inward)', inside < 8)
 r = bpy.ops.mch.retopo_bake()
 check('Bake again from the same high onto the wrapped low', r == {'FINISHED'} and C.active_object is low)
 check('the high is never changed', np.allclose(co0, np.array([c for v in high.data.vertices for c in v.co])))
+# 0.24.243 holes closed, faces outward
+import bmesh
+bm_ = bmesh.new(); bm_.from_mesh(low.data); bm_.faces.ensure_lookup_table()
+bmesh.ops.delete(bm_, geom=[bm_.faces[i] for i in range(0, 40)], context='FACES')
+bmesh.ops.reverse_faces(bm_, faces=bm_.faces[100:300])
+bm_.to_mesh(low.data); bm_.free()
+note = rb.tidy_low(C, high, low)
+bm_ = bmesh.new(); bm_.from_mesh(low.data)
+holes = sum(1 for e in bm_.edges if e.is_boundary); bm_.free()
+inward = sum(1 for p in low.data.polygons if p.normal.dot(p.center) < 0)
+check(f'holes in the low are closed and every face points out ({note}; {holes} open edges, {inward} inward)',
+      holes == 0 and inward < 5 and 'closed' in note)
+
+# 0.24.243 the rays reach past how far the low is off (a low pushed out: no black)
+low.data.transform(__import__('mathutils').Matrix.Scale(1.06, 4))
+st.normal, st.ao, st.rough, st.metal, st.curv, st.height = True, True, True, True, True, True
+mat = bpy.data.materials.new('Rocky'); mat.use_nodes = True
+pb = mat.node_tree.nodes['Principled BSDF']; pb.inputs['Roughness'].default_value = 0.8; pb.inputs['Metallic'].default_value = 1.0
+high.data.materials.clear(); high.data.materials.append(mat)
+r = bpy.ops.mch.retopo_bake()
+imgs = {k: bpy.data.images.get(f'{low.name}_{k}') for k in ('AO', 'Normal', 'Roughness', 'Metallic', 'Curvature', 'Height')}
+def stats(img):
+    px = np.array(img.pixels[:]).reshape(-1, 4)[:, :3]
+    return float((px.max(1) < 0.02).mean()), px.mean(0)
+px_ = lambda k: np.array(imgs[k].pixels[:]).reshape(-1, 4)[:, :3]
+cover = px_('Roughness').max(1) > 0.05                  # (inside the UV islands: the roughness 0.8 baked there)
+blk = float((px_('AO')[cover].max(1) < 0.02).mean())
+check(f'a low 6 % off the high still bakes (AO black {blk:.3f} of the {cover.mean():.0%} of pixels inside the islands), the ray setting put back',
+      r == {'FINISHED'} and blk < 0.02 and abs(st.ray - 2.0) < 1e-6)
+rough = float(px_('Roughness')[cover].mean()); metal = float(px_('Metallic')[cover].mean())
+cv = np.array(imgs['Curvature'].pixels[:]).reshape(-1, 4)[:, 0]; hv = np.array(imgs['Height'].pixels[:]).reshape(-1, 4)[:, 0]
+check(f'Roughness ({rough:.2f} for 0.8), Metallic ({metal:.2f} for 1), Curvature (spread {cv.std():.3f}), Height (spread {hv.std():.3f}) maps',
+      0.7 < rough < 0.9 and metal > 0.85 and cv.std() > 0.02 and hv.std() > 0.02)
+bmat = low.data.materials[0]
+bsdf = next(n for n in bmat.node_tree.nodes if n.type == 'BSDF_PRINCIPLED')
+check('the low\'s material uses Roughness and Metallic, the Height as a bump; the high\'s own material untouched; no copies left',
+      bsdf.inputs['Roughness'].is_linked and bsdf.inputs['Metallic'].is_linked
+      and any(n.type == 'BUMP' for n in bmat.node_tree.nodes) and pb.inputs['Metallic'].default_value == 1.0
+      and not any(o.name.startswith('.MCH Bake Source') for o in bpy.data.objects)
+      and not any(m.name.startswith('.MCH Bake Emit') for m in bpy.data.materials))
+
+# 0.24.243 several meshes at once
+st.rough = st.metal = st.curv = st.height = False
+st.ao = False
+for o in list(C.selected_objects):
+    o.select_set(False)
+hs = []
+for i in range(3):
+    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=4, radius=0.5, location=(3 + 1.5 * i, 0, 0))
+    hs.append(C.active_object)
+for o in hs:
+    o.select_set(True)
+S.mch_rb_method, S.mch_rb_faces = 'QUAD', 600
+r = bpy.ops.mch.retopo_make()
+lows = [rb.low_of(h) for h in hs]
+check(f'three meshes selected: Retopo makes a low for each ({[len(lo.data.polygons) if lo else 0 for lo in lows]}), all selected after',
+      r == {'FINISHED'} and all(lows) and all(lo.select_get() for lo in lows))
+r = bpy.ops.mch.retopo_bake()
+check('Bake bakes each one onto its own low', r == {'FINISHED'} and all(any(n.type == 'TEX_IMAGE' for m in lo.data.materials if m
+      and m.node_tree for n in m.node_tree.nodes) for lo in lows))
 summary()

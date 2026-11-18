@@ -303,7 +303,36 @@ def search_hit(context, x, y):
     return sb is not None and sb[0] <= x <= sb[0] + sb[2] and sb[1] <= y <= sb[1] + sb[3]
 
 
+_BOX = {'key': None, 'time': 0.0, 'val': None}
+
+
 def box(context, k=None):
+    """0.24.243 (user: "뷰포트 조정이 엄청 렉") kept between redraws: the card's place was worked out again on every
+    frame (the dock's and the boxes' layout with it) - now only when something on screen changed."""
+    import time
+    from . import ui_gpu as G, ui_bars
+    region = getattr(context, 'region', None)
+    kk = G.ui_factor(context) if k is None else k
+    try:
+        tid = _stroke_tool(context)
+        try:
+            rows = tuple(tuple(r) for r in card_rows(tid, kk, folded(context))) if tid is not None else None
+        except (IndexError, KeyError, TypeError, AttributeError):
+            rows = None
+        key = (region.width if region else 0, region.height if region else 0, round(kk, 4), ui_bars.VERSION[0],
+               tid, FEATURE[0], folded(context), ui_bars.menu_on(context), ui_bars.left_inset(context),
+               round(ui_bars.strip_width(context, kk), 2), rows)
+    except (AttributeError, ReferenceError, TypeError, KeyError):
+        key = None
+    now = time.monotonic()
+    if key is not None and key == _BOX['key'] and now - _BOX['time'] < 2.0:
+        return _BOX['val']
+    val = _box(context, kk)
+    _BOX.update(key=key, time=now, val=val)
+    return val
+
+
+def _box(context, k=None):
     """(x, y, w, h, rows, keyw) of the card in region px, or None when no legend shows.
     0.24.59 the bottom left corner, left of the main menu (above the menu and the actions when they are in
     the way on a narrow screen); with the tool strip on the left (Tool Menu Place = Left): right of it."""

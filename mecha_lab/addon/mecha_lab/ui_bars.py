@@ -394,7 +394,7 @@ def actions_items(context, region_w, region_h, k=1.0):
 
 _MEMO = {'key': None, 'time': 0.0, 'items': []}
 VERSION = [0]
-MEMO_TTL = 0.2           # s: the items are rebuilt at most this often unless something changed
+MEMO_TTL = 0.5           # s: the items are rebuilt at most this often unless something changed (0.24.243: was 0.2)
 
 
 def bump():
@@ -925,7 +925,7 @@ def hovered(context, items):
 # every frame drew all our cards again (some 160 texts, 110 boxes).  Now what is drawn is kept in a picture and only
 # drawn again when something in it changed (an item, its value, the hover, the size); else the picture is laid on.
 _PIC = {}                  # region pointer -> [signature, texture, time drawn, size, framebuffer]
-PIC_MAX_AGE = 1.0          # drawn again at least this often (a thumbnail loaded later, a unit change ...)
+PIC_MAX_AGE = 2.0          # drawn again at least this often (a thumbnail loaded later, a unit change ...)
 PIC_ON = True
 
 

@@ -239,7 +239,7 @@ back = qh._side_panel_shows(C)
 sp.on, sp.minimised = real_on, real_min
 check('Quick HUD: not shown while the side panel shows the same settings (folded panel: the HUD may show)',
       hidden and not back)
-src = inspect.getsource(key_legend.box)
+src = inspect.getsource(getattr(key_legend, '_box', key_legend.box))   # (0.24.243 box() keeps the place; _box works it out)
 check('Key legend: the card fits the key column + the widest text (a long text ran out of it)',
       "(keyw if r[0] == 'kv' else 0.0)" in src)        # (0.24.233 each row: key column + its text)
 

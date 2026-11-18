@@ -35,8 +35,9 @@ import numpy as np
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
 from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
-MAPS = ('NORMAL', 'AO', 'COLOR')
-SUFFIX = {'NORMAL': 'Normal', 'AO': 'AO', 'COLOR': 'Color'}
+MAPS = ('NORMAL', 'AO', 'COLOR', 'ROUGH', 'METAL', 'CURV', 'HEIGHT')
+SUFFIX = {'NORMAL': 'Normal', 'AO': 'AO', 'COLOR': 'Color', 'ROUGH': 'Roughness', 'METAL': 'Metallic',
+          'CURV': 'Curvature', 'HEIGHT': 'Height'}
 UV_NAME = 'MCH_Bake'
 MAT_SUFFIX = '_Baked'
 TARGET_MAT = '.MCH Bake Target'
@@ -54,6 +55,13 @@ class MCH_PG_BakeMaps(bpy.types.PropertyGroup):
     normal: BoolProperty(name='Normal', default=True, description='Tangent-space normal map: the high\'s surface detail on the low')
     ao: BoolProperty(name='AO', default=True, description='Ambient occlusion of the high (crevices darker)')
     color: BoolProperty(name='Color', default=False, description='The high\'s base colour (its material / polypaint)')
+    # 0.24.243 (user: "러프니스 맵이랑 다른 설정은 맵이 안 생겨?")
+    rough: BoolProperty(name='Roughness', default=False, description='The high\'s material roughness')
+    metal: BoolProperty(name='Metallic', default=False, description='The high\'s material metallic (0 / 1)')
+    curv: BoolProperty(name='Curvature', default=False,
+                       description='Convex edges light, crevices dark, flat 50 % grey (for edge wear / dirt masks)')
+    height: BoolProperty(name='Height', default=False,
+                         description='How far the high stands out of (light) or sinks into (dark) the low, flat 50 % grey')
     ray: FloatProperty(name='Ray Distance', default=2.0, min=0.05, max=20.0, precision=2, subtype='PERCENTAGE',
                        description='How far the high may be off the low (% of the low\'s size), on either side.  Too small: '
                        'holes in the map; too big: rays catch a neighbouring wall of a thin part')
@@ -362,6 +370,20 @@ def baked_material(low, images, base, green='OPENGL', uv_name=''):
         colour = mix.outputs['Result']
     if colour is not None:
         nt.links.new(colour, bsdf.inputs['Base Color'])
+    if images.get('ROUGH') is not None:            # 0.24.243
+        nt.links.new(tex(images['ROUGH'], 600).outputs['Color'], bsdf.inputs['Roughness'])
+    if images.get('METAL') is not None:
+        nt.links.new(tex(images['METAL'], 900).outputs['Color'], bsdf.inputs['Metallic'])
+    bump = None
+    if images.get('HEIGHT') is not None:
+        bump = nt.nodes.new('ShaderNodeBump')
+        bump.location = (100, -650)
+        bump.inputs['Strength'].default_value = 0.4
+        rng = float(images['HEIGHT'].get('mch_height_range', 0.0))
+        if rng > 0:
+            bump.inputs['Distance'].default_value = 2.0 * rng
+        nt.links.new(tex(images['HEIGHT'], -650).outputs['Color'], bump.inputs['Height'])
+        nt.links.new(bump.outputs['Normal'], bsdf.inputs['Normal'])
     if images.get('NORMAL') is not None:
         n = tex(images['NORMAL'], -300)
         nm = nt.nodes.new('ShaderNodeNormalMap')
@@ -383,7 +405,10 @@ def baked_material(low, images, base, green='OPENGL', uv_name=''):
             nt.links.new(sep.outputs['Blue'], comb.inputs['Blue'])
             src = comb.outputs['Color']
         nt.links.new(src, nm.inputs['Color'])
-        nt.links.new(nm.outputs['Normal'], bsdf.inputs['Normal'])
+        if bump is not None:                       # (the height bumps on top of the normal map)
+            nt.links.new(nm.outputs['Normal'], bump.inputs['Normal'])
+        else:
+            nt.links.new(nm.outputs['Normal'], bsdf.inputs['Normal'])
     return mat
 
 
@@ -408,6 +433,141 @@ def _store_image(img, st):
 
 
 # ---------------------------------------------------------------------------------------------------- the bake
+SRC = '.MCH Bake Source'
+ATTR_CURV, ATTR_HEIGHT = 'mch_bake_curv', 'mch_bake_height'
+
+
+def _emit_sources(context, low, highs):
+    """0.24.243 copies of the highs as they show (never the highs themselves), with their curvature and their height
+    over the low as point colours - the Metallic / Curvature / Height bakes read these."""
+    from mathutils import Vector
+    from mathutils.bvhtree import BVHTree
+    dg = context.evaluated_depsgraph_get()
+    lev = low.evaluated_get(dg)
+    lbvh = BVHTree.FromObject(lev, dg)
+    Lw, Li = low.matrix_world, low.matrix_world.inverted()
+    out = []
+    for h in highs:
+        me = bpy.data.meshes.new_from_object(h.evaluated_get(dg), preserve_all_data_layers=True, depsgraph=dg)
+        me.name = SRC
+        ob = bpy.data.objects.new(SRC, me)
+        context.scene.collection.objects.link(ob)
+        ob.matrix_world = h.matrix_world.copy()
+        n = len(me.vertices)
+        co = np.empty(n * 3)
+        me.vertices.foreach_get('co', co)
+        co = co.reshape(-1, 3)
+        nr = np.empty(n * 3)
+        me.vertices.foreach_get('normal', nr)
+        nr = nr.reshape(-1, 3)
+        E = np.empty(len(me.edges) * 2, np.int64)
+        me.edges.foreach_get('vertices', E)
+        E = E.reshape(-1, 2)
+        # curvature: how much the neighbours rise above (crevice) or fall below (ridge) each point's tangent plane
+        acc = np.zeros(n)
+        cnt = np.zeros(n)
+        for a, b in ((0, 1), (1, 0)):
+            d = co[E[:, b]] - co[E[:, a]]
+            ln = np.maximum(np.linalg.norm(d, axis=1), 1e-12)
+            np.add.at(acc, E[:, a], (nr[E[:, a]] * d).sum(1) / ln)
+            np.add.at(cnt, E[:, a], 1)
+        curv = -acc / np.maximum(cnt, 1)
+        for _i in range(2):                         # (a little smoothed: no salt and pepper)
+            sm = np.zeros(n)
+            np.add.at(sm, E[:, 0], curv[E[:, 1]])
+            np.add.at(sm, E[:, 1], curv[E[:, 0]])
+            curv = 0.5 * curv + 0.5 * sm / np.maximum(cnt, 1)
+        sc = max(float(np.percentile(np.abs(curv), 97)), 1e-9)
+        cv = np.clip(0.5 + 0.5 * curv / sc, 0.0, 1.0)
+        # height: along the low's normal, from the nearest point of the low
+        M = np.array(h.matrix_world)
+        W = co @ M[:3, :3].T + M[:3, 3]
+        hv = np.zeros(n)
+        for i, p in enumerate(W):
+            q = lbvh.find_nearest(Li @ Vector(p))
+            if q[0] is not None:
+                qw = Lw @ q[0]
+                nw = (Lw.to_3x3().inverted().transposed() @ q[1]).normalized()
+                hv[i] = (Vector(p) - qw).dot(nw)
+        rng = max(float(np.percentile(np.abs(hv), 99)), 1e-9)
+        ob['mch_height_range'] = rng
+        hh = np.clip(0.5 + 0.5 * hv / rng, 0.0, 1.0)
+        for name, v in ((ATTR_CURV, cv), (ATTR_HEIGHT, hh)):
+            a_ = me.color_attributes.get(name) or me.color_attributes.new(name, 'FLOAT_COLOR', 'POINT')
+            a_.data.foreach_set('color', np.c_[v, v, v, np.ones(n)].astype(np.float32).ravel())
+        ob['mch_src_mats'] = [m.name if m else '' for m in me.materials]
+        out.append(ob)
+    return out
+
+
+def _metal_input(mat):
+    """(socket linked into Metallic or None, value) of the material's Principled BSDF."""
+    if mat is None or not mat.node_tree:
+        return None, 0.0
+    b = next((n for n in mat.node_tree.nodes if n.type == 'BSDF_PRINCIPLED'), None)
+    if b is None:
+        return None, 0.0
+    inp = b.inputs['Metallic']
+    return (inp.links[0].from_socket if inp.is_linked else None), float(inp.default_value)
+
+
+def _emit_material(ob, kind):
+    """The copy's slots -> materials that glow its Metallic / curvature / height (white = 1)."""
+    me = ob.data
+    names = list(ob.get('mch_src_mats', []))
+    for i in range(max(1, len(names))):
+        src = bpy.data.materials.get(names[i]) if i < len(names) and names[i] else None
+        if kind == 'METAL' and src is not None and src.node_tree:
+            m = src.copy()
+            m.name = '.MCH Bake Emit'
+            nt = m.node_tree
+            sock, val = _metal_input(m)
+            em = nt.nodes.new('ShaderNodeEmission')
+            if sock is not None:
+                nt.links.new(sock, em.inputs['Color'])
+            else:
+                em.inputs['Color'].default_value = (val, val, val, 1.0)
+        else:
+            m = bpy.data.materials.new('.MCH Bake Emit')
+            m.use_nodes = True
+            nt = m.node_tree
+            nt.nodes.clear()
+            em = nt.nodes.new('ShaderNodeEmission')
+            if kind == 'METAL':
+                em.inputs['Color'].default_value = (0.0, 0.0, 0.0, 1.0)
+            else:
+                at = nt.nodes.new('ShaderNodeAttribute')
+                at.attribute_name = ATTR_CURV if kind == 'CURV' else ATTR_HEIGHT
+                nt.links.new(at.outputs['Color'], em.inputs['Color'])
+        em.inputs['Strength'].default_value = 1.0
+        outn = next((n for n in nt.nodes if n.type == 'OUTPUT_MATERIAL'), None) or nt.nodes.new('ShaderNodeOutputMaterial')
+        for o_ in [n for n in nt.nodes if n.type == 'OUTPUT_MATERIAL']:
+            o_.is_active_output = o_ is outn
+        nt.links.new(em.outputs['Emission'], outn.inputs['Surface'])
+        old = me.materials[i] if i < len(me.materials) else None
+        if i < len(me.materials):
+            me.materials[i] = m
+        else:
+            me.materials.append(m)
+        if old is not None and old.name.startswith('.MCH Bake Emit') and old.users == 0:
+            bpy.data.materials.remove(old)
+
+
+def _drop_sources(srcs):
+    for ob in srcs or ():
+        try:
+            me = ob.data
+            mats = [m for m in me.materials if m is not None and m.name.startswith('.MCH Bake Emit')]
+            bpy.data.objects.remove(ob)
+            if me.users == 0:
+                bpy.data.meshes.remove(me)
+            for m in mats:
+                if m.users == 0:
+                    bpy.data.materials.remove(m)
+        except ReferenceError:
+            pass
+
+
 CAGE = '.MCH Bake Cage'
 
 
@@ -509,9 +669,11 @@ def bake_pair_steps(context, low, highs, st, keep_state=None):
     returns the info."""
     S = context.scene
     t0 = time.time()
-    kinds = [k for k, on in (('NORMAL', st.normal), ('AO', st.ao), ('COLOR', st.color)) if on]
+    kinds = [k for k, on in (('NORMAL', st.normal), ('AO', st.ao), ('COLOR', st.color),
+                             ('ROUGH', getattr(st, 'rough', False)), ('METAL', getattr(st, 'metal', False)),
+                             ('CURV', getattr(st, 'curv', False)), ('HEIGHT', getattr(st, 'height', False))) if on]
     if not kinds:
-        raise RuntimeError('no map chosen (Normal / AO / Color)')
+        raise RuntimeError('no map chosen (Normal / AO / Color / Roughness / Metallic / Curvature / Height)')
     if not highs:
         raise RuntimeError('no high poly')
     for o in [low] + list(highs):
@@ -529,6 +691,7 @@ def bake_pair_steps(context, low, highs, st, keep_state=None):
     images = {}
     swapped = None
     cage = None
+    srcs = None
     try:
         for o in [low] + list(highs):           # (hidden ones can't be selected / baked)
             o.hide_viewport = False
@@ -574,13 +737,37 @@ def bake_pair_steps(context, low, highs, st, keep_state=None):
                 for o in keep.render_off:
                     o.hide_render = False
                 keep.render_off.clear()
-            else:
+            elif kind == 'COLOR':
                 S.cycles.samples = 4
                 r = bpy.ops.object.bake(type='DIFFUSE', pass_filter={'COLOR'}, **common)
+            elif kind == 'ROUGH':
+                S.cycles.samples = 1
+                r = bpy.ops.object.bake(type='ROUGHNESS', **common)
+            else:                                   # 0.24.243 Metallic / Curvature / Height: from copies that glow it
+                S.cycles.samples = 1
+                if srcs is None:
+                    srcs = _emit_sources(context, low, highs)
+                for h in highs:
+                    h.select_set(False)
+                for c_ in srcs:
+                    _emit_material(c_, kind)
+                    c_.select_set(True)
+                low.select_set(True)
+                context.view_layer.objects.active = low
+                try:
+                    r = bpy.ops.object.bake(type='EMIT', **common)
+                finally:
+                    for c_ in srcs:
+                        c_.select_set(False)
+                    for h in highs:
+                        h.select_set(True)
+                if kind == 'HEIGHT':
+                    img['mch_height_range'] = float(srcs[0].get('mch_height_range', 0.0))
             if 'FINISHED' not in r:
                 raise RuntimeError(f'the {SUFFIX[kind]} bake did not finish')
     finally:
         drop_cage(cage)
+        _drop_sources(srcs)
         if swapped is not None:
             _restore_materials(low, swapped)
         tm = bpy.data.materials.get(TARGET_MAT)
@@ -704,6 +891,11 @@ def draw(layout, context):
     r.prop(st, 'normal', toggle=True)
     r.prop(st, 'ao', toggle=True)
     r.prop(st, 'color', toggle=True)
+    r = col.row(align=True)                          # 0.24.243
+    r.prop(st, 'rough', toggle=True)
+    r.prop(st, 'metal', toggle=True)
+    r.prop(st, 'curv', toggle=True)
+    r.prop(st, 'height', toggle=True)
     col = box.column(align=True)
     col.prop(st, 'ray', slider=True)
     r = col.row(align=True)

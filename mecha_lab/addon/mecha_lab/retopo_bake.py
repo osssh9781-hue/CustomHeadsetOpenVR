@@ -200,6 +200,9 @@ def make_low_steps(context, high, faces, method='QUAD', low=None):
                 bpy.data.meshes.remove(old)
             note = note2 or note
     yield (0.97, 'Finishing')
+    note2 = tidy_low(context, high, low)
+    if note2:
+        note = (note + ' | ' if note else '') + note2
     if not low.data.materials:
         for mat in high.data.materials:
             low.data.materials.append(mat)
@@ -215,6 +218,78 @@ def make_low_steps(context, high, faces, method='QUAD', low=None):
     return low, note
 
 
+def _boundary_loops(bm_):
+    edges = [e for e in bm_.edges if e.is_boundary]
+    seen, loops = set(), []
+    for e in edges:
+        if e.index in seen:
+            continue
+        loop, stack = [], [e]
+        while stack:
+            x = stack.pop()
+            if x.index in seen:
+                continue
+            seen.add(x.index)
+            loop.append(x)
+            for v in x.verts:
+                stack.extend(y for y in v.link_edges if y.is_boundary and y.index not in seen)
+        loops.append(loop)
+    return loops
+
+
+def tidy_low(context, high, low):
+    """0.24.243 (user: "리토포 툴이 이렇게 빵꾸가 나" - a rough scanned rock) holes the remesh left in the low are
+    closed (all of them when the high is closed; on an open high only the small ones - its own border stays), and
+    every face is turned to point out.  Returns a note or ''."""
+    import bmesh
+    dg = context.evaluated_depsgraph_get()
+    hm = high.evaluated_get(dg).to_mesh()
+    try:
+        hb = bmesh.new()
+        hb.from_mesh(hm)
+        high_open = any(e.is_boundary for e in hb.edges)
+        hb.free()
+    finally:
+        high.evaluated_get(dg).to_mesh_clear()
+    bm_ = bmesh.new()
+    bm_.from_mesh(low.data)
+    bm_.edges.ensure_lookup_table()
+    size = max(low.dimensions) or 1.0
+    filled = 0
+    for loop in _boundary_loops(bm_):
+        per = sum(e.calc_length() for e in loop)
+        if high_open and per > 0.35 * size:
+            continue
+        res = bmesh.ops.holes_fill(bm_, edges=loop, sides=0)
+        new = res.get('faces', [])
+        if new:
+            bmesh.ops.triangulate(bm_, faces=new, quad_method='BEAUTY', ngon_method='BEAUTY')
+            filled += 1
+    bmesh.ops.recalc_face_normals(bm_, faces=bm_.faces[:])
+    bm_.to_mesh(low.data)
+    bm_.free()
+    low.data.update()
+    return f'{filled} hole(s) closed' if filled else ''
+
+
+def deviation(context, high, low):
+    """How far the low is off the high (world units, 99th percentile of its points)."""
+    from mathutils import Vector
+    from mathutils.bvhtree import BVHTree
+    dg = context.evaluated_depsgraph_get()
+    bvh = BVHTree.FromObject(high.evaluated_get(dg), dg)
+    Hi = high.matrix_world.inverted()
+    pts = [low.matrix_world @ v.co for v in low.data.vertices]
+    if len(pts) > 6000:
+        pts = pts[:: len(pts) // 6000 + 1]
+    d = []
+    for p in pts:
+        q = bvh.find_nearest(Hi @ p)
+        if q[0] is not None:
+            d.append(((high.matrix_world @ q[0]) - p).length)
+    return float(np.percentile(d, 99)) if d else 0.0
+
+
 def bake_steps(context, high, low):
     from . import bake_maps as bm
     st = bm.settings(context)
@@ -222,11 +297,18 @@ def bake_steps(context, high, low):
         raise RuntimeError('Bake settings are missing')
     keep = bm._Keep(context, [low, high])
     new_uv = st.new_uv
+    ray = st.ray
     st.new_uv = not low.data.uv_layers
+    # 0.24.243 (a rough rock baked black: the low lay farther off the high than the rays reached) the rays reach
+    # past the farthest the low is off the high
+    need = 100.0 * 1.5 * deviation(context, high, low) / max(bm.size_of(low), 1e-9)
+    if need > st.ray:
+        st.ray = min(20.0, need)
     try:
         info = yield from bm.bake_pair_steps(context, low, [high], st, keep_state=keep)
     finally:
         st.new_uv = new_uv
+        st.ray = ray
         keep.restore(context)
     if st.show:
         high.hide_set(True)
@@ -242,17 +324,50 @@ def bake_steps(context, high, low):
 
 # --- operators -------------------------------------------------------------------------------------------------------
 
+def selected_pairs(context):
+    """0.24.243 (user: "오브젝트 여러 개는 한 번에 선택해서 리토포") every selected mesh as (high, low or None), once."""
+    obs = [o for o in context.selected_objects if o.type == 'MESH']
+    act = context.active_object
+    if act is not None and act.type == 'MESH' and act not in obs:
+        obs.append(act)
+    out, seen = [], set()
+    for o in obs:
+        h, lo = pair(o)
+        if h.name not in seen:
+            seen.add(h.name)
+            out.append((h, lo))
+    return out
+
+
+def _many(items, step_fn):
+    """Generator: ``step_fn(item)`` (a job) for every item in turn, the fractions spread over all.  Returns
+    [(item, result or the error)]."""
+    out = []
+    n = len(items)
+    for i, it in enumerate(items):
+        name = it[0].name
+        try:
+            gen = step_fn(it)
+            while True:
+                f, label = next(gen)
+                yield ((i + f) / n, f'{name} ({i + 1} / {n}): {label}')
+        except StopIteration as ex:
+            out.append((it, ex.value))
+        except RuntimeError as ex:
+            out.append((it, ex))
+    return out
+
+
 class MCH_OT_retopo_make(bpy.types.Operator):
-    """Step 1: a low-poly copy of the selected detailed mesh (Quad: remeshed; Wrap: a quad box vacuum-packed onto it).
-    With its low selected: made again"""
+    """Step 1: a low-poly copy of each selected detailed mesh (Quad: remeshed; Wrap: a quad box vacuum-packed onto
+    it).  A low selected: made again"""
     bl_idname = 'mch.retopo_make'
     bl_label = 'Retopo'
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context):
-        ob = context.active_object
-        return ob is not None and ob.type == 'MESH'
+        return bool(selected_pairs(context))
 
     def invoke(self, context, event):
         return self._go(context)
@@ -263,38 +378,47 @@ class MCH_OT_retopo_make(bpy.types.Operator):
     def _go(self, context):
         if context.mode != 'OBJECT':
             bpy.ops.object.mode_set(mode='OBJECT')
-        high, low = pair(context.active_object)
+        items = selected_pairs(context)
         S = context.scene
         method, faces = S.mch_rb_method, S.mch_rb_faces
         t0 = time.time()
 
         def done(res):
-            lo, note = res
-            return (f'Retopo ({"Wrap" if method == "WRAP" else "Quad"}): {high.name} -> {lo.name} '
-                    f'{len(lo.data.polygons):,} faces, {time.time() - t0:.1f} s'
-                    + (f' | {note}' if note and not note.startswith('Quad Remesh:') else ''))
+            lows = [r[0] for _it, r in res if not isinstance(r, Exception)]
+            bad = [(it[0].name, str(r)) for it, r in res if isinstance(r, Exception)]
+            for o in list(context.selected_objects):
+                o.select_set(False)
+            for lo in lows:
+                lo.hide_set(False)
+                lo.select_set(True)
+            if lows:
+                context.view_layer.objects.active = lows[-1]
+            msg = (f'Retopo ({"Wrap" if method == "WRAP" else "Quad"}): {len(lows)} low(s), '
+                   f'{sum(len(lo.data.polygons) for lo in lows):,} faces, {time.time() - t0:.1f} s')
+            notes = [r[1] for _it, r in res if not isinstance(r, Exception) and r[1] and not r[1].startswith('Quad Remesh:')]
+            if notes:
+                msg += ' | ' + '; '.join(notes[:3])
+            if bad:
+                msg += ' | failed: ' + '; '.join(f'{n}: {e}' for n, e in bad[:3])
+            return msg
         from . import progress
-        gen = make_low_steps(context, high, faces, method, low)
-        try:
-            res = progress.start(context, f'Retopo: {high.name}', gen, done)
-        except RuntimeError as ex:
-            self.report({'WARNING'}, str(ex))
-            return {'CANCELLED'}
+        gen = _many(items, lambda it: make_low_steps(context, it[0], faces, method, it[1]))
+        title = f'Retopo: {items[0][0].name}' if len(items) == 1 else f'Retopo: {len(items)} meshes'
+        res = progress.start(context, title, gen, done)
         if res != 'RUNNING':
             self.report({'INFO'}, done(res))
         return {'FINISHED'}
 
 
 class MCH_OT_retopo_bake(bpy.types.Operator):
-    """Step 2: bake the high's Normal / AO maps onto its low (made by Retopo), the maps put on the low"""
+    """Step 2: bake each selected high's maps onto its low (made by Retopo), the maps put on the low"""
     bl_idname = 'mch.retopo_bake'
     bl_label = 'Bake'
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context):
-        ob = context.active_object
-        return ob is not None and ob.type == 'MESH' and pair(ob)[1] is not None
+        return any(lo is not None for _h, lo in selected_pairs(context))
 
     def invoke(self, context, event):
         return self._go(context)
@@ -305,7 +429,7 @@ class MCH_OT_retopo_bake(bpy.types.Operator):
     def _go(self, context):
         if context.mode != 'OBJECT':
             bpy.ops.object.mode_set(mode='OBJECT')
-        high, low = pair(context.active_object)
+        items = [(h, lo) for h, lo in selected_pairs(context) if lo is not None]
         from . import bake_maps as bm, progress
         try:
             from . import safety_save
@@ -313,14 +437,26 @@ class MCH_OT_retopo_bake(bpy.types.Operator):
         except (ImportError, AttributeError, RuntimeError):
             pass
 
-        def done(info):
-            return (f'Bake: {high.name} -> {low.name}, {", ".join(bm.SUFFIX[k] for k in info["maps"])} '
-                    f'{info["res"]} px, {info["seconds"]:.1f} s')
-        try:
-            res = progress.start(context, f'Bake: {high.name} -> {low.name}', bake_steps(context, high, low), done)
-        except RuntimeError as ex:
-            self.report({'WARNING'}, str(ex))
-            return {'CANCELLED'}
+        def done(res):
+            ok = [(it, r) for it, r in res if not isinstance(r, Exception)]
+            bad = [(it[0].name, str(r)) for it, r in res if isinstance(r, Exception)]
+            for o in list(context.selected_objects):
+                o.select_set(False)
+            for (h, lo), _r in ok:
+                lo.hide_set(False)
+                lo.select_set(True)
+            if ok:
+                context.view_layer.objects.active = ok[-1][0][1]
+            msg = 'Bake: ' + (f'{ok[0][0][0].name} -> {ok[0][0][1].name}' if len(ok) == 1 else f'{len(ok)} lows')
+            if ok:
+                info = ok[-1][1]
+                msg += f', {", ".join(bm.SUFFIX[k] for k in info["maps"])} {info["res"]} px'
+            if bad:
+                msg += ' | failed: ' + '; '.join(f'{n}: {e}' for n, e in bad[:3])
+            return msg
+        gen = _many(items, lambda it: bake_steps(context, it[0], it[1]))
+        title = f'Bake: {items[0][0].name} -> {items[0][1].name}' if len(items) == 1 else f'Bake: {len(items)} meshes'
+        res = progress.start(context, title, gen, done)
         if res != 'RUNNING':
             self.report({'INFO'}, done(res))
         return {'FINISHED'}
@@ -335,6 +471,8 @@ def draw(layout, context):
         return
     ob = context.active_object
     high, low = pair(ob) if ob is not None and ob.type == 'MESH' else (None, None)
+    items = selected_pairs(context)
+    n_low = sum(1 for _h, lo in items if lo is not None)
     box = layout.box()
     box.label(text='RETOPO + BAKE', icon='MOD_REMESH')
     box.row(align=True).prop(S, 'mch_rb_method', expand=True)
@@ -342,21 +480,30 @@ def draw(layout, context):
     col.prop(S, 'mch_rb_faces')
     r = pc.primary(box.row(align=True))
     r.scale_y = 1.3
-    r.operator('mch.retopo_make', text='1  Retopo Again' if low is not None else '1  Retopo', icon='MOD_REMESH')
+    many = len(items) > 1
+    r.operator('mch.retopo_make', text=(f'1  Retopo {len(items)} Meshes' if many else
+                                        '1  Retopo Again' if low is not None else '1  Retopo'), icon='MOD_REMESH')
     col = box.column(align=True)
     r = col.row(align=True)
     r.prop(st, 'res', text='')
     r.prop(st, 'normal', toggle=True)
     r.prop(st, 'ao', toggle=True)
     r.prop(st, 'color', toggle=True)
+    r = col.row(align=True)                          # 0.24.243 more maps
+    r.prop(st, 'rough', toggle=True)
+    r.prop(st, 'metal', toggle=True)
+    r.prop(st, 'curv', toggle=True)
+    r.prop(st, 'height', toggle=True)
     r = pc.primary(box.row(align=True))
     r.scale_y = 1.3
-    r.enabled = low is not None
-    r.operator('mch.retopo_bake', text='2  Bake', icon='RENDER_STILL')
-    if low is not None:
+    r.enabled = n_low > 0
+    r.operator('mch.retopo_bake', text=f'2  Bake {n_low} Meshes' if n_low > 1 else '2  Bake', icon='RENDER_STILL')
+    if many:
+        box.label(text=f'{len(items)} meshes selected, {n_low} with a low', icon='CHECKMARK')
+    elif low is not None:
         box.label(text=f'{high.name} -> {low.name}', icon='CHECKMARK')
     else:
-        box.label(text='Select the detailed mesh (high)', icon='INFO')
+        box.label(text='Select the detailed mesh(es) (high)', icon='INFO')
 
 
 CLASSES = (MCH_OT_retopo_make, MCH_OT_retopo_bake)
