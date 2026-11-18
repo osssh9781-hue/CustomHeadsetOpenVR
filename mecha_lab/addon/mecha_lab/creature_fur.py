@@ -1386,6 +1386,8 @@ def draw(layout, context):
         if st.grow != 'FUR':
             skin_cover.draw(layout, context)
             return
+    from . import hair_cards                   # 0.24.241 the selected hair -> game hair cards
+    hair_cards.draw(layout, context)
     from . import hair_shape                   # 0.24.179 hair in a sculpted shape (its own values when picked)
     if hair_shape.is_hair(context.active_object):
         hair_shape.draw(layout, context)

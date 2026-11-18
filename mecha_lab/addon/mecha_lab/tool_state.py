@@ -129,6 +129,10 @@ TOOLS = (
      'shoulders, hips, build, muscle, definition, head / hands / feet), each part on its own (length, width, depth, '
      'taper, bend), turn a part at its joint (R), swap a part (the other body\'s, your own), muscles on a part; Join '
      'to One Mesh', 'bodykit', 'ARMATURE_DATA', 'mecha.body_kit', 'OK'),
+    # 0.24.241 (user: "리깅 툴" - 사람 / 크리쳐 몸, 메카, 꼬리 / 촉수 체인)
+    ('RIG', 'Rig', 'Rig a body (Human / Quadruped: joints found on the mesh, IK, weights), mecha parts (one bone a '
+     'part; click a part: its joint) or a tail / tentacle chain (Jiggle on playback); Edit Bones, Bind', 'rig',
+     'ARMATURE_DATA', 'mecha.rig', 'OK'),
     ('MMUSCLE', 'Mecha Muscle', 'The same points and presets as Muscle, made as an artificial muscle - a core (Fibre '
      'Bundle, Smooth, Ribbed, Piston), a sleeve with holes, end caps - or as Cables; your own core / cap / muscle '
      'presets; Skin Over All', 'mmuscle', 'MOD_SCREW', 'mecha.mecha_muscle', 'OK'),
@@ -262,7 +266,7 @@ TOOL_GROUPS = (
     ('Block-out', ('BASE', 'CBASE', 'OMASS', 'SUBD', 'PRIMITIVE')),
     ('Cut', ('CUT', 'SPLIT', 'PRESS', 'HIDE', 'BOOLEAN', 'BBEVEL', 'FUSE', 'PERF')),
     ('Surface detail', ('GSCULPT', 'GREEBLE', 'PLATE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'SDRAW', 'SCREW', 'EXTRACT', 'FPOP', 'MHOLE', 'MOLDING', 'BELT')),
-    ('Move', ('CMOVE', 'CPATH', 'SMOVE', 'SMART', 'POSE', 'REMESH')),
+    ('Move', ('CMOVE', 'CPATH', 'SMOVE', 'SMART', 'POSE', 'RIG', 'REMESH')),   # 0.24.241 + Rig (beside Pose)
     ('Symmetry & repeat', ('MIRROR', 'RSYM', 'RADIAL', 'ARRAY')),
     ('Curves', ('TUBE', 'TUBE_SAME', 'SCURVE', 'CABLE', 'MMUSCLE', 'ALONG', 'LOFT')),
     ('Creature', ('CPLATE', 'DETAIL4', 'CGREEBLE', 'FGREEBLE', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER', 'HAIR', 'FUR', 'WING', 'MEMBRANE', 'BODYKIT', 'MUSCLE')),
@@ -295,7 +299,7 @@ _ENUM_NUMBERS = {'CUT': 1, 'BOOLEAN': 2, 'FUSE': 3, 'MIRROR': 4, 'MASK': 5, 'DRA
                  'EXTRACT': 20, 'MOLDING': 21, 'HOLLOW': 22, 'ALONG': 23, 'CABLE': 24, 'PLATE': 25, 'WRINKLE': 26, 'TUBE': 27,
                  'HIDE': 28, 'DETAIL': 29, 'DETAIL2': 30, 'SCREW': 31, 'DETAIL3': 32, 'TUBE_SAME': 33,
                  'CBASE': 34, 'CPLATE': 35, 'BELT': 36, 'SPIKE': 37, 'SCALES': 38, 'FLOWER': 39, 'SCURVE': 40, 'SBRUSH': 41, 'BRIDGE': 42, 'CAPE': 43, 'HAIR': 44, 'GARMENT': 45, 'HOOD': 46, 'SCARF': 47, 'CMOVE': 48, 'CPATH': 50, 'PERF': 51, 'SDRAW': 52, 'SCAPE': 53, 'RSYM': 55, 'SMOVE': 56, 'WLINES': 57, 'CDRAPE': 58, 'ZONE': 59, 'PRESS': 60, 'SMART': 61, 'GSCULPT': 62, 'GREEBLE': 63, 'CGREEBLE': 64, 'FUR': 65, 'WDIRT': 66,
-                 'WDUST': 67, 'WLEAF': 68, 'WSNOW': 69, 'DETAIL4': 70, 'PMEASURE': 71, 'PCUT': 72, 'FGREEBLE': 73, 'WING': 74, 'MEMBRANE': 75, 'BBEVEL': 76, 'FPOP': 77, 'OMASS': 78, 'MUSCLE': 79, 'MMUSCLE': 80, 'MHOLE': 81, 'BODYKIT': 82}   # 54: the removed Cloth Wrap (kept free)   # 49: the removed Jungle Gym prototype (0.24.31), kept free
+                 'WDUST': 67, 'WLEAF': 68, 'WSNOW': 69, 'DETAIL4': 70, 'PMEASURE': 71, 'PCUT': 72, 'FGREEBLE': 73, 'WING': 74, 'MEMBRANE': 75, 'BBEVEL': 76, 'FPOP': 77, 'OMASS': 78, 'MUSCLE': 79, 'MMUSCLE': 80, 'MHOLE': 81, 'BODYKIT': 82, 'RIG': 83}   # 54: the removed Cloth Wrap (kept free)   # 49: the removed Jungle Gym prototype (0.24.31), kept free
 TOOL_ENUM_ITEMS = [(t[0], t[1], t[2], t[4], _ENUM_NUMBERS[t[0]]) for t in TOOLS]
 
 SHAPES = (

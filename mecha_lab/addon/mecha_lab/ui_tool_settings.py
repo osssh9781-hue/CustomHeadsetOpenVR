@@ -1208,6 +1208,7 @@ DRAWERS = {
     'MHOLE': _module_drawer('mecha_holes'),
     'MUSCLE': _muscle_drawer('MUSCLE'),
     'BODYKIT': _module_drawer('body_kit'),
+    'RIG': _module_drawer('rigging'),            # 0.24.241
     'MMUSCLE': _muscle_drawer('MMUSCLE'),
     'WDIRT': _weather_drawer('DIRT'), 'WDUST': _weather_drawer('DUST'), 'WLEAF': _weather_drawer('LEAVES'),
     'WSNOW': _weather_drawer('SNOW'),

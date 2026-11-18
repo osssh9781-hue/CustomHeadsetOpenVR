@@ -726,6 +726,8 @@ class MCH_OT_quad_show_source(bpy.types.Operator):
 def draw(layout, context):
     st = context.scene.mch_quadremesh
     ob = context.active_object
+    from . import retopo_bake                        # 0.24.241 low poly + UVs + maps in one click
+    retopo_bake.draw(layout, context)
     zb = getattr(context.scene, 'mch_zb', None)
     if zb is not None:                               # 0.24.76 the new engine first (open / broken parts too, faster)
         box = layout.box()

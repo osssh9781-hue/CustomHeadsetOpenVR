@@ -682,6 +682,8 @@ def draw(layout, context):
     st = settings(context)
     if st is None:
         return
+    from . import retopo_bake                        # 0.24.241 low poly + UVs + maps in one click
+    retopo_bake.draw(layout, context)
     box = layout.box()
     box.label(text='BAKE MAPS  (high -> low)', icon='TEXTURE')
     col = box.column(align=True)
