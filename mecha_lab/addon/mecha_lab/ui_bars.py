@@ -449,6 +449,17 @@ def dock_items(context, region_w, region_h, k=1.0):
     n = sum(1 for c in tiles if c)
     rule = 14 * kk
     w = n * tw + (n - 1) * gap + rule * (len(tiles) - n) + 2 * pad
+    # 0.24.226 (user: "옵션은 여기다가 그냥 넣어 줘"): the top bar's Options (Auto Apply, Ortho, 한글) at the dock's right end
+    opts, ow = [], 0.0
+    try:
+        from . import top_bar
+        if top_bar.on(context) and top_bar.sections_wanted():
+            opts = top_bar.option_cells(context)
+            ows = [top_bar._width(c, k) for c in opts]
+            ow = (rule + sum(ows) + top_bar.GAP * k * (len(ows) - 1)) if opts else 0.0
+    except (ImportError, AttributeError, KeyError, TypeError, ReferenceError):
+        opts, ow = [], 0.0
+    w += ow
     h = th + 2 * pad
     x0, y0 = max(left_inset(context) + 8 * k, (region_w - w) / 2.0), bottom_taken(context, k, region_w)
     out = [Item('card', x0, y0, w, h)]
@@ -463,6 +474,17 @@ def dock_items(context, region_w, region_h, k=1.0):
         if key:
             out.append(Item('keycap', x + tw - 11 * kk, y0 + pad + th - 12 * kk, 8 * kk, 10 * kk, key))
         x += tw + gap
+    if opts:
+        x -= gap
+        out.append(Item('vrule', x + rule / 2 - 0.5 * k, y0 + pad + 6 * kk, 1.0 * k, th - 12 * kk))
+        x += rule
+        row_h, title_h = top_bar.ROW * k, top_bar.TITLE_H * k
+        base = y0 + pad + max(0.0, (th - row_h - title_h) / 2.0)
+        out.append(Item('glabel', x, base + row_h, 120 * k, title_h, 'OPTIONS', 'title'))
+        for c, cw in zip(opts, ows):
+            out.append(Item(c['kind'], x, base, cw, row_h, c['label'], c['icon'], c['on'], True, c['action'], c['data'],
+                            c['prop']))
+            x += cw + top_bar.GAP * k
     return out
 
 

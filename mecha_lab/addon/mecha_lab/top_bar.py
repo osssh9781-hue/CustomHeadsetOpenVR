@@ -825,6 +825,8 @@ def items(context, region_w, region_h, k=1.0, left=None, right=None, part='TOP')
         # the block at the right: Options, Depth, Surface - only the cells the tool has, packed - then the tool's own
         side_parts = []
         for si in SIDE_SLOTS:
+            if si == OPTIONS_SLOT:                  # (user: "옵션은 여기다가 그냥 넣어 줘": in the bottom dock)
+                continue
             title, cells = common[si]
             xs, spots, shown = [0.0, 0.0], [], []
             for c, sp_ in zip(cells, slots[si][2]):
@@ -1015,6 +1017,15 @@ def items(context, region_w, region_h, k=1.0, left=None, right=None, part='TOP')
             x -= GAP * k
         y -= ROW * k + GAP * k
     return out
+
+
+def option_cells(context):
+    """0.24.226 the Options cells of the tool in use (Auto Apply, Ortho, 한글) - shown in the bottom dock."""
+    gs = groups(context, ts.effective_tool(context))
+    if not gs:
+        return []
+    common, _own = split_common(gs)
+    return [c for c in common[OPTIONS_SLOT][1] if c is not None]
 
 
 def holds(context, item):
