@@ -896,11 +896,12 @@ def items(context, region_w, region_h, k=1.0, left=None, right=None, part='TOP')
         ks = k * BAR_SCALE
         bar = _lasso_bar(context, tool, common, own, inner + 2 * CARD_PAD * k, ks)
         if bar is not None:
-            its_, _w, h_ = bar
+            its_, w_, h_ = bar
             for i in its_:
                 if i.kind == 'glabel':
                     i.icon += '_s'              # (drawn at the bar's own scale)
-            x0 = max(band_l + 8 * k, min((region_w - band) / 2.0, band_r - 8 * k - band))
+            # 0.24.228 (user: "상단 바 중앙 정렬이 안 돼"): in the middle of the view, like the bar with Select below
+            x0 = max(band_l + 8 * k, min((region_w - w_) / 2.0, band_r - 8 * k - w_))
             y_top = region_h - TOP * k - inset
             for i in its_:
                 i.x += x0

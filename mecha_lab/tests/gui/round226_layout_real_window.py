@@ -224,6 +224,9 @@ def flow():
     yield from wait_draws(3)
     shot('04b_CUT_slow_line_stroke.png')
     bar_card = top()[0]
+    dk_ = dock()[0]
+    res['C8'] = abs((bar_card.x + bar_card.w / 2) - (dk_.x + dk_.w / 2)) < 2.0 and abs((bar_card.x + bar_card.w / 2) - r.width / 2) < 2.0
+    log('C8 top bar centre', round(bar_card.x + bar_card.w / 2), '| dock centre', round(dk_.x + dk_.w / 2), '| view', r.width / 2)
     log('top bar (Slow Line + Stroke): height', round(bar_card.h), 'px =', round(bar_card.h / k), 'at scale 1 | width', round(bar_card.w))
     S.mch_brush.stab_enable = False
     S.mch_brush.shape = 'LASSO'
@@ -346,6 +349,7 @@ def flow():
              'C4': 'REAL clicks on 한글 in the dock: English and back',
              'C5': 'a REAL right click opens the Tool Wheel; it stays when the mouse leaves; a REAL click on another menu closes it and lands there',
              'C7': 'Blender\'s tool settings row: the active tool\'s icon is not shown in MECHA LAB (only that icon differs)',
+             'C8': 'the top bar is centred in the view, on the same middle as the bar with Select',
              'C6': 'the tool menu\'s open button is in the dock\'s Options; a REAL click opens the menu and the row + bar go up'}
     n = 0
     for kk_ in sorted(names):
