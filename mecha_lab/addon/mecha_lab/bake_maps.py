@@ -500,6 +500,13 @@ class _Keep:
 
 def bake_pair(context, low, highs, st, keep_state=None):
     """Bake ``highs`` onto ``low`` with the settings ``st``.  Returns info (dict).  Raises RuntimeError."""
+    from . import progress
+    return progress.run_now(bake_pair_steps(context, low, highs, st, keep_state))
+
+
+def bake_pair_steps(context, low, highs, st, keep_state=None):
+    """``bake_pair`` in steps (0.24.242 the progress card): yields (fraction, what) before the UVs and each map;
+    returns the info."""
     S = context.scene
     t0 = time.time()
     kinds = [k for k, on in (('NORMAL', st.normal), ('AO', st.ao), ('COLOR', st.color)) if on]
@@ -514,6 +521,7 @@ def bake_pair(context, low, highs, st, keep_state=None):
         raise RuntimeError(f'{low.name} has no faces')
     res = int(st.res)
     size = size_of(low)
+    yield (0.02, 'UVs')
     uv = ensure_uv(context, low, new=st.new_uv, res=res)
     sharp = smooth_low(low, st.sharp_angle) if st.smooth else None
     uv_name = low.data.uv_layers.active.name if low.data.uv_layers.active else ''
@@ -538,7 +546,8 @@ def bake_pair(context, low, highs, st, keep_state=None):
         common = dict(use_selected_to_active=True, use_cage=True, cage_object=cage.name, cage_extrusion=0.0,
                       max_ray_distance=2.0 * ext, margin=int(st.margin), margin_type='EXTEND', use_clear=True,
                       target='IMAGE_TEXTURES', save_mode='INTERNAL')
-        for kind in kinds:
+        for ki, kind in enumerate(kinds):
+            yield (0.08 + 0.9 * ki / len(kinds), f'Baking {SUFFIX[kind]} ({ki + 1} / {len(kinds)})')
             img = image_for(low, kind, res)
             images[kind] = img
             tgt = _target_material(img)

@@ -3306,6 +3306,11 @@ class MCH_OT_zb_tab(bpy.types.Operator):
         return getattr(context, 'mode', '') in {'OBJECT', 'SCULPT'} and mecha_tab(context)
 
     def execute(self, context):
+        ob = context.active_object
+        if context.mode == 'OBJECT' and ob is not None and ob.type == 'ARMATURE':
+            # 0.24.242 a rig selected: Tab edits its bones (Blender's own Tab takes it back to Object Mode)
+            bpy.ops.object.mode_set(mode='EDIT')
+            return {'FINISHED'}
         return bpy.ops.mch.zb_switch(target='MECHA' if context.mode == 'SCULPT' else 'ZBRUSH')
 
 

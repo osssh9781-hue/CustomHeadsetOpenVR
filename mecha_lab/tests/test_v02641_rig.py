@@ -80,6 +80,152 @@ check(f'moving the hand target: the arm follows (hand {np.linalg.norm(hand1 - ha
       f'the other side still', np.linalg.norm(hand1 - hand0) > 0.15 and moved[left].max() > 0.15
       and moved[P0[:, 0] < -0.35].max() < 1e-4)
 ik.matrix = Matrix.Translation((0, 0.15, -0.25)) @ ik.matrix
+C.view_layer.update()
+# 0.24.242 fingers + face
+fing = {'index': 'Finger2', 'middle': 'Finger3', 'ring': 'Finger4', 'pinky': 'Finger5'}
+ferr = {}
+for f, k in fing.items():
+    if f'{k}a.L' in truth and f'{f}.01.L' in arm.data.bones:
+        ferr[f] = float(np.linalg.norm(J[f'{f}.01.L'] - truth[f'{k}a.L']))
+tipe = {}
+for f, k in fing.items():
+    b = arm.data.bones.get(f'{f}.03.L')
+    if b is not None and f'{k}c.L' in kit_rig.data.bones:
+        tipe[f] = float(np.linalg.norm(np.array(arm.matrix_world @ b.tail_local) - np.array(kit_rig.matrix_world @ kit_rig.data.bones[f'{k}c.L'].tail_local)))
+check(f'Fingers: thumb + four, 3 bones each, both hands; the knuckles near the body kit\'s (cm: '
+      f'{", ".join(f"{k} {v * 100:.1f}" for k, v in ferr.items())}; tips {", ".join(f"{k} {v * 100:.1f}" for k, v in tipe.items())})',
+      all(f'{f}.0{i}.{s_}' in arm.data.bones for f in rg.FINGERS for i in (1, 2, 3) for s_ in 'LR')
+      and len(ferr) == 4 and max(ferr.values()) < 0.03 and max(tipe.values()) < 0.04)
+P0 = eval_pts(body)
+pb = arm.pose.bones['index.01.L']; pb.rotation_mode = 'XYZ'; pb.rotation_euler = (math.radians(50), 0, 0)
+C.view_layer.update()
+t3 = arm.pose.bones['index.03.L']
+curl = math.degrees((t3.matrix.to_3x3() @ Vector((0, 1, 0))).angle(t3.bone.matrix_local.to_3x3() @ Vector((0, 1, 0))))
+P1 = eval_pts(body)
+check(f'turning the index finger\'s first bone curls the whole finger (tip turned {curl:.0f} degrees), its skin moves, '
+      f'the other hand still', curl > 100 and np.linalg.norm(P1 - P0, axis=1).max() > 0.01
+      and np.linalg.norm(P1 - P0, axis=1)[P0[:, 0] < -0.2].max() < 1e-5)
+pb.rotation_euler = (0, 0, 0)
+check('Face: jaw, chin, lips, brows, eyes looking at a target',
+      {'jaw', 'chin', 'lip.upper', 'lip.lower', 'lip.L', 'lip.R', 'brow.L', 'brow.R', 'eye.L', 'eye.R', 'eyes_target'}
+      <= set(arm.data.bones.keys()) and any(c.type == 'DAMPED_TRACK' for c in arm.pose.bones['eye.L'].constraints))
+eyeL = np.array(arm.matrix_world @ arm.data.bones['eye.L'].head_local)
+lipL = np.array(arm.matrix_world @ arm.data.bones['lip.L'].head_local)
+jaw = arm.data.bones['jaw']
+check(f'the face bones sit in the face (eye z {eyeL[2]:.3f} x {eyeL[0]:.3f}, mouth corner z {lipL[2]:.3f}; height 1.8)',
+      1.65 < eyeL[2] < 1.73 and 0.015 < eyeL[0] < 0.05 and 1.58 < lipL[2] < 1.66 and eyeL[1] < 0.0)
+C.view_layer.update()
+P0 = eval_pts(body)
+pj = arm.pose.bones['jaw']; pj.rotation_mode = 'XYZ'; pj.rotation_euler = (math.radians(20), 0, 0)
+P1 = eval_pts(body)
+mv = np.linalg.norm(P1 - P0, axis=1)
+chin = (P0[:, 2] > 1.54) & (P0[:, 2] < 1.6) & (P0[:, 1] < 0) & (np.abs(P0[:, 0]) < 0.03)
+check(f'opening the jaw moves the chin ({mv[chin].max():.3f} m), not the top of the head ({mv[P0[:, 2] > 1.75].max():.4f})',
+      mv[chin].max() > 0.01 and mv[P0[:, 2] > 1.75].max() < 0.003)
+pj.rotation_euler = (0, 0, 0)
+# 0.24.242 place the bones on one side, mirror, bind
+for o in list(C.selected_objects):
+    o.select_set(False)
+arm.select_set(True); C.view_layer.objects.active = arm
+with rg._Edit(C, arm) as ebs:
+    ebs['forearm.L'].head = ebs['forearm.L'].head + Vector((0.0, 0.03, 0.02))
+r = bpy.ops.mch.rig_mirror(side='L')
+er = arm.data.bones['forearm.R'].head_local
+el = arm.data.bones['forearm.L'].head_local
+x0 = arm['mch_x0']
+check('Mirror L -> R: the moved elbow\'s place copied to the other side', r == {'FINISHED'}
+      and abs(er.x - (2 * x0 - el.x)) < 1e-5 and abs(er.y - el.y) < 1e-5 and abs(er.z - el.z) < 1e-5)
+with rg._Edit(C, arm) as ebs:
+    ebs['hand.L'].head = ebs['hand.L'].head + Vector((0.0, 0.0, 0.03))
+    ebs['forearm.L'].tail = ebs['hand.L'].head
+r = bpy.ops.mch.rig_bind()
+C.view_layer.update()
+hik = arm.data.bones['hand.L_ik'].head_local
+still = max((p.matrix.to_translation() - p.bone.matrix_local.to_translation()).length for p in arm.pose.bones)
+check(f'Bind after moving bones: the IK targets follow the moved hand, the rest pose still ({still:.4f}), the body weighted',
+      r == {'FINISHED'} and (hik - arm.data.bones['hand.L'].head_local).length < 1e-5 and still < 0.006
+      and any(m.type == 'ARMATURE' for m in body.modifiers))
+
+# 0.24.242 the controls: big coloured shapes, out of the mesh
+check('IK controls drawn as rings / balls (not hidden in the hands and feet)',
+      all(arm.pose.bones[n].custom_shape is not None for n in ('hand.L_ik', 'foot.R_ik', 'forearm.L_pole', 'shin.R_pole'))
+      and arm.pose.bones['foot.L_ik'].custom_shape.name == 'WGT_mch_foot')
+
+# 0.24.242 (user: a striding digitigrade creature, "역관절") a posed creature with reverse legs
+fresh(); S = C.scene; st = S.mch_rig
+pts = {'pelvis': (0, 0, 0.95), 'chest': (0, 0.02, 1.35), 'neck': (0, 0, 1.55), 'head': (0, -0.05, 1.75),
+       'hip.L': (0.11, 0, 0.92), 'knee.L': (0.14, -0.22, 0.62), 'hock.L': (0.15, 0.12, 0.3), 'ankle.L': (0.15, 0.0, 0.06),
+       'toe.L': (0.15, -0.22, 0.03),
+       'sh.L': (0.22, 0.02, 1.42), 'elbow.L': (0.42, 0.12, 1.18), 'wrist.L': (0.5, -0.18, 1.02), 'tip.L': (0.55, -0.3, 0.98)}
+for k in list(pts):
+    if k.endswith('.L'):
+        x, y, z = pts[k]
+        pts[k[:-1] + 'R'] = (-x, y, z)
+names = list(pts)
+idx = {n: i for i, n in enumerate(names)}
+edges = [('pelvis', 'chest'), ('chest', 'neck'), ('neck', 'head')]
+for sd in 'LR':
+    edges += [('pelvis', f'hip.{sd}'), (f'hip.{sd}', f'knee.{sd}'), (f'knee.{sd}', f'hock.{sd}'), (f'hock.{sd}', f'ankle.{sd}'),
+              (f'ankle.{sd}', f'toe.{sd}'), ('chest', f'sh.{sd}'), (f'sh.{sd}', f'elbow.{sd}'), (f'elbow.{sd}', f'wrist.{sd}'),
+              (f'wrist.{sd}', f'tip.{sd}')]
+me = bpy.data.meshes.new('cr'); me.from_pydata([pts[n] for n in names], [(idx[a], idx[b]) for a, b in edges], [])
+cr = bpy.data.objects.new('Creature', me); S.collection.objects.link(cr)
+sk = cr.modifiers.new('Skin', 'SKIN')
+rad = {'pelvis': 0.13, 'chest': 0.16, 'neck': 0.06, 'head': 0.1}
+for i, n in enumerate(names):
+    r_ = rad.get(n, 0.05 if not n.startswith(('tip', 'toe', 'wrist', 'ankle')) else 0.035)
+    me.skin_vertices[0].data[i].radius = (r_, r_)
+me.skin_vertices[0].data[idx['pelvis']].use_root = True
+cr.modifiers.new('Sub', 'SUBSURF').levels = 1
+for o in list(C.selected_objects):
+    o.select_set(False)
+cr.select_set(True); C.view_layer.objects.active = cr
+bpy.ops.object.convert(target='MESH')
+cr = C.active_object
+st.kind, st.legs, st.fingers, st.face, st.ik, st.bind = 'BODY', 'REVERSE', False, False, True, True
+r = bpy.ops.mch.rig_make()
+arm = C.active_object
+B = lambda n: np.array(arm.matrix_world @ arm.data.bones[n].head_local)
+err = {'knee': np.linalg.norm(B('shin.L') - pts['knee.L']), 'hock': np.linalg.norm(B('hock.L') - pts['hock.L']),
+       'ankle': np.linalg.norm(B('foot.L') - pts['ankle.L']), 'elbow': np.linalg.norm(B('forearm.L') - pts['elbow.L']),
+       'elbow.R': np.linalg.norm(B('forearm.R') - pts['elbow.R'])}
+check(f'Reverse Legs on a striding creature with bent arms: thigh, shin, hock, foot; the joints where it bends '
+      f'(cm: {", ".join(f"{k} {v * 100:.1f}" for k, v in err.items())})',
+      r == {'FINISHED'} and 'hock.L' in arm.data.bones and max(err.values()) < 0.05 * 1.8)
+C.view_layer.update()
+still = max((p_.matrix.to_translation() - p_.bone.matrix_local.to_translation()).length for p_ in arm.pose.bones)
+ikc = next(c for c in arm.pose.bones['hock.L'].constraints if c.type == 'IK')
+check(f'its leg IK runs over all three leg bones, the rest pose still ({still:.4f})', ikc.chain_count == 3 and still < 0.01)
+fik = arm.pose.bones['foot.L_ik']
+P0 = eval_pts(cr)
+foot0 = np.array(arm.matrix_world @ arm.pose.bones['foot.L'].head)
+fik.matrix = Matrix.Translation((0, -0.1, 0.2)) @ fik.matrix
+P1 = eval_pts(cr)
+foot1 = np.array(arm.matrix_world @ arm.pose.bones['foot.L'].head)
+check(f'lifting the foot control: the foot goes with it ({foot1.round(3).tolist()} for {(np.array(pts["ankle.L"]) + [0, -0.1, 0.2]).round(3).tolist()}, was {B("foot.L").round(3).tolist()}), the leg bends ({np.linalg.norm(P1 - P0, axis=1).max():.3f})', np.linalg.norm(foot1 - (foot0 + [0, -0.1, 0.2])) < 0.01
+      and np.linalg.norm(P1 - P0, axis=1).max() > 0.1)
+fik.matrix = Matrix.Translation((0, 0.1, -0.2)) @ fik.matrix
+# 0.24.242 (user: "에딧 본에서 뼈 편집해도 오브젝트 모드 들어오면 약간 이상해") Edit Mode by hand, then back
+C.view_layer.update()
+for o in list(C.selected_objects):
+    o.select_set(False)
+arm.select_set(True); C.view_layer.objects.active = arm
+bpy.ops.object.mode_set(mode='EDIT')
+rg._edit_watch(S)
+kept = list(rg._EDITING.get(arm.name, []))
+rg._hide_bend(arm.name)
+mod = next(m for m in cr.modifiers if m.type == 'ARMATURE')
+check('in Edit Mode the mesh is shown unbent (its armature modifier off while editing)', bool(kept) and not mod.show_viewport)
+eb = arm.data.edit_bones
+eb['hock.L'].head = eb['hock.L'].head + Vector((0, 0.04, 0.03))
+bpy.ops.object.mode_set(mode='OBJECT')
+rg._edit_watch(S)
+check('leaving Edit Mode is noticed', arm.name not in rg._EDITING)
+msg = rg.after_edit(C, arm, kept)
+C.view_layer.update()
+still = max((p_.matrix.to_translation() - p_.bone.matrix_local.to_translation()).length for p_ in arm.pose.bones)
+check(f'back in Object Mode: the bending shown again, the IK targets on the moved bones, the mesh weighted again, '
+      f'the rest pose still ({still:.4f}) - {msg}', all(m.show_viewport for m in cr.modifiers if m.type == 'ARMATURE') and still < 0.01 and 'weighted again' in msg)
 
 # --- quadruped ---
 fresh(); S = C.scene; st = S.mch_rig
@@ -151,6 +297,100 @@ p2 = parts[2].matrix_world.translation
 check(f'turning a part\'s bone: it turns about its joint (z 1.0: centre now {tuple(round(x, 2) for x in p1)}), the linked part follows '
       f'({tuple(round(x, 2) for x in p2)}), the base stays', r == {'FINISHED'} and abs(p1.z - 1.0) < 0.02 and abs(abs(p1.y) - 0.4) < 0.02
       and abs(p2.z - 1.0) < 0.05 and abs(abs(p2.y) - 1.1) < 0.05 and (parts[0].matrix_world.translation - before['Part0'].translation).length < 1e-5)
+
+# 0.24.242 turn limits, a hatch, a piston
+S.mch_rig.axis, S.mch_rig.lo, S.mch_rig.hi = 'X', -30.0, 60.0
+arm.pose.bones['Part1'].rotation_euler = (0, 0, 0); C.view_layer.update(); before_lim = parts[2].matrix_world.translation.copy()
+for o in list(C.selected_objects):
+    o.select_set(False)
+parts[2].select_set(True); C.view_layer.objects.active = parts[2]
+pb2 = arm.pose.bones['Part2']; pb2.rotation_mode = 'XYZ'
+r = bpy.ops.mch.rig_limit(kind='LIMIT')
+pb2 = arm.pose.bones['Part2']
+pb2.rotation_euler = (0.0, math.radians(120), 0.0)
+C.view_layer.update()
+def turned(ob, axis):
+    m = ob.matrix_world.to_3x3()
+    return m
+ang = math.degrees(Matrix(pb2.matrix_channel.to_3x3()).to_euler().y)
+lim = next(c for c in pb2.constraints if c.type == 'LIMIT_ROTATION')
+check(f'Limit Turn: the part turns round X only (its other turns locked), 120 asked -> held at the limit',
+      r == {'FINISHED'} and tuple(pb2.lock_rotation) == (True, False, True) and abs(math.degrees(lim.max_y) - 60) < 1e-4
+      and abs(math.degrees(lim.min_y) + 30) < 1e-4)
+dirn = arm.data.bones['Part2'].vector.normalized()
+check('the bone points along the turn axis (world X)', abs(abs(dirn.x) - 1.0) < 1e-4)
+p_before = parts[2].matrix_world.copy()
+pb2.rotation_euler = (0, 0, 0)
+C.view_layer.update()
+check('limiting does not move the part', (parts[2].matrix_world.translation - before_lim).length < 1e-4)
+S.mch_rig.hatch = 110.0
+r = bpy.ops.mch.rig_limit(kind='HATCH')
+lim = next(c for c in arm.pose.bones['Part2'].constraints if c.type == 'LIMIT_ROTATION')
+check('Hatch: opens 110 degrees only (one way)', r == {'FINISHED'} and abs(math.degrees(lim.max_y - lim.min_y) - 110) < 1e-4
+      and (abs(lim.min_y) < 1e-6 or abs(lim.max_y) < 1e-6))
+r = bpy.ops.mch.rig_limit(kind='FREE')
+check('Free: no limit again', r == {'FINISHED'} and not any(c.type == 'LIMIT_ROTATION' for c in arm.pose.bones['Part2'].constraints))
+# piston: a cylinder on the base, a rod on an arm
+fresh(); S = C.scene; st = S.mch_rig
+bpy.ops.mesh.primitive_cube_add(location=(0, 0, 0.25), scale=(0.5, 0.5, 0.25)); base = C.active_object; base.name = 'Base'
+bpy.ops.mesh.primitive_cube_add(location=(0, 1.0, 1.0), scale=(0.1, 1.0, 0.1)); boom = C.active_object; boom.name = 'Boom'
+bpy.ops.mesh.primitive_cylinder_add(radius=0.08, depth=0.6, location=(0, 0.3, 0.75)); cyl = C.active_object; cyl.name = 'Cyl'
+bpy.ops.mesh.primitive_cylinder_add(radius=0.03, depth=0.6, location=(0, 0.3, 1.25)); rod = C.active_object; rod.name = 'Rod'
+for o in (base, boom, cyl, rod):
+    o.select_set(True)
+st.kind = 'MECHA'
+bpy.ops.mch.rig_make()
+arm = C.active_object
+for o in list(C.selected_objects):
+    o.select_set(False)
+cyl.select_set(True); rod.select_set(True); C.view_layer.objects.active = rod
+r = bpy.ops.mch.rig_piston()
+for o in list(C.selected_objects):
+    o.select_set(False)
+rod.select_set(True); boom.select_set(True); C.view_layer.objects.active = boom
+bpy.ops.mch.rig_link()
+for o in list(C.selected_objects):
+    o.select_set(False)
+cyl.select_set(True); base.select_set(True); C.view_layer.objects.active = base
+bpy.ops.mch.rig_link()
+with rg._Edit(C, arm) as ebs:
+    pass
+pbm = arm.pose.bones['Boom']; pbm.rotation_mode = 'XYZ'
+rb = arm.data.bones['Rod']
+def line_err():
+    C.view_layer.update()
+    pc, pr = arm.pose.bones['Cyl'], arm.pose.bones['Rod']
+    hc, hr = arm.matrix_world @ pc.head, arm.matrix_world @ pr.head
+    dc = (arm.matrix_world.to_3x3() @ (pc.tail - pc.head)).normalized()
+    dr = (arm.matrix_world.to_3x3() @ (pr.tail - pr.head)).normalized()
+    return dc.angle((hr - hc).normalized()), dr.angle((hc - hr).normalized()), (hr - hc).length
+a0 = line_err()
+pbm.rotation_euler = (math.radians(-25), 0, 0)
+a1 = line_err()
+check(f'Piston: the rod slides in the cylinder, both in line when the arm turns (off-line {math.degrees(max(a1[:2])):.2f} deg; '
+      f'length {a0[2]:.3f} -> {a1[2]:.3f})', r == {'FINISHED'} and max(a1[:2]) < math.radians(0.5) and abs(a1[2] - a0[2]) > 0.02)
+
+# a hatch on a box: it opens outward, not into the box
+fresh(); S = C.scene; st = S.mch_rig
+bpy.ops.mesh.primitive_cube_add(location=(0, 0, 0.5), scale=(0.6, 0.6, 0.5)); boxo = C.active_object
+bpy.ops.mesh.primitive_cube_add(location=(0, -0.3, 1.03), scale=(0.3, 0.3, 0.03)); hat = C.active_object
+for o in (boxo, hat):
+    o.select_set(True)
+st.kind = 'MECHA'
+bpy.ops.mch.rig_make()
+arm = C.active_object
+for o in list(C.selected_objects):
+    o.select_set(False)
+hat.select_set(True); C.view_layer.objects.active = hat
+rg.set_pivot(C, hat, Vector((0, 0.0, 1.03)))
+st.axis, st.hatch = 'X', 110.0
+bpy.ops.mch.rig_limit(kind='HATCH')
+ph = arm.pose.bones[hat[rg.PART_KEY]]
+lim = next(c for c in ph.constraints if c.type == 'LIMIT_ROTATION')
+ph.rotation_euler = (0, lim.max_y if abs(lim.max_y) > abs(lim.min_y) else lim.min_y, 0)
+C.view_layer.update()
+cz = hat.matrix_world.translation.z
+check(f'the hatch opens outward - up off the box (its middle at z {cz:.2f}, the box top 1.0)', cz > 1.1)
 
 # --- chain ---
 fresh(); S = C.scene; st = S.mch_rig

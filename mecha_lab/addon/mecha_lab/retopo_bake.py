@@ -1,20 +1,25 @@
-"""0.24.241 Retopo + Bake in one click (user: "리토포 하고 베이킹 하는 툴도 만들어 줄 수 있어?" - "리토포+베이크 한 번에").
+"""0.24.241 Retopo + Bake (user: "리토포 하고 베이킹 하는 툴도 만들어 줄 수 있어?").
+0.24.242 two steps in the same box (user: "한번에 처리하지 말구 그 탭에서 리토포 하고 베이크까지 하기만 하면 될듯"),
+the progress card while they run (user: "팝업으로 진행상황 ... 게이지 차면서 퍼센트로"), and Wrap - a simple mesh
+vacuum-packed onto the high (user: "적당한 사이즈의 메쉬로 마치 베큠하듯이 메쉬에 붙여버릴 수는 없나 - 그렇게 리토포").
 
-Select the detailed mesh (the high) and press Retopo + Bake:
-
-1. a low-poly copy ``<name>_Low`` - the high as it shows (its modifiers too), quad remeshed by our engine to
-   about ``Faces`` (QuadriFlow when the engine is not there);
-2. new UVs on it (Smart UV, a margin for the map size);
-3. the high's Normal / AO (and Color when on) baked onto it with the Bake Maps settings (size, ray, margin ...),
-   a material with the maps put on it;
-4. the low shown, the high hidden (both kept: select the low and press again to bake again from the same high).
-
-The high is never changed.
+1. Retopo   select the detailed mesh (the high): a low-poly copy ``<name>_Low`` of about ``Faces`` faces, made by
+            Quad     our quad remesh engine (QuadriFlow when it is not there) - edge flow follows the shape;
+            Wrap     a box of even quads a little bigger than the high (its sides divided by the high's size) is
+                     shrunk onto it like a vacuum bag: every round each point is pulled to the nearest surface and
+                     the grid is relaxed so the quads stay even; the last rounds put it on the surface exactly.
+                     Gaps (between legs, under arms) are bridged like a bag would - it is for heads, torsos,
+                     armour pieces, rocks: one closed blob.
+            With the low selected: made again from its high (new Faces / method).
+2. Bake     the high's Normal / AO (/ Color) onto the low (new UVs on a fresh low), the maps put on it.
+The high is hidden, never changed.
 """
+import math
 import time
 
 import bpy
-from bpy.props import IntProperty
+import numpy as np
+from bpy.props import EnumProperty, IntProperty
 
 HIGH_KEY = 'mch_rb_high'        # on the low: the name of its high
 
@@ -26,86 +31,203 @@ def high_of(low):
     return h if h is not None and h.type == 'MESH' and h is not low else None
 
 
-def make_low(context, high, faces):
-    """A remeshed copy of ``high`` (as it shows).  Returns (low, note).  Raises RuntimeError."""
+def low_of(high):
+    if high is None:
+        return None
+    return next((o for o in bpy.data.objects if o.type == 'MESH' and o.get(HIGH_KEY) == high.name), None)
+
+
+def pair(ob):
+    """(high, low or None) for the selected object."""
+    h = high_of(ob)
+    if h is not None:
+        return h, ob
+    return ob, low_of(ob)
+
+
+# --- Wrap (vacuum) -----------------------------------------------------------------------------------------------------
+
+def _box_grid(lo, hi, faces):
+    """A closed box of quads over lo..hi, its sides divided by size so the quads are about square.  (V, F)."""
+    d = np.maximum(hi - lo, 1e-6)
+    area = 2 * (d[0] * d[1] + d[1] * d[2] + d[0] * d[2])
+    q = math.sqrt(area / max(6, faces))
+    n = [max(1, int(round(x / q))) for x in d]
+    verts, index, F = [], {}, []
+
+    def vid(i, j, k):
+        key = (i, j, k)
+        if key not in index:
+            index[key] = len(verts)
+            verts.append(lo + d * np.array([i / n[0], j / n[1], k / n[2]]))
+        return index[key]
+    for axis in range(3):
+        u, v = [a for a in range(3) if a != axis]
+        for side in (0, n[axis]):
+            for a in range(n[u]):
+                for b in range(n[v]):
+                    c = []
+                    for da, db in ((0, 0), (1, 0), (1, 1), (0, 1)):
+                        p = [0, 0, 0]
+                        p[axis], p[u], p[v] = side, a + da, b + db
+                        c.append(vid(*p))
+                    flip = (side == 0) ^ (axis == 1)
+                    F.append(c[::-1] if flip else c)
+    return np.array(verts), F
+
+
+def wrap_steps(context, high, faces, rounds=48):
+    """Generator: the vacuum-packed low's mesh (object space of ``high``); yields (fraction, what)."""
+    from mathutils import Vector
+    from mathutils.bvhtree import BVHTree
     dg = context.evaluated_depsgraph_get()
-    me = bpy.data.meshes.new_from_object(high.evaluated_get(dg), preserve_all_data_layers=False, depsgraph=dg)
-    if len(me.polygons) == 0:
-        bpy.data.meshes.remove(me)
-        raise RuntimeError(f'{high.name} has no faces')
-    for lay in list(me.uv_layers):                   # (the remesh makes new faces: old UVs do not fit)
-        me.uv_layers.remove(lay)
-    me.name = high.name + '_Low'
-    low = bpy.data.objects.new(high.name + '_Low', me)
-    for coll in high.users_collection:
-        coll.objects.link(low)
-    if not low.users_collection:
-        context.scene.collection.objects.link(low)
-    low.matrix_world = high.matrix_world.copy()
-    low[HIGH_KEY] = high.name
-    before = len(me.polygons)
-    note = ''
+    ev = high.evaluated_get(dg)
+    hm = ev.to_mesh()
     try:
-        from . import quad_field as qf
-        engine = qf.available()
-    except ImportError:
-        engine = False
-    if engine:
-        note = qf.remesh_object(low, max(4, int(faces)), all_quads=False, crease_deg=30.0) or ''
-    if not engine or len(low.data.polygons) == before:
-        from . import quad_remesh as qr             # (old QuadriFlow way, in place)
-        st = context.scene.mch_quadremesh
-        keep = st.faces
-        st.faces = max(4, int(faces))
-        try:
-            me2, _kept, _miss, note2 = qr.build_mesh(context, low, st)
-        except RuntimeError as ex:
-            bpy.data.objects.remove(low)
+        co = np.empty(len(hm.vertices) * 3)
+        hm.vertices.foreach_get('co', co)
+        co = co.reshape(-1, 3)
+        hm.calc_loop_triangles()
+        tri = np.empty(len(hm.loop_triangles) * 3, np.int64)
+        hm.loop_triangles.foreach_get('vertices', tri)
+        bvh = BVHTree.FromPolygons([tuple(p) for p in co], tri.reshape(-1, 3).tolist())
+    finally:
+        ev.to_mesh_clear()
+    lo, hi = co.min(0), co.max(0)
+    pad = (hi - lo) * 0.08 + 1e-4
+    V, F = _box_grid(lo - pad, hi + pad, faces)
+    E = set()
+    for f in F:
+        for i in range(4):
+            a, b = f[i], f[(i + 1) % 4]
+            E.add((min(a, b), max(a, b)))
+    E = np.array(sorted(E))
+    deg = np.bincount(E.ravel(), minlength=len(V)).astype(np.float64)
+    yield (0.03, f'Wrap: a box of {len(F):,} quads')
+
+    def nearest(P):
+        out = np.empty_like(P)
+        for i, p in enumerate(P):
+            hit = bvh.find_nearest(Vector(p))
+            out[i] = hit[0] if hit[0] is not None else p
+        return out
+
+    def relax(P, lam):
+        acc = np.zeros_like(P)
+        np.add.at(acc, E[:, 0], P[E[:, 1]])
+        np.add.at(acc, E[:, 1], P[E[:, 0]])
+        avg = acc / np.maximum(deg, 1)[:, None]
+        return P + lam * (avg - P)
+    P = V.copy()
+    for r in range(rounds):
+        t = r / max(1, rounds - 1)
+        pull = 0.25 + 0.75 * t                       # (gently first: the grid settles round the shape)
+        P = P + pull * (nearest(P) - P)
+        P = relax(P, 0.5 if t < 0.85 else 0.3)
+        if r % 3 == 2:
+            yield (0.05 + 0.9 * t, f'Wrap: vacuum round {r + 1} / {rounds}')
+    for _k in range(3):                              # (on the surface, still even)
+        P = nearest(relax(P, 0.25))
+    me = bpy.data.meshes.new(high.name + '_Low')
+    me.from_pydata([tuple(p) for p in P], [], F)
+    import bmesh
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])        # (outward)
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    return me
+
+
+# --- making the low --------------------------------------------------------------------------------------------------
+
+def make_low_steps(context, high, faces, method='QUAD', low=None):
+    """Generator: the low for ``high`` (new, or ``low``'s mesh replaced).  Returns (low, note)."""
+    yield (0.02, 'Reading the high')
+    note = ''
+    if method == 'WRAP':
+        me = yield from wrap_steps(context, high, faces)
+    else:
+        dg = context.evaluated_depsgraph_get()
+        me = bpy.data.meshes.new_from_object(high.evaluated_get(dg), preserve_all_data_layers=False, depsgraph=dg)
+        if len(me.polygons) == 0:
             bpy.data.meshes.remove(me)
-            raise RuntimeError(f'Retopo failed: {ex}') from None
-        finally:
-            st.faces = keep
+            raise RuntimeError(f'{high.name} has no faces')
+        for lay in list(me.uv_layers):               # (the remesh makes new faces: old UVs do not fit)
+            me.uv_layers.remove(lay)
+        yield (0.1, f'Quad remesh to about {int(faces):,} faces (one step - please wait)')
+    me.name = high.name + '_Low'
+    if low is None:
+        low = bpy.data.objects.new(high.name + '_Low', me)
+        for coll in high.users_collection:
+            coll.objects.link(low)
+        if not low.users_collection:
+            context.scene.collection.objects.link(low)
+    else:
         old = low.data
-        low.data = me2
-        me2.name = high.name + '_Low'
+        low.data = me
         if old.users == 0:
             bpy.data.meshes.remove(old)
-        note = note2 or note
-    for mat in high.data.materials:
-        low.data.materials.append(mat)
+        for lay in list(low.data.uv_layers):
+            low.data.uv_layers.remove(lay)
+    low.matrix_world = high.matrix_world.copy()
+    low[HIGH_KEY] = high.name
+    if method != 'WRAP':
+        before = len(me.polygons)
+        try:
+            from . import quad_field as qf
+            engine = qf.available()
+        except ImportError:
+            engine = False
+        if engine:
+            note = qf.remesh_object(low, max(4, int(faces)), all_quads=False, crease_deg=30.0) or ''
+        if not engine or len(low.data.polygons) == before:
+            from . import quad_remesh as qr         # (old QuadriFlow way, in place)
+            st = context.scene.mch_quadremesh
+            keep = st.faces
+            st.faces = max(4, int(faces))
+            try:
+                me2, _kept, _miss, note2 = qr.build_mesh(context, low, st)
+            except RuntimeError as ex:
+                raise RuntimeError(f'Retopo failed: {ex}') from None
+            finally:
+                st.faces = keep
+            old = low.data
+            low.data = me2
+            me2.name = high.name + '_Low'
+            if old.users == 0:
+                bpy.data.meshes.remove(old)
+            note = note2 or note
+    yield (0.97, 'Finishing')
+    if not low.data.materials:
+        for mat in high.data.materials:
+            low.data.materials.append(mat)
     for p in low.data.polygons:
         p.use_smooth = True
+    low.show_wire = low.show_all_edges = True
+    high.hide_set(True)
+    for o in list(context.selected_objects):
+        o.select_set(False)
+    low.hide_set(False)
+    low.select_set(True)
+    context.view_layer.objects.active = low
     return low, note
 
 
-def run(context, high=None, low=None):
-    """Retopo (when no ``low``) and bake.  Returns the message.  Raises RuntimeError."""
+def bake_steps(context, high, low):
     from . import bake_maps as bm
     st = bm.settings(context)
     if st is None:
         raise RuntimeError('Bake settings are missing')
-    t0 = time.time()
-    note = ''
-    made = low is None
-    if made:
-        low, note = make_low(context, high, context.scene.mch_rb_faces)
     keep = bm._Keep(context, [low, high])
     new_uv = st.new_uv
-    st.new_uv = made or not low.data.uv_layers       # (a fresh low: its own UVs; a low baked before: kept)
+    st.new_uv = not low.data.uv_layers
     try:
-        info = bm.bake_pair(context, low, [high], st, keep_state=keep)
-    except RuntimeError:
-        if made:
-            keep.restore(context)
-            m = low.data
-            bpy.data.objects.remove(low)
-            if m.users == 0:
-                bpy.data.meshes.remove(m)
-            raise
-        raise
+        info = yield from bm.bake_pair_steps(context, low, [high], st, keep_state=keep)
     finally:
         st.new_uv = new_uv
-    keep.restore(context)
+        keep.restore(context)
     if st.show:
         high.hide_set(True)
         high.select_set(False)
@@ -114,16 +236,17 @@ def run(context, high=None, low=None):
         o.select_set(False)
     low.select_set(True)
     context.view_layer.objects.active = low
-    return (f'Retopo + Bake: {high.name} ({len(high.data.polygons):,} faces) -> {low.name} '
-            f'({len(low.data.polygons):,} faces), {", ".join(bm.SUFFIX[k] for k in info["maps"])} {info["res"]} px, '
-            f'{time.time() - t0:.1f} s' + (f' | {note}' if note and not note.startswith('Quad Remesh:') else ''))
+    yield (1.0, 'Done')
+    return info
 
 
-class MCH_OT_retopo_bake(bpy.types.Operator):
-    """Make a low-poly copy of the selected detailed mesh (quad remesh + UVs) and bake its Normal / AO maps onto it.
-    With a low made here selected: bake again from its high"""
-    bl_idname = 'mch.retopo_bake'
-    bl_label = 'Retopo + Bake'
+# --- operators -------------------------------------------------------------------------------------------------------
+
+class MCH_OT_retopo_make(bpy.types.Operator):
+    """Step 1: a low-poly copy of the selected detailed mesh (Quad: remeshed; Wrap: a quad box vacuum-packed onto it).
+    With its low selected: made again"""
+    bl_idname = 'mch.retopo_make'
+    bl_label = 'Retopo'
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
@@ -131,58 +254,112 @@ class MCH_OT_retopo_bake(bpy.types.Operator):
         ob = context.active_object
         return ob is not None and ob.type == 'MESH'
 
+    def invoke(self, context, event):
+        return self._go(context)
+
     def execute(self, context):
+        return self._go(context)
+
+    def _go(self, context):
         if context.mode != 'OBJECT':
             bpy.ops.object.mode_set(mode='OBJECT')
-        ob = context.active_object
-        high = high_of(ob)
-        low = ob if high is not None else None
-        high = high or ob
+        high, low = pair(context.active_object)
+        S = context.scene
+        method, faces = S.mch_rb_method, S.mch_rb_faces
+        t0 = time.time()
+
+        def done(res):
+            lo, note = res
+            return (f'Retopo ({"Wrap" if method == "WRAP" else "Quad"}): {high.name} -> {lo.name} '
+                    f'{len(lo.data.polygons):,} faces, {time.time() - t0:.1f} s'
+                    + (f' | {note}' if note and not note.startswith('Quad Remesh:') else ''))
+        from . import progress
+        gen = make_low_steps(context, high, faces, method, low)
         try:
-            from . import safety_save
-            safety_save.before_risky('Retopo + Bake')
-        except (ImportError, AttributeError, RuntimeError):
-            pass
-        try:
-            msg = run(context, high, low)
+            res = progress.start(context, f'Retopo: {high.name}', gen, done)
         except RuntimeError as ex:
             self.report({'WARNING'}, str(ex))
             return {'CANCELLED'}
-        self.report({'INFO'}, msg)
+        if res != 'RUNNING':
+            self.report({'INFO'}, done(res))
+        return {'FINISHED'}
+
+
+class MCH_OT_retopo_bake(bpy.types.Operator):
+    """Step 2: bake the high's Normal / AO maps onto its low (made by Retopo), the maps put on the low"""
+    bl_idname = 'mch.retopo_bake'
+    bl_label = 'Bake'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.active_object
+        return ob is not None and ob.type == 'MESH' and pair(ob)[1] is not None
+
+    def invoke(self, context, event):
+        return self._go(context)
+
+    def execute(self, context):
+        return self._go(context)
+
+    def _go(self, context):
+        if context.mode != 'OBJECT':
+            bpy.ops.object.mode_set(mode='OBJECT')
+        high, low = pair(context.active_object)
+        from . import bake_maps as bm, progress
+        try:
+            from . import safety_save
+            safety_save.before_risky('Bake')
+        except (ImportError, AttributeError, RuntimeError):
+            pass
+
+        def done(info):
+            return (f'Bake: {high.name} -> {low.name}, {", ".join(bm.SUFFIX[k] for k in info["maps"])} '
+                    f'{info["res"]} px, {info["seconds"]:.1f} s')
+        try:
+            res = progress.start(context, f'Bake: {high.name} -> {low.name}', bake_steps(context, high, low), done)
+        except RuntimeError as ex:
+            self.report({'WARNING'}, str(ex))
+            return {'CANCELLED'}
+        if res != 'RUNNING':
+            self.report({'INFO'}, done(res))
         return {'FINISHED'}
 
 
 def draw(layout, context):
-    """The one-click box (Remesh tool window, Bake Maps)."""
+    """The two-step box (Remesh tool window, Bake Maps)."""
     from . import bake_maps as bm, panel_capture as pc
     st = bm.settings(context)
     S = context.scene
     if st is None or not hasattr(S, 'mch_rb_faces'):
         return
     ob = context.active_object
-    again = high_of(ob) is not None
+    high, low = pair(ob) if ob is not None and ob.type == 'MESH' else (None, None)
     box = layout.box()
-    box.label(text='RETOPO + BAKE  (one click)', icon='MOD_REMESH')
+    box.label(text='RETOPO + BAKE', icon='MOD_REMESH')
+    box.row(align=True).prop(S, 'mch_rb_method', expand=True)
+    col = box.column(align=True)
+    col.prop(S, 'mch_rb_faces')
     r = pc.primary(box.row(align=True))
     r.scale_y = 1.3
-    r.operator('mch.retopo_bake', text='Bake Again' if again else 'Retopo + Bake', icon='RENDER_STILL')
+    r.operator('mch.retopo_make', text='1  Retopo Again' if low is not None else '1  Retopo', icon='MOD_REMESH')
     col = box.column(align=True)
     r = col.row(align=True)
-    sub = r.row(align=True)
-    sub.enabled = not again
-    sub.prop(S, 'mch_rb_faces')
     r.prop(st, 'res', text='')
-    r = col.row(align=True)
     r.prop(st, 'normal', toggle=True)
     r.prop(st, 'ao', toggle=True)
     r.prop(st, 'color', toggle=True)
-    if again:
-        box.label(text=f'{high_of(ob).name} -> {ob.name}', icon='CHECKMARK')
+    r = pc.primary(box.row(align=True))
+    r.scale_y = 1.3
+    r.enabled = low is not None
+    r.operator('mch.retopo_bake', text='2  Bake', icon='RENDER_STILL')
+    if low is not None:
+        box.label(text=f'{high.name} -> {low.name}', icon='CHECKMARK')
     else:
         box.label(text='Select the detailed mesh (high)', icon='INFO')
 
 
-CLASSES = (MCH_OT_retopo_bake,)
+CLASSES = (MCH_OT_retopo_make, MCH_OT_retopo_bake)
 
 
 def register():
@@ -191,10 +368,16 @@ def register():
     bpy.types.Scene.mch_rb_faces = IntProperty(
         name='Faces', default=5000, min=50, max=200000,
         description='About how many faces the low poly gets')
+    bpy.types.Scene.mch_rb_method = EnumProperty(
+        name='Method', default='QUAD',
+        items=[('QUAD', 'Quad', 'Quad remesh: the edge flow follows the shape'),
+               ('WRAP', 'Vacuum Wrap', 'A box of even quads vacuum-packed onto the high (heads, torsos, armour, rocks: '
+                                'one closed blob; gaps are bridged)')])
 
 
 def unregister():
-    if hasattr(bpy.types.Scene, 'mch_rb_faces'):
-        del bpy.types.Scene.mch_rb_faces
+    for a in ('mch_rb_faces', 'mch_rb_method'):
+        if hasattr(bpy.types.Scene, a):
+            delattr(bpy.types.Scene, a)
     for c in reversed(CLASSES):
         bpy.utils.unregister_class(c)
