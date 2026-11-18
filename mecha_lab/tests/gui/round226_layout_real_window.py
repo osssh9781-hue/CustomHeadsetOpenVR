@@ -217,7 +217,18 @@ def flow():
     res['C1'] = same and len(pos['CUT']) == 5 and all(v[2] for v in pos['CUT'].values()) and len(dim_smart) >= 4
     log('C1 the LASSO bar in 4 tools: same places', same, '| Cut cells', len(pos['CUT']), '| dim in Smart Move', dim_smart)
     tool('CUT')
+    S.mch_brush.stab_enable = True              # (0.24.227 the user's screenshot: Slow Line on, the Stroke shape)
+    S.mch_brush.shape = 'STROKE'
+    ub.bump()
     yield 1.5
+    yield from wait_draws(3)
+    shot('04b_CUT_slow_line_stroke.png')
+    bar_card = top()[0]
+    log('top bar (Slow Line + Stroke): height', round(bar_card.h), 'px =', round(bar_card.h / k), 'at scale 1 | width', round(bar_card.w))
+    S.mch_brush.stab_enable = False
+    S.mch_brush.shape = 'LASSO'
+    ub.bump()
+    yield 1.0
     yield from wait_draws(3)
     rw, dk = row(), dock()
     cards = [i for i in rw if i.kind == 'card']
@@ -285,12 +296,42 @@ def flow():
         round(y_dock1))
     with C.temp_override(window=w, area=a, region=r):
         ub.set_menu_folded(True)
+    # 0.24.227 Blender's tool settings row: no tool icon in MECHA LAB (it shows while the toolbar - T - is hidden)
+    from mecha_lab import tool_header_icon
+    a.spaces.active.show_region_toolbar = False
+    tool('CUT')
+    yield 1.5
+    for r_ in a.regions:
+        r_.tag_redraw()
+    yield 1.5
+    p_off = shot('09_tool_row_no_icon.png')
+    tool_header_icon.unregister()
+    for r_ in a.regions:
+        r_.tag_redraw()
+    yield 1.5
+    p_on = shot('10_tool_row_blender_icon.png')
+    tool_header_icon.register()
+    for r_ in a.regions:
+        r_.tag_redraw()
+    yield 1.5
+    th = next(r_ for r_ in a.regions if r_.type == 'TOOL_HEADER')
+    box_ = (th.x, w.height - (th.y + th.height), th.x + th.width, w.height - th.y)
+    code = ('import sys; from PIL import Image, ImageChops; b = tuple(int(float(v)) for v in sys.argv[3:7]); '
+            'd = ImageChops.difference(Image.open(sys.argv[1]).convert("RGB").crop(b), '
+            'Image.open(sys.argv[2]).convert("RGB").crop(b)); '
+            'print(d.convert("L").point(lambda v: 255 if v > 24 else 0).getbbox())')
+    out_ = subprocess.run(['python3', '-c', code, p_off, p_on, *map(str, box_)], capture_output=True, text=True).stdout.strip()
+    bb = eval(out_) if out_.startswith('(') else None
+    res['C7'] = bb is not None and (bb[2] - bb[0]) < 80 * k and (bb[3] - bb[1]) < 40 * k
+    log('C7 tool settings row: what differs with / without our patch (the icon)', bb, '| row', box_)
+    a.spaces.active.show_region_toolbar = True
     i18n.force(None)
     names = {'C1': 'the LASSO bar alone at the top, the same places in every tool; dim in a tool without them (Smart Move)',
              'C2': 'the bar with Select (with Ortho, 한글) above a row of 4 boxes: the tool\'s own at the left, then the actions',
              'C3': 'a REAL click on an action button works (Symmetry X: a Mirror modifier)',
              'C4': 'REAL clicks on 한글 in the dock: English and back',
              'C5': 'a REAL right click opens the Tool Wheel; Esc closes it',
+             'C7': 'Blender\'s tool settings row: the active tool\'s icon is not shown in MECHA LAB (only that icon differs)',
              'C6': 'the menu\'s open button is beside the key legend; a REAL click opens the menu and the row + bar go up'}
     n = 0
     for kk_ in sorted(names):

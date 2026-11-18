@@ -732,6 +732,131 @@ def fixed_rows_layout(room_w, k):
     return row + 1, out
 
 
+BAR_SCALE = 0.8               # the LASSO bar's cells: this much of the other bars' size
+BAR_PAD = 8.0                 # 0.24.227 the thin LASSO bar: its card round the rows
+BAR_GAP = 6.0                 # between two rows of the bar
+BAR_SEP = 20.0                # between two parts in a row
+BAR_FIXED = (0, 1, 6, 5, 2)   # Shape, Draw, Corners, Resolution, Target: one place each, for every tool
+
+
+def lasso_bar_layout(room_w, k):
+    """0.24.227 Where the LASSO bar's fixed parts are - from the width alone: ({slot: dict(band, x, tw, cells=[(x, w)
+    per cell that is always there])}, bands, the widest band).  A part is its name and its cells in ONE row; the
+    parts follow each other with the same gap; the block's name leads the first band."""
+    slots = common_slots()
+    lead = _title_w(BLOCK_TITLE, k) * 1.25 + BAR_SEP * k
+    out, x, band, widest = {}, lead, 0, 0.0
+    for si in BAR_FIXED:
+        title, sources, specs = slots[si]
+        tw = max(_title_w(t, k) for t in list(sources) + [title]) + GAP * k
+        cells, cx = [], tw
+        for sp_ in specs:
+            if (sp_[1], sp_[0]) in COND:
+                cells.append(None)
+                continue
+            w = _spec_w(sp_, k)
+            cells.append((cx, w))
+            cx += w + GAP * k
+        w = cx - GAP * k
+        if lead + w > room_w:
+            return None
+        if x > lead and x + BAR_SEP * k + w > room_w:
+            band += 1
+            x = lead
+        elif x > lead:
+            x += BAR_SEP * k
+        out[si] = dict(band=band, x=x, tw=tw, cells=cells)
+        x += w
+        widest = max(widest, x)
+    return out, band + 1, widest
+
+
+def _lasso_bar(context, tool, common, own, room_w, k):
+    """0.24.227 (user, 4K screenshot: "상단 바를 좀 더 얇게 만들어 줘, 지금 간격도 엉망이니까 정리도 좀 해 주고"): the
+    LASSO bar as thin rows - a part's name at the LEFT of its cells (no title line above), the fixed parts side by
+    side with one gap; the cells that come and go (Slow Line's numbers, a corner's width ...) packed in one row under
+    them, each group led by its part's name; then the shape's own settings and the edge parts, packed.
+    (items with the card's bottom left at 0, 0; width; height) or None when the view is too narrow."""
+    from .mecha_menu import Item
+    slots = common_slots()
+    inner = room_w - 2 * BAR_PAD * k
+    lay = lasso_bar_layout(inner, k)
+    if lay is None:
+        return None
+    places, n_bands, widest = lay
+    row_h, gap = ROW * k, BAR_GAP * k
+    rows = []                                   # each: [(kind 'title' | 'cell' | 'block', x, w, payload)]
+    for b_ in range(n_bands):
+        rows.append([])
+    rows[0].append(('block', 0.0, _title_w(BLOCK_TITLE, k) * 1.25, BLOCK_TITLE))
+    cond = []                                   # [(title, [cells])] the ones that show now
+    for si in BAR_FIXED:
+        title, cells = common[si]
+        pl = places[si]
+        name = title or slots[si][0]
+        rows[pl['band']].append(('title', pl['x'], pl['tw'] - GAP * k, name))
+        shown = []
+        for c, sp_, spot in zip(cells, slots[si][2], pl['cells']):
+            if spot is None:
+                if c is not None:
+                    shown.append(c)
+                continue
+            if c is None:                       # (the tool has no such cell: dim, no click)
+                c = dict(kind=sp_[1], label=sp_[0], icon=sp_[2], on=False, action=None, data=None, prop='', off=True)
+            rows[pl['band']].append(('cell', pl['x'] + spot[0], spot[1], c))
+        if shown:
+            cond.append((name, shown))
+
+    def packed(groups_):
+        """Groups (name, cells) into rows of ``inner`` px, packed from the left."""
+        out_, cur, x = [], [], 0.0
+        for name, cells in groups_:
+            tw = (_title_w(name, k) + GAP * k) if name else 0.0
+            ws = [_width(c, k) for c in cells]
+            w = tw + sum(ws) + GAP * k * (len(ws) - 1)
+            if cur and x + BAR_SEP * k + w > inner:
+                out_.append(cur)
+                cur, x = [], 0.0
+            elif cur:
+                x += BAR_SEP * k
+            if name:
+                cur.append(('title', x, tw - GAP * k, name))
+            cx = x + tw
+            for c, cw in zip(cells, ws):
+                if cx + cw > inner and cx > x + tw:      # (a very long group: goes on in the next row)
+                    out_.append(cur)
+                    cur, cx = [], 0.0
+                cur.append(('cell', cx, cw, c))
+                cx += cw + GAP * k
+            x = cx - GAP * k
+        if cur:
+            out_.append(cur)
+        return out_
+    rows += packed(cond)
+    eg = edge_groups(context, tool)
+    more = []
+    free = common[8][1]
+    if free:
+        more.append((BLOCK_NAMES.get(8, 'Lasso'), free))
+    more += [(t, c) for t, c in own if any(t == et and c == ec for et, ec in eg)]
+    rows += packed(more)
+    width = max([widest] + [max(x + w for _k, x, w, _p in r) for r in rows if r]) + 2 * BAR_PAD * k
+    height = len(rows) * row_h + (len(rows) - 1) * gap + 2 * BAR_PAD * k
+    out = [Item('card', 0.0, 0.0, width, height)]
+    for n, r in enumerate(rows):
+        y = height - BAR_PAD * k - (n + 1) * row_h - n * gap
+        for kind, x, w, p_ in r:
+            px = BAR_PAD * k + x
+            if kind == 'block':
+                out.append(Item('glabel', px, y, w, row_h, p_.upper(), 'block'))
+            elif kind == 'title':
+                out.append(Item('glabel', px, y, w, row_h, p_.upper(), 'title'))
+            else:
+                out.append(Item(p_['kind'], px, y, w, row_h, p_['label'], p_['icon'], p_['on'], not p_.get('off'),
+                                p_['action'], p_['data'], p_['prop']))
+    return out, width, height
+
+
 def items(context, region_w, region_h, k=1.0, left=None, right=None, part='TOP'):
     """The bar as Mecha Menu Items (region px).  ``part``: 'TOP' the bar at the top (0.24.226: the LASSO block);
     'BOTTOM' the tool's own block above the bottom dock (nothing when the bar is not in sections)."""
@@ -766,6 +891,21 @@ def items(context, region_w, region_h, k=1.0, left=None, right=None, part='TOP')
     band = max(300.0 * k, band_r - band_l - 24 * k)
     inner = band - 2 * PAD * k
     fixed = block_layout(inner, k) if sections_wanted() else None
+    if fixed and part == 'TOP':
+        # 0.24.227 (user, a picture of the bar shrunk: "이 정도 비율로 하고 싶어"): the LASSO bar drawn smaller
+        ks = k * BAR_SCALE
+        bar = _lasso_bar(context, tool, common, own, inner + 2 * CARD_PAD * k, ks)
+        if bar is not None:
+            its_, _w, h_ = bar
+            for i in its_:
+                if i.kind == 'glabel':
+                    i.icon += '_s'              # (drawn at the bar's own scale)
+            x0 = max(band_l + 8 * k, min((region_w - band) / 2.0, band_r - 8 * k - band))
+            y_top = region_h - TOP * k - inset
+            for i in its_:
+                i.x += x0
+                i.y += y_top - h_
+            return its_
     if fixed:
         # 0.24.224 (user: "모양 그리기 모서리 해상도는 다 공통이잖아 - 한 묶음으로 라쏘 칸으로 묶어 줘, 왼쪽으로 블록 하나
         # 만들어 줘, 이름은 써 주고" / "대상까지도"): the drawing sections in ONE block at the left (LASSO, each part

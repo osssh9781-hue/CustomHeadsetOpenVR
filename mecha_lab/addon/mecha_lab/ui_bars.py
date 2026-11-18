@@ -1081,6 +1081,8 @@ def register():
                                                 default='TOOL', options={'SKIP_SAVE'})
     for c in CLASSES:
         bpy.utils.register_class(c)
+    from . import tool_header_icon
+    tool_header_icon.register()                       # 0.24.227 no tool icon in Blender's tool settings row
     from . import layers_panel, tool_presets, zb_sculpt, zb_ui
     layers_panel.register()
     zb_sculpt.register()                              # 0.24.60 ZBrush-style sculpting
@@ -1105,6 +1107,11 @@ def register():
 
 
 def unregister():
+    try:
+        from . import tool_header_icon
+        tool_header_icon.unregister()
+    except (ImportError, AttributeError):
+        pass
     global _handle
     if _handle is not None:
         try:

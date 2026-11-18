@@ -640,7 +640,10 @@ def draw(items, hover, S, context):
             kr = (9 if hot else 8) * S
             G.rounded_rect(it.x + it.w * f - kr, ty - kr, 2 * kr, 2 * kr, kr, G.TEXT)
         elif it.kind in NEW_KINDS:                # 0.24.59 top bar, side panel, named strip, actions card
-            t2 = _draw_new(it, hot, S, white, dim)
+            # 0.24.227 the thin LASSO bar: its cells are drawn smaller - letters and icons with them
+            S_it = it.h / 30.0 if (it.kind in {'seg', 'mini', 'ibtn', 'drop'} and it.h < 27.0 * S) or (
+                it.kind == 'glabel' and it.icon in {'title_s', 'block_s'}) else S
+            t2 = _draw_new(it, hot, S_it, white, dim)
             if t2 is not None:
                 tip = t2
     if tip is not None:
@@ -888,10 +891,10 @@ def _draw_new(it, hot, S, white, dim):
     if k == 'vrule':
         G.rounded_rect(x, y, max(1.0, w), max(1.0, h), 0.5, (1.0, 1.0, 1.0, 0.14))
         return None
-    if k == 'glabel' and it.icon == 'title':     # 0.24.219 (user: "각 목록 이름은 잘 보이게 써 줘, 지금 너무 안 보인다")
+    if k == 'glabel' and it.icon in {'title', 'title_s'}:     # 0.24.219 (user: "각 목록 이름은 잘 보이게 써 줘, 지금 너무 안 보인다")
         G.text(x + 1 * S, y + h / 2, it.label, 12.5 * S, (0.96, 0.78, 0.36, 1.0))     # a top bar section's name
         return None
-    if k == 'glabel' and it.icon == 'block':     # 0.24.224 the top bar's LASSO block: its name
+    if k == 'glabel' and it.icon in {'block', 'block_s'}:     # 0.24.224 the top bar's LASSO block: its name
         G.text(x, y + h / 2, it.label, 15 * S, G.TEXT)
         return None
     if k == 'glabel':

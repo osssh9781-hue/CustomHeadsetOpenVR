@@ -141,8 +141,16 @@ check(f'the top bar is ONE card - LASSO with its parts named ({names}); no Optio
 res_cell = next(i for i in its if i.kind == 'mini' and i.label == 'Res')
 res_title = next(i for i in its if i.kind == 'glabel' and i.label == 'RESOLUTION')
 shape_y = next(i for i in its if i.kind == 'ibtn').y
-check('the long form: a part\'s name above its cells; Shape, Draw, Corners and Resolution side by side in the first band',
-      res_title.y > res_cell.y and abs(res_title.x - res_cell.x) < 1.0 and abs(res_cell.y - shape_y) < 1.0)
+card = cards[0]
+gaps = []
+fixed_titles = [i for i in its if i.kind == 'glabel' and i.icon == 'title_s' and abs(i.y - shape_y) < 1.0]
+for t_ in fixed_titles[1:]:
+    prev = max(i.x + i.w for i in its if i.kind in {'ibtn', 'seg', 'mini'} and abs(i.y - shape_y) < 1.0 and i.x < t_.x)
+    gaps.append(round(t_.x - prev, 1))
+check(f'0.24.227 the thin bar: a part\'s name at the LEFT of its cells in the same row (no title line), the five fixed '
+      f'parts in one row with one gap between them ({sorted(set(gaps))}); the bar is {card.h:.0f} px high',
+      abs(res_title.y - res_cell.y) < 1.0 and res_title.x < res_cell.x and abs(res_cell.y - shape_y) < 1.0
+      and len(fixed_titles) == 5 and len(set(gaps)) == 1 and card.h <= (3 * tb.ROW + 2 * tb.BAR_GAP + 2 * tb.BAR_PAD) * tb.BAR_SCALE + 0.5)
 B.stab_enable = True
 its2 = top('CUT')
 B.stab_enable = False
