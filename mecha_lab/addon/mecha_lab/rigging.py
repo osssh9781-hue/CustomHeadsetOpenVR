@@ -22,6 +22,7 @@ Chain (tail, tentacle, hair lock)
     under its bone nearest the chain's root.  Jiggle: during playback the chain lags and swings after the
     movement (Stiffness, Damping).
 """
+import json
 import math
 
 import bpy
@@ -58,6 +59,9 @@ class MCH_PG_Rig(bpy.types.PropertyGroup):
         ('REVERSE', 'Reverse Legs', 'Digitigrade: thigh, shin, a long hock bending back, foot (IK on all three)')])
     fingers: BoolProperty(name='Fingers', default=True, description='Three bones a finger; turn the first bone: the '
                           'finger curls')
+    auto_joints: BoolProperty(name='Auto Joints', default=True,
+                              description='Mecha: the order and the joints from where the parts touch; the legs (parts '
+                              'down to one on the ground) get IK')
     face: BoolProperty(name='Face Bones', default=True, description='Jaw, eyes (looking at a target), brows, lips')
     axis: EnumProperty(name='Turn Axis', default='X', items=[('X', 'X', 'Turns round the world X axis'),
                                                             ('Y', 'Y', 'Turns round the world Y axis'),
@@ -865,10 +869,92 @@ def _part_axis(context, ob):
     return c, c + d * max(half, 1e-3)
 
 
-def build_mecha(context, parts):
+def _contacts(context, parts, tol_share=0.012):
+    """0.24.247 which parts touch (or sink into) which: {(a, b): (contact middle (world), how many points)}."""
+    from mathutils import Vector
+    from mathutils.bvhtree import BVHTree
+    pts, trees, boxes = {}, {}, {}
+    dg = context.evaluated_depsgraph_get()
+    allV = []
+    for p in parts:
+        ev = p.evaluated_get(dg)
+        me = ev.to_mesh()
+        try:
+            co = np.empty(len(me.vertices) * 3)
+            me.vertices.foreach_get('co', co)
+            me.calc_loop_triangles()
+            tri = np.empty(len(me.loop_triangles) * 3, np.int64)
+            me.loop_triangles.foreach_get('vertices', tri)
+        finally:
+            ev.to_mesh_clear()
+        M = np.array(p.matrix_world)
+        W = co.reshape(-1, 3) @ M[:3, :3].T + M[:3, 3]
+        allV.append(W)
+        trees[p.name] = BVHTree.FromPolygons([tuple(v) for v in W], tri.reshape(-1, 3).tolist()) if len(tri) else None
+        step = max(1, len(W) // 2500)
+        pts[p.name] = W[::step]
+        boxes[p.name] = (W.min(0), W.max(0))
+    V = np.concatenate(allV) if allV else np.zeros((1, 3))
+    tol = tol_share * float(np.ptp(V, axis=0).max())
+    out = {}
+    names = [p.name for p in parts]
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            la, ha = boxes[a]
+            lb, hb = boxes[b]
+            if (la > hb + tol).any() or (lb > ha + tol).any():
+                continue
+            touch = []
+            for x, y in ((a, b), (b, a)):
+                t = trees[y]
+                if t is None:
+                    continue
+                ly, hy = boxes[y]
+                for v in pts[x]:
+                    if (v < ly - tol).any() or (v > hy + tol).any():
+                        continue
+                    hit = t.find_nearest(Vector(v))
+                    if hit[0] is not None and hit[3] < tol:
+                        touch.append(v)
+                    elif hit[0] is not None and (Vector(v) - hit[0]).dot(hit[1]) < 0:
+                        touch.append(v)                 # (inside the other part: sunk into it)
+            if len(touch) >= 3:
+                out[(a, b)] = (np.mean(touch, axis=0), len(touch))
+    return out, V
+
+
+def mecha_tree(context, parts):
+    """0.24.247 (user: 메카 리깅 - 자동으로) the parts' order and joints from how they touch: the biggest part is the
+    body; from it outward each part hangs on the part it touches nearer the body, its joint the middle of where they
+    touch.  Returns (parent {name: parent name or None}, joint {name: point}, body name, all points)."""
+    contacts, V = _contacts(context, parts)
+    vol = {}
+    for p in parts:
+        W = world_points(context, p)
+        vol[p.name] = float(np.prod(np.maximum(np.ptp(W, axis=0), 1e-4))) if len(W) else 0.0
+    body = max(vol, key=vol.get)
+    adj = {p.name: [] for p in parts}
+    for (a, b), (c, n) in contacts.items():
+        adj[a].append((b, c, n))
+        adj[b].append((a, c, n))
+    parent, joint = {body: None}, {}
+    q = [body]
+    while q:
+        u = q.pop(0)
+        for v, c, n in sorted(adj[u], key=lambda t: -t[2]):
+            if v not in parent:
+                parent[v] = u
+                joint[v] = c
+                q.append(v)
+    return parent, joint, body, V
+
+
+def build_mecha(context, parts, auto=True):
     parts = [p for p in parts if p.type == 'MESH']
     if not parts:
         raise RuntimeError('Select the mecha parts (meshes)')
+    if auto and len(parts) > 1:
+        return build_mecha_auto(context, parts)
     axes = {p.name: _part_axis(context, p) for p in parts}
     allp = np.array([a for a, _b in axes.values()])
     lo = min(world_points(context, p)[:, 2].min() for p in parts)
@@ -890,6 +976,116 @@ def build_mecha(context, parts):
                 ebs[names[p.name]].parent = ebs[names[par.name]]
     for p in parts:
         attach(p, ob, names[p.name])
+    return ob
+
+
+def build_mecha_auto(context, parts):
+    """0.24.247 the mecha rig from how its parts touch: joints where they meet, the order body -> outward, the legs
+    (chains of parts that end on the ground) with IK on their feet; parts touching nothing hang on the root."""
+    parent, joint, body, V = mecha_tree(context, parts)
+    ground = float(V[:, 2].min())
+    H = float(np.ptp(V[:, 2])) or 1.0
+    size = float(np.ptp(V, axis=0).max()) or 1.0
+    byname = {p.name: p for p in parts}
+    kids = {n: [m for m, par in parent.items() if par == n] for n in byname}
+    far, low = {}, {}
+    for p in parts:
+        W = world_points(context, p)
+        far[p.name] = W
+        low[p.name] = float(W[:, 2].min()) if len(W) else 0.0
+    heads, tails = {}, {}
+    for p in parts:
+        W = far[p.name]
+        if p.name == body or p.name not in parent:
+            c = 0.5 * (W.min(0) + W.max(0))
+            heads[p.name] = c
+            tails[p.name] = c + np.array([0, 0, 0.25 * max(1e-3, np.ptp(W[:, 2]))])
+            continue
+        h = joint[p.name]
+        ks = kids[p.name]
+        if ks:                                    # (toward its own child's joint: a limb segment)
+            t = np.mean([joint[k] for k in ks], axis=0)
+        else:                                     # (a tip: toward its farthest point)
+            t = W[np.argmax(np.linalg.norm(W - h, axis=1))]
+        if np.linalg.norm(t - h) < 1e-4 * size:
+            t = h + np.array([0, 0, 0.05 * size])
+        heads[p.name], tails[p.name] = h, t
+    # the legs: from the body's child down to a tip part that stands on the ground
+    legs = []
+    for n in byname:
+        if n == body or kids[n] or n not in parent or low[n] - ground > 0.04 * H:
+            continue
+        chain = [n]
+        while parent.get(chain[-1]) not in (None, body):
+            chain.append(parent[chain[-1]])
+        if len(chain) >= 2:
+            legs.append(chain[::-1])              # (hip ... foot)
+    # a dead straight leg: IK cannot tell which way to bend - its knee joint a hair forward (the parts stay put)
+    for chain in legs:
+        if len(chain) >= 3:
+            a, f = heads[chain[1]], heads[chain[-1]]
+            ab = f - heads[chain[0]]
+            for k in chain[1:-1]:
+                p_ = heads[k]
+                t = float((p_ - heads[chain[0]]) @ ab / max(ab @ ab, 1e-12))
+                off = p_ - (heads[chain[0]] + t * ab)
+                if np.linalg.norm(off) < 0.02 * np.linalg.norm(ab):
+                    heads[k] = p_ + np.array([0, -0.03 * np.linalg.norm(ab), 0])
+                    pk = parent[k]
+                    if pk in tails and pk != body:
+                        tails[pk] = heads[k]
+    ob = _new_armature(context, 'Mecha_Rig')
+    ob[RIG_KEY] = 'MECHA'
+    ob['mch_body_bone'] = body
+    ob['mch_x0'] = float(heads[body][0])
+    names = {}
+    with _Edit(context, ob) as ebs:
+        c = heads[body]
+        _bone(ebs, 'root', (c[0], c[1], ground), (c[0], c[1] - 0.15 * size, ground), deform=False)
+        order = [body] + [n for n in parent if n != body] + [n for n in byname if n not in parent]
+        for n in order:
+            names[n] = _bone(ebs, n, heads[n], tails[n], 'root').name
+        for n in order:
+            par = parent.get(n)
+            if par is not None:
+                ebs[names[n]].parent = ebs[names[par]]
+        feet = []
+        for chain in legs:
+            foot, lower = chain[-1], chain[-2]
+            f = ebs[names[foot]]
+            mid = heads[lower] if len(chain) == 2 else heads[chain[-2]]
+            ab = heads[foot] - heads[chain[0]]
+            tt = float((mid - heads[chain[0]]) @ ab / max(ab @ ab, 1e-12))
+            off = mid - (heads[chain[0]] + tt * ab)
+            if np.linalg.norm(off) < 1e-6:
+                off = np.array([0.0, -1.0, 0.0])
+            off = off / np.linalg.norm(off) * 0.5 * float(np.linalg.norm(ab))
+            _limb_ik_bones(ebs, names[lower], names[foot], f.head.copy(), f.tail.copy(), mid, tuple(off), 'root')
+            feet.append(names[foot])
+    for p in parts:
+        attach(p, ob, names[p.name])
+    offs, lens = {}, []
+    for chain in legs:
+        lower, foot = names[chain[-2]], names[chain[-1]]
+        b = ob.data.bones.get(lower + '_pole')
+        if b is not None:
+            offs[lower] = list(b.head_local - ob.data.bones[lower].head_local)
+    ob['mch_pole_off'] = offs
+    for chain in legs:
+        lower, foot = names[chain[-2]], names[chain[-1]]
+        n_ik = max(1, min(3, len(chain) - 1))
+        err, _d = _limb_ik(context, ob, lower, foot, n_ik)
+        if n_ik > 2 and err > 0.01:
+            pb = ob.pose.bones[lower]
+            for c_ in [c_ for c_ in pb.constraints if c_.type == 'IK']:
+                pb.constraints.remove(c_)
+            for c_ in [c_ for c_ in ob.pose.bones[foot].constraints if c_.type == 'COPY_ROTATION']:
+                ob.pose.bones[foot].constraints.remove(c_)
+            _limb_ik(context, ob, lower, foot, 2)
+        lens.append(float(np.linalg.norm(heads[chain[-1]] - heads[chain[0]])))
+    ob['mch_legs'] = json.dumps([names[c[-1]] for c in legs])
+    ob['mch_leg_len'] = float(min(lens)) if lens else 0.3 * H
+    controls(ob)
     return ob
 
 
@@ -1363,9 +1559,11 @@ class MCH_OT_rig_make(bpy.types.Operator):
                        + (f', {act.name} bound ({"automatic" if how == "auto" else "nearest-bone"} weights)' if how else ''))
                 _show(context, arm)
             elif st.kind == 'MECHA':
-                arm = build_mecha(context, sel or [act])
-                msg = (f'{arm.name}: {len(arm.data.bones) - 1} parts, each on its bone - click a part with the Rig '
-                       f'tool to set its joint')
+                arm = build_mecha(context, sel or [act], st.auto_joints)
+                nl = len(json.loads(arm.get('mch_legs', '[]')))
+                msg = (f'{arm.name}: {sum(1 for o in (sel or [act]) if o.type == "MESH")} parts, each on its bone'
+                       + (f', joints where they touch, {nl} leg(s) with IK' if st.auto_joints else '')
+                       + ' - click a part with the Rig tool to move its joint')
                 _show(context, arm)
             else:
                 into = next((o for o in sel if o.type == 'ARMATURE'), None)
@@ -1679,6 +1877,7 @@ def draw(layout, context):
             col.row(align=True).prop(st, 'legs', expand=True)
         box.label(text='Select the body (feet on the ground, facing -Y)', icon='INFO')
     elif st.kind == 'MECHA':
+        col.row(align=True).prop(st, 'auto_joints', toggle=True)
         box.label(text='Select the parts; then click a part: its joint', icon='INFO')
     elif st.kind == 'AUTO':
         r = col.row(align=True)

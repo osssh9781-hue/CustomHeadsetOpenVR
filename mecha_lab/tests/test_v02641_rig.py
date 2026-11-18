@@ -270,7 +270,7 @@ for i, (c, s) in enumerate((((0, 0, 0.5), (0.3, 0.3, 0.5)), ((0, 0, 1.4), (0.15,
     C.active_object.name = f'Part{i}'
 for o in parts:
     o.select_set(True)
-st.kind = 'MECHA'
+st.kind = 'MECHA'; st.auto_joints = False      # (0.24.247 this part checks the hand-made links)
 r = bpy.ops.mch.rig_make()
 arm = C.active_object
 before = {o.name: o.matrix_world.copy() for o in parts}
@@ -338,7 +338,7 @@ bpy.ops.mesh.primitive_cylinder_add(radius=0.08, depth=0.6, location=(0, 0.3, 0.
 bpy.ops.mesh.primitive_cylinder_add(radius=0.03, depth=0.6, location=(0, 0.3, 1.25)); rod = C.active_object; rod.name = 'Rod'
 for o in (base, boom, cyl, rod):
     o.select_set(True)
-st.kind = 'MECHA'
+st.kind = 'MECHA'; st.auto_joints = False      # (0.24.247 this part checks the hand-made links)
 bpy.ops.mch.rig_make()
 arm = C.active_object
 for o in list(C.selected_objects):
@@ -376,7 +376,7 @@ bpy.ops.mesh.primitive_cube_add(location=(0, 0, 0.5), scale=(0.6, 0.6, 0.5)); bo
 bpy.ops.mesh.primitive_cube_add(location=(0, -0.3, 1.03), scale=(0.3, 0.3, 0.03)); hat = C.active_object
 for o in (boxo, hat):
     o.select_set(True)
-st.kind = 'MECHA'
+st.kind = 'MECHA'; st.auto_joints = False      # (0.24.247 this part checks the hand-made links)
 bpy.ops.mch.rig_make()
 arm = C.active_object
 for o in list(C.selected_objects):

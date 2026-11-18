@@ -59,13 +59,15 @@ def legs_of(arm):
     b = arm.data.bones
     if kind == 'AUTO':
         return [n + '.foot_ik' for n in json.loads(arm.get('mch_legs', '[]')) if n + '.foot_ik' in b], 'AUTO'
+    if kind == 'MECHA':                                  # 0.24.247 a mecha's legs (feet = parts on the ground)
+        return [n + '_ik' for n in json.loads(arm.get('mch_legs', '[]')) if n + '_ik' in b], 'MECHA'
     if kind == 'QUAD':
         return [n for n in ('footF.L_ik', 'footF.R_ik', 'footB.L_ik', 'footB.R_ik') if n in b], 'QUAD'
     return [n for n in ('foot.L_ik', 'foot.R_ik') if n in b], 'BODY'
 
 
 def leg_length(arm):
-    if arm.get('mch_rig') == 'AUTO' and arm.get('mch_leg_len'):
+    if arm.get('mch_rig') in {'AUTO', 'MECHA'} and arm.get('mch_leg_len'):
         return float(arm['mch_leg_len'])
     b = arm.data.bones
     hip = b.get('thigh.L') or b.get('legB.L') or b.get('legF.L')
@@ -144,8 +146,8 @@ def _set_world(arm, pb, M):
 def make_cycle(context, arm, st):
     """Key one cycle (or Loops cycles) on ``arm``.  Returns (action, info)."""
     kind = arm.get('mch_rig')
-    if kind not in {'BODY', 'QUAD', 'AUTO'}:
-        raise RuntimeError('Auto Animation works on a Human / Quadruped / Auto Creature rig made by the Rig tool')
+    if kind not in {'BODY', 'QUAD', 'AUTO', 'MECHA'}:
+        raise RuntimeError('Auto Animation works on a Human / Quadruped / Auto Creature / Mecha rig made by the Rig tool')
     feet, kind = legs_of(arm)
     if st.gait != 'IDLE' and not feet:
         raise RuntimeError('This rig has no foot IK controls (make it with IK on)')
@@ -171,13 +173,13 @@ def make_cycle(context, arm, st):
         pb.rotation_quaternion = (1, 0, 0, 0)
         pb.scale = (1, 1, 1)
     context.view_layer.update()
-    phases = (auto_phases(arm, feet, st.gait) if kind == 'AUTO'
+    phases = (auto_phases(arm, feet, st.gait) if kind in {'AUTO', 'MECHA'}
               else PHASES.get((kind, 'RUN' if st.gait == 'RUN' else 'WALK'), {}))
     duty = DUTY['RUN' if st.gait == 'RUN' else 'WALK']
     L, stride = P['L'], P['stride']
-    body = {'BODY': 'hips', 'QUAD': 'pelvis', 'AUTO': 'body'}[kind]
+    body = {'BODY': 'hips', 'QUAD': 'pelvis', 'AUTO': 'body', 'MECHA': arm.get('mch_body_bone', '')}[kind]
     chest = 'chest'
-    tail = sorted(n for n in pbs.keys() if n.startswith('tail.'))
+    tail = sorted(n for n in pbs.keys() if n.startswith('tail.')) if kind != 'MECHA' else []
     auto_chains = [sorted(n for n in pbs.keys() if n.startswith(c + '.') and n[len(c) + 1:].isdigit())
                    for c in json.loads(arm.get('mch_chains', '[]'))] if kind == 'AUTO' else []
     chain_roots = [b.name for b in arm.data.bones if b.use_deform and not b.use_connect and b.parent is not None
@@ -215,7 +217,7 @@ def make_cycle(context, arm, st):
             pb.matrix = M
             _key(pb, frame)
         context.view_layer.update()
-        if chest in pbs and chest != body and kind != 'AUTO':
+        if chest in pbs and chest != body and kind not in {'AUTO', 'MECHA'}:
             pb = pbs[chest]
             if st.gait == 'IDLE':
                 ang = math.radians(2.2 * st.bob) * math.sin(cyc)        # (breathing: the chest lifts)
@@ -227,7 +229,7 @@ def make_cycle(context, arm, st):
                 pb.rotation_quaternion = (1.0, 0.0, 0.0, 0.0)
             _key(pb, frame, rot=True)
         for hn in ('head', 'neck'):
-            if hn in pbs and kind != 'AUTO':
+            if hn in pbs and kind not in {'AUTO', 'MECHA'}:
                 pb = pbs[hn]
                 a = (math.radians(1.5) * math.sin(cyc * 0.5 + 0.7) if st.gait == 'IDLE'
                      else math.radians(2.0 * st.bob) * math.cos(2 * cyc))
@@ -262,7 +264,8 @@ def make_cycle(context, arm, st):
                     pb.matrix = Matrix.Translation((0, sw - travel, lift)) @ rest[n]
                 _key(pb, frame)
         # tails and chains: a swing that lags down their length
-        for chain in ([tail] if tail else []) + [_chain(arm, c) for c in chain_roots if kind != 'AUTO'] + auto_chains:
+        for chain in (([tail] if tail else []) + [_chain(arm, c) for c in chain_roots if kind not in {'AUTO', 'MECHA'}]
+                      + auto_chains):
             for i, n in enumerate(chain):
                 pb = pbs[n]
                 amp = math.radians((4.0 if st.gait == 'IDLE' else 9.0) * st.tail) * (0.6 + 0.4 * i / max(1, len(chain) - 1))
@@ -378,7 +381,8 @@ class MCH_OT_loco_make(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         a = _rig(context)
-        return a is not None and a.get('mch_rig') in {'BODY', 'QUAD', 'AUTO'}
+        return a is not None and (a.get('mch_rig') in {'BODY', 'QUAD', 'AUTO'} or
+                                  (a.get('mch_rig') == 'MECHA' and a.get('mch_legs', '[]') != '[]'))
 
     def execute(self, context):
         if context.mode != 'OBJECT':
@@ -430,7 +434,8 @@ class MCH_OT_loco_export(bpy.types.Operator):
 def draw(layout, context):
     st = settings(context)
     arm = _rig(context)
-    if st is None or arm is None or arm.get('mch_rig') not in {'BODY', 'QUAD', 'AUTO'}:
+    if st is None or arm is None or not (arm.get('mch_rig') in {'BODY', 'QUAD', 'AUTO'} or
+                                         (arm.get('mch_rig') == 'MECHA' and arm.get('mch_legs', '[]') != '[]')):
         return
     from . import panel_capture as pc
     box = layout.box()
