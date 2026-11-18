@@ -7001,6 +7001,7 @@ KO = {
     'Shape': '모양',
     'Shape (measured, push with the sliders)': '모양 (측정됨, 슬라이더로 밀기)',
     'Shape Change': '모양 변경',
+    'Shape Settings': '모양 설정',
     'Shape changed: unfinished stroke discarded': '모양 변경됨: 끝내지 않은 스트로크를 버렸습니다',
     'Shape could not be triangulated.': '모양을 삼각화할 수 없습니다.',
     'Shape keys must be removed or applied before baking the deformation': '변형을 베이크하기 전에 셰이프 키를 제거하거나 적용해야 합니다',

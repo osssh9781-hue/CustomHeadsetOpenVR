@@ -160,10 +160,12 @@ hs = {t: bar_h(at(2560, t)) for t in tools}
 its = at(2560, 'SMART')
 cards = [i for i in its if i.kind == 'card' and i.icon != 'outer']
 n_cut = len([i for i in at(2560, 'CUT') if i.kind == 'card' and i.icon != 'outer'])
-check(f'0.24.218 every section is a card of its own; a section the tool does not use has NO card (Smart Move: '
-      f'{len(cards)} cards, Cut: {n_cut}) - the view shows there, no empty dark place; the bar is as high as the tool '
+blocks = {t: [i for i in at(2560, t) if i.kind == 'glabel' and i.icon == 'block'] for t in ('SMART', 'CUT', 'BASE')}
+its = at(2560, 'SMART')
+check(f'0.24.218 a section the tool does not use has NO card (Smart Move: {len(cards)} cards, no LASSO block; Cut: '
+      f'{n_cut} cards with the block) - the view shows there, no empty dark place; the bar is as high as the tool '
       f'needs (Smart Move {hs["SMART"]:.0f} px, Cut {hs["CUT"]:.0f} px)',
-      1 <= len(cards) < n_cut and hs['SMART'] <= hs['CUT']
+      len(cards) >= 1 and n_cut >= 4 and not blocks['SMART'] and len(blocks['CUT']) == 1 and hs['SMART'] <= hs['CUT']
       and all(any(c.x <= i.x and i.x + i.w <= c.x + c.w + 0.01 and c.y <= i.y and i.y + i.h <= c.y + c.h + 0.01 for c in cards)
               for i in its if i.kind in {'seg', 'mini', 'ibtn', 'drop', 'glabel'}))
 its = at(2560, 'BASE')
@@ -191,9 +193,32 @@ res_cell = next(i for i in its if i.kind == 'mini' and i.label == 'Res')
 res_title = next(i for i in its if i.kind == 'glabel' and i.label == 'RESOLUTION')
 apply_cell = next(i for i in its if i.label == 'Apply to Parts')
 names = [i.label for i in its if i.kind == 'glabel']
-check(f'sections: the title above its cells (Resolution over Res, Apply to Parts beside it), each in its own card; {names}',
+block_card = [i for i in its if i.kind == 'card' and i.icon != 'outer'][0]
+block_parts = ['SHAPE', 'DRAW', 'CORNERS', 'RESOLUTION', 'TARGET', 'GN EDGE', 'EDGE FINISH']
+side_parts = ['OPTIONS', 'DEPTH', 'SURFACE']
+
+
+def inside(c, i):
+    return c.x <= i.x and i.x + i.w <= c.x + c.w + 0.01 and c.y <= i.y and i.y + i.h <= c.y + c.h + 0.01
+
+
+check(f'sections: the title above its cells (Resolution over Res, Apply to Parts beside it); {names}',
       res_title.y > res_cell.y and abs(res_title.x - res_cell.x) < 1.0 and abs(apply_cell.y - res_cell.y) < 1.0
-      and apply_cell.x > res_cell.x and len([i for i in its if i.kind == 'card']) >= 6 and 'OPTIONS' in names)
+      and apply_cell.x > res_cell.x and 'OPTIONS' in names)
+titles = {i.label: i for i in its if i.kind == 'glabel'}
+check(f'0.24.224 the LASSO block: ONE card at the left holds Shape, Draw, Corners, Resolution, Target and the edge '
+      f'sections, each with its name ({[n for n in block_parts if n in titles]}); Options / Depth / Surface are cards '
+      f'of their own at its right',
+      names[0] == 'LASSO' and all(n in titles and inside(block_card, titles[n]) for n in block_parts)
+      and all(inside(block_card, i) for i in its if i.kind in {'ibtn'} or i.label in {'Sketch', 'Sharp', 'Res', 'Selected'})
+      and all(n in titles and not inside(block_card, titles[n]) and titles[n].x > block_card.x + block_card.w
+              for n in side_parts)
+      and block_card.x == min(c.x for c in its if c.kind == 'card' and c.icon != 'outer'))
+base = at(2560, 'BASE')
+bc = [i for i in base if i.kind == 'card' and i.icon != 'outer'][0]
+check('... Base Mesh: its Edge section is in the block too',
+      any(i.kind == 'glabel' and i.label == 'EDGE' and inside(bc, i) for i in base))
+its = at(2560, 'CUT')
 tb.FORCE_SECTIONS[0] = False
 its = at(2560, 'CUT')
 res_cell = next(i for i in its if i.kind == 'mini' and i.label == 'Res')
@@ -228,7 +253,7 @@ check(f'0.24.220 one lighter box holds all the section cards (it is drawn first;
       and all(outer[0].x <= c.x and c.x + c.w <= outer[0].x + outer[0].w + 0.01 and outer[0].y <= c.y
               and c.y + c.h <= outer[0].y + outer[0].h + 0.01 for c in inner_cards))
 check('the section names are drawn as titles (bigger, bright) - every section of the bar',
-      all(i.icon == 'title' for i in its if i.kind == 'glabel') and tb.TITLE_H >= 18)
+      all(i.icon in {'title', 'block'} for i in its if i.kind == 'glabel') and tb.TITLE_H >= 18)
 wide, narrow = at(2560, 'BASE'), at(500, 'BASE')
 check('a view too narrow for a single place (500 px): the groups are packed as before, nothing lost',
       sorted((i.kind, i.label) for i in narrow if i.kind not in {'card', 'vrule', 'glabel'}) ==

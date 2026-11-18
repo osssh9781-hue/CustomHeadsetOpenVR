@@ -891,6 +891,9 @@ def _draw_new(it, hot, S, white, dim):
     if k == 'glabel' and it.icon == 'title':     # 0.24.219 (user: "각 목록 이름은 잘 보이게 써 줘, 지금 너무 안 보인다")
         G.text(x + 1 * S, y + h / 2, it.label, 12.5 * S, (0.96, 0.78, 0.36, 1.0))     # a top bar section's name
         return None
+    if k == 'glabel' and it.icon == 'block':     # 0.24.224 the top bar's LASSO block: its name
+        G.text(x, y + h / 2, it.label, 15 * S, G.TEXT)
+        return None
     if k == 'glabel':
         G.text(x + 2 * S, y + h / 2, it.label, 10 * S, G.TEXT_DIM)
     return None
