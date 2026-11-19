@@ -144,7 +144,52 @@ def _voxel_quads(context, high, faces):
     return None, None
 
 
-def _wrap_one(context, high, faces, rounds=48, base='SHAPE'):
+def _sharp_lines(co, tri, q, angle=40.0):
+    """0.24.255 the high's sharp lines worth keeping: edges where its faces meet at more than ``angle``, joined into
+    lines, the ones shorter than 1.5 quads dropped (a sculpt's noise).  (segments (n, 2, 3), corners (k, 3))."""
+    T = np.asarray(tri, np.int64).reshape(-1, 3)
+    fn = np.cross(co[T[:, 1]] - co[T[:, 0]], co[T[:, 2]] - co[T[:, 0]])
+    ln = np.linalg.norm(fn, axis=1)
+    fn /= np.maximum(ln, 1e-30)[:, None]
+    e = np.concatenate([T[:, [0, 1]], T[:, [1, 2]], T[:, [2, 0]]])
+    f = np.tile(np.arange(len(T)), 3)
+    e.sort(1)
+    key = e[:, 0] * len(co) + e[:, 1]
+    o = np.argsort(key, kind='stable')
+    key, e, f = key[o], e[o], f[o]
+    first = np.r_[True, key[1:] != key[:-1]]
+    starts = np.nonzero(first)[0]
+    counts = np.diff(np.r_[starts, len(key)])
+    two = starts[counts == 2]
+    fa, fb = f[two], f[two + 1]
+    sharp = (ln[fa] > 1e-30) & (ln[fb] > 1e-30) & ((fn[fa] * fn[fb]).sum(1) < math.cos(math.radians(angle)))
+    ee = e[two][sharp]
+    if not len(ee):
+        return np.zeros((0, 2, 3)), np.zeros((0, 3))
+    parent = {}
+
+    def find(a):
+        while parent.get(a, a) != a:
+            parent[a] = parent.get(parent[a], parent[a])
+            a = parent[a]
+        return a
+    for a, b in ee:
+        ra, rb_ = find(int(a)), find(int(b))
+        if ra != rb_:
+            parent[ra] = rb_
+    L = np.linalg.norm(co[ee[:, 0]] - co[ee[:, 1]], axis=1)
+    roots = np.array([find(int(a)) for a in ee[:, 0]])
+    tot = {}
+    for r_, l_ in zip(roots, L):
+        tot[r_] = tot.get(r_, 0.0) + l_
+    keep = np.array([tot[r_] >= 1.5 * q for r_ in roots])
+    ee = ee[keep]
+    deg = np.bincount(ee.ravel(), minlength=len(co))
+    corners = co[deg >= 3]
+    return np.stack([co[ee[:, 0]], co[ee[:, 1]]], 1), corners
+
+
+def _wrap_one(context, high, faces, rounds=48, base='SHAPE', sharp=False):
     """Generator: the vacuum-packed low's mesh (object space of ``high``); yields (fraction, what)."""
     from mathutils import Vector
     from mathutils.bvhtree import BVHTree
@@ -181,7 +226,7 @@ def _wrap_one(context, high, faces, rounds=48, base='SHAPE'):
             E.add((min(a, b), max(a, b)))
     E = np.array(sorted(E))
     deg = np.bincount(E.ravel(), minlength=len(V)).astype(np.float64)
-    yield (0.03, f'Wrap: a box of {len(F):,} quads')
+    yield (0.03, f'Wrap: {len(F):,} quads')
 
     def nearest(P):
         out = np.empty_like(P)
@@ -208,6 +253,52 @@ def _wrap_one(context, high, faces, rounds=48, base='SHAPE'):
             yield (0.05 + 0.9 * t, f'Wrap: vacuum round {r + 1} / {rounds}')
     for _k in range(3):                              # (on the surface, still even)
         P = nearest(relax(P, 0.25))
+    hard_pairs = []
+    if sharp:
+        # 0.24.255 (user: "뾰족한 면도 지킬 수 있게") the high's sharp lines kept: along each line the nearest low
+        # point is put ON it (a corner's nearest point on the corner), the rest evened out round them and laid back
+        # on the surface - without, the evening rounded every edge off (the quads cut across it)
+        from mathutils.kdtree import KDTree
+        q = math.sqrt(max(1e-12, float(np.sum(np.linalg.norm(np.cross(
+            co[tri.reshape(-1, 3)[:, 1]] - co[tri.reshape(-1, 3)[:, 0]],
+            co[tri.reshape(-1, 3)[:, 2]] - co[tri.reshape(-1, 3)[:, 0]]), axis=1)) * 0.5) / max(6, len(F))))
+        segs, corners = _sharp_lines(co, tri, q)
+        if len(segs):
+            yield (0.96, f'Wrap: keeping {len(segs):,} sharp edge pieces')
+            fixed = {}
+            for _it in range(3):
+                kd = KDTree(len(P))
+                for i, p in enumerate(P):
+                    kd.insert(p, i)
+                kd.balance()
+                want = {}
+                for a, b in segs:
+                    d = b - a
+                    n = max(1, int(np.linalg.norm(d) / (0.4 * q)) + 1)
+                    for t in np.linspace(0.0, 1.0, n + 1):
+                        x = a + t * d
+                        _co, i, dist = kd.find(x)
+                        if dist > 0.75 * q:
+                            continue
+                        dd = float(d @ d)
+                        u = float(np.clip((P[i] - a) @ d / dd, 0.0, 1.0)) if dd > 0 else 0.0
+                        y = a + u * d
+                        r_ = float(np.linalg.norm(P[i] - y))
+                        if i not in want or r_ < want[i][0]:
+                            want[i] = (r_, y)
+                for c in corners:
+                    _co, i, dist = kd.find(c)
+                    if dist <= 0.75 * q:
+                        want[i] = (-1.0, np.array(c))
+                fixed = {i: y for i, (_r, y) in want.items()}
+                idx = np.array(sorted(fixed))
+                P[idx] = np.array([fixed[i] for i in idx])
+                for _k in range(3):
+                    P2 = nearest(relax(P, 0.25))
+                    P2[idx] = P[idx]
+                    P = P2
+            fs = set(fixed)
+            hard_pairs = [(int(a), int(b)) for a, b in E if a in fs and b in fs]
     me = bpy.data.meshes.new(high.name + '_Low')
     me.from_pydata([tuple(p) for p in P], [], F)
     import bmesh
@@ -217,6 +308,11 @@ def _wrap_one(context, high, faces, rounds=48, base='SHAPE'):
     bm.to_mesh(me)
     bm.free()
     me.update()
+    if hard_pairs:                                   # (the kept lines marked sharp: shading and the bake follow)
+        want_ = set(hard_pairs) | {(b, a) for a, b in hard_pairs}
+        for ed in me.edges:
+            if tuple(ed.vertices) in want_:
+                ed.use_edge_sharp = True
     return me
 
 
@@ -241,7 +337,7 @@ def _wrap_quality(context, high, me):
     return float(np.percentile(miss, 99)) if miss else 0.0, float(np.mean(ang)) if ang else 0.0
 
 
-def wrap_steps(context, high, faces, rounds=48):
+def wrap_steps(context, high, faces, rounds=48, sharp=False):
     """Generator: the vacuum-packed low's mesh (object space of ``high``).  0.24.254 two starts - the shape itself
     as quads, and the old box - the one that lies on more of the high wins (about the same: the squarer quads)."""
     def part(gen, a, b):
@@ -251,8 +347,8 @@ def wrap_steps(context, high, faces, rounds=48):
                 yield (a + (b - a) * f, label)
         except StopIteration as ex:
             return ex.value
-    shape = yield from part(_wrap_one(context, high, faces, rounds, 'SHAPE'), 0.03, 0.5)
-    box = yield from part(_wrap_one(context, high, faces, rounds, 'BOX'), 0.5, 0.95)
+    shape = yield from part(_wrap_one(context, high, faces, rounds, 'SHAPE', sharp), 0.03, 0.5)
+    box = yield from part(_wrap_one(context, high, faces, rounds, 'BOX', sharp), 0.5, 0.95)
     yield (0.96, 'Wrap: keeping the better of the two')
     size = float(max(high.dimensions) / max(max(high.matrix_world.to_scale()), 1e-12)) or 1.0
     qs, qb = _wrap_quality(context, high, shape), _wrap_quality(context, high, box)
@@ -345,7 +441,8 @@ def make_low_steps(context, high, faces, method='QUAD', low=None):
     yield (0.02, 'Reading the high')
     note = ''
     if method == 'WRAP':
-        me = yield from wrap_steps(context, high, faces)
+        me = yield from wrap_steps(context, high, faces,
+                                   sharp=bool(getattr(context.scene, 'mch_rb_hard', False)))   # 0.24.255
     else:
         dg = context.evaluated_depsgraph_get()
         me = bpy.data.meshes.new_from_object(high.evaluated_get(dg), preserve_all_data_layers=False, depsgraph=dg)
@@ -808,7 +905,7 @@ def draw(layout, context):
     box.row(align=True).prop(S, 'mch_rb_method', expand=True)
     col = box.column(align=True)
     col.prop(S, 'mch_rb_faces')
-    if S.mch_rb_method == 'QUAD' and hasattr(S, 'mch_rb_hard'):
+    if hasattr(S, 'mch_rb_hard'):                    # 0.24.255 Wrap keeps them too
         col.prop(S, 'mch_rb_hard', toggle=True)
     parts = selected_parts(context) if hasattr(S, 'mch_rb_join') else []
     one = len(parts) > 1 and S.mch_rb_join == 'ONE'
@@ -860,8 +957,8 @@ def register():
         description='About how many faces the low poly gets')
     bpy.types.Scene.mch_rb_hard = BoolProperty(
         name='Keep Hard Edges', default=False,
-        description='Quad: the quads follow the sharp edges (hard-surface parts).  Off: even quads over the whole '
-                    'shape (sculpts, creatures, rocks)')
+        description='Quad: the quads follow the sharp edges (hard-surface parts).  Wrap: the sharp edges and corners '
+                    'kept (marked sharp).  Off: even quads over the whole shape (sculpts, creatures, rocks)')
     bpy.types.Scene.mch_rb_join = EnumProperty(
         name='Several Meshes', default='EACH',
         items=[('EACH', 'Each Its Own', 'Each selected mesh gets its own low and its own maps'),

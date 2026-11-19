@@ -6073,6 +6073,7 @@ KO = {
     'Quad Spike Leg': '쿼드 가시 다리',
     'Quad remesh: the edge flow follows the shape': '쿼드 리메시: 엣지 흐름이 모양을 따라감',
     'Quad: the quads follow the sharp edges (hard-surface parts).  Off: even quads over the whole shape (sculpts, creatures, rocks)': '쿼드: 면이 날카로운 모서리를 따라감 (하드서피스 부품).  끄면: 모양 전체에 고른 쿼드 (스컬프트 · 크리쳐 · 바위)',
+    'Quad: the quads follow the sharp edges (hard-surface parts).  Wrap: the sharp edges and corners kept (marked sharp).  Off: even quads over the whole shape (sculpts, creatures, rocks)': '쿼드: 면이 날카로운 모서리를 따라감 (하드서피스 부품).  베큠 랩: 날카로운 모서리와 꼭짓점을 지킴 (샤프 표시).  끄면: 모양 전체에 고른 쿼드 (스컬프트 · 크리쳐 · 바위)',
     'QuadriFlow could not remesh this part (try more Faces or a smaller Edge Angle).': 'QuadriFlow가 이 파트를 리메쉬할 수 없습니다 (면을 더 늘리거나 엣지 각도를 줄이세요).',
     'QuadriFlow failed:': 'QuadriFlow 실패:',
     'QuadriFlow: # faces': 'QuadriFlow: 면 #',

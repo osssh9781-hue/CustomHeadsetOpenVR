@@ -348,4 +348,33 @@ check(f'Wrap on a ring: lies on all of it ({qn[0] * 100:.1f} cm off at worst, th
       qn[0] < 0.03 and qb[0] > 3 * qn[0] and all(len(p.vertices) == 4 for p in wl.data.polygons)
       and 1100 <= len(wl.data.polygons) <= 1900)
 S.mch_rb_method = 'QUAD'
+# 0.24.255 (user: "뾰족한 면도 지킬 수 있게") Wrap with Keep Hard Edges: the high's sharp lines kept
+from mecha_lab import quad_field as _qf
+from mathutils.bvhtree import BVHTree as _BT
+bpy.ops.mesh.primitive_cube_add(size=2, location=(70, 0, 0)); hb_ = C.active_object; hb_.name = 'House'
+bpy.ops.mesh.primitive_cube_add(size=2, location=(71.2, 0, 1.2), rotation=(0, 0.785, 0)); cc_ = C.active_object
+bo_ = hb_.modifiers.new('B', 'BOOLEAN'); bo_.object = cc_; bo_.operation = 'DIFFERENCE'
+vx_ = hb_.modifiers.new('V', 'REMESH'); vx_.mode = 'VOXEL'; vx_.voxel_size = 0.03
+dg_ = C.evaluated_depsgraph_get()
+me_ = bpy.data.meshes.new_from_object(hb_.evaluated_get(dg_), depsgraph=dg_); hb_.modifiers.clear(); hb_.data = me_
+bpy.data.objects.remove(cc_)
+Vh = np.array([v.co for v in hb_.data.vertices], np.float32); hb_.data.calc_loop_triangles()
+Th = np.array([t.vertices[:] for t in hb_.data.loop_triangles], np.int32)
+segs_ = _qf.hard_segments(Vh, Th, 40.0)
+def line_off(me):
+    lb = _BT.FromPolygons([tuple(v.co) for v in me.vertices], [tuple(p.vertices) for p in me.polygons])
+    P = (segs_[:, 0] + segs_[:, 1]) * 0.5
+    return float(np.mean([(lb.find_nearest(Vector(p))[0] - Vector(p)).length for p in P]))
+plain_ = progress.run_now(rb.wrap_steps(C, hb_, 2500, sharp=False))
+for o in list(C.selected_objects):
+    o.select_set(False)
+hb_.select_set(True); C.view_layer.objects.active = hb_
+S.mch_rb_method, S.mch_rb_faces, S.mch_rb_hard = 'WRAP', 2500, True
+bpy.ops.mch.retopo_make()
+sl_ = C.active_object
+a_, b_ = line_off(plain_), line_off(sl_.data)
+check(f'Wrap + Keep Hard Edges on a hard part: its sharp lines kept ({b_ * 100:.1f} cm off on average, '
+      f'without {a_ * 100:.1f} cm), marked sharp ({sum(1 for e in sl_.data.edges if e.use_edge_sharp)} edges), all quads',
+      b_ < 0.6 * a_ and any(e.use_edge_sharp for e in sl_.data.edges) and all(len(p.vertices) == 4 for p in sl_.data.polygons))
+S.mch_rb_method, S.mch_rb_hard = 'QUAD', False
 summary()
