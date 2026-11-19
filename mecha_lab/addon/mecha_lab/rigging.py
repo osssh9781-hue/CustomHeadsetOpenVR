@@ -77,7 +77,12 @@ class MCH_PG_Rig(bpy.types.PropertyGroup):
         ('BODY', 'Body', 'The body / spine / neck / head: the bones everything hangs on'),
         ('LEG', 'Leg', 'A leg: IK on its foot, walked by Auto Animation'),
         ('IK', 'IK', 'Bones with IK at the end (an arm, a claw, a jaw): grab the end, the rest follows; not walked'),
-        ('BONES', 'Plain Bones', 'Plain bones, no IK (a tail, a tentacle: they sway in Auto Animation)')])
+        ('BONES', 'Plain Bones', 'Plain bones, no IK (a tail, a tentacle: they sway in Auto Animation)'),
+        ('EYE', 'Eye', 'Draw a circle round an eye (on the surface): an eye bone in it, looking at one shared target'),
+        ('MOUTH', 'Mouth', 'Draw along the lips (on the surface): small lip bones along the line - the lower ones move '
+                           'with the jaw'),
+        ('FINGER', 'Finger', 'Draw along a finger (knuckle to tip): 3 bones on the hand; Finger Curl / Spread move all '
+                             'the fingers at once')])
     ik_chain: IntProperty(name='IK Bones', default=2, min=1, max=8,
                           description='How many bones the IK bends, counted up from the selected end bone')
 
@@ -814,6 +819,9 @@ def bind(context, mesh, arm):
         except (ReferenceError, RuntimeError):
             pass
     context.view_layer.objects.active = keep_active
+    if arm.get('mch_face_w'):                        # 0.24.259 drawn eyes / lips take their skin
+        from . import rig_guides
+        rig_guides.apply_face_weights(mesh, arm)
     return how
 
 
@@ -1631,8 +1639,8 @@ class MCH_OT_rig_make(bpy.types.Operator):
                 if g is not None:
                     g.hide_set(True)
                 how = bind(context, body, arm) if st.bind else ''
-                msg = (f'{arm.name}: from {info["legs"] + info["chains"] + info["trunk"]} guide lines - {info["legs"]} legs, '
-                       f'{info["chains"]} arms / jaws / tails, {info["bones"]} bones'
+                msg = (f'{arm.name}: {info["legs"]} legs, {info["chains"]} swaying chains, {info["eyes"]} eyes, '
+                       f'{info["lips"]} lip bones, {info["fingers"]} fingers, {info["bones"]} bones'
                        + (f', {body.name} bound ({"automatic" if how == "auto" else "nearest-bone"} weights)' if how else ''))
                 _show(context, arm)
             elif st.kind == 'MECHA':
@@ -2202,6 +2210,10 @@ def draw(layout, context):
             r.operator('mch.rig_piston', text='Piston (2 parts)')
         r.operator('mch.rig_jiggle', text='Jiggle On').on = True
         r.operator('mch.rig_jiggle', text='Jiggle Off').on = False
+        if 'mch_curl' in arm:                        # 0.24.259 all the fingers at once
+            r = box.row(align=True)
+            r.prop(arm, '["mch_curl"]', text='Finger Curl', slider=True)
+            r.prop(arm, '["mch_spread"]', text='Finger Spread', slider=True)
         r = box.row(align=True)                      # 0.24.257 IK where the user wants it
         r.prop(st, 'ik_chain')
         r.operator('mch.rig_ik', text='Add IK', icon='CON_KINEMATIC').mode = 'ADD'

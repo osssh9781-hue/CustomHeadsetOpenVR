@@ -64,7 +64,14 @@ KINDS = [('AUTO', 'Auto', 'The first line the body; a line ending on the ground 
          ('BODY', 'Body', 'The body / spine / neck / head: the bones everything hangs on'),
          ('LEG', 'Leg', 'A leg: IK on its foot, walked by Auto Animation'),
          ('IK', 'IK', 'Bones with IK at the end (an arm, a claw, a jaw): grab the end, the rest follows; not walked'),
-         ('BONES', 'Plain Bones', 'Plain bones, no IK (a tail, a tentacle: they sway in Auto Animation)')]
+         ('BONES', 'Plain Bones', 'Plain bones, no IK (a tail, a tentacle: they sway in Auto Animation)'),
+         ('EYE', 'Eye', 'Draw a circle round an eye (on the surface): an eye bone in it, looking at one shared target'),
+         ('MOUTH', 'Mouth', 'Draw along the lips (on the surface): small lip bones along the line - the lower ones move '
+                            'with the jaw'),
+         ('FINGER', 'Finger', 'Draw along a finger (knuckle to tip): 3 bones on the hand; Finger Curl / Spread move all '
+                              'the fingers at once')]
+FACE = {'EYE', 'MOUTH', 'FINGER'}
+SURFACE = {'EYE', 'MOUTH'}                           # (drawn on the skin; the others through the middle)
 
 
 def line_kinds(mesh):
@@ -117,6 +124,177 @@ def _seg_dist(p, a, b):
     return float(np.linalg.norm(p - (a + t * d)))
 
 
+def _surface_normal(body, p):
+    """The body's outward normal nearest to world point ``p``."""
+    Mi = body.matrix_world.inverted()
+    ok, _loc, n, _i = body.closest_point_on_mesh(Mi @ Vector(tuple(p)))
+    if not ok:
+        return np.array([0.0, -1.0, 0.0])
+    w = (body.matrix_world.to_3x3().inverted().transposed() @ n).normalized()
+    return np.array(tuple(w))
+
+
+def _face_bones(ebs, body, face, made, size):
+    """0.24.259 (user: "눈은 동그랗게 그리고, 입은 입 경계를 따라 그으면") eye and lip bones from the face lines.
+    Returns (eye bone names, [(bone, centre, radius)] for the face weights)."""
+    from . import rigging as rg
+
+    def nearest(p, skip=()):
+        pool = [m for m in made if m[3] not in skip] or made
+        return min(pool, key=lambda m: _seg_dist(p, m[1], m[2]))[0] if pool else 'body'
+    eyes, fw, ends, fingers, fj = [], [], [], [], []
+    for kind, P in face:
+        if kind == 'FINGER':
+            # 0.24.259 (user: "손가락 리깅 - 한 번에 오므리고 펼 수 있게") knuckle first, 3 bones each
+            if made and min(_seg_dist(P[-1], m[1], m[2]) for m in made) < min(_seg_dist(P[0], m[1], m[2]) for m in made):
+                P = P[::-1]
+            from . import auto_creature as ac
+            fj.append((P, ac._resample(ac._smooth(ac._resample(P, 24), 1), 3)))
+            continue
+        if kind == 'EYE':
+            c = P.mean(0)
+            r = float(np.linalg.norm(P - c, axis=1).mean()) or 0.01 * size
+            n = _surface_normal(body, c)
+            e = c - n * r
+            b = rg._bone(ebs, f'eye.{len(eyes) + 1:02d}', e, e + n * r, nearest(e))
+            eyes.append(b.name)
+            ends.append((e + n * r, n, r, b.parent.name if b.parent else 'body'))
+            fw.append((b.name, [float(x) for x in c], 1.25 * r))
+        else:
+            L = float(np.linalg.norm(np.diff(P, axis=0), axis=1).sum())
+            m = int(max(4, min(12, round(L / max(0.012 * size, 1e-6)))))
+            from . import auto_creature as ac
+            Q = ac._resample(P, m)
+            sp = L / m
+            # the lower lip (below the line through the mouth corners) rides the jaw - the nearest IK line - the
+            # rest the head (the nearest body bone)
+            ax = Q[-1] - Q[0]
+            cz = lambda q: Q[0][2] + (q - Q[0]) @ ax / max(ax @ ax, 1e-12) * ax[2]
+            for q in Q:
+                n = _surface_normal(body, q)
+                h = q - n * 0.5 * sp
+                k_ = sum(1 for x in ebs if x.name.startswith('lip.')) + 1
+                lower = q[2] < cz(q) - 0.15 * sp
+                par = (nearest(h, skip=('BODY', 'AUTO', 'BONES', 'LEG')) if lower else
+                       nearest(h, skip=('IK', 'BONES', 'LEG')))
+                b = rg._bone(ebs, f'lip.{k_:02d}', h, q, par)
+                b.use_connect = False
+                fw.append((b.name, [float(x) for x in q], 0.8 * sp))
+    if eyes:
+        tip = np.mean([t for t, _n, _r, _p in ends], axis=0)
+        nn = np.mean([n for _t, n, _r, _p in ends], axis=0)
+        nn = nn / (np.linalg.norm(nn) or 1.0)
+        rr = float(np.mean([r for _t, _n, r, _p in ends]))
+        t = rg._bone(ebs, 'eyes_target', tip + nn * 8 * rr, tip + nn * 8 * rr + np.array([0, 0, rr]), ends[0][3],
+                     deform=False)
+        t.use_connect = False
+    if fj:
+        # the palm: a relaxed finger bows away from it; a straight one - across the row of knuckles, toward the body
+        bases = np.array([J[0] for _P, J in fj])
+        dirs = np.array([(J[-1] - J[0]) / (np.linalg.norm(J[-1] - J[0]) or 1.0) for _P, J in fj])
+        dmean = dirs.mean(0)
+        if len(fj) > 1:
+            _u, _s, vt = np.linalg.svd(bases - bases.mean(0))
+            row = vt[0]
+        else:
+            row = np.cross(dmean, (0.0, 0.0, 1.0)) if abs(dmean[2]) < 0.9 else np.array([1.0, 0.0, 0.0])
+        guess = np.cross(row, dmean)
+        to_body = np.array(tuple(body.matrix_world.translation)) - bases.mean(0)
+        if guess @ to_body < 0:
+            guess = -guess
+        for P, J in fj:
+            chord = J[-1] - J[0]
+            mid = P[len(P) // 2]
+            bow = mid - (P[0] + chord * float((mid - P[0]) @ chord / max(chord @ chord, 1e-12)))
+            palm = -bow if np.linalg.norm(bow) > 0.06 * np.linalg.norm(chord) else guess
+            names = []
+            k_ = len(fingers) + 1
+            parent = nearest(J[0])
+            for i in range(3):
+                b = rg._bone(ebs, f'finger{k_}.{i + 1:02d}', J[i], J[i + 1], parent if i == 0 else names[-1],
+                             connect=i > 0)
+                b.align_roll(Vector(tuple(palm)))
+                names.append(b.name)
+            fingers.append(names)
+        # each finger's spread: away from the others, along its own side axis (X)
+        c0 = bases.mean(0)
+        offs = [float((bases[i] - c0) @ np.array(tuple(ebs[names[0]].x_axis))) for i, names in enumerate(fingers)]
+        mx = max(abs(o) for o in offs) or 1.0
+        fingers = [(names, -0.35 * o / mx) for names, o in zip(fingers, offs)]
+    return eyes, fw, fingers
+
+
+def finger_drivers(arm, fingers):
+    """Finger Curl (-1 open .. 1 a fist) and Finger Spread on the armature drive every finger bone."""
+    if not fingers:
+        return
+    for key, desc in (('mch_curl', 'Finger Curl'), ('mch_spread', 'Finger Spread')):
+        arm[key] = 0.0
+        try:
+            arm.id_properties_ui(key).update(min=-1.0, max=1.0, soft_min=-1.0, soft_max=1.0, description=desc)
+        except (AttributeError, TypeError):
+            pass
+    for names, side in fingers:
+        for i, name in enumerate(names):
+            pb = arm.pose.bones[name]
+            pb.rotation_mode = 'XYZ'
+            fc = pb.driver_add('rotation_euler', 0)
+            d = fc.driver
+            d.type = 'SCRIPTED'
+            v = d.variables.new()
+            v.name = 'c'
+            v.targets[0].id = arm
+            v.targets[0].data_path = '["mch_curl"]'
+            d.expression = f'c * {1.25 if i else 0.9}'
+            if i == 0:
+                fc = pb.driver_add('rotation_euler', 2)
+                d = fc.driver
+                d.type = 'SCRIPTED'
+                v = d.variables.new()
+                v.name = 's'
+                v.targets[0].id = arm
+                v.targets[0].data_path = '["mch_spread"]'
+                d.expression = f's * {side:.3f}'
+
+
+def apply_face_weights(mesh, arm):
+    """0.24.259 the eye / lip bones take the skin round them (full inside half the radius, fading to the radius),
+    the other bones' weights there scaled down by as much."""
+    try:
+        specs = json.loads(arm.get('mch_face_w', '[]'))
+    except (TypeError, ValueError):
+        return 0
+    if not specs:
+        return 0
+    me = mesh.data
+    co = np.empty(len(me.vertices) * 3)
+    me.vertices.foreach_get('co', co)
+    M = np.array(mesh.matrix_world)
+    P = co.reshape(-1, 3) @ M[:3, :3].T + M[:3, 3]
+    gi = {g.name: g for g in mesh.vertex_groups}
+    deform = {b.name for b in arm.data.bones if b.use_deform}
+    touched = 0
+    for name, c, r in specs:
+        if name not in arm.data.bones:
+            continue
+        d = np.linalg.norm(P - np.array(c), axis=1)
+        idx = np.nonzero(d < r)[0]
+        if not len(idx):
+            continue
+        g = gi.get(name) or mesh.vertex_groups.new(name=name)
+        gi[name] = g
+        for i in idx:
+            w = float(np.clip((r - d[i]) / max(0.5 * r, 1e-9), 0.0, 1.0))
+            v = me.vertices[int(i)]
+            for ge in v.groups:
+                gn = mesh.vertex_groups[ge.group].name
+                if gn != name and gn in deform:
+                    ge.weight *= (1.0 - w)
+            g.add([int(i)], w, 'REPLACE')
+        touched += len(idx)
+    return touched
+
+
 def build(context, body, lines, kinds=None):
     """The armature from the guide ``lines`` (world (n, 3) arrays, the first the body).  Returns (arm, info)."""
     from . import auto_creature as ac
@@ -127,8 +305,8 @@ def build(context, body, lines, kinds=None):
     kinds = kinds[:len(lines)]
     # 0.24.258 (user: "가장 베이스가 되는 몸, 뼈, IK 위치를 내가 잡으면") the user's kinds; the body lines first (the
     # first of them the root), the rest in the order drawn
-    order = sorted(range(len(lines)), key=lambda i: (0 if kinds[i] == 'BODY' else 1, i))
-    if kinds[order[0]] not in {'BODY', 'AUTO'}:
+    order = sorted(range(len(lines)), key=lambda i: (2 if kinds[i] in FACE else 0 if kinds[i] == 'BODY' else 1, i))
+    if kinds[order[0]] not in {'BODY', 'AUTO'} or kinds[order[0]] in FACE:
         raise RuntimeError('The first line (or one marked Body) is the body: draw it with Auto or Body')
     lines = [lines[i] for i in order]
     kinds = [kinds[i] for i in order]
@@ -149,12 +327,16 @@ def build(context, body, lines, kinds=None):
         rb = rg._bone(ebs, 'root', (core[0], core[1], ground), (core[0], core[1] - 0.15 * size, ground), deform=False)
         bb = rg._bone(ebs, 'body', core, core + np.array([0, 0, 0.06 * size]), rb)
         li = ci = ti = 0
+        face = []
         for k, P in enumerate(lines):
             P = np.asarray(P, float)
+            if kinds[k] in FACE:
+                face.append((kinds[k], P))
+                continue
             parent = bb.name
             if k > 0 and made:
-                ds = min((_seg_dist(P[0], h, t), n) for n, h, t in made)
-                de = min((_seg_dist(P[-1], h, t), n) for n, h, t in made)
+                ds = min((_seg_dist(P[0], h, t), n) for n, h, t, _w in made)
+                de = min((_seg_dist(P[-1], h, t), n) for n, h, t, _w in made)
                 if de[0] < ds[0]:                    # (drawn from the tip toward the body)
                     P = P[::-1]
                     ds = de
@@ -186,7 +368,7 @@ def build(context, body, lines, kinds=None):
             for i in range(len(J) - 1):
                 b = rg._bone(ebs, f'{base}.{i + 1:02d}', J[i], J[i + 1], prev, connect=i > 0)
                 names.append(b.name)
-                made.append((b.name, np.array(J[i]), np.array(J[i + 1])))
+                made.append((b.name, np.array(J[i]), np.array(J[i + 1]), want))
                 prev = b.name
             if kind == 'CHAIN' and want == 'IK':
                 ik_ends.append((prev, len(names)))
@@ -204,8 +386,15 @@ def build(context, body, lines, kinds=None):
                     off = np.array([0.0, -1.0, 0.0])
                 off = off / np.linalg.norm(off) * 0.35 * ln
                 rg._limb_ik_bones(ebs, names[-1], foot.name, tip, tip + fwd * 0.03 * size, mid, tuple(off), 'root')
+        eyes, fw, fingers = _face_bones(ebs, body, face, made, size)
     arm['mch_legs'] = json.dumps(legs)
     arm['mch_chains'] = json.dumps(chains)
+    if fw:
+        arm['mch_face_w'] = json.dumps(fw)
+    finger_drivers(arm, fingers)
+    for e in eyes:                                   # (the eyes look at the shared target)
+        c = arm.pose.bones[e].constraints.new('DAMPED_TRACK')
+        c.target, c.subtarget = arm, 'eyes_target'
     arm['mch_x0'] = float(core[0])
     offs, lens = {}, []
     for base in legs:
@@ -232,7 +421,8 @@ def build(context, body, lines, kinds=None):
     for end, n in ik_ends:                           # (IK lines: the end grabbed, up to 3 bones bend)
         rg.add_ik(context, arm, [end], min(3, n))
     rg.controls(arm)
-    return arm, dict(legs=len(legs), chains=len(chains), trunk=len(trunk), bones=len(arm.data.bones))
+    return arm, dict(legs=len(legs), chains=len(chains), trunk=len(trunk), bones=len(arm.data.bones), eyes=len(eyes),
+                     lips=sum(1 for n in arm.data.bones.keys() if n.startswith('lip.')), fingers=len(fingers))
 
 
 # --- drawing -----------------------------------------------------------------------------------------------------------
@@ -242,6 +432,16 @@ def _target_mesh(context):
     if ob is not None and ob.type == 'CURVE' and ob.get('mch_guides_for'):
         ob = bpy.data.objects.get(ob['mch_guides_for'])
     return ob if ob is not None and ob.type == 'MESH' else None
+
+
+def _surface(context, ob, xy):
+    from bpy_extras import view3d_utils
+    region, rv3d = context.region, context.region_data
+    o = view3d_utils.region_2d_to_origin_3d(region, rv3d, xy)
+    d = view3d_utils.region_2d_to_vector_3d(region, rv3d, xy).normalized()
+    Mi = ob.matrix_world.inverted()
+    hit, loc, _n, _i = ob.ray_cast(Mi @ o, (Mi.to_3x3() @ d).normalized())
+    return ob.matrix_world @ loc if hit else None
 
 
 class MCH_OT_rig_guide_draw(bpy.types.Operator):
@@ -273,8 +473,11 @@ class MCH_OT_rig_guide_draw(bpy.types.Operator):
 
     def _add(self, context, event):
         from . import rigging as rg
-        p = rg.through_middle(context, context.region, context.region_data, self.mesh,
-                              (event.mouse_region_x, event.mouse_region_y))
+        xy = (event.mouse_region_x, event.mouse_region_y)
+        if context.scene.mch_rig.guide_kind in SURFACE:   # 0.24.259 eyes / lips: on the surface
+            p = _surface(context, self.mesh, xy)
+        else:
+            p = rg.through_middle(context, context.region, context.region_data, self.mesh, xy)
         if p is None:
             return
         p = np.array(tuple(p))
@@ -347,7 +550,12 @@ def draw(layout, context, st):
     n = len(guides_of(mesh).data.splines) if guides_of(mesh) is not None else 0
     col = layout.column(align=True)
     col.label(text='Next line:')
-    col.row(align=True).prop(st, 'guide_kind', expand=True)
+    r = col.row(align=True)
+    for k_ in ('AUTO', 'BODY', 'LEG', 'IK', 'BONES'):
+        r.prop_enum(st, 'guide_kind', k_)
+    r = col.row(align=True)
+    for k_ in ('EYE', 'MOUTH', 'FINGER'):
+        r.prop_enum(st, 'guide_kind', k_)
     r = col.row(align=True)
     r.prop(st, 'bind', toggle=True)
     r = col.row(align=True)
