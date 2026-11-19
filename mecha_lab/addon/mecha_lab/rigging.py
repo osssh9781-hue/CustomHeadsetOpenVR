@@ -1347,6 +1347,59 @@ def build_chain(context, ob, n, into=None):
     return arm, names
 
 
+def delete_rig(context, arm):
+    """0.24.249 (user: "리그 지우기도 만들어줘") the rig gone and everything it touched put back: the meshes off the
+    rig (its Armature modifier and the weight groups named after its bones removed, shown in their own shape),
+    the mecha parts let go where they stand in the rest pose, constraints aiming at it removed, its Auto Animation
+    actions and (when no rig is left) the control shapes deleted.  The meshes themselves are never deleted.
+    Returns (meshes freed, parts freed)."""
+    if context.mode != 'OBJECT':
+        bpy.ops.object.mode_set(mode='OBJECT')
+    _EDITING.pop(arm.name, None)
+    bones = {b.name for b in arm.data.bones}
+    arm.data.pose_position = 'REST'                      # (the parts let go where they were made)
+    context.view_layer.update()
+    meshes = parts = 0
+    for o in list(bpy.data.objects):
+        if o is arm:
+            continue
+        if o.parent is arm:
+            mw = o.matrix_world.copy()
+            o.parent = None
+            o.parent_type = 'OBJECT'
+            o.parent_bone = ''
+            o.matrix_world = mw
+            if PART_KEY in o:
+                del o[PART_KEY]
+                parts += 1
+        mods = [m for m in getattr(o, 'modifiers', ()) if m.type == 'ARMATURE' and m.object is arm]
+        for m in mods:
+            o.modifiers.remove(m)
+        if mods and o.type == 'MESH':
+            for vg in [vg for vg in o.vertex_groups if vg.name in bones]:
+                o.vertex_groups.remove(vg)
+            meshes += 1
+        for c in [c for c in getattr(o, 'constraints', ()) if getattr(c, 'target', None) is arm]:
+            o.constraints.remove(c)
+    names = {f'{arm.name}_{g}' for g in ('Idle', 'Walk', 'Run', 'Trot')}
+    for a in [a for a in bpy.data.actions if a.name in names]:
+        bpy.data.actions.remove(a)
+    data = arm.data
+    bpy.data.objects.remove(arm)
+    if data.users == 0:
+        bpy.data.armatures.remove(data)
+    if not any(o.type == 'ARMATURE' and RIG_KEY in o for o in bpy.data.objects):
+        coll = bpy.data.collections.get(WIDGETS)
+        if coll is not None:
+            for w in list(coll.objects):
+                me = w.data
+                bpy.data.objects.remove(w)
+                if me is not None and me.users == 0:
+                    bpy.data.meshes.remove(me)
+            bpy.data.collections.remove(coll)
+    return meshes, parts
+
+
 # --- the user's own Edit Mode -------------------------------------------------------------------------------------------
 
 _EDITING = {}        # rig name -> [(mesh name, armature modifier name, was shown)]
@@ -1625,6 +1678,24 @@ class MCH_OT_rig_bind(bpy.types.Operator):
             return {'CANCELLED'}
         how = bind(context, mesh, arm)
         self.report({'INFO'}, f'{mesh.name} bound to {arm.name} ({"automatic" if how == "auto" else "nearest-bone"} weights)')
+        return {'FINISHED'}
+
+
+class MCH_OT_rig_delete(bpy.types.Operator):
+    """Delete the rig: the meshes and parts stay (back in their own shape, let go of the bones), its animations go"""
+    bl_idname = 'mch.rig_delete'
+    bl_label = 'Delete Rig'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return rig_of(context.active_object) is not None
+
+    def execute(self, context):
+        arm = rig_of(context.active_object)
+        name = arm.name
+        meshes, parts = delete_rig(context, arm)
+        self.report({'INFO'}, f'{name} deleted ({meshes} mesh(es), {parts} part(s) kept)')
         return {'FINISHED'}
 
 
@@ -1915,6 +1986,7 @@ def draw(layout, context):
             r.operator('mch.rig_piston', text='Piston (2 parts)')
         r.operator('mch.rig_jiggle', text='Jiggle On').on = True
         r.operator('mch.rig_jiggle', text='Jiggle Off').on = False
+        box.row(align=True).operator('mch.rig_delete', text='Delete Rig', icon='TRASH')
         from . import locomotion                 # 0.24.244 Auto Animation + Unreal FBX
         locomotion.draw(layout, context)
         if arm.get(RIG_KEY) == 'MECHA':
@@ -1933,7 +2005,7 @@ def draw(layout, context):
 
 
 CLASSES = (MCH_PG_Rig, MCH_OT_rig_make, MCH_OT_rig_bind, MCH_OT_rig_edit, MCH_OT_rig_link, MCH_OT_rig_jiggle,
-           MCH_OT_rig_mirror, MCH_OT_rig_limit, MCH_OT_rig_piston, MCH_OT_rig_click)
+           MCH_OT_rig_mirror, MCH_OT_rig_limit, MCH_OT_rig_piston, MCH_OT_rig_click, MCH_OT_rig_delete)
 
 
 def register():

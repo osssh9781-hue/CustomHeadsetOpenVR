@@ -249,19 +249,30 @@ def make_cycle(context, arm, st):
                                                                       4, 'X') @ Matrix.Translation(-h))
                 pb.matrix = Matrix.Translation((0, -fwd - travel, lift)) @ pitch @ rest[n]
             _key(pb, frame)
-        # the arms (Human): against the legs
+        # the arms (Human): against the legs - 0.24.249 (user: "걷는 포즈 이상해") swung from the shoulder as it
+        # is now (the hips dip and sway, the chest turns), the arm nearly straight: before, the hands stayed at
+        # their rest height and moved straight back and forth, so the elbows folded behind the back
         if kind == 'BODY':
+            context.view_layer.update()
             for side, sgn in (('L', 1.0), ('R', -1.0)):
-                n = f'hand.{side}_ik'
-                if n not in pbs:
+                n, up_ = f'hand.{side}_ik', f'upper_arm.{side}'
+                if n not in pbs or up_ not in pbs:
                     continue
                 pb = pbs[n]
+                sh0 = rest[up_].to_translation()
+                sh = (pbs[up_].matrix).to_translation()
                 if st.gait == 'IDLE':
-                    pb.matrix = Matrix.Translation((0, 0, 0.004 * L * math.sin(cyc))) @ rest[n]
+                    a = math.radians(1.2 * st.arms) * math.sin(cyc)
                 else:
-                    sw = (0.28 if st.gait == 'RUN' else 0.18) * L * st.arms * math.sin(cyc) * sgn
-                    lift = abs(sw) * 0.25 + (0.06 * L if st.gait == 'RUN' else 0.0)
-                    pb.matrix = Matrix.Translation((0, sw - travel, lift)) @ rest[n]
+                    a = math.radians((32.0 if st.gait == 'RUN' else 18.0) * st.arms) * math.sin(cyc) * sgn
+                fwd_ = max(0.0, -math.sin(cyc) * sgn) if st.gait != 'IDLE' else 0.0
+                bend = 0.985 - (0.10 if st.gait == 'RUN' else 0.035) * fwd_     # (the elbow bends as it comes forward)
+                R = Matrix.Rotation(a, 4, 'X')
+                v = (rest[n].to_translation() - sh0) * bend
+                tgt = sh + (R.to_3x3() @ v)
+                M = R @ Matrix.Translation(-rest[n].to_translation()) @ rest[n]
+                M.translation = tgt
+                pb.matrix = M
                 _key(pb, frame)
         # tails and chains: a swing that lags down their length
         for chain in (([tail] if tail else []) + [_chain(arm, c) for c in chain_roots if kind not in {'AUTO', 'MECHA'}]
