@@ -254,6 +254,15 @@ def tidy_low(context, high, low):
         hb.free()
     finally:
         high.evaluated_get(dg).to_mesh_clear()
+    fins = 0
+    bm_ = bmesh.new()
+    bm_.from_mesh(low.data)
+    multi = sum(1 for e in bm_.edges if len(e.link_faces) > 2)
+    bm_.free()
+    if multi:                     # 0.24.250 (user's thin extracted plate: edges with 3+ faces where a wall pinched)
+        from . import mesh_fix
+        st_ = mesh_fix.fix_mesh(low.data, fill='CRACKS' if high_open else 'SMALL')
+        fins = multi
     bm_ = bmesh.new()
     bm_.from_mesh(low.data)
     bm_.edges.ensure_lookup_table()
@@ -272,7 +281,8 @@ def tidy_low(context, high, low):
     bm_.to_mesh(low.data)
     bm_.free()
     low.data.update()
-    return f'{filled} hole(s) closed' if filled else ''
+    notes = ([f'{filled} hole(s) closed'] if filled else []) + ([f'{fins} pinched edge(s) mended'] if fins else [])
+    return ', '.join(notes)
 
 
 def deviation(context, high, low):

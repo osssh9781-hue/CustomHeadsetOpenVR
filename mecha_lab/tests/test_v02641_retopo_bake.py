@@ -174,4 +174,16 @@ cd = max(float(np.min(np.linalg.norm(P - c_, axis=1))) for c_ in corners)
 check(f'a hard block, Keep Hard Edges on: its corners kept (farthest corner {cd * 100:.1f} cm off)', cd < 0.05)
 S.mch_rb_hard = False
 
+# 0.24.250 (user's FBX: a thin extracted plate pinched in the remesh - edges with 3+ faces): the low is mended
+bpy.ops.mesh.primitive_cube_add(size=2.0, location=(20, 0, 0)); hi_ = C.active_object
+bpy.ops.mesh.primitive_cube_add(size=2.0, location=(20, 0, 0)); lo_ = C.active_object
+import bmesh as _b2
+b2 = _b2.new(); b2.from_mesh(lo_.data); b2.edges.ensure_lookup_table()
+e_ = b2.edges[0]; v3 = b2.verts.new((e_.verts[0].co + e_.verts[1].co) / 2 + Vector((0.5, 0.5, 0.5)))
+b2.faces.new((e_.verts[0], e_.verts[1], v3))             # (a fin: that edge now carries 3 faces)
+b2.to_mesh(lo_.data); b2.free()
+note_ = rb.tidy_low(C, hi_, lo_)
+b2 = _b2.new(); b2.from_mesh(lo_.data)
+fins_ = sum(1 for e in b2.edges if len(e.link_faces) > 2); open_ = sum(1 for e in b2.edges if e.is_boundary); b2.free()
+check(f'a pinched edge (3 faces) in the low is mended ({note_}; {fins_} left, {open_} open)', fins_ == 0 and open_ == 0 and 'mended' in note_)
 summary()
