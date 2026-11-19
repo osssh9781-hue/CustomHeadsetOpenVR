@@ -186,4 +186,48 @@ note_ = rb.tidy_low(C, hi_, lo_)
 b2 = _b2.new(); b2.from_mesh(lo_.data)
 fins_ = sum(1 for e in b2.edges if len(e.link_faces) > 2); open_ = sum(1 for e in b2.edges if e.is_boundary); b2.free()
 check(f'a pinched edge (3 faces) in the low is mended ({note_}; {fins_} left, {open_} open)', fins_ == 0 and open_ == 0 and 'mended' in note_)
+# 0.24.251 (user: "리토포 해 온 메쉬를 선택해서 베이크") the user's own low (made elsewhere, its own UVs) + the high selected
+bpy.ops.mesh.primitive_uv_sphere_add(segments=96, ring_count=48, radius=1.0, location=(26, 0, 0)); oh = C.active_object
+oh.name = 'MyHigh'
+dd = oh.modifiers.new('D', 'DISPLACE'); dd.texture = bpy.data.textures.new('n3', 'CLOUDS'); dd.strength = 0.05
+bpy.ops.mesh.primitive_uv_sphere_add(segments=24, ring_count=12, radius=1.0, location=(26, 0, 0)); ol = C.active_object
+ol.name = 'MyLow'
+uv0 = [tuple(d.uv) for d in ol.data.uv_layers[0].data]
+for o in list(C.selected_objects):
+    o.select_set(False)
+ol.select_set(True); oh.select_set(True); C.view_layer.objects.active = oh       # (either one active)
+pr = rb.own_pair(C)
+check('two meshes selected, neither from Retopo: the one with more faces the high, the other the low; Bake on',
+      pr == (oh, ol) and bpy.ops.mch.retopo_bake.poll())
+st.normal, st.ao, st.rough, st.metal, st.curv, st.height = True, True, False, False, False, False
+r = bpy.ops.mch.retopo_bake()
+uv1 = [tuple(d.uv) for d in ol.data.uv_layers[0].data]
+img = bpy.data.images.get('MyLow_Normal')
+check(f'Bake: the maps on the own low, its own UVs kept ({len(ol.data.uv_layers)} layer, unchanged {uv0 == uv1}), tied to its high',
+      r == {'FINISHED'} and img is not None and uv0 == uv1 and rb.high_of(ol) is oh)
+# 0.24.251 (user's sculpt: pin-holes in the high, a long crack in the low, an FBX at scale 0.01): the crack closed,
+# the high's own border kept open
+import bmesh as _b3
+def _sphere(name, loc, scale):
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=64, ring_count=32, radius=100.0, location=loc)
+    o = C.active_object; o.name = name; o.scale = (scale,) * 3
+    return o
+ph = _sphere('PinHigh', (32, 0, 0), 0.01)
+b3 = _b3.new(); b3.from_mesh(ph.data); b3.faces.ensure_lookup_table()
+_b3.ops.delete(b3, geom=[b3.faces[i] for i in (100, 700, 1300)], context='FACES_ONLY'); b3.to_mesh(ph.data); b3.free()
+pl = _sphere('PinLow', (32, 0, 0), 0.01)
+b3 = _b3.new(); b3.from_mesh(pl.data)
+_b3.ops.delete(b3, geom=[f for f in b3.faces if abs(f.calc_center_median().z) < 6.0 and f.calc_center_median().x > 0],
+               context='FACES_ONLY')                  # (a long slit half round the middle)
+b3.to_mesh(pl.data); b3.free()
+note_ = rb.tidy_low(C, ph, pl)
+b3 = _b3.new(); b3.from_mesh(pl.data); open_ = sum(1 for e in b3.edges if e.is_boundary); b3.free()
+check(f'pin-holes in the high (an FBX at scale 0.01): the long crack in the low closed ({note_}; {open_} open)', open_ == 0)
+pb_ = _sphere('CapHigh', (38, 0, 0), 0.01)
+b3 = _b3.new(); b3.from_mesh(pb_.data)
+_b3.ops.delete(b3, geom=[f for f in b3.faces if f.calc_center_median().z < -30], context='FACES_ONLY'); b3.to_mesh(pb_.data); b3.free()
+pc_ = pb_.copy(); pc_.data = pb_.data.copy(); C.scene.collection.objects.link(pc_)
+rb.tidy_low(C, pb_, pc_)
+b3 = _b3.new(); b3.from_mesh(pc_.data); open2 = sum(1 for e in b3.edges if e.is_boundary); b3.free()
+check(f'a cap (the high open at the bottom): its own border stays open in the low ({open2} open)', open2 > 0)
 summary()

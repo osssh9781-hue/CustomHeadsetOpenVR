@@ -242,15 +242,27 @@ def _boundary_loops(bm_):
 
 def tidy_low(context, high, low):
     """0.24.243 (user: "리토포 툴이 이렇게 빵꾸가 나" - a rough scanned rock) holes the remesh left in the low are
-    closed (all of them when the high is closed; on an open high only the small ones - its own border stays), and
-    every face is turned to point out.  Returns a note or ''."""
+    closed, and every face is turned to point out.  Returns a note or ''.
+    0.24.251 (user's sculpt "002.fbx": 47 pin-holes in the high, a long zig-zag crack in the low): a hole of the low
+    is kept open only when it runs along the high's own open border (measured, not "the high has any hole"); a
+    crack - its two sides a quad apart - is zipped (its points welded) before the rest is filled.  Sizes in the
+    low's own units (an FBX at scale 0.01 skipped every hole before)."""
     import bmesh
+    from mathutils.kdtree import KDTree
     dg = context.evaluated_depsgraph_get()
     hm = high.evaluated_get(dg).to_mesh()
+    border = None
     try:
         hb = bmesh.new()
         hb.from_mesh(hm)
-        high_open = any(e.is_boundary for e in hb.edges)
+        M = high.matrix_world
+        pts = [M @ ((e.verts[0].co + e.verts[1].co) * 0.5) for e in hb.edges if e.is_boundary]
+        high_open = bool(pts)
+        if pts:
+            border = KDTree(len(pts))
+            for i, p_ in enumerate(pts):
+                border.insert(p_, i)
+            border.balance()
         hb.free()
     finally:
         high.evaluated_get(dg).to_mesh_clear()
@@ -261,16 +273,34 @@ def tidy_low(context, high, low):
     bm_.free()
     if multi:                     # 0.24.250 (user's thin extracted plate: edges with 3+ faces where a wall pinched)
         from . import mesh_fix
-        st_ = mesh_fix.fix_mesh(low.data, fill='CRACKS' if high_open else 'SMALL')
+        mesh_fix.fix_mesh(low.data, fill='CRACKS' if high_open else 'SMALL')
         fins = multi
     bm_ = bmesh.new()
     bm_.from_mesh(low.data)
     bm_.edges.ensure_lookup_table()
-    size = max(low.dimensions) or 1.0
+    Lw = low.matrix_world
+    lens = sorted(e.calc_length() for e in bm_.edges)
+    quad = lens[len(lens) // 2] if lens else 0.0                      # (a quad's side, the low's own units)
+    wq = quad * max(low.matrix_world.to_scale())                        # (the same in world units)
+
+    def own_border(loop):
+        if border is None:
+            return False
+        vs = {v for e in loop for v in e.verts}
+        near = sum(1 for v in vs if border.find(Lw @ v.co)[2] <= 2.0 * wq)
+        return near >= 0.6 * len(vs)
+    # cracks zipped: the points of the holes that are not the high's border, welded across a narrow gap
+    zipped = 0
+    crack_vs = [v for loop in _boundary_loops(bm_) if not own_border(loop) for e in loop for v in e.verts]
+    if crack_vs and quad > 0:
+        tm = bmesh.ops.find_doubles(bm_, verts=list(set(crack_vs)), dist=0.6 * quad)['targetmap']
+        tm = {a: b for a, b in tm.items() if not any(b in f.verts for f in a.link_faces)}   # (not across one face)
+        if tm:
+            bmesh.ops.weld_verts(bm_, targetmap=tm)
+            zipped = len(tm)
     filled = 0
     for loop in _boundary_loops(bm_):
-        per = sum(e.calc_length() for e in loop)
-        if high_open and per > 0.35 * size:
+        if own_border(loop):
             continue
         res = bmesh.ops.holes_fill(bm_, edges=loop, sides=0)
         new = res.get('faces', [])
@@ -281,7 +311,11 @@ def tidy_low(context, high, low):
     bm_.to_mesh(low.data)
     bm_.free()
     low.data.update()
-    notes = ([f'{filled} hole(s) closed'] if filled else []) + ([f'{fins} pinched edge(s) mended'] if fins else [])
+    if zipped:                    # (a weld can leave a 3+-face edge or a pinch: mended as above)
+        from . import mesh_fix
+        mesh_fix.fix_mesh(low.data, fill='CRACKS' if high_open else 'SMALL')
+    notes = (([f'{filled} hole(s) closed'] if filled else []) + ([f'crack zipped ({zipped} points)'] if zipped else [])
+             + ([f'{fins} pinched edge(s) mended'] if fins else []))
     return ', '.join(notes)
 
 
@@ -350,6 +384,30 @@ def selected_pairs(context):
             seen.add(h.name)
             out.append((h, lo))
     return out
+
+
+def own_pair(context):
+    """0.24.251 (user: "리토포 해 온 메쉬를 선택해서 베이크하는 것도"): two meshes selected, neither made by Retopo nor
+    with a low of its own - the user's own low (made elsewhere: ZBrush, Blender, ...) and its high: (high, low) by
+    their face counts (the one with more faces is the high), else None."""
+    obs = [o for o in context.selected_objects if o.type == 'MESH']
+    act = context.active_object
+    if act is not None and act.type == 'MESH' and act not in obs:
+        obs.append(act)
+    if len(obs) != 2 or any(high_of(o) is not None or low_of(o) is not None for o in obs):
+        return None
+    a, b = sorted(obs, key=lambda o: len(o.data.polygons))
+    if len(a.data.polygons) == len(b.data.polygons):
+        return None
+    return b, a
+
+
+def link_own(context):
+    """The selected own low tied to its high (so Bake, Bake again and Retopo Again know it).  (high, low) or None."""
+    pr = own_pair(context)
+    if pr is not None:
+        pr[1][HIGH_KEY] = pr[0].name
+    return pr
 
 
 def _many(items, step_fn):
@@ -431,7 +489,7 @@ class MCH_OT_retopo_bake(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return any(lo is not None for _h, lo in selected_pairs(context))
+        return any(lo is not None for _h, lo in selected_pairs(context)) or own_pair(context) is not None
 
     def invoke(self, context, event):
         return self._go(context)
@@ -442,6 +500,7 @@ class MCH_OT_retopo_bake(bpy.types.Operator):
     def _go(self, context):
         if context.mode != 'OBJECT':
             bpy.ops.object.mode_set(mode='OBJECT')
+        link_own(context)                            # 0.24.251 the user's own low + its high
         items = [(h, lo) for h, lo in selected_pairs(context) if lo is not None]
         from . import bake_maps as bm, progress
         try:
@@ -485,7 +544,8 @@ def draw(layout, context):
     ob = context.active_object
     high, low = pair(ob) if ob is not None and ob.type == 'MESH' else (None, None)
     items = selected_pairs(context)
-    n_low = sum(1 for _h, lo in items if lo is not None)
+    own = own_pair(context)
+    n_low = sum(1 for _h, lo in items if lo is not None) or (1 if own is not None else 0)
     box = layout.box()
     box.label(text='RETOPO + BAKE', icon='MOD_REMESH')
     box.row(align=True).prop(S, 'mch_rb_method', expand=True)
@@ -513,12 +573,15 @@ def draw(layout, context):
     r.scale_y = 1.3
     r.enabled = n_low > 0
     r.operator('mch.retopo_bake', text=f'2  Bake {n_low} Meshes' if n_low > 1 else '2  Bake', icon='RENDER_STILL')
-    if many:
+    if own is not None:
+        box.label(text=f'Your own low: {own[0].name} -> {own[1].name}  (2 Bake)', icon='CHECKMARK')
+    elif many:
         box.label(text=f'{len(items)} meshes selected, {n_low} with a low', icon='CHECKMARK')
     elif low is not None:
         box.label(text=f'{high.name} -> {low.name}', icon='CHECKMARK')
     else:
         box.label(text='Select the detailed mesh(es) (high)', icon='INFO')
+        box.label(text='Your own low: select it and its high, then 2 Bake', icon='INFO')
 
 
 CLASSES = (MCH_OT_retopo_make, MCH_OT_retopo_bake)
