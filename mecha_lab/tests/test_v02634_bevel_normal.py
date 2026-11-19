@@ -173,4 +173,24 @@ import inspect  # noqa: E402
 src = inspect.getsource(ub.dock_items)
 check('the dock (the bar with Select) has BEVEL: the toggle, the Radius slider, Remove Selected',
       "'BEVEL'" in src and 'mch_bevel_normal_radius' in src and 'mch.bevel_normal_remove' in src)
+# 0.24.262 (user's MECHA.blend: "베벨 노말이 안 돼") a part whose faces use an EMPTY first slot (the base material had
+# been put after it - no face drew the Bevel): the empty slot filled, Off puts it back as it was, On again fills again
+S.mch_bevel_normal = False
+bpy.ops.mesh.primitive_cube_add(location=(20, 0, 0))
+e_ = C.active_object; e_.name = 'EmptySlot'
+e_.data.materials.append(None)                            # (one empty slot, the faces on it)
+e_.data.materials.append(bn._base_material())             # (as an older version left it: the base after it)
+e_[bn.ADDED] = 1
+S.mch_bevel_normal = True
+used = {e_.material_slots[p.material_index].material.name if e_.material_slots[p.material_index].material else None
+        for p in e_.data.polygons}
+check(f'an empty slot the faces use is filled with the base material: every face draws the Bevel ({used})',
+      used == {bn.BASE_MAT} and bn.BASE_MAT in [s.material.name for s in e_.material_slots if s.material])
+S.mch_bevel_normal = False
+off_ = [s.material.name if s.material else None for s in e_.material_slots]
+S.mch_bevel_normal = True
+on_ = [s.material.name if s.material else None for s in e_.material_slots]
+check(f'Off: the slots as they were before ({off_}); On again: filled again ({on_})',
+      off_ == [None] and on_ == [bn.BASE_MAT])
+bpy.data.objects.remove(e_)
 summary()

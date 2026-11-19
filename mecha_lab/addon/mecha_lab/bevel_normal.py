@@ -26,6 +26,7 @@ SWITCH = 'MCH Bevel Switch'
 MULT = 'MCH Bevel Mult'
 PROP = 'mch_bevel_n'                 # the object's switch (custom property)
 ADDED = 'mch_bevel_added_mat'        # the object got the base material from us
+FILLED = 'mch_bevel_filled'          # 0.24.262 its empty slots we filled with the base material (indices)
 BASE_MAT = 'MCH Bevel Base'
 SAMPLES = 8
 _SEEN = {'n': -1}
@@ -113,14 +114,65 @@ def _meshes(context):
     return [o for o in context.scene.objects if o.type == 'MESH']
 
 
+def fill_empty(ob):
+    """0.24.262 (user's MECHA.blend: "베벨 노말이 안 돼" - every part had an EMPTY first slot its faces used, the base
+    material had been added after it, so no face was drawn with the Bevel) every empty slot of ``ob`` filled with
+    the base material (its faces get the bevel); a mesh with no material at all gets one.  What was done is kept on
+    the object (``unfill`` puts it back exactly).  Returns how many filled."""
+    import json
+    me = ob.data
+    if ob.type != 'MESH' or me is None or me.library:
+        return 0
+    try:
+        rec = json.loads(ob.get(FILLED, '{}'))
+        rec = rec if isinstance(rec, dict) else {'idx': list(rec), 'added': 0}
+    except (TypeError, ValueError):
+        rec = {}
+    idx, added = set(rec.get('idx', [])), int(rec.get('added', 0))
+    n = 0
+    if not len(me.materials):
+        me.materials.append(_base_material())
+        ob[ADDED] = 1                                # (as before: marked as ours)
+        added += 1
+        idx.add(0)
+        n += 1
+    for i in range(len(me.materials)):
+        s_ = ob.material_slots[i] if i < len(ob.material_slots) else None
+        if me.materials[i] is None and (s_ is None or s_.link == 'DATA'):
+            me.materials[i] = _base_material()
+            idx.add(i)
+            n += 1
+    if idx:
+        ob[FILLED] = json.dumps({'idx': sorted(idx), 'added': added})
+    return n
+
+
+def unfill(ob):
+    """The slots ``fill_empty`` filled emptied again, the ones it added taken off."""
+    import json
+    if FILLED not in ob:
+        return
+    me = ob.data
+    try:
+        rec = json.loads(ob[FILLED])
+        rec = rec if isinstance(rec, dict) else {'idx': list(rec), 'added': 0}
+    except (TypeError, ValueError):
+        rec = {'idx': [], 'added': 0}
+    if me is not None:
+        for i in rec.get('idx', []):
+            if i < len(me.materials) and me.materials[i] is not None and me.materials[i].name == BASE_MAT:
+                me.materials[i] = None
+        for _k in range(int(rec.get('added', 0))):
+            if len(me.materials) and me.materials[len(me.materials) - 1] is None:
+                me.materials.pop(index=len(me.materials) - 1)
+    del ob[FILLED]
+
+
 def give(ob, radius, on=1.0):
     """``ob`` gets the Bevel Normal (its switch ``on``); its materials get the node."""
     if ob.type != 'MESH':
         return
-    if not any(s.material for s in ob.material_slots):
-        if ob.data is not None and not ob.data.library:
-            ob.data.materials.append(_base_material())
-            ob[ADDED] = 1
+    fill_empty(ob)
     ob[PROP] = float(on)
     for s in ob.material_slots:
         install(s.material, radius)
@@ -134,6 +186,7 @@ def turn_on(context):
         if PROP not in ob:
             give(ob, r)
         else:
+            fill_empty(ob)                           # 0.24.262 (a file saved with empty slots: mended)
             for s in ob.material_slots:
                 install(s.material, r)
     _SEEN['n'] = len(sc.objects)
@@ -150,6 +203,7 @@ def turn_off(context):
                 if i is not None:
                     me.materials.pop(index=i)
                 del ob[ADDED]
+            unfill(ob)
             if PROP in ob:
                 del ob[PROP]
             ob.update_tag()
@@ -429,9 +483,27 @@ class MCH_OT_bevel_normal_real(bpy.types.Operator):
 CLASSES = (MCH_OT_bevel_normal_remove, MCH_OT_bevel_normal_add, MCH_OT_bevel_normal_real)
 
 
+@bpy.app.handlers.persistent
+def _on_load(*_a):
+    """0.24.262 a file saved with the Bevel Normal on: its empty slots filled (older versions left them)."""
+    try:
+        for sc in bpy.data.scenes:
+            if getattr(sc, 'mch_bevel_normal', False):
+                for ob in sc.objects:
+                    if ob.type == 'MESH' and ob.get(PROP):
+                        if fill_empty(ob):
+                            for s in ob.material_slots:
+                                install(s.material, float(sc.mch_bevel_normal_radius))
+                            ob.update_tag()
+    except (ReferenceError, AttributeError, RuntimeError):
+        pass
+
+
 def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
+    if _on_load not in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.append(_on_load)
     bpy.types.Scene.mch_bevel_normal = BoolProperty(
         name='Bevel Normal', default=False, update=_on_update,
         description='Every mesh\'s edges rendered rounded by the Bevel shader (Cycles), Radius wide - the meshes are '
@@ -444,6 +516,8 @@ def register():
 
 
 def unregister():
+    if _on_load in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(_on_load)
     if _new_meshes in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(_new_meshes)
     for name in ('mch_bevel_normal', 'mch_bevel_normal_radius'):
