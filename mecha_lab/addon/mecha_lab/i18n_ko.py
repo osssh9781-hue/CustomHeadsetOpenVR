@@ -3927,6 +3927,7 @@ KO = {
     "How lumpy (a share of the shape's size)": '울퉁불퉁한 정도 (모양 크기의 비율)',
     'How many bellies (2: a double muscle; the chest: the bands twisting into the arm)': '배(근복)의 개수 (2: 이중 근육, 가슴: 팔로 비틀려 이어지는 띠)',
     'How many bones the IK bends, counted up from the selected end bone': 'IK 가 굽히는 뼈 개수 (선택한 끝 뼈부터 위로)',
+    'How many bones the IK bends, counted up from the selected end bone (0: the whole limb, up to where it branches off)': 'IK 가 굽히는 뼈 개수 (선택한 끝 뼈부터 위로; 0 = 갈라지는 곳까지 팔다리 전체)',
     'How many cables each bundle is made of': '각 묶음을 이루는 케이블 수',
     'How many cards (each one a clump of strands)': '카드 수 (카드 하나 = 털 한 뭉치)',
     'How many complete linked copies of the group to place on the path': '경로에 놓을 그룹의 완전히 연결된 복사본 수',

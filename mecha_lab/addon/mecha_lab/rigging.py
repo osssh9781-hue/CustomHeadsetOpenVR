@@ -83,8 +83,9 @@ class MCH_PG_Rig(bpy.types.PropertyGroup):
                            'with the jaw'),
         ('FINGER', 'Finger', 'Draw along a finger (knuckle to tip): 3 bones on the hand; Finger Curl / Spread move all '
                              'the fingers at once')])
-    ik_chain: IntProperty(name='IK Bones', default=2, min=1, max=8,
-                          description='How many bones the IK bends, counted up from the selected end bone')
+    ik_chain: IntProperty(name='IK Bones', default=0, min=0, max=16,
+                          description='How many bones the IK bends, counted up from the selected end bone (0: the whole '
+                          'limb, up to where it branches off)')
 
 
 def settings(context):
@@ -2007,8 +2008,14 @@ def add_ik(context, arm, ends, chain=2):
         if any(c.type == 'IK' for c in arm.pose.bones[n].constraints):
             continue
         chain_b = [b]
-        while len(chain_b) < chain and chain_b[-1].parent is not None and chain_b[-1].parent.name != root:
-            chain_b.append(chain_b[-1].parent)
+        if chain <= 0:                               # 0.24.260 the whole limb: up to where it branches off the body
+            while (chain_b[-1].parent is not None and chain_b[-1].parent.name not in {root, 'body'}
+                   and chain_b[-1].parent.use_deform and len(chain_b[-1].parent.children) == 1
+                   and chain_b[-1].use_connect):
+                chain_b.append(chain_b[-1].parent)
+        else:
+            while len(chain_b) < chain and chain_b[-1].parent is not None and chain_b[-1].parent.name != root:
+                chain_b.append(chain_b[-1].parent)
         todo.append((n, len(chain_b)))
     if not todo:
         return []

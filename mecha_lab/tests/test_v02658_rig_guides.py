@@ -94,4 +94,20 @@ still = max((pb.matrix.to_translation() - pb.bone.matrix_local.to_translation())
 check(f'Make Rig with the kinds: the body first whatever the order drawn, {len(legs)} legs (the Leg lines), '
       f'{len(iks) - len(legs)} IK ends (the 3 IK lines), {len(chains)} swaying chain (the tail), rest pose still ({still * 1000:.1f} mm)',
       r == {'FINISHED'} and body_first and len(legs) == 2 and len(iks) - len(legs) == 3 and len(chains) == 1 and still < 0.005)
+# 0.24.260 (user: "IK 로 움직일 때 가장 뿌리 마디는 안 움직여"): an IK line bends all its bones, the root joint too
+ikb = [(pb.name, c) for pb in arm.pose.bones for c in pb.constraints if c.type == 'IK' and pb.name.startswith('limb')]
+name_, c_ = max(ikb, key=lambda t: t[1].chain_count)
+base_ = name_.split('.')[0]
+nb_ = sorted(b.name for b in arm.data.bones if b.name.startswith(base_ + '.') and b.name[len(base_) + 1:].isdigit())
+bpy.ops.object.mode_set(mode='OBJECT') if C.mode != 'OBJECT' else None
+first = arm.pose.bones[nb_[0]]
+r0 = first.matrix.to_quaternion().copy()
+t_ = arm.pose.bones[c_.subtarget]
+t_.location = (0.4, 0.2, 0.3)
+C.view_layer.update()
+turn = r0.rotation_difference(first.matrix.to_quaternion()).angle
+t_.location = (0, 0, 0)
+C.view_layer.update()
+check(f'an IK line bends all its {len(nb_)} bones (IK chain {c_.chain_count}): moving its target turns the root bone too ({np.degrees(turn):.0f} deg)',
+      c_.chain_count == len(nb_) and turn > np.radians(3))
 summary()

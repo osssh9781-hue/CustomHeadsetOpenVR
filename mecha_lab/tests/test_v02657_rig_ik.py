@@ -88,4 +88,13 @@ select([end + '_pole'])
 bpy.ops.mch.rig_ik(mode='REMOVE')
 check('Remove IK by picking its pole: gone again, the bones back at rest',
       end + '_ik' not in arm.data.bones and not any(c.type == 'IK' for c in arm.pose.bones[end].constraints))
+# 0.24.260 IK Bones 0: the whole limb (up to where it branches off)
+ch2 = chains[1]
+names2 = sorted(n for n in arm.data.bones.keys() if n.startswith(ch2 + '.') and n[len(ch2) + 1:].isdigit())
+S.mch_rig.ik_chain = 0
+select([names2[-1]])
+bpy.ops.mch.rig_ik(mode='ADD')
+c2 = next((c for c in arm.pose.bones[names2[-1]].constraints if c.type == 'IK'), None)
+check(f'IK Bones 0 (the default): the IK runs the whole limb ({c2.chain_count if c2 else 0} of {len(names2)} bones)',
+      c2 is not None and c2.chain_count == len(names2) and S.mch_rig.bl_rna.properties['ik_chain'].default == 0)
 summary()

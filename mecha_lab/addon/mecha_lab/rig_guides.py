@@ -418,8 +418,8 @@ def build(context, body, lines, kinds=None):
             rg._limb_ik(context, arm, lower, base + '.foot', 2)
         lens.append(sum(arm.data.bones[n].length for n in names))
     arm['mch_leg_len'] = float(np.min(lens)) if lens else 0.3 * H
-    for end, n in ik_ends:                           # (IK lines: the end grabbed, up to 3 bones bend)
-        rg.add_ik(context, arm, [end], min(3, n))
+    for end, n in ik_ends:                           # (IK lines: the end grabbed, the whole line bends)
+        rg.add_ik(context, arm, [end], n)          # 0.24.260 every bone of the line (the root joint too)
     rg.controls(arm)
     return arm, dict(legs=len(legs), chains=len(chains), trunk=len(trunk), bones=len(arm.data.bones), eyes=len(eyes),
                      lips=sum(1 for n in arm.data.bones.keys() if n.startswith('lip.')), fingers=len(fingers))
