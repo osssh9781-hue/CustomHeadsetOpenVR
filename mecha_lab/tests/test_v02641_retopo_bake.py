@@ -230,4 +230,61 @@ pc_ = pb_.copy(); pc_.data = pb_.data.copy(); C.scene.collection.objects.link(pc
 rb.tidy_low(C, pb_, pc_)
 b3 = _b3.new(); b3.from_mesh(pc_.data); open2 = sum(1 for e in b3.edges if e.is_boundary); b3.free()
 check(f'a cap (the high open at the bottom): its own border stays open in the low ({open2} open)', open2 > 0)
+# 0.24.252 (user: "두세 개 선택해서 한 덩어리로 리토포 → 하나의 메쉬로 베이크, 토글로") As One
+S.mch_rb_join = 'EACH'
+bpy.ops.mesh.primitive_uv_sphere_add(segments=64, ring_count=32, radius=1.0, location=(44, 0, 0)); pa = C.active_object
+pa.name = 'Torso'
+bpy.ops.mesh.primitive_cylinder_add(vertices=48, radius=0.35, depth=2.4, location=(45.3, 0, 0), rotation=(0, 1.5708, 0))
+pb2 = C.active_object; pb2.name = 'ArmR'
+bpy.ops.mesh.primitive_cylinder_add(vertices=48, radius=0.35, depth=2.4, location=(42.7, 0, 0), rotation=(0, 1.5708, 0))
+pc2 = C.active_object; pc2.name = 'ArmL'
+for o in list(C.selected_objects):
+    o.select_set(False)
+for o in (pa, pb2, pc2):
+    o.select_set(True)
+C.view_layer.objects.active = pa
+check('3 selected: the Each / As One toggle; Each by default (as before), no own-low pairing in As One',
+      S.mch_rb_join == 'EACH' and len(rb.selected_parts(C)) == 3)
+S.mch_rb_join, S.mch_rb_method, S.mch_rb_faces = 'ONE', 'QUAD', 3000
+n_before = len([o for o in bpy.data.objects if o.type == 'MESH'])
+r = bpy.ops.mch.retopo_make()
+one = C.active_object
+b3 = _b3.new(); b3.from_mesh(one.data)
+open3 = sum(1 for e in b3.edges if e.is_boundary)
+seen = set(); isl = 0
+for v in b3.verts:
+    if v.index in seen:
+        continue
+    isl += 1; stk = [v]; seen.add(v.index)
+    while stk:
+        x = stk.pop()
+        for e in x.link_edges:
+            y = e.other_vert(x)
+            if y.index not in seen:
+                seen.add(y.index); stk.append(y)
+b3.free()
+P3 = np.array([one.matrix_world @ v.co for v in one.data.vertices])
+inside = int(((np.linalg.norm(P3 - np.array((44, 0, 0)), axis=1) < 0.9)).sum())     # (no walls left inside the torso)
+check(f'As One: ONE low for the 3 ({len(one.data.polygons):,} faces, {isl} piece, {open3} open, {inside} points inside), '
+      f'the 3 hidden', r == {'FINISHED'} and isl == 1 and open3 == 0 and inside == 0
+      and len(one.data.polygons) < 6000 and all(not o.visible_get() for o in (pa, pb2, pc2))
+      and sorted(p.name for p in rb.parts_of(one)) == ['ArmL', 'ArmR', 'Torso'])
+st.normal, st.ao = True, True
+r = bpy.ops.mch.retopo_bake()
+check('Bake: one set of maps on the one low, baked from the 3 meshes',
+      r == {'FINISHED'} and bpy.data.images.get(f'{one.name}_Normal') is not None)
+for o in list(C.selected_objects):
+    o.select_set(False)
+pb2.hide_set(False); pb2.select_set(True); C.view_layer.objects.active = pb2
+h_, l_ = rb.pair(pb2)
+check('a part selected later: it knows its one low', l_ is one)
+for o in list(C.selected_objects):
+    o.select_set(False)
+one.select_set(True); C.view_layer.objects.active = one
+S.mch_rb_faces = 2000
+bpy.ops.mch.retopo_make()
+check('Retopo again (the low selected): the same low remade from the 3, no new objects',
+      C.active_object is one and len(one.data.polygons) < 3000
+      and len([o for o in bpy.data.objects if o.type == 'MESH']) == n_before + 2)
+S.mch_rb_join = 'EACH'
 summary()

@@ -22,6 +22,7 @@ import numpy as np
 from bpy.props import BoolProperty, EnumProperty, IntProperty
 
 HIGH_KEY = 'mch_rb_high'        # on the low: the name of its high
+PARTS_KEY = 'mch_rb_parts'      # 0.24.252 on a joined high and its low: the names of the meshes it was joined from
 
 
 def high_of(low):
@@ -37,12 +38,35 @@ def low_of(high):
     return next((o for o in bpy.data.objects if o.type == 'MESH' and o.get(HIGH_KEY) == high.name), None)
 
 
+def parts_of(ob):
+    """0.24.252 the meshes a joined high / its low was made from (those still there), or []."""
+    import json
+    try:
+        names = json.loads(ob.get(PARTS_KEY, '[]')) if ob is not None else []
+    except (TypeError, ValueError):
+        names = []
+    return [o for o in (bpy.data.objects.get(n) for n in names) if o is not None and o.type == 'MESH']
+
+
+def joined_of(part):
+    """The joined high ``part`` was made into (As One), or None."""
+    if part is None:
+        return None
+    return next((o for o in bpy.data.objects if o.type == 'MESH' and o is not part and part.name in
+                 [p.name for p in parts_of(o)] and low_of(o) is not None and o.get(PARTS_KEY)), None)
+
+
 def pair(ob):
-    """(high, low or None) for the selected object."""
+    """(high, low or None) for the selected object (a part of an As One retopo: its joined high and their low)."""
     h = high_of(ob)
     if h is not None:
         return h, ob
-    return ob, low_of(ob)
+    lo = low_of(ob)
+    if lo is None:
+        j = joined_of(ob)
+        if j is not None:
+            return j, low_of(j)
+    return ob, lo
 
 
 # --- Wrap (vacuum) -----------------------------------------------------------------------------------------------------
@@ -141,6 +165,80 @@ def wrap_steps(context, high, faces, rounds=48):
 
 
 # --- making the low --------------------------------------------------------------------------------------------------
+
+def joined_high(context, parts, faces, method='QUAD'):
+    """0.24.252 (user: "두세 개 선택해서 한 덩어리로 리토포 → 하나의 메쉬로 베이크") the selected meshes as one hidden
+    mesh (world space): for Quad their union (a voxel remesh a third of a quad fine - the walls inside where they
+    overlap gone, so the quads run over the whole as one skin); for Wrap simply joined (the wrap takes the outside).
+    Made again over the old one when the same meshes are retopo'd again.  Returns the object."""
+    import json
+    import bmesh
+    dg = context.evaluated_depsgraph_get()
+    bm_ = bmesh.new()
+    for o in parts:
+        me_ = bpy.data.meshes.new_from_object(o.evaluated_get(dg), preserve_all_data_layers=False, depsgraph=dg)
+        me_.transform(o.matrix_world)
+        bm_.from_mesh(me_)
+        bpy.data.meshes.remove(me_)
+    names = sorted(p.name for p in parts)
+    name = parts[0].name + '_Joined'
+    ob = next((o for o in bpy.data.objects if o.type == 'MESH' and o.get(PARTS_KEY) and
+               sorted(p.name for p in parts_of(o)) == names and high_of(o) is None), None)
+    me = bpy.data.meshes.new(name)
+    bm_.to_mesh(me)
+    bm_.free()
+    if method != 'WRAP' and len(parts) > 1:
+        area = sum(p.area for p in me.polygons)
+        quad = math.sqrt(max(area, 1e-12) / max(4, int(faces)))
+        tmp = bpy.data.objects.new('_mch_join_tmp', me)
+        context.scene.collection.objects.link(tmp)
+        try:
+            m = tmp.modifiers.new('V', 'REMESH')
+            m.mode = 'VOXEL'
+            m.voxel_size = max(quad / 3.0, 1e-6)
+            m.use_smooth_shade = True
+            dg = context.evaluated_depsgraph_get()
+            me2 = bpy.data.meshes.new_from_object(tmp.evaluated_get(dg), preserve_all_data_layers=False, depsgraph=dg)
+        finally:
+            bpy.data.objects.remove(tmp)
+        if len(me2.polygons):
+            bpy.data.meshes.remove(me)
+            me = me2
+            me.name = name
+        else:
+            bpy.data.meshes.remove(me2)
+    for mat in parts[0].data.materials:
+        me.materials.append(mat)
+    if ob is None:
+        ob = bpy.data.objects.new(name, me)
+        for coll in parts[0].users_collection:
+            coll.objects.link(ob)
+        if not ob.users_collection:
+            context.scene.collection.objects.link(ob)
+    else:
+        old = ob.data
+        ob.data = me
+        if old.users == 0:
+            bpy.data.meshes.remove(old)
+    ob.matrix_world.identity()
+    ob[PARTS_KEY] = json.dumps(names)
+    ob.hide_render = True
+    ob.display_type = 'WIRE'
+    return ob
+
+
+def make_one_steps(context, parts, faces, method='QUAD'):
+    """Generator: one low for all of ``parts`` (As One).  Returns (low, note)."""
+    yield (0.01, f'Joining {len(parts)} meshes into one')
+    j = joined_high(context, parts, faces, method)
+    lo = low_of(j)
+    low, note = yield from make_low_steps(context, j, faces, method, lo)
+    low[PARTS_KEY] = j[PARTS_KEY]
+    j.hide_set(True)
+    for p in parts:
+        p.hide_set(True)
+    return low, note
+
 
 def make_low_steps(context, high, faces, method='QUAD', low=None):
     """Generator: the low for ``high`` (new, or ``low``'s mesh replaced).  Returns (low, note)."""
@@ -342,7 +440,8 @@ def bake_steps(context, high, low):
     st = bm.settings(context)
     if st is None:
         raise RuntimeError('Bake settings are missing')
-    keep = bm._Keep(context, [low, high])
+    highs = parts_of(high) or [high]                  # 0.24.252 As One: baked from the meshes themselves
+    keep = bm._Keep(context, [low] + highs)
     new_uv = st.new_uv
     ray = st.ray
     st.new_uv = not low.data.uv_layers
@@ -352,14 +451,15 @@ def bake_steps(context, high, low):
     if need > st.ray:
         st.ray = min(20.0, need)
     try:
-        info = yield from bm.bake_pair_steps(context, low, [high], st, keep_state=keep)
+        info = yield from bm.bake_pair_steps(context, low, highs, st, keep_state=keep)
     finally:
         st.new_uv = new_uv
         st.ray = ray
         keep.restore(context)
     if st.show:
-        high.hide_set(True)
-        high.select_set(False)
+        for h_ in set([high] + highs):
+            h_.hide_set(True)
+            h_.select_set(False)
     low.hide_set(False)
     for o in list(context.selected_objects):
         o.select_set(False)
@@ -394,7 +494,9 @@ def own_pair(context):
     act = context.active_object
     if act is not None and act.type == 'MESH' and act not in obs:
         obs.append(act)
-    if len(obs) != 2 or any(high_of(o) is not None or low_of(o) is not None for o in obs):
+    if getattr(context.scene, 'mch_rb_join', 'EACH') == 'ONE':
+        return None                                  # (As One: both are highs)
+    if len(obs) != 2 or any(high_of(o) is not None or low_of(o) is not None or o.get(PARTS_KEY) for o in obs):
         return None
     a, b = sorted(obs, key=lambda o: len(o.data.polygons))
     if len(a.data.polygons) == len(b.data.polygons):
@@ -408,6 +510,21 @@ def link_own(context):
     if pr is not None:
         pr[1][HIGH_KEY] = pr[0].name
     return pr
+
+
+def selected_parts(context):
+    """0.24.252 As One: the selected meshes as the parts to join (a joined low / high selected: its parts)."""
+    obs = [o for o in context.selected_objects if o.type == 'MESH']
+    act = context.active_object
+    if act is not None and act.type == 'MESH' and act not in obs:
+        obs.append(act)
+    out = []
+    for o in obs:
+        h = high_of(o)
+        for p_ in (parts_of(h) if h is not None else []) or parts_of(o) or [o]:
+            if p_ not in out:
+                out.append(p_)
+    return out
 
 
 def _many(items, step_fn):
@@ -473,8 +590,14 @@ class MCH_OT_retopo_make(bpy.types.Operator):
                 msg += ' | failed: ' + '; '.join(f'{n}: {e}' for n, e in bad[:3])
             return msg
         from . import progress
-        gen = _many(items, lambda it: make_low_steps(context, it[0], faces, method, it[1]))
-        title = f'Retopo: {items[0][0].name}' if len(items) == 1 else f'Retopo: {len(items)} meshes'
+        parts = selected_parts(context) if getattr(S, 'mch_rb_join', 'EACH') == 'ONE' else []
+        if len(parts) > 1:                           # 0.24.252 As One: one low for all of them
+            items = [(parts[0], None)]
+            gen = _many(items, lambda it: make_one_steps(context, parts, faces, method))
+            title = f'Retopo: {len(parts)} meshes as one'
+        else:
+            gen = _many(items, lambda it: make_low_steps(context, it[0], faces, method, it[1]))
+            title = f'Retopo: {items[0][0].name}' if len(items) == 1 else f'Retopo: {len(items)} meshes'
         res = progress.start(context, title, gen, done)
         if res != 'RUNNING':
             self.report({'INFO'}, done(res))
@@ -553,10 +676,15 @@ def draw(layout, context):
     col.prop(S, 'mch_rb_faces')
     if S.mch_rb_method == 'QUAD' and hasattr(S, 'mch_rb_hard'):
         col.prop(S, 'mch_rb_hard', toggle=True)
+    parts = selected_parts(context) if hasattr(S, 'mch_rb_join') else []
+    one = len(parts) > 1 and S.mch_rb_join == 'ONE'
+    if hasattr(S, 'mch_rb_join') and (len(parts) > 1 or S.mch_rb_join == 'ONE'):    # 0.24.252 each / as one
+        box.row(align=True).prop(S, 'mch_rb_join', expand=True)
     r = pc.primary(box.row(align=True))
     r.scale_y = 1.3
     many = len(items) > 1
-    r.operator('mch.retopo_make', text=(f'1  Retopo {len(items)} Meshes' if many else
+    r.operator('mch.retopo_make', text=(f'1  Retopo {len(parts)} as One' if one else
+                                        f'1  Retopo {len(items)} Meshes' if many else
                                         '1  Retopo Again' if low is not None else '1  Retopo'), icon='MOD_REMESH')
     col = box.column(align=True)
     r = col.row(align=True)
@@ -573,7 +701,9 @@ def draw(layout, context):
     r.scale_y = 1.3
     r.enabled = n_low > 0
     r.operator('mch.retopo_bake', text=f'2  Bake {n_low} Meshes' if n_low > 1 else '2  Bake', icon='RENDER_STILL')
-    if own is not None:
+    if one:
+        box.label(text=f'{len(parts)} meshes -> one low, baked from all of them', icon='CHECKMARK')
+    elif own is not None:
         box.label(text=f'Your own low: {own[0].name} -> {own[1].name}  (2 Bake)', icon='CHECKMARK')
     elif many:
         box.label(text=f'{len(items)} meshes selected, {n_low} with a low', icon='CHECKMARK')
@@ -597,6 +727,11 @@ def register():
         name='Keep Hard Edges', default=False,
         description='Quad: the quads follow the sharp edges (hard-surface parts).  Off: even quads over the whole '
                     'shape (sculpts, creatures, rocks)')
+    bpy.types.Scene.mch_rb_join = EnumProperty(
+        name='Several Meshes', default='EACH',
+        items=[('EACH', 'Each Its Own', 'Each selected mesh gets its own low and its own maps'),
+               ('ONE', 'As One', 'The selected meshes joined into one low (their union), baked from all of them: '
+                                 'one mesh, one set of maps')])
     bpy.types.Scene.mch_rb_method = EnumProperty(
         name='Method', default='QUAD',
         items=[('QUAD', 'Quad', 'Quad remesh: the edge flow follows the shape'),
@@ -605,7 +740,7 @@ def register():
 
 
 def unregister():
-    for a in ('mch_rb_faces', 'mch_rb_method', 'mch_rb_hard'):
+    for a in ('mch_rb_faces', 'mch_rb_method', 'mch_rb_hard', 'mch_rb_join'):
         if hasattr(bpy.types.Scene, a):
             delattr(bpy.types.Scene, a)
     for c in reversed(CLASSES):
