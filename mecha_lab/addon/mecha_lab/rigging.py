@@ -70,6 +70,8 @@ class MCH_PG_Rig(bpy.types.PropertyGroup):
     hi: FloatProperty(name='Turn To', default=45.0, min=-360.0, max=360.0, description='The largest turn (degrees)')
     hatch: FloatProperty(name='Open Angle', default=110.0, min=1.0, max=360.0,
                          description='How far a hatch opens (degrees) - it turns from 0 to this only')
+    ik_chain: IntProperty(name='IK Bones', default=2, min=1, max=8,
+                          description='How many bones the IK bends, counted up from the selected end bone')
 
 
 def settings(context):
@@ -1912,6 +1914,194 @@ class MCH_OT_rig_click(bpy.types.Operator):
         return {'FINISHED'}
 
 
+# --- 0.24.257 IK where the user wants it -------------------------------------------------------------------------------
+
+def selected_bones(context, arm):
+    """The rig's selected bones (Pose / Edit Bones / Object mode: as last selected), the active one first."""
+    if arm.mode == 'EDIT':
+        ebs = arm.data.edit_bones
+        names = [e.name for e in ebs if e.select]
+        act = ebs.active.name if ebs.active is not None else None
+    else:                                                    # (5.x: the selection is on the pose bones)
+        names = [pb.name for pb in arm.pose.bones if pb.select]
+        act = arm.data.bones.active.name if arm.data.bones.active is not None else None
+    if act in names:
+        names.remove(act)
+        names.insert(0, act)
+    return names
+
+
+def _ik_pole_search(context, arm, owner, c):
+    """The pole angle that keeps the rest pose still (as ``_limb_ik``)."""
+    pbs = arm.pose.bones
+    ups, b = [], pbs[owner].parent
+    for _i in range(max(0, c.chain_count - 1)):
+        if b is None:
+            break
+        ups.append(b)
+        b = b.parent
+
+    def err_at(deg):
+        c.pole_angle = math.radians(deg)
+        context.view_layer.update()
+        return sum((pb.matrix.to_translation() - pb.bone.matrix_local.to_translation()).length +
+                   (pb.matrix.col[1].xyz - pb.bone.matrix_local.col[1].xyz).length +
+                   (pb.matrix.col[0].xyz - pb.bone.matrix_local.col[0].xyz).length for pb in ups + [pbs[owner]])
+    best = None
+    for deg in (-90.0, 90.0, 0.0, 180.0, -45.0, 45.0, -135.0, 135.0):
+        e = err_at(deg)
+        if best is None or e < best[0]:
+            best = (e, deg)
+    for step, span in ((3.0, 24.0), (0.5, 3.0), (0.1, 0.5)):
+        c0 = best[1]
+        for k in np.arange(-span, span + 1e-9, step):
+            e = err_at(c0 + float(k))
+            if e < best[0]:
+                best = (e, c0 + float(k))
+    c.pole_angle = math.radians(best[1])
+    context.view_layer.update()
+    return best
+
+
+def add_ik(context, arm, ends, chain=2):
+    """0.24.257 (user: "IK 생길 부분을 내가 지정할 수 있니?") IK on each of ``ends`` (its tail reaches a new target
+    ``<end>_ik``, ``chain`` bones bend, a pole ``<end>_pole`` off the bend keeps the rest pose still).  Bones that
+    are IK targets / poles, or already have IK, are skipped.  Returns the ends given IK."""
+    bones = arm.data.bones
+    root = 'root' if 'root' in bones else None
+    todo = []
+    for n in ends:
+        b = bones.get(n)
+        if b is None or n.endswith(('_ik', '_pole')) or n + '_ik' in bones or n == root:
+            continue
+        if any(c.type == 'IK' for c in arm.pose.bones[n].constraints):
+            continue
+        chain_b = [b]
+        while len(chain_b) < chain and chain_b[-1].parent is not None and chain_b[-1].parent.name != root:
+            chain_b.append(chain_b[-1].parent)
+        todo.append((n, len(chain_b)))
+    if not todo:
+        return []
+    M = arm.matrix_world
+    with _Edit(context, arm) as ebs:
+        for n, k in todo:
+            e = ebs[n]
+            top = e
+            for _i in range(k - 1):
+                top = top.parent
+            a_, b_, mid = Vector(top.head), Vector(e.tail), Vector(e.head if k > 1 else e.head)
+            ab = b_ - a_
+            off = (mid - (a_ + ab * ((mid - a_).dot(ab) / max(ab.length_squared, 1e-12)))) if k > 1 else Vector()
+            if off.length < 1e-4 * max(ab.length, 1e-6):
+                off = Vector(e.z_axis)                   # (a straight chain: off the bone's own side)
+            off = off.normalized() * 0.5 * max(ab.length, e.length)
+            t = ebs.new(n + '_ik')
+            t.head = e.tail
+            t.tail = e.tail + (e.tail - e.head).normalized() * 0.3 * e.length
+            t.roll = e.roll
+            t.parent = ebs[root] if root else None
+            t.use_deform = False
+            p = ebs.new(n + '_pole')
+            p.head = mid + off
+            p.tail = p.head + off.normalized() * 0.1 * off.length
+            p.parent = ebs[root] if root else None
+            p.use_deform = False
+    pbs = arm.pose.bones
+    for n, k in todo:
+        c = pbs[n].constraints.new('IK')
+        c.name = 'MCH IK'
+        c.target, c.subtarget = arm, n + '_ik'
+        if k > 1:
+            c.pole_target, c.pole_subtarget = arm, n + '_pole'
+        c.chain_count = k
+        if k > 1:
+            _ik_pole_search(context, arm, n, c)
+    controls(arm)
+    return [n for n, _k in todo]
+
+
+def remove_ik(context, arm, picked):
+    """0.24.257 the IK through any of ``picked`` (bones in its chain, its end's child, its target or pole) taken
+    off: the constraints, the target and pole bones gone, the chain back in its rest pose; a leg it was is no longer
+    walked by Auto Animation.  Returns how many IKs."""
+    pbs = arm.pose.bones
+    picked = set(picked)
+    drop_t, drop_p, owners, bent = set(), set(), set(), set()
+    for pb in pbs:
+        for c in pb.constraints:
+            if c.type != 'IK' or c.target is not arm:
+                continue
+            chain_ = [pb]
+            while len(chain_) < max(1, c.chain_count or 99) and chain_[-1].parent is not None:
+                chain_.append(chain_[-1].parent)
+            names = {x.name for x in chain_} | {ch.name for ch in pb.children}
+            if names & picked or c.subtarget in picked or c.pole_subtarget in picked:
+                drop_t.add(c.subtarget)
+                if c.pole_subtarget:
+                    drop_p.add(c.pole_subtarget)
+                owners.add(pb.name)
+                bent |= {x.name for x in chain_} | {ch.name for ch in pb.children}
+    if not drop_t:
+        return 0
+    gone = drop_t | drop_p
+    for pb in pbs:
+        for c in list(pb.constraints):
+            if getattr(c, 'target', None) is arm and (getattr(c, 'subtarget', '') in gone
+                                                      or getattr(c, 'pole_subtarget', '') in gone):
+                pb.constraints.remove(c)
+    for pb in pbs:                                       # (back to the rest pose: nothing bends it now)
+        if pb.name in bent:
+            pb.location = (0, 0, 0)
+            pb.rotation_quaternion = (1, 0, 0, 0)
+            pb.rotation_euler = (0, 0, 0)
+    with _Edit(context, arm) as ebs:
+        for n in gone:
+            if n in ebs:
+                ebs.remove(ebs[n])
+    legs = json.loads(arm.get('mch_legs', '[]') or '[]')
+    keep = [l_ for l_ in legs if l_ + '.foot_ik' not in gone and l_ + '_ik' not in gone]
+    if keep != legs:
+        arm['mch_legs'] = json.dumps(keep)
+    return len(drop_t)
+
+
+class MCH_OT_rig_ik(bpy.types.Operator):
+    """Add IK to the selected end bone(s) (IK Bones: how many bend), or take off the IK the selected bones are in"""
+    bl_idname = 'mch.rig_ik'
+    bl_label = 'IK on Selected'
+    bl_options = {'REGISTER', 'UNDO'}
+    mode: EnumProperty(items=[('ADD', 'Add IK', 'IK on each selected end bone'),
+                              ('REMOVE', 'Remove IK', 'The IK the selected bones are in taken off')])
+
+    @classmethod
+    def poll(cls, context):
+        return rig_of(context.active_object) is not None
+
+    def execute(self, context):
+        arm = rig_of(context.active_object)
+        was = arm.mode
+        names = selected_bones(context, arm)
+        if not names:
+            self.report({'WARNING'}, 'Select the bone(s) first (Pose or Edit Bones)')
+            return {'CANCELLED'}
+        if context.mode != 'OBJECT':
+            bpy.ops.object.mode_set(mode='OBJECT')
+        if self.mode == 'ADD':
+            done = add_ik(context, arm, names, settings(context).ik_chain)
+            msg = f'IK added: {", ".join(done)}' if done else 'Nothing new: those bones have IK already or are controls'
+        else:
+            k = remove_ik(context, arm, names)
+            msg = f'{k} IK taken off' if k else 'The selected bones are in no IK'
+        for o in list(context.selected_objects):
+            o.select_set(False)
+        arm.select_set(True)
+        context.view_layer.objects.active = arm
+        if was in {'POSE', 'EDIT'}:
+            bpy.ops.object.mode_set(mode='POSE')
+        self.report({'INFO'}, msg)
+        return {'FINISHED'}
+
+
 class MCH_TOOL_rig(bpy.types.WorkSpaceTool):
     bl_space_type = 'VIEW_3D'
     bl_context_mode = 'OBJECT'
@@ -1986,6 +2176,11 @@ def draw(layout, context):
             r.operator('mch.rig_piston', text='Piston (2 parts)')
         r.operator('mch.rig_jiggle', text='Jiggle On').on = True
         r.operator('mch.rig_jiggle', text='Jiggle Off').on = False
+        r = box.row(align=True)                      # 0.24.257 IK where the user wants it
+        r.prop(st, 'ik_chain')
+        r.operator('mch.rig_ik', text='Add IK', icon='CON_KINEMATIC').mode = 'ADD'
+        r.operator('mch.rig_ik', text='Remove IK', icon='X').mode = 'REMOVE'
+        box.label(text='IK: select the end bone(s) in Pose / Edit Bones, then Add IK', icon='INFO')
         box.row(align=True).operator('mch.rig_delete', text='Delete Rig', icon='TRASH')
         from . import locomotion                 # 0.24.244 Auto Animation + Unreal FBX
         locomotion.draw(layout, context)
@@ -2005,7 +2200,7 @@ def draw(layout, context):
 
 
 CLASSES = (MCH_PG_Rig, MCH_OT_rig_make, MCH_OT_rig_bind, MCH_OT_rig_edit, MCH_OT_rig_link, MCH_OT_rig_jiggle,
-           MCH_OT_rig_mirror, MCH_OT_rig_limit, MCH_OT_rig_piston, MCH_OT_rig_click, MCH_OT_rig_delete)
+           MCH_OT_rig_mirror, MCH_OT_rig_limit, MCH_OT_rig_piston, MCH_OT_rig_click, MCH_OT_rig_delete, MCH_OT_rig_ik)
 
 
 def register():
