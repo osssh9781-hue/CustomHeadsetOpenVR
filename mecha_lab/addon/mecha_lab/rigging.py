@@ -40,7 +40,9 @@ KINDS = [('BODY', 'Human', 'A standing body (feet on the ground, facing -Y): spi
          ('MECHA', 'Mecha', 'Rigid parts: one bone per selected part, the parts ride their bones'),
          ('CHAIN', 'Chain', 'A tail / tentacle / hair lock: bones along it, Jiggle'),
          ('AUTO', 'Auto Creature', 'Any creature: its legs found where it touches the ground (any number), its tails, '
-                                   'arms and tentacles as swaying chains - no template')]
+                                   'arms and tentacles as swaying chains - no template'),
+         ('GUIDE', 'Guides', 'Draw the bones yourself: drag lines over the creature (through the middle of its body), '
+                             'the first one the body; lines ending on the ground are legs with IK')]
 
 
 class MCH_PG_Rig(bpy.types.PropertyGroup):
@@ -70,6 +72,12 @@ class MCH_PG_Rig(bpy.types.PropertyGroup):
     hi: FloatProperty(name='Turn To', default=45.0, min=-360.0, max=360.0, description='The largest turn (degrees)')
     hatch: FloatProperty(name='Open Angle', default=110.0, min=1.0, max=360.0,
                          description='How far a hatch opens (degrees) - it turns from 0 to this only')
+    guide_kind: EnumProperty(name='Line Kind', default='AUTO', items=[
+        ('AUTO', 'Auto', 'The first line the body; a line ending on the ground a leg; the others plain bones'),
+        ('BODY', 'Body', 'The body / spine / neck / head: the bones everything hangs on'),
+        ('LEG', 'Leg', 'A leg: IK on its foot, walked by Auto Animation'),
+        ('IK', 'IK', 'Bones with IK at the end (an arm, a claw, a jaw): grab the end, the rest follows; not walked'),
+        ('BONES', 'Plain Bones', 'Plain bones, no IK (a tail, a tentacle: they sway in Auto Animation)')])
     ik_chain: IntProperty(name='IK Bones', default=2, min=1, max=8,
                           description='How many bones the IK bends, counted up from the selected end bone')
 
@@ -1613,6 +1621,20 @@ class MCH_OT_rig_make(bpy.types.Operator):
                 msg = (f'{arm.name}: {info["legs"]} legs, {info["chains"]} tails / arms / tentacles, {info["bones"]} bones'
                        + (f', {act.name} bound ({"automatic" if how == "auto" else "nearest-bone"} weights)' if how else ''))
                 _show(context, arm)
+            elif st.kind == 'GUIDE':                   # 0.24.258 the user's own guide lines
+                from . import rig_guides as rgd
+                body = rgd._target_mesh(context)
+                if body is None:
+                    raise RuntimeError('Select the creature mesh (with its guide lines)')
+                arm, info = rgd.build(context, body, rgd.strokes(body), rgd.line_kinds(body))
+                g = rgd.guides_of(body)
+                if g is not None:
+                    g.hide_set(True)
+                how = bind(context, body, arm) if st.bind else ''
+                msg = (f'{arm.name}: from {info["legs"] + info["chains"] + info["trunk"]} guide lines - {info["legs"]} legs, '
+                       f'{info["chains"]} arms / jaws / tails, {info["bones"]} bones'
+                       + (f', {body.name} bound ({"automatic" if how == "auto" else "nearest-bone"} weights)' if how else ''))
+                _show(context, arm)
             elif st.kind == 'MECHA':
                 arm = build_mecha(context, sel or [act], st.auto_joints)
                 nl = len(json.loads(arm.get('mch_legs', '[]')))
@@ -2110,7 +2132,8 @@ class MCH_TOOL_rig(bpy.types.WorkSpaceTool):
     bl_description = 'Rig a body (Human / Quadruped), mecha parts or a chain; click a mecha part to set its joint'
     bl_icon = 'ops.generic.select'
     bl_widget = None
-    bl_keymap = (('mch.rig_click', {'type': 'LEFTMOUSE', 'value': 'CLICK'}, None),)
+    bl_keymap = (('mch.rig_click', {'type': 'LEFTMOUSE', 'value': 'CLICK'}, None),
+                 ('mch.rig_guide_draw', {'type': 'LEFTMOUSE', 'value': 'CLICK_DRAG'}, None))   # 0.24.258 Guides
 
     def draw_settings(context, layout, tool):
         return
@@ -2144,6 +2167,9 @@ def draw(layout, context):
         r = col.row(align=True)
         r.prop(st, 'bind', toggle=True)
         box.label(text='Select the creature (standing on the ground): legs, tails, arms found', icon='INFO')
+    elif st.kind == 'GUIDE':                         # 0.24.258
+        from . import rig_guides
+        rig_guides.draw(box, context, st)
     else:
         r = col.row(align=True)
         r.prop(st, 'bones')
@@ -2206,6 +2232,8 @@ CLASSES = (MCH_PG_Rig, MCH_OT_rig_make, MCH_OT_rig_bind, MCH_OT_rig_edit, MCH_OT
 def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
+    from . import rig_guides                         # 0.24.258
+    rig_guides.register()
     bpy.types.Scene.mch_rig = PointerProperty(type=MCH_PG_Rig)
     _ensure_handler()
     if _edit_watch not in bpy.app.handlers.depsgraph_update_post:
@@ -2228,6 +2256,8 @@ def unregister():
     _EDITING.clear()
     if hasattr(bpy.types.Scene, 'mch_rig'):
         del bpy.types.Scene.mch_rig
+    from . import rig_guides
+    rig_guides.unregister()
     for c in reversed(CLASSES):
         try:
             bpy.utils.unregister_class(c)
