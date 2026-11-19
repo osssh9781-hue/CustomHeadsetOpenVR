@@ -163,6 +163,8 @@ def summary(kids, tool, most=3):
 
 
 AUTO_COLOURS = '54263718'    # the big titles' colours in turn (STRIP_COLOR_0n) for a window that names none
+KEEPS_OWN = {'RETOPO + BAKE'}  # 0.24.256 boxes put first that bring their own colour and take no turn (the
+                             # sections after them keep the colours they had)
 CONTROLS = {'prop', 'prop_enum', 'op', 'menu', 'tiles'}
 
 
@@ -233,7 +235,7 @@ def auto_sections(tree, tool):
             if first is not None and first.kind == 'label' and first.opts.get('text') and _has_controls(n):
                 if not str(first.opts.get('icon') or '').startswith('STRIP_COLOR_0'):
                     first.opts['icon'] = colour()
-                else:
+                elif first.opts.get('text') not in KEEPS_OWN:
                     count[0] += 1
             out.children.append(n)
             cur = None

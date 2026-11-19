@@ -7007,6 +7007,7 @@ KO = {
     'Select the cloth mesh (active) and the body mesh it drops onto': '천 메쉬 (활성)와 그것이 떨어질 몸 메쉬를 선택하세요',
     'Select the creature (standing on the ground): legs, tails, arms found': '크리쳐를 선택하세요 (땅에 선 채로): 다리 · 꼬리 · 팔을 찾음',
     'Select the detailed mesh (high)': '디테일 메쉬(하이)를 선택하세요',
+    'Select the detailed mesh(es) (high)': '디테일 메쉬(하이)를 선택하세요',
     'Select the group handle (its Repetition card shows)': '그룹 핸들을 선택합니다 (반복 카드가 표시됨)',
     'Select the hair shape you sculpted (a mesh of its own) first': '먼저 스컬프트한 헤어 모양(별도 메쉬)을 선택하세요',
     'Select the mesh (a Cloth Plate or a body) to put the patch on.': '패치를 붙일 메쉬 (클로스 플레이트 또는 몸)를 선택하세요.',

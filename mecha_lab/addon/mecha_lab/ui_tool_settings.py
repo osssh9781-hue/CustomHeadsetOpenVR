@@ -546,6 +546,8 @@ def _remesh_keys(context):
 
 def draw_remesh(layout, context):
     s = context.scene.mch_settings
+    from . import retopo_bake                        # 0.24.241 Retopo + Bake - 0.24.256 (user: "리토포 + 베이크를 가장
+    retopo_bake.draw(layout, context, colour='07')   # 위로") first, its own colour; the sections below keep theirs
     layout.operator('mch.sculpt_move', icon='BRUSH_DATA')
     layout.separator()
     layout.prop(s, 'join_remesh')
@@ -586,8 +588,6 @@ def draw_remesh(layout, context):
     from . import lowpoly, quad_remesh
     quad_remesh.draw(layout, context)                # 0.24.48 quads that keep the cut / boolean edges
     lowpoly.draw(layout, context)                    # 0.23.22 sculpt -> low poly base mesh
-    from . import retopo_bake                        # 0.24.241 Retopo + Bake (0.24.243 last: the sections above keep
-    retopo_bake.draw(layout, context)                # their colours - user: "리메시에서 메뉴창 색도 달라")
 
 
 def draw_surface_curve(layout, context):

@@ -888,8 +888,8 @@ class MCH_OT_retopo_bake(bpy.types.Operator):
         return {'FINISHED'}
 
 
-def draw(layout, context):
-    """The two-step box (Remesh tool window, Bake Maps)."""
+def draw(layout, context, colour=None):
+    """The two-step box (Remesh tool window, Bake Maps).  ``colour``: its title's own strip colour ('07')."""
     from . import bake_maps as bm, panel_capture as pc
     st = bm.settings(context)
     S = context.scene
@@ -901,7 +901,7 @@ def draw(layout, context):
     own = own_pair(context)
     n_low = sum(1 for _h, lo in items if lo is not None) or (1 if own is not None else 0)
     box = layout.box()
-    box.label(text='RETOPO + BAKE', icon='MOD_REMESH')
+    box.label(text='RETOPO + BAKE', icon=f'STRIP_COLOR_{colour}' if colour else 'MOD_REMESH')
     box.row(align=True).prop(S, 'mch_rb_method', expand=True)
     col = box.column(align=True)
     col.prop(S, 'mch_rb_faces')
