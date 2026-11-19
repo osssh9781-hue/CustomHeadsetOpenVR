@@ -608,6 +608,7 @@ KO = {
     'All Straight': '모두 직선',
     'All chains in one cable object': '모든 체인을 하나의 케이블 오브젝트로',
     'All edges but one slope: one upright end (Turn: which one)': '경사 하나를 뺀 모든 엣지: 직립 끝 하나 (회전: 어느 쪽)',
+    'All even quads laid onto the high: the shape itself turned into quads (holes, hollows and arms kept) or a box, whichever lies on it better': '고른 쿼드만으로 하이에 밀착: 모양 그대로 쿼드로 바꾼 것 (구멍 · 오목한 곳 · 팔 유지) 과 상자 중 더 잘 붙는 쪽',
     'All selected meshes are cut (Targets: Selected)': '선택한 메쉬 모두 컷됩니다 (대상: 선택)',
     'All the bump at once': '범프 전체 한 번에',
     "All the bump at once (the layers' heights below x this)": '범프 전체 한 번에 (아래 레이어 높이 x 이 값)',

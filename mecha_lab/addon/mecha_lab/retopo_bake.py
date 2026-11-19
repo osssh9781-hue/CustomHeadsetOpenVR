@@ -100,7 +100,51 @@ def _box_grid(lo, hi, faces):
     return np.array(verts), F
 
 
-def wrap_steps(context, high, faces, rounds=48):
+def _voxel_quads(context, high, faces):
+    """0.24.254 the high as even quads of about ``faces`` (object space): (V, F) or (None, None) when the voxels lose
+    it (a plate thinner than a quad, nothing closed)."""
+    dg = context.evaluated_depsgraph_get()
+    me = bpy.data.meshes.new_from_object(high.evaluated_get(dg), preserve_all_data_layers=False, depsgraph=dg)
+    try:
+        area = sum(p.area for p in me.polygons)
+        if area <= 0:
+            return None, None
+        q = math.sqrt(area / max(6, int(faces)))
+        tmp = bpy.data.objects.new('_mch_wrap_tmp', me)
+        context.scene.collection.objects.link(tmp)
+        try:
+            sizes = [q, None, q * 0.8, q * 0.64]           # (None: the size fitted to the count after the first)
+            for k, size in enumerate(sizes):
+                if size is None:
+                    continue
+                m = tmp.modifiers.new('V', 'REMESH')
+                m.mode = 'VOXEL'
+                m.voxel_size = size
+                dg = context.evaluated_depsgraph_get()
+                vm = bpy.data.meshes.new_from_object(tmp.evaluated_get(dg), preserve_all_data_layers=False, depsgraph=dg)
+                tmp.modifiers.remove(m)
+                n = len(vm.polygons)
+                if k == 0 and n >= 0.3 * faces and abs(n / max(1, faces) - 1.0) > 0.12:
+                    sizes[1] = size * math.sqrt(n / max(1, faces))   # (the stepped voxel skin is bigger: fit once)
+                    bpy.data.meshes.remove(vm)
+                    continue
+                ok = n >= 0.3 * faces and all(len(p.vertices) == 4 for p in vm.polygons)
+                if ok:
+                    V = np.empty(len(vm.vertices) * 3)
+                    vm.vertices.foreach_get('co', V)
+                    F = [tuple(p.vertices) for p in vm.polygons]
+                    bpy.data.meshes.remove(vm)
+                    return V.reshape(-1, 3), F
+                bpy.data.meshes.remove(vm)
+        finally:
+            bpy.data.objects.remove(tmp)
+    finally:
+        if me.users == 0:
+            bpy.data.meshes.remove(me)
+    return None, None
+
+
+def _wrap_one(context, high, faces, rounds=48, base='SHAPE'):
     """Generator: the vacuum-packed low's mesh (object space of ``high``); yields (fraction, what)."""
     from mathutils import Vector
     from mathutils.bvhtree import BVHTree
@@ -118,8 +162,18 @@ def wrap_steps(context, high, faces, rounds=48):
     finally:
         ev.to_mesh_clear()
     lo, hi = co.min(0), co.max(0)
-    pad = (hi - lo) * 0.08 + 1e-4
-    V, F = _box_grid(lo - pad, hi + pad, faces)
+    V, F = None, None
+    if base == 'SHAPE':
+        # 0.24.254 (user: "기존 메쉬를 복사해서 쿼드로 바꾼 다음에 베큠하면 퀄이 더 좋지 않을까") the start is the
+        # high itself turned into even quads (a voxel remesh: all quads, the hollows and arms already there) - not a
+        # box that has to be sucked into every hollow (it bridged them: the low lay off the high, the quads stretched)
+        V, F = _voxel_quads(context, high, faces)
+        if V is not None:
+            yield (0.03, f'Wrap: the shape as {len(F):,} quads')
+    if V is None:
+        pad = (hi - lo) * 0.08 + 1e-4
+        V, F = _box_grid(lo - pad, hi + pad, faces)
+        base = 'BOX'
     E = set()
     for f in F:
         for i in range(4):
@@ -143,9 +197,11 @@ def wrap_steps(context, high, faces, rounds=48):
         avg = acc / np.maximum(deg, 1)[:, None]
         return P + lam * (avg - P)
     P = V.copy()
+    if base == 'SHAPE':
+        rounds = min(rounds, 32)                     # (already on the shape: only evened out and laid on)
     for r in range(rounds):
         t = r / max(1, rounds - 1)
-        pull = 0.25 + 0.75 * t                       # (gently first: the grid settles round the shape)
+        pull = 1.0 if base == 'SHAPE' else 0.25 + 0.75 * t    # (box: gently first, the grid settles round it)
         P = P + pull * (nearest(P) - P)
         P = relax(P, 0.5 if t < 0.85 else 0.3)
         if r % 3 == 2:
@@ -162,6 +218,50 @@ def wrap_steps(context, high, faces, rounds=48):
     bm.free()
     me.update()
     return me
+
+
+def _wrap_quality(context, high, me):
+    """(how far the high's surface is off the low, 99th pct, object units; mean corner angle off 90 degrees)."""
+    import bmesh
+    from mathutils.bvhtree import BVHTree
+    lb = BVHTree.FromPolygons([tuple(v.co) for v in me.vertices], [tuple(p.vertices) for p in me.polygons])
+    dg = context.evaluated_depsgraph_get()
+    ev = high.evaluated_get(dg)
+    hm = ev.to_mesh()
+    try:
+        step = max(1, len(hm.vertices) // 6000)
+        miss = [(lb.find_nearest(hm.vertices[i].co)[0] - hm.vertices[i].co).length
+                for i in range(0, len(hm.vertices), step)]
+    finally:
+        ev.to_mesh_clear()
+    bm_ = bmesh.new()
+    bm_.from_mesh(me)
+    ang = [abs(math.degrees(lp.calc_angle()) - 90.0) for f in bm_.faces for lp in f.loops]
+    bm_.free()
+    return float(np.percentile(miss, 99)) if miss else 0.0, float(np.mean(ang)) if ang else 0.0
+
+
+def wrap_steps(context, high, faces, rounds=48):
+    """Generator: the vacuum-packed low's mesh (object space of ``high``).  0.24.254 two starts - the shape itself
+    as quads, and the old box - the one that lies on more of the high wins (about the same: the squarer quads)."""
+    def part(gen, a, b):
+        try:
+            while True:
+                f, label = next(gen)
+                yield (a + (b - a) * f, label)
+        except StopIteration as ex:
+            return ex.value
+    shape = yield from part(_wrap_one(context, high, faces, rounds, 'SHAPE'), 0.03, 0.5)
+    box = yield from part(_wrap_one(context, high, faces, rounds, 'BOX'), 0.5, 0.95)
+    yield (0.96, 'Wrap: keeping the better of the two')
+    size = float(max(high.dimensions) / max(max(high.matrix_world.to_scale()), 1e-12)) or 1.0
+    qs, qb = _wrap_quality(context, high, shape), _wrap_quality(context, high, box)
+    if abs(qs[0] - qb[0]) <= 0.003 * size:
+        keep, drop = (shape, box) if qs[1] <= qb[1] else (box, shape)
+    else:
+        keep, drop = (shape, box) if qs[0] < qb[0] else (box, shape)
+    bpy.data.meshes.remove(drop)
+    return keep
 
 
 # --- making the low --------------------------------------------------------------------------------------------------
@@ -770,8 +870,8 @@ def register():
     bpy.types.Scene.mch_rb_method = EnumProperty(
         name='Method', default='QUAD',
         items=[('QUAD', 'Quad', 'Quad remesh: the edge flow follows the shape'),
-               ('WRAP', 'Vacuum Wrap', 'A box of even quads vacuum-packed onto the high (heads, torsos, armour, rocks: '
-                                'one closed blob; gaps are bridged)')])
+               ('WRAP', 'Vacuum Wrap', 'All even quads laid onto the high: the shape itself turned into quads (holes, '
+                                'hollows and arms kept) or a box, whichever lies on it better')])
 
 
 def unregister():

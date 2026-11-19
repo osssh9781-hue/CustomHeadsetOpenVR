@@ -331,4 +331,21 @@ for o in list(C.selected_objects):
     o.select_set(False)
 ext.select_set(True); C.view_layer.objects.active = ext
 check('later the low alone selected: Bake again still bakes from the 3', rb.pair(ext)[1] is ext and bpy.ops.mch.retopo_bake.poll())
+# 0.24.254 (user: "베큠 랩 개선 - 기존 메쉬를 복사해 쿼드로 바꾼 다음 베큠") Wrap starts from the shape itself as quads:
+# a ring (a hole the box can not reach into) is wrapped all round
+bpy.ops.mesh.primitive_torus_add(major_radius=1.0, minor_radius=0.3, major_segments=96, minor_segments=32, location=(62, 0, 0))
+tor = C.active_object; tor.name = 'Ring'
+qb = rb._wrap_quality(C, tor, progress.run_now(rb._wrap_one(C, tor, 1500, base='BOX')))
+for o in list(C.selected_objects):
+    o.select_set(False)
+tor.select_set(True); C.view_layer.objects.active = tor
+S.mch_rb_method, S.mch_rb_faces = 'WRAP', 1500
+bpy.ops.mch.retopo_make()
+wl = C.active_object
+qn = rb._wrap_quality(C, tor, wl.data)
+check(f'Wrap on a ring: lies on all of it ({qn[0] * 100:.1f} cm off at worst, the old box way {qb[0] * 100:.1f} cm), '
+      f'all quads ({len(wl.data.polygons):,} faces near 1500, corners {qn[1]:.1f} deg off square)',
+      qn[0] < 0.03 and qb[0] > 3 * qn[0] and all(len(p.vertices) == 4 for p in wl.data.polygons)
+      and 1100 <= len(wl.data.polygons) <= 1900)
+S.mch_rb_method = 'QUAD'
 summary()
