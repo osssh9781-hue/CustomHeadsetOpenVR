@@ -444,6 +444,110 @@ def _surface(context, ob, xy):
     return ob.matrix_world @ loc if hit else None
 
 
+def body_spans(ob, o, d, limit=96):
+    """0.24.261 every stretch of the view ray (world origin ``o``, direction ``d``) that runs inside ``ob``:
+    [(t in, t out)] in world distance - overlapping shells (a joined mesh: spikes, arms over the body) merged by
+    counting the way in and out."""
+    M = ob.matrix_world
+    Mi = M.inverted()
+    o = Vector(tuple(o))
+    d = Vector(tuple(d)).normalized()
+    lo, ld = Mi @ o, (Mi.to_3x3() @ d).normalized()
+    hits = []
+    p = lo
+    for _k in range(limit):
+        ok, loc, n, _i = ob.ray_cast(p, ld)
+        if not ok:
+            break
+        hits.append(((M @ loc - o).length, n.dot(ld)))
+        p = loc + ld * 1e-5 * max(ob.dimensions.length, 1e-6)
+    spans, depth, start = [], 0, None
+    for t, sgn in hits:
+        if sgn < 0:                                  # (going in)
+            if depth == 0:
+                start = t
+            depth += 1
+        elif depth > 0:                              # (coming out)
+            depth -= 1
+            if depth == 0:
+                spans.append((start, t))
+    if depth > 0 and start is not None and hits:
+        spans.append((start, hits[-1][0]))
+    return [sp for sp in spans if sp[1] - sp[0] > 1e-9]
+
+
+def pick_span(spans, o, d, prev=None):
+    """The stretch the line goes through: the first one, or - once the line has a point - the one nearest it (a
+    spike or an arm in front of the body is passed by instead of jumped onto)."""
+    if not spans:
+        return None
+    if prev is None:
+        return spans[0]
+    o, d = np.asarray(o, float), np.asarray(d, float)
+    return min(spans, key=lambda sp: np.linalg.norm(o + d * 0.5 * (sp[0] + sp[1]) - prev))
+
+
+def body_bvh(ob):
+    """(unused, world matrix, its inverse, the object) for ``deepest`` (the object's own ray casts: no tree to
+    build on a heavy sculpt at the start of each line)."""
+    return None, ob.matrix_world.copy(), ob.matrix_world.inverted(), ob
+
+
+def _exit(ob, Mi, M, p, u, limit=32):
+    """How far from ``p`` (inside) along ``u`` until really outside - walls inside a joined mesh (counted in and
+    out) passed through."""
+    lp, lu = Mi @ p, (Mi.to_3x3() @ u).normalized()
+    depth, q = 1, lp
+    eps = 1e-5 * max(ob.dimensions.length, 1e-6)
+    for _k in range(limit):
+        ok, loc, n, _i = ob.ray_cast(q, lu)
+        if not ok:
+            return None
+        depth += 1 if n.dot(lu) < 0 else -1
+        if depth <= 0:
+            return (M @ loc - p).length
+        q = loc + lu * eps
+    return None
+
+
+def deepest(bvh, o, d, span, n=24):
+    """The depth along the ray inside ``span`` where the body is thickest round it (the least of how far it runs
+    out sideways): the middle of the body, not of a spike or a fin joined to it, whatever walls are inside."""
+    M, Mi = bvh[1], bvh[2]
+    ob = bvh[3] if len(bvh) > 3 else None
+    o, d = Vector(tuple(o)), Vector(tuple(d)).normalized()
+    if ob is None:
+        return 0.5 * (span[0] + span[1])
+    a_ = d.orthogonal().normalized()
+    b_ = d.cross(a_).normalized()
+    dirs = [a_, -a_, b_, -b_, (a_ + b_).normalized(), -(a_ + b_).normalized()]
+    def thick(t):
+        p = o + d * float(t)
+        return min([x for x in (_exit(ob, Mi, M, p, u) for u in dirs) if x is not None] or [0.0])
+    ts = np.linspace(span[0], span[1], n + 2)[1:-1]
+    w = np.array([thick(t) for t in ts]) ** 4           # (the thick part of the cross-section counts, a spike hardly)
+    if w.sum() <= 0:
+        return 0.5 * (span[0] + span[1])
+    return float((ts * w).sum() / w.sum())
+
+
+def even_depths(rays):
+    """[(o, d, (t in, t out))] -> the points: each one's depth the middle of its stretch, then evened along the line
+    (a median of 5, then an average of 3) and kept inside its own stretch - no zigzag from a stray stretch."""
+    if not rays:
+        return np.zeros((0, 3))
+    t = np.array([r[3] if len(r) > 3 else 0.5 * (r[2][0] + r[2][1]) for r in rays])
+    n = len(t)
+    if n >= 5:
+        med = np.array([np.median(t[max(0, i - 2):i + 3]) for i in range(n)])
+        t = np.array([np.mean(med[max(0, i - 1):i + 2]) for i in range(n)])
+    out = []
+    for r, ti in zip(rays, t):
+        o, d, (a, b) = r[0], r[1], r[2]
+        out.append(np.asarray(o, float) + np.asarray(d, float) * float(np.clip(ti, a, b)))
+    return np.array(out)
+
+
 class MCH_OT_rig_guide_draw(bpy.types.Operator):
     """Rig tool, Guides: drag over the creature - a guide line through the middle of the body (Esc: drop it)"""
     bl_idname = 'mch.rig_guide_draw'
@@ -466,6 +570,7 @@ class MCH_OT_rig_guide_draw(bpy.types.Operator):
             return {'CANCELLED'}
         self.size = max(self.mesh.dimensions) or 1.0
         self.pts = []
+        self.rays = []                               # 0.24.261 (o, d, stretch) of each point through the body
         self.guide = None
         self._add(context, event)
         context.window_manager.modal_handler_add(self)
@@ -474,16 +579,30 @@ class MCH_OT_rig_guide_draw(bpy.types.Operator):
     def _add(self, context, event):
         from . import rigging as rg
         xy = (event.mouse_region_x, event.mouse_region_y)
+        ray = None
         if context.scene.mch_rig.guide_kind in SURFACE:   # 0.24.259 eyes / lips: on the surface
             p = _surface(context, self.mesh, xy)
         else:
-            p = rg.through_middle(context, context.region, context.region_data, self.mesh, xy)
+            # 0.24.261 (user: "위에서 일직선으로 그렸는데 옆에서 보면 지그재그") the stretch of the body nearest the
+            # line so far, not always the first one the ray meets (a spike, an arm in front)
+            from bpy_extras import view3d_utils
+            o = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, xy)
+            d = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, xy).normalized()
+            sp = pick_span(body_spans(self.mesh, o, d), tuple(o), tuple(d), self.pts[-1] if self.pts else None)
+            if sp is not None:
+                if getattr(self, 'bvh', None) is None:
+                    self.bvh = body_bvh(self.mesh)
+                t = deepest(self.bvh, o, d, sp)
+            p = None if sp is None else o + d * t
+            ray = None if sp is None else (np.array(tuple(o)), np.array(tuple(d)), sp, t)
         if p is None:
             return
         p = np.array(tuple(p))
         if self.pts and np.linalg.norm(p - self.pts[-1]) < 0.006 * self.size:
             return
         self.pts.append(p)
+        if ray is not None:
+            self.rays.append(ray)
         if len(self.pts) >= 2:                       # (shown while drawing)
             if self.guide is None:
                 self.guide = add_stroke(context, self.mesh, self.pts, context.scene.mch_rig.guide_kind)
@@ -502,6 +621,12 @@ class MCH_OT_rig_guide_draw(bpy.types.Operator):
         if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
             if self.guide is None:
                 return {'CANCELLED'}
+            if len(self.rays) == len(self.pts) and len(self.rays) >= 5:   # (the depth evened out along it)
+                P = even_depths(self.rays)
+                Mi = self.guide.matrix_world.inverted()
+                for pt, q in zip(self.spline.points, P):
+                    v = Mi @ Vector(tuple(q))
+                    pt.co = (v.x, v.y, v.z, 1.0)
             n = len(self.guide.data.splines)
             k = line_kinds(self.mesh)[-1]
             self.report({'INFO'}, f'Guide {n} ({dict((a, b) for a, b, _c in KINDS)[k]}): {len(self.pts)} points')
