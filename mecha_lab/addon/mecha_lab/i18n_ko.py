@@ -9210,6 +9210,7 @@ KO = {
     'Your muscle: one belly (Strands 3 or more: that many side by side)': '내 근육: 배 하나 (스트랜드 3개 이상: 그 수만큼 나란히)',
     'Your muscle: two bellies side by side': '내 근육: 두 개의 근복이 나란히',
     'Your own alpha folder': '내 알파 폴더',
+    'Your own low: select it and its high(s), then 2 Bake': '직접 만든 로우: 로우와 하이(여러 개 가능)를 같이 선택하고 2 베이크',
     'Your own low: select it and its high, then 2 Bake': '직접 만든 로우: 로우와 하이를 같이 선택하고 2 베이크',
     'Your own material back on the selected parts (the one this was laid over)': '선택한 부품에 내 재질 복원 (이것을 덮기 전의 재질)',
     'Your own saved muscle shape (empty: the built-in ones)': '내가 저장한 근육 모양 (비어 있음: 내장)',

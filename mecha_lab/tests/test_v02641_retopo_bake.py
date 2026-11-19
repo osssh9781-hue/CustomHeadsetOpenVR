@@ -198,7 +198,7 @@ for o in list(C.selected_objects):
 ol.select_set(True); oh.select_set(True); C.view_layer.objects.active = oh       # (either one active)
 pr = rb.own_pair(C)
 check('two meshes selected, neither from Retopo: the one with more faces the high, the other the low; Bake on',
-      pr == (oh, ol) and bpy.ops.mch.retopo_bake.poll())
+      pr is not None and pr[:2] == (oh, ol) and bpy.ops.mch.retopo_bake.poll())
 st.normal, st.ao, st.rough, st.metal, st.curv, st.height = True, True, False, False, False, False
 r = bpy.ops.mch.retopo_bake()
 uv1 = [tuple(d.uv) for d in ol.data.uv_layers[0].data]
@@ -287,4 +287,48 @@ check('Retopo again (the low selected): the same low remade from the 3, no new o
       C.active_object is one and len(one.data.polygons) < 3000
       and len([o for o in bpy.data.objects if o.type == 'MESH']) == n_before + 2)
 S.mch_rb_join = 'EACH'
+# 0.24.253 (user: "다른 곳에서 리메쉬한 한 덩어리로 하이폴 여러 덩어리를 베이크") one own low (remeshed elsewhere) + 3 highs
+bpy.ops.mesh.primitive_uv_sphere_add(segments=96, ring_count=48, radius=1.0, location=(54, 0, 0)); h1 = C.active_object
+h1.name = 'BodyHi'
+d4 = h1.modifiers.new('D', 'DISPLACE'); d4.texture = bpy.data.textures.new('n4', 'CLOUDS'); d4.strength = 0.05
+bpy.ops.mesh.primitive_cylinder_add(vertices=64, radius=0.35, depth=2.4, location=(55.3, 0, 0), rotation=(0, 1.5708, 0))
+h2 = C.active_object; h2.name = 'ArmHiR'
+bpy.ops.mesh.primitive_cylinder_add(vertices=64, radius=0.35, depth=2.4, location=(52.7, 0, 0), rotation=(0, 1.5708, 0))
+h3 = C.active_object; h3.name = 'ArmHiL'
+for o in list(C.selected_objects):
+    o.select_set(False)
+for o in (h1, h2, h3):
+    o.select_set(True)
+C.view_layer.objects.active = h1
+bpy.ops.object.duplicate(); bpy.ops.object.join(); ext = C.active_object; ext.name = 'RemeshedElsewhere'
+for m in list(ext.modifiers):
+    ext.modifiers.remove(m)
+vm = ext.modifiers.new('V', 'REMESH'); vm.mode = 'VOXEL'; vm.voxel_size = 0.08
+dm = ext.modifiers.new('Dc', 'DECIMATE'); dm.ratio = 0.5
+bpy.ops.object.convert(target='MESH')
+bpy.ops.object.mode_set(mode='EDIT'); bpy.ops.mesh.select_all(action='SELECT'); bpy.ops.uv.smart_project(); bpy.ops.object.mode_set(mode='OBJECT')
+uvx = [tuple(d.uv) for d in ext.data.uv_layers[0].data]
+for o in list(C.selected_objects):
+    o.select_set(False)
+for o in (h1, h2, h3, ext):
+    o.hide_set(False); o.select_set(True)
+C.view_layer.objects.active = h2
+for mode_ in ('EACH', 'ONE'):
+    S.mch_rb_join = mode_
+    pr = rb.own_pair(C)
+    check(f'({mode_}) 4 selected: the one wrapping the others ({len(ext.data.polygons):,} faces) is the own low, the 3 others its highs',
+          pr is not None and pr[1] is ext and sorted(h.name for h in pr[2]) == ['ArmHiL', 'ArmHiR', 'BodyHi'])
+S.mch_rb_join = 'EACH'
+st.normal, st.ao = True, True
+r = bpy.ops.mch.retopo_bake()
+im_n = bpy.data.images.get('RemeshedElsewhere_Normal')
+pxn = np.array(im_n.pixels[:]).reshape(-1, 4)[:, :3] if im_n else np.zeros((1, 3))
+bent = float((np.abs(pxn[:, :2] - 0.5).max(1) > 0.08).mean())
+check(f'Bake: ONE set of maps on the own low from all 3 highs, its UVs kept, tied to them ({bent:.0%} of pixels bent by the detail)',
+      r == {'FINISHED'} and im_n is not None and uvx == [tuple(d.uv) for d in ext.data.uv_layers[0].data]
+      and sorted(p.name for p in rb.parts_of(ext)) == ['ArmHiL', 'ArmHiR', 'BodyHi'] and bent > 0.02)
+for o in list(C.selected_objects):
+    o.select_set(False)
+ext.select_set(True); C.view_layer.objects.active = ext
+check('later the low alone selected: Bake again still bakes from the 3', rb.pair(ext)[1] is ext and bpy.ops.mch.retopo_bake.poll())
 summary()

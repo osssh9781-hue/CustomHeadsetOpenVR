@@ -418,20 +418,26 @@ def tidy_low(context, high, low):
 
 
 def deviation(context, high, low):
-    """How far the low is off the high (world units, 99th percentile of its points)."""
-    from mathutils import Vector
+    """How far the low is off the high (world units, 99th percentile of its points).  ``high`` may be a list
+    (0.24.253: each point measured to the nearest of them)."""
     from mathutils.bvhtree import BVHTree
     dg = context.evaluated_depsgraph_get()
-    bvh = BVHTree.FromObject(high.evaluated_get(dg), dg)
-    Hi = high.matrix_world.inverted()
+    highs = list(high) if isinstance(high, (list, tuple)) else [high]
+    trees = [(h.matrix_world.copy(), h.matrix_world.inverted(), BVHTree.FromObject(h.evaluated_get(dg), dg))
+             for h in highs]
     pts = [low.matrix_world @ v.co for v in low.data.vertices]
     if len(pts) > 6000:
         pts = pts[:: len(pts) // 6000 + 1]
     d = []
     for p in pts:
-        q = bvh.find_nearest(Hi @ p)
-        if q[0] is not None:
-            d.append(((high.matrix_world @ q[0]) - p).length)
+        best = None
+        for M, Mi, bvh in trees:
+            q = bvh.find_nearest(Mi @ p)
+            if q[0] is not None:
+                dist = ((M @ q[0]) - p).length
+                best = dist if best is None else min(best, dist)
+        if best is not None:
+            d.append(best)
     return float(np.percentile(d, 99)) if d else 0.0
 
 
@@ -440,14 +446,14 @@ def bake_steps(context, high, low):
     st = bm.settings(context)
     if st is None:
         raise RuntimeError('Bake settings are missing')
-    highs = parts_of(high) or [high]                  # 0.24.252 As One: baked from the meshes themselves
+    highs = parts_of(high) or parts_of(low) or [high]  # 0.24.252 As One / 0.24.253 own low: from all the meshes
     keep = bm._Keep(context, [low] + highs)
     new_uv = st.new_uv
     ray = st.ray
     st.new_uv = not low.data.uv_layers
     # 0.24.243 (a rough rock baked black: the low lay farther off the high than the rays reached) the rays reach
     # past the farthest the low is off the high
-    need = 100.0 * 1.5 * deviation(context, high, low) / max(bm.size_of(low), 1e-9)
+    need = 100.0 * 1.5 * deviation(context, highs if len(highs) > 1 else high, low) / max(bm.size_of(low), 1e-9)
     if need > st.ray:
         st.ray = min(20.0, need)
     try:
@@ -487,28 +493,56 @@ def selected_pairs(context):
 
 
 def own_pair(context):
-    """0.24.251 (user: "리토포 해 온 메쉬를 선택해서 베이크하는 것도"): two meshes selected, neither made by Retopo nor
-    with a low of its own - the user's own low (made elsewhere: ZBrush, Blender, ...) and its high: (high, low) by
-    their face counts (the one with more faces is the high), else None."""
+    """0.24.251 (user: "리토포 해 온 메쉬를 선택해서 베이크하는 것도") the user's own low (made elsewhere: ZBrush,
+    another remesher, ...) and its high(s) selected together: (main high, low, [highs]) or None.
+    Two meshes: the one with fewer faces is the low.  0.24.253 (user: "다른 곳에서 리메쉬한 한 덩어리로 하이폴 여러
+    덩어리를 베이크") three or more: the low is the one that wraps all the others (they lie inside its box) - all
+    the others are its highs, baked onto it in one go.  None when any of them is already a
+    Retopo low / high, or (As One, two meshes) when both are meant as highs."""
     obs = [o for o in context.selected_objects if o.type == 'MESH']
     act = context.active_object
     if act is not None and act.type == 'MESH' and act not in obs:
         obs.append(act)
-    if getattr(context.scene, 'mch_rb_join', 'EACH') == 'ONE':
-        return None                                  # (As One: both are highs)
-    if len(obs) != 2 or any(high_of(o) is not None or low_of(o) is not None or o.get(PARTS_KEY) for o in obs):
+    if len(obs) < 2 or any(high_of(o) is not None or low_of(o) is not None or o.get(PARTS_KEY) for o in obs):
         return None
-    a, b = sorted(obs, key=lambda o: len(o.data.polygons))
-    if len(a.data.polygons) == len(b.data.polygons):
-        return None
-    return b, a
+    obs.sort(key=lambda o: len(o.data.polygons))
+    if len(obs) == 2:
+        low, highs = obs[0], obs[1:]
+        if getattr(context.scene, 'mch_rb_join', 'EACH') == 'ONE' or len(low.data.polygons) == len(highs[0].data.polygons):
+            return None
+    else:
+        # three or more: the low is the one mesh that wraps all the others (their boxes inside its box) - by
+        # place, not by face count (a hard-surface high can have fewer faces than the remeshed low)
+        from mathutils import Vector
+
+        def box(o):
+            P = [o.matrix_world @ Vector(c) for c in o.bound_box]
+            return (Vector([min(p[i] for p in P) for i in range(3)]), Vector([max(p[i] for p in P) for i in range(3)]))
+        boxes = {o.name: box(o) for o in obs}
+
+        def wraps(c):
+            lo_, hi_ = boxes[c.name]
+            tol = 0.05 * max(hi_ - lo_)
+            return all(all(boxes[o.name][0][i] >= lo_[i] - tol and boxes[o.name][1][i] <= hi_[i] + tol for i in range(3))
+                       for o in obs if o is not c)
+        cands = [o for o in obs if wraps(o)]
+        if not cands:
+            return None
+        low = cands[0]                               # (several wrap all - e.g. one big part: the fewest faces)
+        highs = [o for o in obs if o is not low]
+    highs.sort(key=lambda o: -len(o.data.polygons))
+    return highs[0], low, highs
 
 
 def link_own(context):
-    """The selected own low tied to its high (so Bake, Bake again and Retopo Again know it).  (high, low) or None."""
+    """The selected own low tied to its high(s) (so Bake, Bake again and Retopo Again know them).  Or None."""
+    import json
     pr = own_pair(context)
     if pr is not None:
-        pr[1][HIGH_KEY] = pr[0].name
+        main, low, highs = pr
+        low[HIGH_KEY] = main.name
+        if len(highs) > 1:
+            low[PARTS_KEY] = json.dumps(sorted(h.name for h in highs))
     return pr
 
 
@@ -704,14 +738,15 @@ def draw(layout, context):
     if one:
         box.label(text=f'{len(parts)} meshes -> one low, baked from all of them', icon='CHECKMARK')
     elif own is not None:
-        box.label(text=f'Your own low: {own[0].name} -> {own[1].name}  (2 Bake)', icon='CHECKMARK')
+        box.label(text=(f'Your own low: {own[0].name} -> {own[1].name}  (2 Bake)' if len(own[2]) == 1 else
+                        f'Your own low: {len(own[2])} highs -> {own[1].name}  (2 Bake)'), icon='CHECKMARK')
     elif many:
         box.label(text=f'{len(items)} meshes selected, {n_low} with a low', icon='CHECKMARK')
     elif low is not None:
         box.label(text=f'{high.name} -> {low.name}', icon='CHECKMARK')
     else:
         box.label(text='Select the detailed mesh(es) (high)', icon='INFO')
-        box.label(text='Your own low: select it and its high, then 2 Bake', icon='INFO')
+        box.label(text='Your own low: select it and its high(s), then 2 Bake', icon='INFO')
 
 
 CLASSES = (MCH_OT_retopo_make, MCH_OT_retopo_bake)
