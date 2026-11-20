@@ -876,7 +876,7 @@ VIEW_MOD = 'MCH Hair Viewport'
 
 def _view_tree():
     ng = bpy.data.node_groups.get(VIEW_TREE)
-    if ng is not None and ng.get('mch_v') == 1:
+    if ng is not None and ng.get('mch_v') == 2:
         return ng
     if ng is None:
         ng = bpy.data.node_groups.new(VIEW_TREE, 'GeometryNodeTree')
@@ -886,6 +886,7 @@ def _view_tree():
     ng.interface.new_socket('Geometry', in_out='INPUT', socket_type='NodeSocketGeometry')
     sh = ng.interface.new_socket('Viewport %', in_out='INPUT', socket_type='NodeSocketFloat')
     sh.default_value, sh.min_value, sh.max_value = 1.0, 0.0, 1.0
+    ng.interface.new_socket('Render Too', in_out='INPUT', socket_type='NodeSocketBool')   # (0.24.268)
     ng.interface.new_socket('Geometry', in_out='OUTPUT', socket_type='NodeSocketGeometry')
     N, L = ng.nodes, ng.links
     gi, go = N.new('NodeGroupInput'), N.new('NodeGroupOutput')
@@ -899,14 +900,18 @@ def _view_tree():
     L.new(inv.outputs[0], rnd.inputs['Probability'])
     both = N.new('FunctionNodeBooleanMath')
     both.operation = 'AND'
-    L.new(isv.outputs[0], both.inputs[0])
+    either = N.new('FunctionNodeBooleanMath')
+    either.operation = 'OR'
+    L.new(isv.outputs[0], either.inputs[0])
+    L.new(gi.outputs['Render Too'], either.inputs[1])
+    L.new(either.outputs[0], both.inputs[0])
     L.new(rnd.outputs[3] if len(rnd.outputs) > 3 else rnd.outputs['Value'], both.inputs[1])
     dele = N.new('GeometryNodeDeleteGeometry')
     dele.domain = 'CURVE'
     L.new(gi.outputs['Geometry'], dele.inputs['Geometry'])
     L.new(both.outputs[0], dele.inputs['Selection'])
     L.new(dele.outputs[0], go.inputs[0])
-    ng['mch_v'] = 1
+    ng['mch_v'] = 2
     return ng
 
 
@@ -921,8 +926,13 @@ def viewport_share(ob, share):
         mod = ob.modifiers.new(VIEW_MOD, 'NODES')
         mod.node_group = _view_tree()
         mod.show_in_editmode = False
+    elif mod.node_group is None or mod.node_group.get('mch_v') != 2:
+        mod.node_group = _view_tree()
     from . import geo_sculpt as gs                     # (the modifier's input: the way every Mecha node tool sets it)
     gs.set_input(mod, 'Viewport %', float(share))
+    p = getattr(ob, 'mch_hshape', None)
+    if p is not None:
+        gs.set_input(mod, 'Render Too', bool(p.display_render))
     ob.update_tag()
 
 
@@ -1110,6 +1120,25 @@ def _upd(self, context):
         bpy.app.timers.register(_timer, first_interval=0.15)
 
 
+def _upd_view_width(self, context):
+    ob = self.id_data
+    if isinstance(ob, bpy.types.Object) and is_hair(ob):
+        from . import hair_view_width as hvw
+        hvw.set_on(ob, self.display_render, context.scene)
+        _share_render(ob, self.display_render)
+
+
+def _share_render(ob, on):
+    """Render Like Viewport: the Viewport % share in the render too (the share modifier's own switch)."""
+    mod = ob.modifiers.get(VIEW_MOD)
+    if mod is not None:
+        from . import geo_sculpt as gs
+        try:
+            gs.set_input(mod, 'Render Too', bool(on))
+        except (KeyError, AttributeError, TypeError):
+            pass
+
+
 def _upd_hide(self, context):
     ob = self.id_data
     if isinstance(ob, bpy.types.Object) and is_hair(ob) and self.shape is not None:
@@ -1126,7 +1155,9 @@ LIVE = ('count', 'fill', 'seed', 'segments', 'clump', 'frizz', 'curl', 'curl_tur
         'length', 'display', 'volume', 'spread', 'gravity', 'clump_size', 'gather', 'bend', 'bend_at', 'bend_soft',
         'bend_dir', 'bend_side', 'use_polypaint',
         # 0.24.183 (user: "가생이로 갈수록 짧아지는 것도 만들어 줘")
-        'edge_short', 'edge_width')
+        'edge_short', 'edge_width',
+        # 0.24.268 (user: "뷰포트에서 디자인 맞췄으니까 렌더에서 그거에 맞게 - 렌더 돌리면 너무 빵빵해져")
+        'display_render')
 
 
 class MCH_PG_HairShape(bpy.types.PropertyGroup):
@@ -1162,6 +1193,10 @@ class MCH_PG_HairShape(bpy.types.PropertyGroup):
                           description='1: as long as the shape; less: shorter; more: on past the shape\'s end')
     display: FloatProperty(name='Viewport %', default=1.0, min=0.0, max=1.0, subtype='FACTOR', update=_upd,
                            description='The share of strands drawn in the viewport (all of them render)')
+    display_render: BoolProperty(name='Render Like Viewport', default=False, update=_upd_view_width,
+                                 description='The render looks like the viewport: only the Viewport % share, and each '
+                                             'strand as thin as the viewport draws it (about a pixel) - off: every '
+                                             'strand at its real thickness')
     volume: FloatProperty(name='Volume', default=0.0, min=0.0, max=1.0, update=_upd,
                           description='Fuller: the strands out from the middle of the shape (0: as the shape)')
     spread: FloatProperty(name='Spread', default=0.4, min=0.0, max=1.0, update=_upd,
@@ -1844,7 +1879,7 @@ def draw(layout, context, ob=None):
         comb.operator('mch.hair_shape_comb_clear', text=f'Clear Comb ({n} stroke{"s" if n != 1 else ""})')
     comb.label(text='Drag: comb | Alt + drag: back | [ ]: size')
     for group, props in (('Strands', ('length', 'length_random', 'edge_short', 'edge_width', 'segments', 'display',
-                                      'fill', 'seed')),
+                                      'display_render', 'fill', 'seed')),
                          ('Shape', ('volume', 'spread', 'gravity', 'curl', 'curl_turns', 'frizz', 'clump',
                                     'clump_size', 'gather')),
                          ('Bend', ()),

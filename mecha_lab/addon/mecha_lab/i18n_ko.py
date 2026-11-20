@@ -8395,6 +8395,7 @@ KO = {
     'The ramp can no longer be changed (its saved mesh is gone): Apply or Remove it.': '경사 폴리곤을 더 이상 바꿀 수 없습니다 (저장된 메쉬가 없어짐): 적용하거나 제거하세요.',
     'The real vehicle the parts come from': '부품의 출처인 실제 차량',
     'The render keeps only the Viewport % share too - it looks as full as the viewport (off: every strand renders)': '렌더도 뷰포트 % 만큼만 - 뷰포트에서 본 풍성함 그대로 렌더 (끄면 털 전부 렌더)',
+    'The render looks like the viewport: only the Viewport % share, and each strand as thin as the viewport draws it (about a pixel) - off: every strand at its real thickness': '렌더를 뷰포트처럼: 뷰포트 % 만큼만, 털 한 가닥을 뷰포트처럼 가늘게 (약 1 픽셀) - 끄면 털 전부 실제 두께로',
     'The result would delete the whole object; nothing was changed. [': '결과가 오브젝트 전체를 삭제하게 됩니다. 변경된 것이 없습니다. [',
     'The result would delete the whole object; nothing was changed. [#: #, solvers tried: #]': '결과가 오브젝트 전체를 삭제하게 됩니다. 변경된 것이 없습니다. [#: #, 시도한 솔버: #]',
     'The rim (the hole in it, the wheel), of the diameter': '림 (그 안의 홀, 휠), 지름에 대한 비율',

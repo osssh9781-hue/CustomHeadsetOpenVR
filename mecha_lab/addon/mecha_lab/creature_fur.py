@@ -114,8 +114,8 @@ DESCS = {
     'tip_color': 'The colour the strands go to at their tips (by Tip Blend)',
     'tip_blend': 'How far the tips go to the Tip Color (0: the root colour all along)',
     'display': 'The share of strands drawn in the viewport (all of them render - unless Render Like Viewport)',
-    'display_render': 'The render keeps only the Viewport % share too - it looks as full as the viewport '
-                      '(off: every strand renders)',
+    'display_render': 'The render looks like the viewport: only the Viewport % share, and each strand as thin as '
+                      'the viewport draws it (about a pixel) - off: every strand at its real thickness',
     'seed': 'Another random mix',
     'bend': 'How far the strands turn toward the bend direction (a side of the view, set by the buttons; 0 = none)',
     'bend_at': 'Where along the strands they bend (0 = at the root, 0.9 = near the tip)',
@@ -938,6 +938,9 @@ def push(ob):
             gs.set_input(mod, name, tuple(v) if kind == 'COLOR' else v)
         except (KeyError, AttributeError, TypeError):
             pass
+    from . import hair_view_width as hvw              # 0.24.268 the render's strands as wide as the viewport's too
+    if bool(pg.display_render) != (ob.modifiers.get(hvw.MOD) is not None):
+        hvw.set_on(ob, pg.display_render)
     body = ob.parent
     if body is not None:
         gs.set_input(mod, 'Color Attribute', color_attr_name(body))
