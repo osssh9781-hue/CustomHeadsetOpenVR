@@ -15,7 +15,7 @@ import bpy
 
 MOD = 'MCH Viewport Width'
 TREE = 'MCH Viewport Width'
-TREE_V = 1
+TREE_V = 2                                       # (0.24.269 Width: the Render Thickness slider)
 
 
 def tree():
@@ -33,6 +33,8 @@ def tree():
     pm.default_value = 0.0
     fx = ng.interface.new_socket('Pixel Fixed', in_out='INPUT', socket_type='NodeSocketFloat')
     fx.default_value = 0.0
+    wd = ng.interface.new_socket('Width', in_out='INPUT', socket_type='NodeSocketFloat')
+    wd.default_value = 1.0
     ng.interface.new_socket('Geometry', in_out='OUTPUT', socket_type='NodeSocketGeometry')
     N, L = ng.nodes, ng.links
     gi, go = N.new('NodeGroupInput'), N.new('NodeGroupOutput')
@@ -51,7 +53,7 @@ def tree():
     L.new(gi.outputs['Pixel Fixed'], mul.inputs[2])
     half = N.new('ShaderNodeMath')
     half.operation = 'MULTIPLY'
-    half.inputs[1].default_value = 0.5               # (a radius: half the pixel)
+    L.new(gi.outputs['Width'], half.inputs[1])       # (a radius: half the pixel x Render Thickness)
     L.new(mul.outputs[0], half.inputs[0])
     sr = N.new('GeometryNodeSetCurveRadius')
     L.new(gi.outputs['Geometry'], sr.inputs['Curve'])
@@ -61,6 +63,13 @@ def tree():
         n.location = (-900 + 160 * i, -60 * (i % 2))
     ng['mch_v'] = TREE_V
     return ng
+
+
+def width_of(ob):
+    """The object's Render Thickness (1: as wide as the viewport's line)."""
+    from . import hair_shape as hs
+    pg = getattr(ob, 'mch_hshape', None) if ob.get(hs.KEY) else getattr(ob, 'mch_fur', None)
+    return float(getattr(pg, 'display_width', 1.0))
 
 
 def pixel(scene):
@@ -110,6 +119,7 @@ def refresh(scene):
         _set(mod, 'Camera', scene.camera)
         _set(mod, 'Pixel Per Metre', float(px[0]))
         _set(mod, 'Pixel Fixed', float(px[1]))
+        _set(mod, 'Width', 0.5 * width_of(ob))
         ob.update_tag()
 
 

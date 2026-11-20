@@ -1157,7 +1157,7 @@ LIVE = ('count', 'fill', 'seed', 'segments', 'clump', 'frizz', 'curl', 'curl_tur
         # 0.24.183 (user: "가생이로 갈수록 짧아지는 것도 만들어 줘")
         'edge_short', 'edge_width',
         # 0.24.268 (user: "뷰포트에서 디자인 맞췄으니까 렌더에서 그거에 맞게 - 렌더 돌리면 너무 빵빵해져")
-        'display_render')
+        'display_render', 'display_width')
 
 
 class MCH_PG_HairShape(bpy.types.PropertyGroup):
@@ -1197,6 +1197,10 @@ class MCH_PG_HairShape(bpy.types.PropertyGroup):
                                  description='The render looks like the viewport: only the Viewport % share, and each '
                                              'strand as thin as the viewport draws it (about a pixel) - off: every '
                                              'strand at its real thickness')
+    display_width: FloatProperty(name='Render Thickness', default=1.0, min=0.05, max=4.0, soft_max=2.0,
+                                 update=_upd_view_width,
+                                 description='Render Like Viewport: how thick the strands render, against the '
+                                             'viewport\'s line (1: as thick; 0.5: half; smaller: thinner)')
     volume: FloatProperty(name='Volume', default=0.0, min=0.0, max=1.0, update=_upd,
                           description='Fuller: the strands out from the middle of the shape (0: as the shape)')
     spread: FloatProperty(name='Spread', default=0.4, min=0.0, max=1.0, update=_upd,
@@ -1879,7 +1883,7 @@ def draw(layout, context, ob=None):
         comb.operator('mch.hair_shape_comb_clear', text=f'Clear Comb ({n} stroke{"s" if n != 1 else ""})')
     comb.label(text='Drag: comb | Alt + drag: back | [ ]: size')
     for group, props in (('Strands', ('length', 'length_random', 'edge_short', 'edge_width', 'segments', 'display',
-                                      'display_render', 'fill', 'seed')),
+                                      'display_render', 'display_width', 'fill', 'seed')),
                          ('Shape', ('volume', 'spread', 'gravity', 'curl', 'curl_turns', 'frizz', 'clump',
                                     'clump_size', 'gather')),
                          ('Bend', ()),

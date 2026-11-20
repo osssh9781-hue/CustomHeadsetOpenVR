@@ -86,6 +86,13 @@ rad2 = np.empty(n, np.float32); ev.attributes['radius'].data.foreach_get('value'
 check(f'the lens changed (100 mm): set again before the render - the strands half as wide ({rad2.max()*1000:.3f} mm)',
       np.allclose(rad2, want / 2, rtol=1e-3, atol=1e-7))
 cam.data.lens = 50
+# 0.24.269 (user: "좀 더 얇게 할 수 없어?") Render Thickness
+hair.mch_hshape.display_width = 0.4
+C.view_layer.update()
+ev = hair.evaluated_get(C.evaluated_depsgraph_get()).data
+rad3 = np.empty(n, np.float32); ev.attributes['radius'].data.foreach_get('value', rad3)
+check(f'Render Thickness 0.4: the strands 0.4 as wide ({rad3.max()*1000:.3f} mm)', np.allclose(rad3, want * 0.4, rtol=1e-3, atol=1e-8))
+hair.mch_hshape.display_width = 1.0
 # the Viewport % share in the render too
 hair.mch_hshape.display = 0.2
 hs.rebuild(hair, C) if hasattr(hs, 'rebuild') else None
@@ -128,6 +135,13 @@ fur = C.active_object
 fur.mch_fur.display_render = True
 cf.push(fur)
 check('Fur: the switch puts the same width modifier on it', cf.is_fur(fur) and fur.modifiers.get(hvw.MOD) is not None)
+fur.mch_fur.display_width = 0.3
+cf.push(fur)
+from mecha_lab import geo_sculpt as gs_
+m_ = fur.modifiers.get(hvw.MOD)
+h_, pr_ = gs_._input(m_, 'Width')
+wv = h_.value if pr_ == 'value' else m_[gs_._socket_ident(m_.node_group, 'Width')]
+check(f'Fur: Render Thickness 0.3 reaches it ({wv})', wv is not None and abs(wv - 0.15) < 1e-6)
 fur.mch_fur.display_render = False
 cf.push(fur)
 check('... off: gone', fur.modifiers.get(hvw.MOD) is None)

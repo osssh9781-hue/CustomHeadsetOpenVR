@@ -35,7 +35,7 @@ from mathutils import Matrix, Vector
 from . import core_geometry as cg
 
 TREE = 'MCH Fur'
-TREE_VERSION = 14                  # 0.24.171 Bend; 0.24.183 Edge Short
+TREE_VERSION = 15                  # 0.24.171 Bend; 0.24.183 Edge Short
 MOD = 'MCH Fur'
 MAT = 'MCH Fur'
 AREA_KEY = 'mch_fur_area'          # on a fur object: the body attribute that holds its area
@@ -78,6 +78,8 @@ LIVE = (
     ('display', 'Viewport %', 'FLOAT', 1.0, 0.0, 1.0),
     # 0.24.267 (user: "1 퍼센트인데 뷰포트로 맞춰 놨는데 렌더에서 더 풍성해져서") the render with the same share
     ('display_render', 'Render Like Viewport', 'BOOL', False, None, None),
+    # 0.24.269 (user: "좀 더 얇게 할 수 없어?") the strands' width in the render, against the viewport's line
+    ('display_width', 'Render Thickness', 'FLOAT', 1.0, 0.05, 4.0),
     ('seed', 'Seed', 'INT', 0, 0, 100000),
     # 0.24.171 (user: "머리카락을 내가 보는 뷰포트 방향에서 꺾을 수 있게 밴드 옵션") toward a side of the view
     ('bend', 'Bend', 'FLOAT', 0.0, 0.0, math.pi),
@@ -114,6 +116,8 @@ DESCS = {
     'tip_color': 'The colour the strands go to at their tips (by Tip Blend)',
     'tip_blend': 'How far the tips go to the Tip Color (0: the root colour all along)',
     'display': 'The share of strands drawn in the viewport (all of them render - unless Render Like Viewport)',
+    'display_width': 'Render Like Viewport: how thick the strands render, against the viewport\'s line (1: as '
+                     'thick; 0.5: half; smaller: thinner)',
     'display_render': 'The render looks like the viewport: only the Viewport % share, and each strand as thin as '
                       'the viewport draws it (about a pixel) - off: every strand at its real thickness',
     'seed': 'Another random mix',
@@ -941,6 +945,8 @@ def push(ob):
     from . import hair_view_width as hvw              # 0.24.268 the render's strands as wide as the viewport's too
     if bool(pg.display_render) != (ob.modifiers.get(hvw.MOD) is not None):
         hvw.set_on(ob, pg.display_render)
+    elif pg.display_render:
+        hvw.refresh(bpy.context.scene)                # (0.24.269 Render Thickness changed)
     body = ob.parent
     if body is not None:
         gs.set_input(mod, 'Color Attribute', color_attr_name(body))
@@ -1275,7 +1281,7 @@ def _upd_obj(self, context):
                 _BUSY[0] = False
 
 
-SOFT = {'density': 100000.0, 'length': 0.3, 'gravity': 3.0, 'curl': 2.0, 'curl_turns': 10.0, 'frizz': 1.0,
+SOFT = {'display_width': 2.0, 'density': 100000.0, 'length': 0.3, 'gravity': 3.0, 'curl': 2.0, 'curl_turns': 10.0, 'frizz': 1.0,
         'clump_size': 60, 'root_thick': 0.005, 'tip_thick': 0.005, 'segments': 32, 'edge_soft': 20, 'part_soft': 20}
 # (the slider's range: a drag across it a usable step - Length up to 0.3, not the 5 it can be typed to)
 
@@ -1429,7 +1435,7 @@ def draw(layout, context):
         col.prop(tilt, k_)
     col.prop(pg, 'part_soft')
     for group, props in (('Strands', ('density', 'length', 'length_random', 'edge_short', 'edge_width', 'segments',
-                                      'display', 'display_render')),
+                                      'display', 'display_render', 'display_width')),
                          ('Shape', ('volume', 'spread', 'gravity', 'curl_turns', 'frizz', 'clump_size')),
                          ('Bend', ()),
                          ('Thickness', ('root_thick', 'tip_thick')),
