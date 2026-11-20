@@ -212,10 +212,24 @@ def _upd(self, context):
         remove(sc)
 
 
+def _get_strength(self):
+    ss = strength_socket(self.id_data)
+    return float(ss.default_value) if ss is not None else 1.0
+
+
+def _set_strength(self, v):
+    ss = strength_socket(self.id_data)
+    if ss is not None and not ss.is_linked:
+        ss.default_value = v
+
+
 class MCH_PG_HdriTurn(bpy.types.PropertyGroup):
     follow: BoolProperty(name='Follow Camera', default=False, update=_upd,
                          description='The HDRI stays fixed to the scene camera: orbit the camera round the model and the '
                                      'light and background turn with it')
+    strength: FloatProperty(name='Strength', min=0.0, soft_max=5.0, get=_get_strength, set=_set_strength,
+                            options={'SKIP_SAVE'},
+                            description='How strongly the HDRI lights the scene (the world Background\'s Strength)')
     turn: FloatProperty(name='HDRI Rotation', default=0.0, subtype='ANGLE', soft_min=-math.pi, soft_max=math.pi,
                         update=_upd, description='Turn the HDRI (the light and the background) round the model')
 
@@ -281,6 +295,156 @@ def _check(scene, _dg=None):
         pass
 
 
+# --- 0.24.276 (user: "HDRI 부분에 HDRI 추가하게 해 줘") an HDRI file into the world --------------------------------
+
+EXTS = ('.hdr', '.exr', '.jpg', '.jpeg', '.png', '.tif', '.tiff')
+
+
+def _main_envs(scene):
+    """The world's Environment Textures that show a picked image (Mecha's blurred copy left out: it follows)."""
+    return [e for e in envs(scene) if e.name != 'mch:env_blur']
+
+
+def current_image(scene):
+    for e in _main_envs(scene):
+        if e.image is not None:
+            return e.image
+    return None
+
+
+def _background(nt):
+    out = next((n for n in nt.nodes if n.bl_idname == 'ShaderNodeOutputWorld' and n.is_active_output), None) or \
+        next((n for n in nt.nodes if n.bl_idname == 'ShaderNodeOutputWorld'), None)
+    if out is None:
+        out = nt.nodes.new('ShaderNodeOutputWorld')
+    bg = next((n for n in nt.nodes if n.bl_idname == 'ShaderNodeBackground'), None)
+    if bg is None:
+        bg = nt.nodes.new('ShaderNodeBackground')
+        bg.location = (out.location.x - 220, out.location.y)
+        nt.links.new(bg.outputs['Background'], out.inputs['Surface'])
+    return bg
+
+
+def strength_socket(scene):
+    w = scene.world
+    if w is None or not w.use_nodes or w.node_tree is None:
+        return None
+    bg = next((n for n in w.node_tree.nodes if n.bl_idname == 'ShaderNodeBackground'), None)
+    return bg.inputs['Strength'] if bg is not None else None
+
+
+def set_hdri(scene, path):
+    """``path`` as the world's HDRI: into the Environment Texture(s) it has (the world kept as it is), or a new
+    Environment Texture on its Background (a new world when the scene has none).  Rotation / Follow Camera stay."""
+    import os
+    img = bpy.data.images.load(path, check_existing=True)
+    w = scene.world
+    if w is None:
+        w = bpy.data.worlds.new('HDRI World')
+        scene.world = w
+    w.use_nodes = True
+    nt = w.node_tree
+    targets = _main_envs(scene)
+    if not targets:
+        bg = _background(nt)
+        env = nt.nodes.new('ShaderNodeTexEnvironment')
+        env.location = (bg.location.x - 320, bg.location.y)
+        sock = bg.inputs['Color']
+        for lk in list(sock.links):
+            nt.links.remove(lk)
+        nt.links.new(env.outputs['Color'], sock)
+        targets = [env]
+    for e in targets:
+        e.image = img
+    if active(scene):
+        ensure(scene)
+    return os.path.basename(path)
+
+
+def folder_files(path):
+    import os
+    folder = os.path.dirname(bpy.path.abspath(path))
+    try:
+        return sorted(os.path.join(folder, f) for f in os.listdir(folder) if f.lower().endswith(EXTS))
+    except OSError:
+        return []
+
+
+def step_hdri(scene, d):
+    """The next / previous HDRI in the current one's folder.  Returns its name, or ''."""
+    import os
+    img = current_image(scene)
+    if img is None or not img.filepath:
+        return ''
+    cur = os.path.normcase(os.path.abspath(bpy.path.abspath(img.filepath)))
+    files = folder_files(img.filepath)
+    if not files:
+        return ''
+    norm = [os.path.normcase(os.path.abspath(f)) for f in files]
+    i = norm.index(cur) if cur in norm else -1
+    return set_hdri(scene, files[(i + d) % len(files)])
+
+
+class MCH_OT_hdri_add(bpy.types.Operator):
+    """Add HDRI: pick an HDRI file (.hdr / .exr / .jpg / .png) - it lights the scene and shows behind it (into the
+    world's own HDRI node; a new one when it has none)"""
+    bl_idname = 'mch.hdri_add'
+    bl_label = 'Add HDRI'
+    bl_options = {'REGISTER', 'UNDO'}
+    filepath: bpy.props.StringProperty(subtype='FILE_PATH')
+    filter_glob: bpy.props.StringProperty(default='*.hdr;*.exr;*.jpg;*.jpeg;*.png;*.tif;*.tiff', options={'HIDDEN'})
+
+    def invoke(self, context, event):
+        img = current_image(context.scene)
+        if img is not None and img.filepath:
+            self.filepath = bpy.path.abspath(img.filepath)
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        import os
+        if not self.filepath or not os.path.isfile(bpy.path.abspath(self.filepath)):
+            self.report({'WARNING'}, 'Add HDRI: no file picked')
+            return {'CANCELLED'}
+        try:
+            name = set_hdri(context.scene, bpy.path.abspath(self.filepath))
+        except RuntimeError as ex:
+            self.report({'WARNING'}, f'Add HDRI: {ex}')
+            return {'CANCELLED'}
+        _redraw()
+        self.report({'INFO'}, f'HDRI: {name}')
+        return {'FINISHED'}
+
+
+class MCH_OT_hdri_step(bpy.types.Operator):
+    """The next / previous HDRI in the same folder"""
+    bl_idname = 'mch.hdri_step'
+    bl_label = 'Next HDRI'
+    bl_options = {'REGISTER', 'UNDO'}
+    step: bpy.props.IntProperty(default=1)
+
+    def execute(self, context):
+        try:
+            name = step_hdri(context.scene, self.step)
+        except RuntimeError as ex:
+            self.report({'WARNING'}, f'HDRI: {ex}')
+            return {'CANCELLED'}
+        if not name:
+            self.report({'WARNING'}, 'HDRI: no other HDRI in this folder')
+            return {'CANCELLED'}
+        _redraw()
+        self.report({'INFO'}, f'HDRI: {name}')
+        return {'FINISHED'}
+
+
+def _redraw():
+    try:
+        from . import side_panel
+        side_panel.dirty()
+    except (ImportError, AttributeError):
+        pass
+
+
 def section(b, context, x, width):
     """The Render page's HDRI Rotation section."""
     from . import mech_shader_ui as mu, i18n
@@ -288,9 +452,17 @@ def section(b, context, x, width):
     st = sc.mch_hdri_turn
 
     def fill(sx, sw):
-        n = len(envs(sc))
-        if n == 0:
-            b.note(('note', 'No HDRI in the world (pick one first)', True, None, None, None, True), sx, sw)
+        img = current_image(sc)                      # 0.24.276 the HDRI itself: add / step / strength
+        mu.row(b, sx, sw, [mu.button('Add HDRI…', 'mch.hdri_add')])
+        if img is not None:
+            mu.stepper(b, sx, sw, mu.button('◀', 'mch.hdri_step', step=-1),
+                       mu._cell('tbtn', img.name, ('op', 'mch.hdri_add', {})),
+                       mu.button('▶', 'mch.hdri_step', step=1))
+            ss = strength_socket(sc)
+            if ss is not None and not ss.is_linked:
+                mu.row(b, sx, sw, [mu.number(st, 'strength', 'Strength')])
+        else:
+            b.note(('note', 'No HDRI in the world: Add HDRI picks one', True, None, None, None, True), sx, sw)
         mu.row(b, sx, sw, [mu._cell('seg', 'Follow Camera', ('op', 'mch.hdri_turn_follow', {}), on=st.follow)])
         if st.follow and sc.camera is None:
             b.note(('note', 'No scene camera: add one in Camera above', True, None, None, None, True), sx, sw)
@@ -302,12 +474,15 @@ def section(b, context, x, width):
             txt = (f'조명 {len(lts)} 개가 같이 돎' if i18n.lang() == 'KO' else f'{len(lts)} light(s) turn with it')
             b.note(('note', txt, False, None, None, None, True), sx, sw)
             mu.row(b, sx, sw, [mu.button('Release Lights', 'mch.hdri_turn_lights', release=True)])
-    summ = f'{math.degrees(st.turn):.0f}°' + (' + ' + i18n.tr('Camera') if st.follow else '')
-    mu.section(b, 'r_hdri_turn', i18n.tr('HDRI Rotation'), x, width, fill, summary=summ,
+    img0 = current_image(sc)
+    summ = (img0.name + '  ' if img0 is not None else '') + f'{math.degrees(st.turn):.0f}°' + \
+        (' + ' + i18n.tr('Camera') if st.follow else '')
+    mu.section(b, 'r_hdri_turn', 'HDRI', x, width, fill, summary=summ,
                colour=mu.COLOURS['r_hdri_turn'])
 
 
-CLASSES = (MCH_PG_HdriTurn, MCH_OT_hdri_turn_reset, MCH_OT_hdri_turn_follow, MCH_OT_hdri_turn_lights)
+CLASSES = (MCH_PG_HdriTurn, MCH_OT_hdri_turn_reset, MCH_OT_hdri_turn_follow, MCH_OT_hdri_turn_lights, MCH_OT_hdri_add,
+           MCH_OT_hdri_step)
 
 
 def register():
