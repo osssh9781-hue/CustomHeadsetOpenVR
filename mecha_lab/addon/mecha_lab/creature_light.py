@@ -593,6 +593,11 @@ def _floor_sync(scene):
         pb, mr, op = nt.nodes.get('MCH Floor'), nt.nodes.get('MCH Fade'), nt.nodes.get('MCH Opacity')
         if pb is not None:
             pb.inputs['Base Color'].default_value = (*st.floor_color, 1.0)
+            pb.inputs['Roughness'].default_value = st.floor_roughness          # 0.24.274
+            for key in ('Specular IOR Level', 'Specular'):
+                if key in pb.inputs:
+                    pb.inputs[key].default_value = st.floor_specular
+                    break
         if mr is not None:
             mr.inputs['From Min'].default_value = max(0.0, 1.0 - st.floor_edge)
         if op is not None:
@@ -717,6 +722,11 @@ class MCH_PG_CreatureLight(bpy.types.PropertyGroup):
                               description='The floor\'s size, times the width of the parts')
     floor_edge: FloatProperty(name='Edge Fade', default=0.7, min=0.05, max=1.0, update=_upd_floor_look,
                               description='How much of the disc fades out (1 = from the centre to the edge)')
+    # 0.24.274 (user: "바닥에 러프니스랑 스페큘러도 조정하게")
+    floor_roughness: FloatProperty(name='Floor Roughness', default=0.8, min=0.0, max=1.0, update=_upd_floor_look,
+                                   description='0 = a mirror-like floor (sharp reflections), 1 = matte')
+    floor_specular: FloatProperty(name='Floor Specular', default=0.2, min=0.0, max=1.0, update=_upd_floor_look,
+                                  description='How strong the floor\'s reflections / highlights are (0 = none)')
     # 0.24.273 (user: "바닥은 그 Z 축 조정할 수 있게")
     floor_z: FloatProperty(name='Floor Height', default=0.0, soft_min=-2.0, soft_max=2.0, subtype='DISTANCE',
                            update=_upd_floor_size,

@@ -1035,6 +1035,8 @@ def floor_section(b, context, x, width):
                 row(b, sx, sw, [swatch(st, 'floor_color', 'Floor Colour')])
                 row(b, sx, sw, [number(st, 'floor_edge', 'Edge Fade')])
                 row(b, sx, sw, [number(st, 'floor_opacity', 'Floor Opacity')])
+                row(b, sx, sw, [number(st, 'floor_roughness', 'Roughness')])        # 0.24.274
+                row(b, sx, sw, [number(st, 'floor_specular', 'Specular')])
             row(b, sx, sw, [number(st, 'floor_z', 'Floor Height')])
             row(b, sx, sw, [number(st, 'floor_size', 'Floor Size')])
             row(b, sx, sw, [button('Fit Floor to Model', 'mch.creature_floor', kind='FIT')])
