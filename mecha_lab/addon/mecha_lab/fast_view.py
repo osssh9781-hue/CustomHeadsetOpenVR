@@ -291,7 +291,57 @@ class MCH_OT_viewport_aa(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_OT_fast_view, MCH_OT_viewport_aa)
+def anything_on(context):
+    """Is any of the speed-ups on: Fast Viewport (any scene), Light Copies, Viewport AA at Single Pass?"""
+    from . import light_copies as lc
+    st = lc.settings(context)
+    return (any(on(sc) for sc in bpy.data.scenes) or bool(st is not None and st.on)
+            or aa_value(context) == AA_FAST)
+
+
+def all_off(context):
+    """0.24.271 (user: "패스트 뷰포트 아예 끄는 것도") Every speed-up off, the normal viewport back: Fast Viewport in
+    every scene (each value put back), Light Copies off (the copies removed, the parts as they are), Blender's viewport
+    anti-aliasing back from Single Pass (to what it was, else 8 samples).  Returns what it did."""
+    from . import light_copies as lc
+    done = []
+    n = 0
+    for sc in bpy.data.scenes:
+        if on(sc):
+            restore(context, sc)
+            n += 1
+    if n:
+        done.append(f'Fast Viewport off ({n} scene{"s" if n != 1 else ""})')
+    st = lc.settings(context)
+    if st is not None and st.on:
+        lc.turn_off(context)
+        done.append('Light Copies off')
+    if aa_value(context) == AA_FAST:
+        aa_toggle(context)
+        done.append(f'Viewport AA back to {aa_label(aa_value(context))}')
+    return ', '.join(done) if done else 'Nothing to turn off: the viewport is already normal'
+
+
+class MCH_OT_fast_all_off(bpy.types.Operator):
+    """Every viewport speed-up off at once - Fast Viewport (every scene), Light Copies and the Single Pass
+    anti-aliasing: the normal viewport back"""
+    bl_idname = 'mch.fast_all_off'
+    bl_label = 'All Speed-Ups Off'
+    bl_options = {'REGISTER', 'INTERNAL'}
+
+    def execute(self, context):
+        self.report({'INFO'}, all_off(context))
+        for area in context.screen.areas if context.screen else ():
+            area.tag_redraw()
+        try:
+            from . import side_panel
+            side_panel.dirty()
+        except (ImportError, AttributeError):
+            pass
+        return {'FINISHED'}
+
+
+CLASSES = (MCH_OT_fast_view, MCH_OT_viewport_aa, MCH_OT_fast_all_off)
 
 
 def register():

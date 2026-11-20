@@ -1029,6 +1029,8 @@ def viewport_section(b, context, x, width):
     lst = lc.settings(context)
 
     def fill(sx, sw):
+        if fast_view.anything_on(context):         # 0.24.271 (user: "패스트 뷰포트 아예 끄는 것도")
+            row(b, sx, sw, [button('All Speed-Ups Off (normal viewport)', 'mch.fast_all_off')])
         row(b, sx, sw, [_cell('seg', 'Fast Viewport (Solid + Rendered)', ('op', 'mch.fast_view', {}),
                               on=fast_view.on(sc))])
         aa = fast_view.aa_value(context)
@@ -1044,6 +1046,7 @@ def viewport_section(b, context, x, width):
             return
         row(b, sx, sw, [_cell('seg', 'Light Copies (parts not worked on)', ('op', 'mch.light_copies', {}),
                               on=lst.on)])
+        row(b, sx, sw, [prop_cell(lst, 'keep_selected', 'Selected Stay Light')])   # 0.24.271
         row(b, sx, sw, [number(lst, 'percent', 'Copy %')])
         row(b, sx, sw, [number(lst, 'min_tris', 'From')])
         for ln in lc.status(context):

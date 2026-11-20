@@ -298,6 +298,26 @@ def memory_check(context, st):
 
 # ---- the temporary changes -----------------------------------------------------------------------------------------
 
+def _draft_light(context):
+    """Draft: the parts with a light copy render it (the copy switch of the shared group on, each part's Light Copy
+    modifier on for renders) - all put back after the render like every other Quick Render change."""
+    from . import light_copies as lc
+    st = lc.settings(context)
+    if st is None or not st.on:
+        return 0
+    node = lc.render_switch()
+    if node is None:
+        return 0
+    _set(node.outputs[0], 'default_value', 1.0)
+    n = 0
+    for ob in lc.parts(context.scene):
+        mod = lc._mod(ob)
+        if mod is not None:
+            _set(mod, 'show_render', True)
+            n += 1
+    return n
+
+
 def _set(owner, attr, value):
     """Set ``owner.attr`` and remember the old value (by name: see live_ref) to put back after the render."""
     from . import live_ref
@@ -535,6 +555,9 @@ def prepare(context, st):
             _set(ob, 'hide_render', True)
         else:
             shown.append(ob)
+    # 0.24.271 (user: "드래프트도 다 낮은 메쉬로") Draft with Light Copies on: every part renders from its light copy
+    if st.quality == 'DRAFT':
+        _draft_light(context)
     capped = 0
     if st.clay:
         _set(context.view_layer, 'material_override', _clay_material())

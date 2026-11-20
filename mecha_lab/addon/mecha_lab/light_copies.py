@@ -98,6 +98,10 @@ class MCH_PG_Light(bpy.types.PropertyGroup):
                          description='How many of a part\'s triangles its light copy keeps')
     min_tris: IntProperty(name='From', default=300_000, min=10_000, soft_max=5_000_000, step=100_000,
                           update=_upd_min, description='Only parts with at least this many triangles get a copy')
+    # 0.24.271 (user: "선택한 것도 디테일 안 올라가고") the selected parts light too
+    keep_selected: BoolProperty(name='Selected Stay Light', default=False,
+                                description='Selected parts keep their light copy too (Edit / Sculpt Mode and the '
+                                            'tools that read a part still get the real one)')
 
 
 def settings(context):
@@ -111,6 +115,7 @@ def node_group():
     """In the viewport the copy object's geometry (when it has faces), else - and in every render - the part."""
     ng = bpy.data.node_groups.get(GROUP)
     if ng is not None and ng.bl_idname == 'GeometryNodeTree' and _copy_socket(ng):
+        render_switch(ng)
         return ng
     ng = bpy.data.node_groups.new(GROUP, 'GeometryNodeTree')
     ng.interface.new_socket('Geometry', in_out='INPUT', socket_type='NodeSocketGeometry')
@@ -144,7 +149,37 @@ def node_group():
     lk.new(gi.outputs['Geometry'], sw.inputs['False'])
     lk.new(info.outputs['Geometry'], sw.inputs['True'])
     lk.new(sw.outputs['Output'], go.inputs['Geometry'])
+    render_switch(ng)
     return ng
+
+
+RENDER_NODE = 'mch_in_render'
+
+
+def render_switch(ng=None):
+    """0.24.271 The group's "copy in renders too" switch (a Value node, 0 / 1) - added in place to an older group.
+    Quick Render's Draft turns it on for its render (and the modifiers' render switch), then back."""
+    ng = ng or bpy.data.node_groups.get(GROUP)
+    if ng is None:
+        return None
+    n = ng.nodes.get(RENDER_NODE)
+    if n is not None:
+        return n
+    isv = next((x for x in ng.nodes if x.bl_idname == 'GeometryNodeIsViewport'), None)
+    both = next((x for x in ng.nodes if x.bl_idname == 'FunctionNodeBooleanMath' and x.operation == 'AND'), None)
+    if isv is None or both is None:
+        return None
+    n = ng.nodes.new('ShaderNodeValue')
+    n.name = n.label = RENDER_NODE
+    n.outputs[0].default_value = 0.0
+    n.location = (isv.location.x, isv.location.y + 140)
+    either = ng.nodes.new('FunctionNodeBooleanMath')
+    either.operation = 'OR'
+    either.location = (isv.location.x + 120, isv.location.y + 60)
+    ng.links.new(isv.outputs['Is Viewport'], either.inputs[0])
+    ng.links.new(n.outputs[0], either.inputs[1])
+    ng.links.new(either.outputs['Boolean'], both.inputs[0])
+    return n
 
 
 def _copy_socket(ng):
@@ -987,6 +1022,8 @@ def _point(e, coll):
 def sync_instances(context, now, browser):
     """Each marked instance empty on its light set or on its own collection as it should be now."""
     n = 0
+    _st = settings(context)
+    st_keep = bool(_st is not None and _st.keep_selected)
     for e in _instancers(context):
         key = e.get(INST)
         if not key:
@@ -1003,6 +1040,8 @@ def sync_instances(context, now, browser):
             sel = e.select_get()
         except RuntimeError:
             sel = False
+        if sel and st_keep:
+            sel = False                              # (0.24.271 Selected Stay Light)
         want = W is not None and not browser and not sel and now - TOUCH.get('E' + e.name, -1e9) >= REST
         tgt = W if want else own
         if cur != tgt:
@@ -1057,8 +1096,12 @@ def want_light(ob, now, active, browser):
     if browser:
         return False
     try:
-        if ob.mode != 'OBJECT' or ob.select_get():
+        if ob.mode != 'OBJECT':
             return False
+        if ob.select_get():
+            st = settings(bpy.context)
+            if st is None or not st.keep_selected:
+                return False
     except (AttributeError, ReferenceError, RuntimeError):
         return False
     name = ob.name
