@@ -135,6 +135,8 @@ def sections(b, context, x, width):
                 mu.row(b, sx, sw, [mu.number(d, 'lens', 'Focal Length')])
             mu.row(b, sx, sw, [mu.prop_cell(d, 'lens_unit', 'Lens Unit')])
     mu.section(b, 'r_camera', _t('Camera'), x, width, camera, summary=cam.name if cam else '')
+    from . import hdri_turn                     # 0.24.266 the HDRI turned / fixed to the camera
+    hdri_turn.section(b, context, x, width)
 
     if cam is not None:
         dof = cam.data.dof
