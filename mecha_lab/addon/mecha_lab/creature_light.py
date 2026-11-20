@@ -615,7 +615,7 @@ def fit_floor(context):
     cx, cy = (lo[0] + hi[0]) * 0.5, (lo[1] + hi[1]) * 0.5
     half = max(hi[0] - lo[0], hi[1] - lo[1], (hi[2] - lo[2]) * 0.5, 1e-3) * 0.5
     r = half * st.floor_size
-    ob.location = (cx, cy, lo[2])
+    ob.location = (cx, cy, lo[2] + st.floor_z)       # 0.24.273 Floor Height: up / down from under the parts
     ob.rotation_euler = (0.0, 0.0, 0.0)
     ob.scale = (r, r, 1.0)
     return True
@@ -717,6 +717,10 @@ class MCH_PG_CreatureLight(bpy.types.PropertyGroup):
                               description='The floor\'s size, times the width of the parts')
     floor_edge: FloatProperty(name='Edge Fade', default=0.7, min=0.05, max=1.0, update=_upd_floor_look,
                               description='How much of the disc fades out (1 = from the centre to the edge)')
+    # 0.24.273 (user: "바닥은 그 Z 축 조정할 수 있게")
+    floor_z: FloatProperty(name='Floor Height', default=0.0, soft_min=-2.0, soft_max=2.0, subtype='DISTANCE',
+                           update=_upd_floor_size,
+                           description='The floor moved up / down (Z) from under the lowest part (0 = touching it)')
     floor_opacity: FloatProperty(name='Floor Opacity', default=1.0, min=0.0, max=1.0, update=_upd_floor_look,
                                  description='How solid the centre of the floor is')
 

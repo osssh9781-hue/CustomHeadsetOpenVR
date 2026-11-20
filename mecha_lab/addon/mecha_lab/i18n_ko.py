@@ -8239,6 +8239,7 @@ KO = {
     'The finishing frame round the outline (a share of its size)': '외곽선 둘레의 마감 프레임 (크기에 대한 비율)',
     'The first line the body; a line ending on the ground a leg; the others plain bones': '첫 선 = 몸, 땅에서 끝나는 선 = 다리, 나머지 = 뼈만',
     'The floor inside the frame (lower than the frame: recessed)': '프레임 안쪽 바닥 (프레임보다 낮음: 오목)',
+    'The floor moved up / down (Z) from under the lowest part (0 = touching it)': '바닥을 위 / 아래 (Z) 로 - 가장 낮은 파트 밑 기준 (0 = 닿음)',
     'The floor under the creature: Shadow Catcher (only the shadows, Cycles) or Fade Floor (a soft disc fading out at the edge); Fit: under the parts again': '크리쳐 아래 바닥: 섀도 캐처 (그림자만, 사이클스) 또는 페이드 바닥 (가장자리로 흐려지는 부드러운 원판). 맞춤: 다시 부품 아래로',
     "The floor's size, times the width of the parts": '바닥 크기, 부품 폭의 배수',
     'The folds never pass through each other (slower)': '주름이 서로 통과하지 않습니다 (더 느림)',

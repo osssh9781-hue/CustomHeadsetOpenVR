@@ -136,18 +136,24 @@ def row(b, x, w, cells):
     b.place_row([c for c in cells if c is not None], x, w)
 
 
-def section(b, key, title, x, w, fill, start_folded=False, summary=''):
-    """A foldable section (its title clicked folds it), ``fill(x, w)`` places its rows."""
+def section(b, key, title, x, w, fill, start_folded=False, summary='', colour=None):
+    """A foldable section (its title clicked folds it), ``fill(x, w)`` places its rows.  ``colour`` (0.24.273, '1' ..
+    '9'): a big coloured title bar instead (the summary at its right)."""
     k = b.k
     is_folded = sp.folded(PAGE, key, start_folded)
     top = b.y
     b.gap(0.5)
     bg = b.Item('sbg', x, 0, w, 0)
     b.out.append(bg)
-    b.y -= sp.SECTION * k
-    label = title.upper() + (f'   {summary}' if summary else '')
-    b.out.append(b.Item('shead', x, b.y, w, sp.SECTION * k, label, '', not is_folded, True,
-                        ('fold', f'{PAGE}:{key}', start_folded)))
+    if colour:
+        b.y -= sp.BIG_SECTION * k
+        b.out.append(b.Item('shead', x, b.y, w, sp.BIG_SECTION * k, title.upper(), f'big:{colour}|{summary or ""}',
+                            not is_folded, True, ('fold', f'{PAGE}:{key}', start_folded)))
+    else:
+        b.y -= sp.SECTION * k
+        label = title.upper() + (f'   {summary}' if summary else '')
+        b.out.append(b.Item('shead', x, b.y, w, sp.SECTION * k, label, '', not is_folded, True,
+                            ('fold', f'{PAGE}:{key}', start_folded)))
     if not is_folded:
         b.gap(0.5)
         fill(x + 8 * k, w - 16 * k)
@@ -970,7 +976,8 @@ def quick_render_section(b, context, x, width):
         row(b, sx, sw, [prop_cell(st, 'selected_only', 'Selected Only'), prop_cell(st, 'transparent', 'Transparent')])
         row(b, sx, sw, [prop_cell(st, 'hidden_stay_hidden', 'Hidden Stay Hidden'), prop_cell(st, 'save', 'Save')])
     q = qr.QUALITY[st.quality]
-    section(b, 'quick_render', 'Quick Render (Cycles)', x, width, fill, summary=q['label'])
+    section(b, 'quick_render', 'Quick Render (Cycles)', x, width, fill, summary=q['label'],
+            colour=COLOURS['quick_render'])
 
 
 def creature_light_section(b, context, x, width):
@@ -1006,6 +1013,21 @@ def creature_light_section(b, context, x, width):
         row(b, sx, sw, [number(st, 'rotation', 'Rotation')])
         row(b, sx, sw, [prop_cell(st, 'show_lights', 'Lights Seen by Camera'),
                         button('Reset', 'mch.creature_light', action='RESET')])
+        if lit:
+            b.note(('note', cl.BY_ID[st.preset][7], False, None, None, None, True), sx, sw)
+    section(b, 'creature_light', 'Creature Light', x, width, fill,
+            summary=cl.BY_ID[st.preset][1] if lit else '', colour=COLOURS['creature_light'])
+
+
+def floor_section(b, context, x, width):
+    """0.24.273 (user: "바닥은 Z 축 조정할 수 있게 해 주고 배경 이미지 근처로 위치 옮겨 주고") the floor - its own
+    section right after Background (was inside Creature Light), with Floor Height."""
+    from . import creature_light as cl
+    st = cl.settings(context.scene)
+    if st is None:
+        return
+
+    def fill(sx, sw):
         row(b, sx, sw, [_cell('seg', label, ('op', 'mch.creature_floor', {'kind': key}), on=st.floor == key)
                         for key, label in (('OFF', 'No Floor'), ('CATCHER', 'Shadow Catcher'), ('FADE', 'Fade Floor'))])
         if st.floor != 'OFF':
@@ -1013,12 +1035,11 @@ def creature_light_section(b, context, x, width):
                 row(b, sx, sw, [swatch(st, 'floor_color', 'Floor Colour')])
                 row(b, sx, sw, [number(st, 'floor_edge', 'Edge Fade')])
                 row(b, sx, sw, [number(st, 'floor_opacity', 'Floor Opacity')])
+            row(b, sx, sw, [number(st, 'floor_z', 'Floor Height')])
             row(b, sx, sw, [number(st, 'floor_size', 'Floor Size')])
             row(b, sx, sw, [button('Fit Floor to Model', 'mch.creature_floor', kind='FIT')])
-        if lit:
-            b.note(('note', cl.BY_ID[st.preset][7], False, None, None, None, True), sx, sw)
-    section(b, 'creature_light', 'Creature Light', x, width, fill,
-            summary=cl.BY_ID[st.preset][1] if lit else '')
+    names = {'CATCHER': 'Shadow Catcher', 'FADE': 'Fade Floor'}
+    section(b, 'floor', 'Floor', x, width, fill, summary=names.get(st.floor, ''), colour=COLOURS['floor'])
 
 
 def viewport_section(b, context, x, width):
@@ -1054,7 +1075,7 @@ def viewport_section(b, context, x, width):
         for ln in lc.status(context):
             b.note(('note', ln, False, None, None, None, True), sx, sw)
     on = [t for t, v in (('Fast', fast_view.on(sc)), ('Light', lst is not None and lst.on)) if v]
-    section(b, 'viewport', 'Viewport', x, width, fill, summary=' + '.join(on))
+    section(b, 'viewport', 'Viewport', x, width, fill, summary=' + '.join(on), colour=COLOURS['viewport'])
 
 
 def bg_pictures(b, sc, sx, sw):
@@ -1130,7 +1151,12 @@ def background_section(b, context, x, width):
         if ms.hdri_world(sc) is not None:            # (a scene still on the old Mecha HDRI world: back to its own)
             row(b, sx, sw, [button('Mecha HDRI Off (back to your world)', 'mch.mech_hdri', action='OFF')])
     section(b, 'background_colour', 'Background', x, width, fill,
-            summary=('picture' if pic else 'colour') if on else '')
+            summary=('picture' if pic else 'colour') if on else '', colour=COLOURS['background'])
+
+
+# 0.24.273 (user: "구다리마다 잘 보이게 색 구별해 주고") the Render page's sections: a colour each (mecha_menu.BIG_HEAD)
+COLOURS = {'quick_render': '2', 'r_camera': '5', 'r_hdri_turn': '4', 'r_dof': '6', 'r_format': '8', 'r_colour': '7',
+           'creature_light': '3', 'viewport': '9', 'background': '1', 'floor': '8'}
 
 
 def hdri_content(context, x, width, k):
@@ -1143,6 +1169,7 @@ def hdri_content(context, x, width, k):
     creature_light_section(b, context, x, width)
     viewport_section(b, context, x, width)
     background_section(b, context, x, width)
+    floor_section(b, context, x, width)          # 0.24.273 next to the background
     return b.out, -b.y
 
 

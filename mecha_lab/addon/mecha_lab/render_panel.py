@@ -134,7 +134,8 @@ def sections(b, context, x, width):
             else:
                 mu.row(b, sx, sw, [mu.number(d, 'lens', 'Focal Length')])
             mu.row(b, sx, sw, [mu.prop_cell(d, 'lens_unit', 'Lens Unit')])
-    mu.section(b, 'r_camera', _t('Camera'), x, width, camera, summary=cam.name if cam else '')
+    mu.section(b, 'r_camera', _t('Camera'), x, width, camera, summary=cam.name if cam else '',
+               colour=mu.COLOURS['r_camera'])
     from . import hdri_turn                     # 0.24.266 the HDRI turned / fixed to the camera
     hdri_turn.section(b, context, x, width)
 
@@ -155,7 +156,7 @@ def sections(b, context, x, width):
                                mu.number(dof, 'aperture_rotation', 'Rotation')])
             mu.row(b, sx, sw, [mu.number(dof, 'aperture_ratio', 'Ratio')])
         mu.section(b, 'r_dof', _t('Depth of Field'), x, width, depth, start_folded=True,
-                   summary=f'F {dof.aperture_fstop:g}' if dof.use_dof else '')
+                   summary=f'F {dof.aperture_fstop:g}' if dof.use_dof else '', colour=mu.COLOURS['r_dof'])
 
     r = sc.render
 
@@ -165,7 +166,8 @@ def sections(b, context, x, width):
         mu.row(b, sx, sw, [mu.number(r, 'pixel_aspect_x', 'Aspect X'), mu.number(r, 'pixel_aspect_y', 'Y')])
         mu.row(b, sx, sw, [mu.prop_cell(r, 'use_border', 'Render Region')])
     mu.section(b, 'r_format', _t('Format'), x, width, fmt,
-               summary=f'{r.resolution_x} x {r.resolution_y}  {r.resolution_percentage}%')
+               summary=f'{r.resolution_x} x {r.resolution_y}  {r.resolution_percentage}%',
+               colour=mu.COLOURS['r_format'])
 
     vs = sc.view_settings
 
@@ -182,7 +184,8 @@ def sections(b, context, x, width):
             mu.row(b, sx, sw, [mu.button('Reset Curves', 'mch.render_curves_reset')])
             b.note(('note', 'The curve itself: Properties > Render > Color Management', False, None, None, None,
                     True), sx, sw)
-    mu.section(b, 'r_colour', _t('Color Management'), x, width, colour, start_folded=True, summary=vs.view_transform)
+    mu.section(b, 'r_colour', _t('Color Management'), x, width, colour, start_folded=True,
+               summary=vs.view_transform, colour=mu.COLOURS['r_colour'])
 
 
 CLASSES = (MCH_OT_render_lock_camera, MCH_OT_render_add_camera, MCH_OT_render_look_through, MCH_OT_render_dof_focus,

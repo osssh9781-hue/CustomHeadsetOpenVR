@@ -303,7 +303,8 @@ def section(b, context, x, width):
             b.note(('note', txt, False, None, None, None, True), sx, sw)
             mu.row(b, sx, sw, [mu.button('Release Lights', 'mch.hdri_turn_lights', release=True)])
     summ = f'{math.degrees(st.turn):.0f}°' + (' + ' + i18n.tr('Camera') if st.follow else '')
-    mu.section(b, 'r_hdri_turn', i18n.tr('HDRI Rotation'), x, width, fill, summary=summ)
+    mu.section(b, 'r_hdri_turn', i18n.tr('HDRI Rotation'), x, width, fill, summary=summ,
+               colour=mu.COLOURS['r_hdri_turn'])
 
 
 CLASSES = (MCH_PG_HdriTurn, MCH_OT_hdri_turn_reset, MCH_OT_hdri_turn_follow, MCH_OT_hdri_turn_lights)
