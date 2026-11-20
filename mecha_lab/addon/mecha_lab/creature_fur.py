@@ -35,7 +35,7 @@ from mathutils import Matrix, Vector
 from . import core_geometry as cg
 
 TREE = 'MCH Fur'
-TREE_VERSION = 13                  # 0.24.171 Bend; 0.24.183 Edge Short
+TREE_VERSION = 14                  # 0.24.171 Bend; 0.24.183 Edge Short
 MOD = 'MCH Fur'
 MAT = 'MCH Fur'
 AREA_KEY = 'mch_fur_area'          # on a fur object: the body attribute that holds its area
@@ -76,6 +76,8 @@ LIVE = (
     ('tip_color', 'Tip Color', 'COLOR', (0.75, 0.62, 0.45, 1.0), None, None),
     ('tip_blend', 'Tip Blend', 'FLOAT', 0.25, 0.0, 1.0),
     ('display', 'Viewport %', 'FLOAT', 1.0, 0.0, 1.0),
+    # 0.24.267 (user: "1 퍼센트인데 뷰포트로 맞춰 놨는데 렌더에서 더 풍성해져서") the render with the same share
+    ('display_render', 'Render Like Viewport', 'BOOL', False, None, None),
     ('seed', 'Seed', 'INT', 0, 0, 100000),
     # 0.24.171 (user: "머리카락을 내가 보는 뷰포트 방향에서 꺾을 수 있게 밴드 옵션") toward a side of the view
     ('bend', 'Bend', 'FLOAT', 0.0, 0.0, math.pi),
@@ -111,7 +113,9 @@ DESCS = {
     'root_color': 'The colour at the root (when not from the polypaint)',
     'tip_color': 'The colour the strands go to at their tips (by Tip Blend)',
     'tip_blend': 'How far the tips go to the Tip Color (0: the root colour all along)',
-    'display': 'The share of strands drawn in the viewport (all of them render)',
+    'display': 'The share of strands drawn in the viewport (all of them render - unless Render Like Viewport)',
+    'display_render': 'The render keeps only the Viewport % share too - it looks as full as the viewport '
+                      '(off: every strand renders)',
     'seed': 'Another random mix',
     'bend': 'How far the strands turn toward the bend direction (a side of the view, set by the buttons; 0 = none)',
     'bend_at': 'Where along the strands they bend (0 = at the root, 0.9 = near the tip)',
@@ -570,7 +574,10 @@ def fur_tree():
     dele = b.node('GeometryNodeDeleteGeometry', domain='CURVE')
     b.feed(dele.inputs['Geometry'], geo)
     hide = b.node('FunctionNodeBooleanMath', operation='AND')
-    b.feed(hide.inputs[0], b.node('GeometryNodeIsViewport').outputs['Is Viewport'])
+    either = b.node('FunctionNodeBooleanMath', operation='OR')       # (0.24.267 Render Like Viewport: the render too)
+    b.feed(either.inputs[0], b.node('GeometryNodeIsViewport').outputs['Is Viewport'])
+    b.feed(either.inputs[1], I['Render Like Viewport'])
+    b.feed(hide.inputs[0], either.outputs[0])
     b.feed(hide.inputs[1], b.math('GREATER_THAN', b.random(b.node('GeometryNodeInputIndex').outputs['Index'],
                                                             b.math('ADD', I['Seed'], 53.0)), I['Viewport %']))
     b.feed(dele.inputs['Selection'], hide.outputs[0])
@@ -1419,7 +1426,7 @@ def draw(layout, context):
         col.prop(tilt, k_)
     col.prop(pg, 'part_soft')
     for group, props in (('Strands', ('density', 'length', 'length_random', 'edge_short', 'edge_width', 'segments',
-                                      'display')),
+                                      'display', 'display_render')),
                          ('Shape', ('volume', 'spread', 'gravity', 'curl_turns', 'frizz', 'clump_size')),
                          ('Bend', ()),
                          ('Thickness', ('root_thick', 'tip_thick')),
