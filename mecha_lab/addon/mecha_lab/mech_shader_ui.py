@@ -1047,6 +1047,8 @@ def viewport_section(b, context, x, width):
         row(b, sx, sw, [_cell('seg', 'Light Copies (parts not worked on)', ('op', 'mch.light_copies', {}),
                               on=lst.on)])
         row(b, sx, sw, [prop_cell(lst, 'keep_selected', 'Selected Stay Light')])   # 0.24.271
+        row(b, sx, sw, [_cell('seg', 'Lock Copies (all stay light)', ('op', 'mch.light_lock', {}),
+                              on=lst.lock)])                                       # 0.24.272
         row(b, sx, sw, [number(lst, 'percent', 'Copy %')])
         row(b, sx, sw, [number(lst, 'min_tris', 'From')])
         for ln in lc.status(context):

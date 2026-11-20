@@ -44,6 +44,7 @@ PROP = 'mch_light'                # on the part: {"holder": ..., "sig": ..., "fu
 HOLDER = '{} (light copy)'
 TAG = 'mch_light_holder'
 REST = 3.0                        # seconds a part stays itself after a tool read it
+LOCK_REST = 0.3                   # 0.24.272 Lock Copies: back to the copy this soon after a read
 TICK = 0.25
 OWN_SECONDS = 1.5                 # geometry updates right after our own switch are ours, not edits
 CHECK_BUDGET = 0.03               # seconds per tick for comparing parts with their copies
@@ -99,6 +100,11 @@ class MCH_PG_Light(bpy.types.PropertyGroup):
     min_tris: IntProperty(name='From', default=300_000, min=10_000, soft_max=5_000_000, step=100_000,
                           update=_upd_min, description='Only parts with at least this many triangles get a copy')
     # 0.24.271 (user: "선택한 것도 디테일 안 올라가고") the selected parts light too
+    # 0.24.272 (user: "전체를 원래 메쉬로 안 돌아가게 하는 버튼 - 다시 눌러야 복사본 풀리게")
+    lock: BoolProperty(name='Lock Copies', default=False,
+                       description='Every part stays on its light copy - selected, edited (the old copy shown while '
+                                   'the new one is made), read by a tool (back at once) - until pressed again; Edit / '
+                                   'Sculpt Mode still shows the real part')
     keep_selected: BoolProperty(name='Selected Stay Light', default=False,
                                 description='Selected parts keep their light copy too (Edit / Sculpt Mode and the '
                                             'tools that read a part still get the real one)')
@@ -1023,7 +1029,7 @@ def sync_instances(context, now, browser):
     """Each marked instance empty on its light set or on its own collection as it should be now."""
     n = 0
     _st = settings(context)
-    st_keep = bool(_st is not None and _st.keep_selected)
+    st_keep = bool(_st is not None and (_st.keep_selected or _st.lock))
     for e in _instancers(context):
         key = e.get(INST)
         if not key:
@@ -1098,14 +1104,18 @@ def want_light(ob, now, active, browser):
     try:
         if ob.mode != 'OBJECT':
             return False
-        if ob.select_get():
-            st = settings(bpy.context)
+        st = settings(bpy.context)
+        locked = bool(st is not None and st.lock)
+        if ob.select_get() and not locked:
             if st is None or not st.keep_selected:
                 return False
     except (AttributeError, ReferenceError, RuntimeError):
         return False
     name = ob.name
-    if now - TOUCH.get(name, -1e9) < REST or name in STALE or name in QUEUE or WORK['name'] == name:
+    if locked:                                       # (0.24.272 Lock Copies: back to the copy right after a read,
+        if now - TOUCH.get(name, -1e9) < LOCK_REST:  #  the old copy kept while a new one is made)
+            return False
+    elif now - TOUCH.get(name, -1e9) < REST or name in STALE or name in QUEUE or WORK['name'] == name:
         return False
     holder = _holder(ob)
     return holder is not None and holder.data is not None and len(holder.data.polygons) > 0
@@ -1142,7 +1152,7 @@ def sync(context=None):
                 if not same:
                     STALE.add(name)
                     queue([name])
-                    want = False
+                    want = bool(st.lock)             # (0.24.272 locked: the old copy until the new one is ready)
         if mod.show_viewport != want:
             OWN[name] = now
             mod.show_viewport = want
@@ -1283,6 +1293,7 @@ def turn_off(context):
     st = settings(context)
     if st is not None:
         st.on = False
+        st.lock = False                              # (0.24.272)
     QUEUE.clear()
     th = WORK['thread']
     if th is not None:
@@ -1362,6 +1373,35 @@ def status(context):
     return lines
 
 
+class MCH_OT_light_lock(bpy.types.Operator):
+    """Lock Copies: every part stays light (selected, edited, read by a tool) until pressed again - Light Copies
+    turned on if it was off"""
+    bl_idname = 'mch.light_lock'
+    bl_label = 'Lock Copies'
+    bl_options = {'REGISTER', 'INTERNAL'}
+
+    def execute(self, context):
+        st = settings(context)
+        if st is None:
+            return {'CANCELLED'}
+        if st.lock:
+            st.lock = False
+            msg = 'Lock Copies off: parts you work on show themselves again'
+        else:
+            if not st.on:
+                turn_on(context)
+            st.lock = True
+            msg = 'Lock Copies: every part stays light until pressed again'
+        sync(context)
+        self.report({'INFO'}, msg)
+        try:
+            from . import side_panel
+            side_panel.dirty()
+        except (ImportError, AttributeError):
+            pass
+        return {'FINISHED'}
+
+
 class MCH_OT_light_copies(bpy.types.Operator):
     """Light Copies: heavy parts you are not working on are drawn from a light copy (the viewport only - renders and
     exports use the parts themselves).  Again: off, the copies removed"""
@@ -1383,7 +1423,7 @@ class MCH_OT_light_copies(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_PG_Light, MCH_OT_light_copies)
+CLASSES = (MCH_PG_Light, MCH_OT_light_lock, MCH_OT_light_copies)
 
 
 def register():
