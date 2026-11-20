@@ -1133,6 +1133,8 @@ def hdri_content(context, x, width, k):
     add-on lights the scene): Quick Render, the viewport, the background colour."""
     b = sp.Builder('HDRI', x, width, k)
     quick_render_section(b, context, x, width)
+    from . import render_panel                   # 0.24.265 Camera, Depth of Field, Format, Color Management
+    render_panel.sections(b, context, x, width)
     creature_light_section(b, context, x, width)
     viewport_section(b, context, x, width)
     background_section(b, context, x, width)
