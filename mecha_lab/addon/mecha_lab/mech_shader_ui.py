@@ -1173,7 +1173,7 @@ def background_section(b, context, x, width):
 
 # 0.24.273 (user: "구다리마다 잘 보이게 색 구별해 주고") the Render page's sections: a colour each (mecha_menu.BIG_HEAD)
 COLOURS = {'quick_render': '2', 'r_camera': '5', 'r_hdri_turn': '4', 'r_dof': '6', 'r_format': '8', 'r_colour': '7',
-           'creature_light': '3', 'viewport': '9', 'background': '1', 'floor': '8'}
+           'creature_light': '3', 'viewport': '9', 'background': '1', 'floor': '8', 'perf': '6'}
 
 
 def hdri_content(context, x, width, k):
@@ -1185,6 +1185,8 @@ def hdri_content(context, x, width, k):
     render_panel.sections(b, context, x, width)
     creature_light_section(b, context, x, width)
     viewport_section(b, context, x, width)
+    from . import perf_view                      # 0.24.277 viewport performance, right under Viewport
+    perf_view.section(b, context, x, width)
     background_section(b, context, x, width)
     floor_section(b, context, x, width)          # 0.24.273 next to the background
     return b.out, -b.y
