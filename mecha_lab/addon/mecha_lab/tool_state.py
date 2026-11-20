@@ -565,6 +565,11 @@ class MCH_PG_Cut(bpy.types.PropertyGroup):
         ('EXACT', 'Exact', 'Blender Exact solver only'),
         ('MANIFOLD', 'Manifold', 'Fast manifold solver (needs closed input)'),
         ('FAST', 'Float', 'Legacy fast solver (least robust)')], default='AUTO')
+    # 0.24.278 (user: "클로스 ... 스플릿이랑 컷 해서 ... 자르면 오류" -> 9번 "ㄱㄱ") a thin sheet thickened before a cut
+    sheet_thick: BoolProperty(name='Thin Sheets: Give Thickness', default=False,
+                              description='An open single sheet (a cloth, a plane) gets a thin 1.5 mm thickness before '
+                                          'Cut / Split - the pieces are thin solids.  Off (as before): a sheet is cut as '
+                                          'the sheet it is (the pieces stay single sheets)')
     hole_tolerant: BoolProperty(name='Hole Tolerant', default=False,
                                 description='Exact solver option for meshes with holes/non-manifold parts (slower)')
     # 0.24.152 (user: "컷 스플릿 같은 것도 6~7 mil 하이폴에서도 렉 안 걸리게") on by default: a 5.2 M-face part's Cut

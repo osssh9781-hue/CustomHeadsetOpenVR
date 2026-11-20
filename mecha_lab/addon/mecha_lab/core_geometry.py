@@ -1079,11 +1079,74 @@ def _boolean_region(context, target, cutter, operation, solver, hipoly):
     return me, 'REGION'
 
 
+SHEET_THICK = 0.0015            # 0.24.278 a thin sheet's thickness before a cut (metres, in the world)
+SHEET_NOTE = ['']
+
+
+def is_sheet(me):
+    """An open single sheet (a cloth, a plane, a cape): its open edges against the square root of its faces - a square
+    sheet 4.0, a round one 3.5, a long strip more; an open shell is not one (a helmet / hemisphere open at the bottom 2.0,
+    the monkey 1.9, a sphere with a pin hole ~0.1: left as they are, cut with their open side capped as before)."""
+    import math
+    import numpy as np
+    n_f = len(me.polygons)
+    if n_f == 0:
+        return False
+    ev = np.empty(len(me.loops), np.int32)
+    me.loops.foreach_get('edge_index', ev)
+    uses = np.bincount(ev, minlength=len(me.edges))
+    open_edges = int((uses == 1).sum())
+    return open_edges >= 8 and open_edges >= 3.0 * math.sqrt(n_f)
+
+
+def thicken_sheet(context, ob):
+    """0.24.278 (user: 9번 - "클로스 시뮬 돌리고 스플릿이랑 컷 해서 재질 바꾸려는데 자르면 오류") An open sheet gets a
+    thin thickness (1.5 mm in the world, centred on it - a Solidify baked into its mesh) before it is cut, so Cut /
+    Split work on it as on a solid.  Returns True when it was thickened."""
+    if getattr(ob, 'type', '') != 'MESH' or not is_sheet(ob.data):
+        return False
+    sc = ob.matrix_world.to_scale()
+    k = max((abs(sc.x) + abs(sc.y) + abs(sc.z)) / 3.0, 1e-9)
+    saved = [(m, m.show_viewport) for m in ob.modifiers]
+    mod = None
+    try:
+        for m, _v in saved:
+            m.show_viewport = False
+        mod = ob.modifiers.new('MCH Sheet Thickness', 'SOLIDIFY')
+        mod.thickness = SHEET_THICK / k
+        mod.offset = 0.0
+        mod.use_even_offset = True
+        mod.use_rim = True
+        dg = context.evaluated_depsgraph_get()
+        me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), preserve_all_data_layers=True, depsgraph=dg)
+    finally:
+        if mod is not None:
+            ob.modifiers.remove(mod)
+        for m, v in saved:
+            m.show_viewport = v
+    old = ob.data
+    me.name = old.name
+    if not me.materials:
+        for mat in old.materials:
+            me.materials.append(mat)
+    ob.data = me
+    if old.users == 0:
+        bpy.data.meshes.remove(old)
+    SHEET_NOTE[0] = f'{ob.name}: a thin sheet - given {SHEET_THICK * 1000:.1f} mm thickness to cut it'
+    return True
+
+
 def boolean_result(context, target, cutter, operation, solver='AUTO',
                    hole_tolerant=False, allow_empty=False, hipoly=True):
     """``_boolean_result``; 0.24.95 the part's Edge Memory marks carried onto the edges the Boolean made along its
     old marked lines (the Manifold solver rebuilds the faces it touches without their edge marks: a random-holes box
     lost the creases of earlier cuts with every cut from the side - ``edge_memory.carry_marks``)."""
+    cut_st = getattr(getattr(context, 'scene', None), 'mch_cut', None)
+    if getattr(target, 'type', '') == 'MESH' and getattr(cut_st, 'sheet_thick', False):
+        try:
+            thicken_sheet(context, target)          # 0.24.278 a cloth / plane: a thin thickness first
+        except (RuntimeError, ReferenceError, AttributeError) as ex:
+            print('Mecha: sheet thickness:', ex)
     got = _boolean_result_any(context, target, cutter, operation, solver, hole_tolerant, allow_empty, hipoly)
     try:
         if got is not None and got[0] is not None:

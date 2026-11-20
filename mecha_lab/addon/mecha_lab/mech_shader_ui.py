@@ -151,11 +151,20 @@ def inline_picker(b, x, w):
     b.place_row([button('Pick (eyedropper)', 'mch.color_eyedrop'), button('Done', 'mch.color_inline_close')], x, w)
 
 
+AUTO_COLOURS = '52467138'          # 0.24.278 the Mech / Creature / Simple / Decals sections' colours in turn
+AUTO_COLOUR_PAGES = {'MATERIAL', 'CREATURE', 'SIMPLE', 'DECALS'}
+
+
 def section(b, key, title, x, w, fill, start_folded=False, summary='', colour=None):
     """A foldable section (its title clicked folds it), ``fill(x, w)`` places its rows.  ``colour`` (0.24.273, '1' ..
     '9'): a big coloured title bar instead (the summary at its right)."""
     k = b.k
     is_folded = sp.folded(PAGE, key, start_folded)
+    depth = getattr(b, '_sec_depth', 0)
+    if colour is None and depth == 0 and b.tool in AUTO_COLOUR_PAGES:   # 0.24.278 (user: 10번 - 메크 · 크리쳐 탭도
+        i = getattr(b, '_sec_i', 0)                                      # 섹션마다 색) a colour each, in turn
+        colour = AUTO_COLOURS[i % len(AUTO_COLOURS)]
+        b._sec_i = i + 1
     top = b.y
     b.gap(0.5)
     bg = b.Item('sbg', x, 0, w, 0)
@@ -171,7 +180,11 @@ def section(b, key, title, x, w, fill, start_folded=False, summary='', colour=No
                             ('fold', f'{PAGE}:{key}', start_folded)))
     if not is_folded:
         b.gap(0.5)
-        fill(x + 8 * k, w - 16 * k)
+        b._sec_depth = depth + 1
+        try:
+            fill(x + 8 * k, w - 16 * k)
+        finally:
+            b._sec_depth = depth
     b.gap(0.3)
     bg.y, bg.h = b.y, top - b.y - sp.GAP * k * 0.5
     b.gap(0.7)

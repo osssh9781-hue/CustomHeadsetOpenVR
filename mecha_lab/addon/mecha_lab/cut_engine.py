@@ -826,6 +826,11 @@ def _drop_temp_caps(me):
 def _boolean_checked(context, cut, t, cutter, op, groups, projector, near, far, invert):
     """boolean_result + a precise explanation when the result would be empty.  0.24.95 an open part is cut with its
     open sides shut for the Boolean (``_temp_capped``) and opened again in the result."""
+    if getattr(cut, 'sheet_thick', False):         # 0.24.278 a thin sheet (a cloth): a thickness first, not caps
+        try:
+            cg.thicken_sheet(context, t)
+        except (RuntimeError, ReferenceError, AttributeError) as ex:
+            print('Mecha: sheet thickness:', ex)
     cap = _temp_capped(t)
     if cap is not None:
         full = t.data
@@ -983,15 +988,31 @@ def _perform_closed_base(context, mode, targets, loops, projector, invert=False)
     baked = [t.name for t in targets if cg.ensure_real_mesh(context, t)]
     for t in targets:
         cg.check_target(t)
+    sheets = []                                                  # 0.24.278 a thin sheet (a cloth): a thickness
+    if getattr(cut, 'sheet_thick', False):                       # first - before the repair / the warning
+        for t in targets:
+            try:
+                if cg.thicken_sheet(context, t):
+                    sheets.append(t.name)
+            except (RuntimeError, ReferenceError, AttributeError) as ex:
+                print('Mecha: sheet thickness:', ex)
     from . import mesh_fix
     if _FIXED_NOW and all(t.name in _FIXED_NOW for t in targets):
         fixed = {}                                               # 0.24.177 a line cut fixed them just before
     else:
         fixed = mesh_fix.auto_fix(context, targets)              # 0.24.81 a broken part is repaired first
     broken = {t.name: n for t in targets for n in (cg.overlap_edges(t),) if any(n)}     # 0.24.21
+    # 0.24.278 (user: "클로스 ... 자르면 오류") a single sheet (a cloth) whose only "problem" is its own open outline is
+    # not broken - it is cut as a sheet: no "not one clean solid" warning for it
+    sheet_ok = [n for n, c in broken.items() if c[0] == 0 and n in bpy.data.objects
+                and cg.is_sheet(bpy.data.objects[n].data)]
+    for n in sheet_ok:
+        del broken[n]
     try:
         report = _perform_closed(context, mode, targets, groups, projector, invert, cut, auto_apply, baked, frozen)
         report += mesh_fix.auto_fix_note(fixed)
+        if sheets:
+            report += f' | Thin sheet: {", ".join(sheets)} given {cg.SHEET_THICK * 1000:.1f} mm thickness to cut it'
     except cg.CutError as ex:
         if broken:
             hints = ' '.join(cg.overlap_hint(bpy.data.objects[n], c) for n, c in broken.items() if n in bpy.data.objects)

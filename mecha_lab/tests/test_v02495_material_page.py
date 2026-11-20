@@ -96,8 +96,9 @@ used = mu.in_use(mat, st)
 check('Chipped Paint: the layers in use start open (Paint, Edge Wear), the others folded (Snow, Glow, Weave)',
       {'paint', 'chip'} <= used and hd['PAINT'].on and hd['EDGE WEAR'].on and not hd['SNOW'].on and not hd['GLOW'].on
       and not hd['WEAVE'].on, sorted(used))
-check('... a layer\'s amount in its title (EDGE WEAR  35 %)', next(i.label for i in its if i.kind == 'shead'
-                                                                 and i.label.startswith('EDGE WEAR')).endswith('35 %'))
+_ew = next(i for i in its if i.kind == 'shead' and i.label.startswith('EDGE WEAR'))
+check('... a layer\'s amount in its title (EDGE WEAR  35 %; 0.24.278 a coloured title: at its right)',
+      (_ew.label + '|' + str(_ew.icon)).endswith('35 %'))
 check('Paint: coverage, colour swatch, roughness, pattern',
       by_prop(its, 'paint', 'mini') and by_prop(its, 'paint_color', 'swatch') and by_prop(its, 'paint_rough', 'mini')
       and by_prop(its, 'paint_pattern', 'mini'))
