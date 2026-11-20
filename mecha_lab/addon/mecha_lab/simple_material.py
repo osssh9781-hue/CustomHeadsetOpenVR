@@ -184,6 +184,39 @@ class MCH_OT_simple_adopt(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def shared_count(mat):
+    """How many objects use ``mat`` (in any slot)."""
+    if mat is None:
+        return 0
+    return sum(1 for o in bpy.data.objects if any(sl.material is mat for sl in getattr(o, 'material_slots', ())))
+
+
+class MCH_OT_simple_single(bpy.types.Operator):
+    """Break the material link: each selected object gets its own copy of the active material (changing it no longer
+    changes the others)"""
+    bl_idname = 'mch.simple_material_single'
+    bl_label = 'Break Material Link'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return shared_count(active_material(context)) > 1
+
+    def execute(self, context):
+        act = context.active_object
+        mat = active_material(context)
+        obs = [o for o in context.selected_objects if o.active_material is mat]
+        if act is not None and act.active_material is mat and act not in obs:
+            obs.append(act)
+        if len(obs) >= shared_count(mat):            # (every user selected: one keeps the original - the active one)
+            keep = act if act in obs else obs[0]
+            obs = [o for o in obs if o is not keep]
+        for o in obs:
+            o.active_material = mat.copy()
+        self.report({'INFO'}, f'{len(obs)} object(s) got their own copy of {mat.name}')
+        return {'FINISHED'}
+
+
 def page(context, x, width, k):
     """(items, content height) - the Simple page of the side panel."""
     from . import mech_shader_ui as mu
@@ -191,6 +224,13 @@ def page(context, x, width, k):
     b = sp.Builder(PAGE, x, width, k)
     mat = active_material(context)
     mu.row(b, x, width, [mu.button('New Simple Material', 'mch.simple_material_new')])
+    users = shared_count(mat)
+    if users > 1:                                    # 0.24.264 (user: "메테리얼 링크 끊는 것도")
+        from . import i18n
+        txt = (f'"{mat.name}" - 오브젝트 {users} 개가 함께 씀' if i18n.lang() == 'KO'
+               else f'"{mat.name}" is shared by {users} objects')
+        b.note(('note', txt, True, None, None, None, True), x, width)
+        mu.row(b, x, width, [mu.button('Break Material Link', 'mch.simple_material_single')])
     if mat is None:
         b.note(('note', 'Select a mesh: New Simple Material puts a plain Principled material on it', True, None,
                 None, None, True), x, width)
@@ -218,7 +258,7 @@ def page(context, x, width, k):
     return b.out, -b.y
 
 
-CLASSES = (MCH_PG_Simple, MCH_OT_simple_new, MCH_OT_simple_adopt)
+CLASSES = (MCH_PG_Simple, MCH_OT_simple_new, MCH_OT_simple_adopt, MCH_OT_simple_single)
 
 
 def register():

@@ -47,4 +47,17 @@ kinds = [(i.kind, i.label) for i in items]
 check(f'the Simple page: a colour swatch, number bars, the sections ({len(items)} rows)',
       any(k_ == 'swatch' for k_, _l in kinds) and any(k_ == 'mini' for k_, _l in kinds)
       and any('SURFACE' in (l_ or '') for _k, l_ in kinds) and any('EMISSION' in (l_ or '') for _k, l_ in kinds))
+# 0.24.264 (user: "심플 메테리얼에 메테리얼 링크 끊는 것도") a shared material: Break Material Link gives the selected their own copy
+for o in list(C.selected_objects):
+    o.select_set(False)
+a.select_set(True); C.view_layer.objects.active = a
+shared = a.active_material
+check(f'a material shared by {sm.shared_count(shared)} objects: Break Material Link offered', sm.shared_count(shared) == 2
+      and bpy.ops.mch.simple_material_single.poll())
+bpy.ops.mch.simple_material_single()
+check('... the selected one gets its own copy (still a Simple material), the other keeps the original',
+      a.active_material is not shared and b_.active_material is shared and sm.is_simple(a.active_material)
+      and abs(a.active_material.mch_simple.metallic - shared.mch_simple.metallic) < 1e-6)
+a.active_material.mch_simple.base_color = (0.0, 1.0, 0.0)
+check('... changing it no longer changes the other', abs(sm.principled(shared).inputs['Base Color'].default_value[1] - 0.1) < 1e-6)
 summary()

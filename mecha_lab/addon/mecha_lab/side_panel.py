@@ -682,12 +682,31 @@ def taken(context, k):
     """How much of the right side the panel takes (0 when it is not shown) - the top bar / cards keep clear."""
     if not on(context):
         return 0.0
-    return (MIN_W if minimised(context) else WIDTH + 12.0) * k + 12.0 * k
+    return (MIN_W if minimised(context) else panel_width() + 12.0) * k + 12.0 * k
+
+
+_PW = {}
+
+
+def panel_width():
+    """0.24.264 (user: "메뉴 자체를 옆으로 늘리는 게 낫지 않나?" - seven tabs: "T...", "Me...", "Creat..." in English)
+    the panel's width (unscaled): WIDTH, or as wide as the page tabs' names need in the language shown (each name
+    whole), up to 440."""
+    try:
+        from . import i18n
+        key = i18n.lang()
+    except (ImportError, AttributeError):
+        key = ''
+    if key not in _PW:
+        names = ['Tool'] + [PAGES[p][0] for p in PAGES]
+        need = sum(_text_w(n, TAB_TEXT) + 14.0 for n in names) + 3.0 * (len(names) - 1) + 2 * PAD
+        _PW[key] = float(min(440.0, max(WIDTH, need)))
+    return _PW[key]
 
 
 
 def frame(region_w, region_h, k, context=None):
-    w = WIDTH * k
+    w = panel_width() * k
     x0, top = region_w - w - 12 * k, region_h - TOP_MARGIN * k
     if context is not None:          # 0.24.77 below the corner card where they would meet (its VIEW row made it taller)
         try:
