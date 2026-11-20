@@ -13,6 +13,7 @@ fresh()
 mecha_lab.register()
 C = bpy.context
 S = C.scene
+S.mch_hidden_auto = False                  # (0.24.270 Auto off: Hidden Stay Hidden alone decides, as tested here)
 st = S.mch_qrender
 
 

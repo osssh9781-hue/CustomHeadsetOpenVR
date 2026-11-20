@@ -10,6 +10,7 @@ fresh()
 mecha_lab.register()
 C = bpy.context
 S = C.scene
+S.mch_hidden_auto = False                  # (0.24.270 Auto off: the buttons by hand, as tested here)
 
 
 def cube(name, x, coll=None):
@@ -33,7 +34,7 @@ hid.hide_set(True)
 mine.hide_set(True)
 mine.hide_render = True                                 # (turned off by the user already)
 C.view_layer.layer_collection.children['Folder'].hide_viewport = True
-cells = rh.toolbar_cells(C)
+cells = rh.toolbar_cells(C)[1:]                         # (0.24.270: Auto first)
 check(f'the Layers window\'s row: {[c[0] for c in cells]}', cells[0][0] == 'No Render (2)' and cells[0][2]
       and cells[1][0] == 'Render Again (0)' and not cells[1][2])
 r = bpy.ops.mch.hidden_no_render()
