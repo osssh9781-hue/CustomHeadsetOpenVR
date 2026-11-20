@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
     "author": "OpenAI / ChatGPT, Claude Code",
-    "version": (0, 24, 262),
+    "version": (0, 24, 263),
     "blender": (4, 3, 0),
     "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
     "description": "Cut, Split, Base Mesh, Boolean, Face Extract, Armor Sculpt, Molding, Cable, Hollow, curve arrays, Mirror",
@@ -2075,6 +2075,8 @@ def _register():
     bool_bevel.register()                         # 0.24.178 Boolean Bevel
     subd_edit.register()                          # 0.24.231 SubD Plane edited in Object Mode
     bevel_normal.register()                       # 0.24.234 Bevel Normal on every mesh
+    from . import simple_material
+    simple_material.register()                    # 0.24.263 Simple (Principled) material page
     progress.register()                           # 0.24.242 the progress card for long jobs
     retopo_bake.register()                        # 0.24.241 Retopo + Bake (0.24.242 two steps)
     hair_cards.register()                         # 0.24.241 hair -> hair cards
@@ -2360,6 +2362,7 @@ def _unregister_steps():
         ('retopo_bake', retopo_bake.unregister),
         ('progress', progress.unregister),
         ('bevel_normal', bevel_normal.unregister),
+        ('simple_material', __import__(__name__ + '.simple_material', fromlist=['x']).unregister),
         ('subd_edit', subd_edit.unregister),
         ('bool_bevel', bool_bevel.unregister),
         ('edge_molding', edge_molding.unregister),

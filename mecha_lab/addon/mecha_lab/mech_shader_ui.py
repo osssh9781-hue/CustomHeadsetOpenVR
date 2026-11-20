@@ -482,7 +482,8 @@ def zones_section(b, x, width, context, mat):
             summary=(f'{n} zones' if n else '') + (f'  {len(slots)} materials' if len(slots) > 1 else ''))
 
 
-PAGE_NAMES = {'MATERIAL': 'Mech', 'CREATURE': 'Creature', 'DECALS': 'Decals', 'HDRI': 'HDRI', 'SHAPES': 'Shapes'}
+PAGE_NAMES = {'MATERIAL': 'Mech', 'CREATURE': 'Creature', 'SIMPLE': 'Simple', 'DECALS': 'Decals', 'HDRI': 'HDRI',
+              'SHAPES': 'Shapes'}
 
 
 def elsewhere(b, x, width, text, page):

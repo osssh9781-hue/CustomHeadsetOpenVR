@@ -863,6 +863,7 @@ class MCH_OT_side_page(bpy.types.Operator):
     page: bpy.props.EnumProperty(items=[('TOOL', 'Tool', 'The tool\'s settings'),
                                         ('MATERIAL', 'Mech', 'The Mech Shader'),
                                         ('CREATURE', 'Creature', 'The Creature Shader (skins, parts, eyes)'),
+                                        ('SIMPLE', 'Simple', 'A plain Principled material, set like the shader panel'),
                                         ('DECALS', 'Decals', 'Decals: place them, their look and damage'),
                                         ('HDRI', 'HDRI', 'The scene\'s HDRI lighting'),
                                         ('SHAPES', 'Shapes', 'Random base shapes: Polygon, Curved, variations')],
@@ -1213,7 +1214,8 @@ def register():
     wmt.mch_side_scroll = FloatProperty(default=0.0, min=0.0, options={'SKIP_SAVE'})
     wmt.mch_side_min = BoolProperty(default=False, options={'SKIP_SAVE'})
     wmt.mch_side_page = bpy.props.EnumProperty(items=[('TOOL', 'Tool', ''), ('MATERIAL', 'Mech', ''),
-                                                      ('CREATURE', 'Creature', ''), ('DECALS', 'Decals', ''),
+                                                      ('CREATURE', 'Creature', ''), ('SIMPLE', 'Simple', ''),
+                                                      ('DECALS', 'Decals', ''),
                                                       ('HDRI', 'HDRI', ''), ('SHAPES', 'Shapes', '')],
                                                 default='TOOL', options={'SKIP_SAVE'})
     for c in CLASSES:

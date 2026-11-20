@@ -25,7 +25,9 @@ HEAD = 40.0
 TABS = 34.0              # 0.24.95 the Tool | Material | HDRI tabs under the title
 # page -> (title, icon); 0.24.95 (user: "이건 데칼 탭으로 가자! 메테리얼도 크리쳐랑 메카닉이랑 좀 분리해 줘") the Material
 # page split: Mech (the Mech Shader - still 'MATERIAL'), Creature (the Creature Shader, eyes), Decals
-PAGES = {'MATERIAL': ('Mech', 'material'), 'CREATURE': ('Creature', 'creature'), 'DECALS': ('Decals', 'decal'),
+PAGES = {'MATERIAL': ('Mech', 'material'), 'CREATURE': ('Creature', 'creature'),
+         'SIMPLE': ('Simple', 'material'),   # 0.24.263 a plain Principled material, shader-panel style
+         'DECALS': ('Decals', 'decal'),
          'HDRI': ('Render', 'hdri'), 'SHAPES': ('Shapes', 'shapes')}   # 0.24.137 HDRI -> Render   # 0.24.95 Shapes: random base shapes
 SECTION = 26.0
 BIG_SECTION = 34.0       # 0.24.213 a big coloured title (a box whose title label has a STRIP_COLOR_0n icon)
@@ -605,6 +607,9 @@ def content(context, tool, x, width, k):
     if page(context) == 'CREATURE':
         from . import mech_shader_ui
         return mech_shader_ui.creature_page(context, x, width, k)
+    if page(context) == 'SIMPLE':
+        from . import simple_material
+        return simple_material.page(context, x, width, k)
     if page(context) == 'DECALS':
         from . import mech_shader_ui
         return mech_shader_ui.decal_page(context, x, width, k)

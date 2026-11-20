@@ -314,4 +314,17 @@ zn.add_paint_zone(C, old_body, square, vm, wm, True, RW, RH)
 hub = ocm.node_tree.nodes.get('mch:zone_mask')
 check('... a Creature material made by an earlier build (version 2): the same, the marking linked in',
       ocm.get(cs.KEY) == cs.VERSION and hub is not None and hub.inputs[0].is_linked)
+# 0.24.263 (user: "페인트 존 할 때 사이에 붉은 선") a Hard zone's mask read Closest (EEVEE's mipmapped Linear softened the
+# outline: the part's own paint showed as a thin line), the soft edges Linear
+zh = zn.add_paint_zone(C, part, square, vm, wm, True, RW, RH, color=(0.1, 0.1, 0.1))
+nt_ = part.active_material.node_tree
+def interp(zz):
+    i = list(zn.zones_of(part.active_material)).index(zz)
+    return [n.interpolation for n in nt_.nodes if n.bl_idname == 'ShaderNodeTexImage' and n.name.startswith(f'{zn.PREFIX}{i}:')]
+hard_i = interp(zh)
+zh.edge = 'AIRBRUSH'
+soft_i = interp(zh)
+zh.edge = 'HARD'
+check(f'a Hard zone\'s mask is read Closest ({hard_i}), an Airbrush one Linear ({soft_i})',
+      hard_i and all(x == 'Closest' for x in hard_i) and soft_i and all(x == 'Linear' for x in soft_i))
 summary()

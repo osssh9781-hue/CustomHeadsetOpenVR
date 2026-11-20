@@ -449,7 +449,9 @@ def _look_up(b, z, vt, q, pos, P, nrm, eye, look, lw, lsel, thr, shared):
     tex.name = vt + 'mask'
     tex.image = z.mask
     tex.extension = 'CLIP'
-    tex.interpolation = 'Linear'
+    # 0.24.263 (user: "페인트 존 할 때 사이에 붉은 선이 생겨"): a Hard edge's mask read without blur - EEVEE's Linear
+    # (mipmapped) lookup softened the outline, the part's own paint showing through as a thin line along it
+    tex.interpolation = 'Closest' if z.edge == 'HARD' else 'Linear'
     b.link(uv.outputs['Vector'], tex.inputs['Vector'])
     # (the distance fields: mask pixels from the outline, + inside - red the fine one, green the coarse one)
     rgb = b.node('ShaderNodeSeparateColor')
@@ -1779,9 +1781,43 @@ def _mirror_watch(scene, depsgraph=None):
         _WATCHING[0] = False
 
 
+def sharpen_masks(mat):
+    """0.24.263 a zoned material made before: its Hard zones' masks read Closest (no line along the outline in
+    EEVEE).  Returns how many changed."""
+    nt = mat.node_tree if mat is not None and mat.use_nodes else None
+    if nt is None:
+        return 0
+    live = [z for z in zones_of(mat) if z.projector is not None and z.mask is not None]
+    n = 0
+    for nd in nt.nodes:
+        if nd.bl_idname != 'ShaderNodeTexImage' or not nd.name.startswith(PREFIX) or not nd.name.endswith('mask'):
+            continue
+        try:
+            i = int(nd.name[len(PREFIX):].split(':')[0])
+        except ValueError:
+            continue
+        want = 'Closest' if i < len(live) and live[i].edge == 'HARD' else 'Linear'
+        if nd.interpolation != want:
+            nd.interpolation = want
+            n += 1
+    return n
+
+
+@persistent
+def _sharpen_on_load(*_a):
+    try:
+        for m in bpy.data.materials:
+            if len(getattr(m, 'mch_zones', ())):
+                sharpen_masks(m)
+    except (ReferenceError, AttributeError, RuntimeError):
+        pass
+
+
 def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
+    if _sharpen_on_load not in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.append(_sharpen_on_load)
     if _mirror_watch not in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.append(_mirror_watch)
     bpy.types.Material.mch_zones = CollectionProperty(type=MCH_PG_Zone)
@@ -1794,6 +1830,8 @@ def register():
 
 
 def unregister():
+    if _sharpen_on_load in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(_sharpen_on_load)
     if _mirror_watch in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(_mirror_watch)
     for attr in ('mch_zones', 'mch_zone_parent', 'mch_zone_follow'):
