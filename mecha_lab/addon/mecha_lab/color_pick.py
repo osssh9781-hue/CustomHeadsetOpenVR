@@ -20,10 +20,41 @@ from bpy.props import FloatProperty
 _HUE = [0.0]                    # (the last hue: kept while Saturation or Value is 0 - grey has no hue of its own)
 
 
+INLINE = [None, '']             # 0.24.275 the swatch whose picker is open in the side panel (a live_ref Ref, prop)
+
+
+def inline_open(ref, prop):
+    """Open (or, on the same swatch again, close) the picker in the panel for this swatch."""
+    from . import live_ref
+    from .ui_bars import EDIT
+    ref = live_ref.wrap(ref)
+    if INLINE[0] is not None and INLINE[0] == ref and INLINE[1] == prop:
+        INLINE[:] = [None, '']
+    else:
+        INLINE[:] = [ref, prop]
+        EDIT[:] = [ref, prop]
+
+
+def inline_close():
+    INLINE[:] = [None, '']
+
+
+def inline_is(data, prop):
+    if INLINE[0] is None or prop != INLINE[1]:
+        return False
+    from . import live_ref
+    try:
+        return live_ref.wrap(data) == INLINE[0]
+    except (ReferenceError, AttributeError, TypeError):
+        return False
+
+
 def target():
     """(data, prop) of the swatch the picker edits, or (None, '')."""
     from .ui_bars import EDIT
+    from . import live_ref
     data, prop = EDIT
+    data = live_ref.resolve(data)                    # (0.24.275 a Ref: looked up fresh)
     try:
         rna = data.bl_rna.properties.get(prop) if data is not None else None
     except (AttributeError, ReferenceError):
@@ -277,7 +308,23 @@ class MCH_OT_color_eyedrop(bpy.types.Operator):
         return self._apply(context, rgb)
 
 
-CLASSES = (MCH_OT_color_eyedrop,)
+class MCH_OT_color_inline_close(bpy.types.Operator):
+    """Close the colour picker in the panel"""
+    bl_idname = 'mch.color_inline_close'
+    bl_label = 'Done'
+    bl_options = {'INTERNAL'}
+
+    def execute(self, context):
+        inline_close()
+        try:
+            from . import side_panel
+            side_panel.dirty()
+        except (ImportError, AttributeError):
+            pass
+        return {'FINISHED'}
+
+
+CLASSES = (MCH_OT_color_eyedrop, MCH_OT_color_inline_close)
 
 
 def register():

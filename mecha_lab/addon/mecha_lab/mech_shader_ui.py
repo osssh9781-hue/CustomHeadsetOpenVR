@@ -102,7 +102,7 @@ def number(data, prop, label=None):
 
 def swatch(data, prop, label=None):
     rna = data.bl_rna.properties[prop]
-    return _cell('swatch', label or rna.name, ('color',), data, prop)
+    return _cell('swatch', label or rna.name, ('color', 'inline'), data, prop)   # 0.24.275 the picker in the panel
 
 
 def button(text, idname, **props):
@@ -133,7 +133,22 @@ def stepper(b, x, w, prev, choice, nxt):
 
 
 def row(b, x, w, cells):
-    b.place_row([c for c in cells if c is not None], x, w)
+    cells = [c for c in cells if c is not None]
+    b.place_row(cells, x, w)
+    from . import color_pick                     # 0.24.275 (user: "컬러 피커가 마우스 치우면 바로 꺼져") the open
+    for c in cells:                              # colour's picker right under its row, in the panel itself
+        if c[0] == 'swatch' and color_pick.inline_is(c[4], c[5]):
+            inline_picker(b, x, w)
+            break
+
+
+def inline_picker(b, x, w):
+    """0.24.275 Hue / Saturation / Value bars, Pick and Done - part of the panel: nothing to close by moving away."""
+    wm = bpy.context.window_manager
+    b.place_row([number(wm, 'mch_pick_h', 'Hue')], x, w)
+    b.place_row([number(wm, 'mch_pick_s', 'Saturation')], x, w)
+    b.place_row([number(wm, 'mch_pick_v', 'Value')], x, w)
+    b.place_row([button('Pick (eyedropper)', 'mch.color_eyedrop'), button('Done', 'mch.color_inline_close')], x, w)
 
 
 def section(b, key, title, x, w, fill, start_folded=False, summary='', colour=None):

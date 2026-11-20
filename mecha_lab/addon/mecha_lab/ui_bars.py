@@ -738,6 +738,10 @@ def run(context, item):
             wm.mch_layers_min = not wm.mch_layers_min
         elif kind == 'page':                      # 0.24.95 side panel: the tool's settings | Material
             bpy.ops.mch.side_page(page=a[1])
+        elif kind == 'color' and len(a) > 1 and a[1] == 'inline':   # 0.24.275 the picker opens in the panel
+            from . import color_pick
+            color_pick.inline_open(item.ref, item.prop)
+            side_panel.dirty()
         elif kind == 'color':                     # 0.24.95 a colour swatch: the colour picker
             open_value(context, item)
     except (RuntimeError, TypeError, ValueError, AttributeError, KeyError, ReferenceError) as ex:
