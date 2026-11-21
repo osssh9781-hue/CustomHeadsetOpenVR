@@ -1,6 +1,6 @@
-"""0.24.279 (user: "벨트 메이커 쓸 때 하나만 선택이 되니까 오토랑 셀렉트 액티브별로 여러 개 선택하면 쓸 수 있게"): a belt
-line across several parts - Auto: a belt on every part it crosses; Selected: on the selected ones only; Active: on the
-active one; each its own live belt, all selected after."""
+"""0.24.279 / 0.24.280 (user: "벨트 메이커 ... 오토랑 셀렉트 액티브별로 여러 개", "선택한 레이어가 두 개면 두 개를 같이 묶어야지"):
+a belt line across several parts - Auto: the parts it crosses, Selected: the selected ones, Active: the active one -
+ONE belt binding them together (Wrap: round all of them, the strap bridging the gap)."""
 import math
 
 from _harness import bpy, check, fresh, summary
@@ -39,35 +39,43 @@ def body(name, loc=(0, 0, 0)):
 
 
 from mecha_lab import belt_maker as _b  # noqa
+import json as _j
 a = body('Left', (-1.2, 0, 0)); b = body('Right', (1.2, 0, 0))
 line = [scr(-2.6, 0.1), scr(0, 0.1), scr(2.6, 0.1)]
 C.scene.mch_cut.targets = 'AUTO'
 only()
 msg = bmk.perform(C, line, proj)
 belts = [o for o in C.scene.objects if o.get(bmk.SRC_KEY)]
-import json as _j
-on = sorted(_j.loads(o[bmk.SRC_KEY])['target'] for o in belts)
-check(f'Auto: a belt on every part the line crosses ({on}; {msg})', on == ['Left', 'Right']
-      and sorted(o.name for o in C.selected_objects) == sorted(o.name for o in belts))
+src = _j.loads(belts[0][bmk.SRC_KEY]) if belts else {}
+xs = [(belts[0].matrix_world @ v.co).x for v in belts[0].data.vertices] if belts else [0]
+check(f'Auto: ONE belt binding both parts the line crosses ({src.get("targets")}; x {min(xs):.2f} .. {max(xs):.2f}; {msg})',
+      len(belts) == 1 and sorted(src.get('targets', [])) == ['Left', 'Right'] and min(xs) < -2.0 and max(xs) > 2.0)
+p_ = belts[0].mch_belt
+check('... a closed loop round both (Wrap)', p_.mode == 'WRAP' and len(belts[0].data.polygons) > 0)
 for o in belts:
     bpy.data.objects.remove(o)
 C.scene.mch_cut.targets = 'SELECTED'
 only(b)
 msg = bmk.perform(C, line, proj)
 belts = [o for o in C.scene.objects if o.get(bmk.SRC_KEY)]
-check(f'Selected (only Right): its belt only ({msg})', [_j.loads(o[bmk.SRC_KEY])['target'] for o in belts] == ['Right'])
+xs = [(belts[0].matrix_world @ v.co).x for v in belts[0].data.vertices]
+check(f'Selected (only Right): a belt round Right only ({min(xs):.2f} .. {max(xs):.2f})',
+      len(belts) == 1 and _j.loads(belts[0][bmk.SRC_KEY])['targets'] == ['Right'] and min(xs) > 0.0)
 for o in belts:
     bpy.data.objects.remove(o)
 only(b, a)
 msg = bmk.perform(C, line, proj)
 belts = [o for o in C.scene.objects if o.get(bmk.SRC_KEY)]
-check(f'Selected (both): a belt on each', sorted(_j.loads(o[bmk.SRC_KEY])['target'] for o in belts) == ['Left', 'Right'])
+check('Selected (both): one belt round both', len(belts) == 1
+      and sorted(_j.loads(belts[0][bmk.SRC_KEY])['targets']) == ['Left', 'Right'])
+belts[0].mch_belt.width = belts[0].mch_belt.width * 1.5
+check('... live: a slider lays it again round both', len(belts[0].data.polygons) > 0)
 for o in belts:
     bpy.data.objects.remove(o)
 C.scene.mch_cut.targets = 'ACTIVE'
 only(b, a)                                  # (Left active)
 msg = bmk.perform(C, line, proj)
 belts = [o for o in C.scene.objects if o.get(bmk.SRC_KEY)]
-check(f'Active: the active part only ({msg})', [_j.loads(o[bmk.SRC_KEY])['target'] for o in belts] == ['Left'])
+check(f'Active: the active part only ({msg})', [_j.loads(o[bmk.SRC_KEY])['targets'] for o in belts] == [['Left']])
 C.scene.mch_cut.targets = 'AUTO'
 summary()

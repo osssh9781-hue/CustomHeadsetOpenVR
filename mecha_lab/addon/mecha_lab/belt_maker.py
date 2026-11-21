@@ -284,8 +284,8 @@ def pick_target(context, projector, path):
 
 def pick_targets(context, projector, path):
     """0.24.279 (user: "벨트 메이커 쓸 때 하나만 선택이 되니까 오토랑 셀렉트 액티브별로 여러 개 선택하면 쓸 수 있게")
-    Every part the line crosses (Auto), or the selected ones it crosses (Selected), or the active one (Active) - each
-    gets its own belt.  A part the line only grazes (under a tenth of the most-crossed part's hits) is left out."""
+    Every part the line crosses (Auto), or the selected ones it crosses (Selected), or the active one (Active) - one
+    belt round / along all of them together (0.24.280).  A part the line only grazes (under a tenth of the most-crossed part's hits) is left out."""
     dg = context.evaluated_depsgraph_get()
     counts = {}
     probes = []
@@ -380,7 +380,51 @@ def _stamp(context, ob):
 _TARGETS = {}            # target name -> (stamp, _Target)
 
 
+class _MultiTarget:
+    """0.24.280 (user: "벨트 메이커는 선택한 레이어가 두 개면 두 개를 같이 묶어야지") several parts read as one mesh
+    (world space): the belt goes round / along all of them together."""
+
+    def __init__(self, parts):
+        cos, starts, tots, vis, ces = [], [], [], [], []
+        nv = ne = nc = 0
+        for t in parts:
+            cos.append(t.co)
+            starts.append(t.start + nc)
+            tots.append(t.tot)
+            vis.append(t.vi + nv)
+            ces.append(t.ce + ne)
+            nv += len(t.co)
+            ne += t.nedges
+            nc += len(t.vi)
+        self.co = np.concatenate(cos) if cos else np.zeros((0, 3))
+        self.start = np.concatenate(starts) if starts else np.zeros(0, np.int64)
+        self.tot = np.concatenate(tots) if tots else np.zeros(0, np.int64)
+        self.vi = np.concatenate(vis) if vis else np.zeros(0, np.int64)
+        self.ce = np.concatenate(ces) if ces else np.zeros(0, np.int64)
+        self.nedges = ne
+        self.mw = Matrix.Identity(4)
+        self.inv = Matrix.Identity(4)
+        self.nrm_m = Matrix.Identity(3)
+        polys = [self.vi[a:a + n].tolist() for a, n in zip(self.start.tolist(), self.tot.tolist())]
+        self.bvh = BVHTree.FromPolygons(self.co.tolist(), polys)
+        self.center = Vector(self.co.mean(0)) if len(self.co) else Vector()
+
+    find_nearest = _Target.find_nearest
+    ray_cast = _Target.ray_cast
+
+
 def target_data(context, ob):
+    if isinstance(ob, (list, tuple)):
+        if len(ob) == 1:
+            return target_data(context, ob[0])
+        key = '+'.join(o.name for o in ob)
+        st = tuple(_stamp(context, o) for o in ob)
+        hit = _TARGETS.get(key)
+        if hit is not None and hit[0] == st:
+            return hit[1]
+        t = _MultiTarget([target_data(context, o) for o in ob])
+        _TARGETS[key] = (st, t)
+        return t
     st = _stamp(context, ob)
     hit = _TARGETS.get(ob.name)
     if hit is not None and hit[0] == st:
@@ -388,6 +432,13 @@ def target_data(context, ob):
     t = _Target(context, ob)
     _TARGETS[ob.name] = (st, t)
     return t
+
+
+def belt_targets(src):
+    """The parts a belt is on (0.24.280: several - 'targets'; older belts: 'target')."""
+    names = src.get('targets') or [src.get('target', '')]
+    obs = [bpy.data.objects.get(n) for n in names]
+    return [o for o in obs if o is not None and o.type == 'MESH']
 
 
 def plane_section(td, a, no):
@@ -454,8 +505,35 @@ def _wrap_path(context, target, projector, path):
         v = q - om
         return (v - dm * v.dot(dm)).length
 
+    if isinstance(target, list):              # 0.24.280 several parts bound together: round all of them
+        hull = _plane_hull([q for ch in chains for q in ch[0]], no)
+        if len(hull) >= 3:
+            return hull, True
     best = min(chains, key=lambda ch: min(ray_dist(q) for q in ch[0]))
     return [q.copy() for q in best[0]], best[1]
+
+
+def _plane_hull(pts, no):
+    """The convex outline (in the plane with normal ``no``) round ``pts`` - a strap round several parts."""
+    if len(pts) < 3:
+        return [Vector(q) for q in pts]
+    u = no.orthogonal().normalized()
+    v = no.cross(u).normalized()
+    P = [(q.dot(u), q.dot(v), q) for q in pts]
+    P.sort(key=lambda t: (t[0], t[1]))
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+    lower, upper = [], []
+    for t in P:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], t) <= 0:
+            lower.pop()
+        lower.append(t)
+    for t in reversed(P):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], t) <= 0:
+            upper.pop()
+        upper.append(t)
+    return [t[2].copy() for t in lower[:-1] + upper[:-1]]
 
 
 def _follow_path(context, target, projector, path, step_px=4.0):
@@ -473,10 +551,11 @@ def raw_loop(context, ob, src, p):
     """0.24.89 The belt line on the mesh before resampling: (points, closed, loop size).  Cached apart from the
     width / smoothing so a slider change does not cut the part again."""
     from . import armor_plate as ap
-    target = bpy.data.objects.get(src.get('target', ''))
-    if target is None or target.type != 'MESH':
+    tl = belt_targets(src)
+    if not tl:
         raise cg.CutError('The mesh the belt was drawn on is gone.')
-    key = (src.get('stamp'), p.mode, _stamp(context, target))
+    target = tl if len(tl) > 1 else tl[0]
+    key = (src.get('stamp'), p.mode, tuple(_stamp(context, o) for o in tl))
     hit = _RAW.get(ob.name)
     if hit is not None and hit[0] == key:
         return hit[1]
@@ -513,7 +592,8 @@ def surface_path(context, ob, src, p):
     hit = _CACHE.get(ob.name)
     if hit is not None and hit[0] == key:
         return hit[1]
-    target = bpy.data.objects.get(src.get('target', ''))
+    tl = belt_targets(src)
+    target = tl if len(tl) > 1 else (tl[0] if tl else None)
     projector = ap.thaw_projector(src['proj'])
     step = max(1e-5, width / max(0.2, p.density))
     pts = resample(pts, step, closed)
@@ -523,8 +603,15 @@ def surface_path(context, ob, src, p):
     bvh = target_data(context, target)
     center = sum(pts, Vector()) / len(pts)
     nrms, snapped = [], []
+    multi = isinstance(target, list)
     for q in pts:
         loc, n, _i, _d = bvh.find_nearest(q)
+        if (multi and p.mode == 'WRAP' and loc is not None and n is not None and (q - loc).dot(n) > 0
+                and _d > step * 0.05):
+            # (0.24.280 several parts: a point outside every part bridges the gap between them, straight - kept as
+            #  it is, the strap facing out of the loop; only points inside a part (smoothing pulls an arc in) go
+            #  back onto it)
+            loc, n = None, q - center
         if loc is not None:
             q = loc                 # smoothing a loop pulls it inward: back onto the surface
         if n is None:
@@ -727,41 +814,28 @@ def perform(context, path, projector):
     frozen = ap.freeze_projector(projector)
     if frozen is None:
         raise cg.CutError('This view cannot be saved for the belt.')
-    made, failed, last_err = [], [], None
-    for target in targets:
-        try:
-            made.append(_make_belt(context, path, frozen, target))
-        except cg.CutError as ex:
-            failed.append(target.name)
-            last_err = ex
-    if not made:
-        raise last_err if last_err is not None else cg.CutError('Belt: no belt could be made')
+    ob = _make_belt(context, path, frozen, targets)
     for o in context.selected_objects:
         o.select_set(False)
-    for o in made:
-        o.select_set(True)
-    context.view_layer.objects.active = made[0]
-    p = made[0].mch_belt
+    ob.select_set(True)
+    context.view_layer.objects.active = ob
+    p = ob.mch_belt
     preset = dict((i[0], i[1]) for i in PRESET_ITEMS)[p.preset]
     how = 'around' if p.mode == 'WRAP' else 'along the line on'
-    if len(made) == 1:
-        msg = f'Belt "{made[0].name}" {how} {targets[0].name if not failed else made[0].name} ({preset}){size_note(made[0])}'
-    else:
-        msg = f'{len(made)} belts {how} ' + ', '.join(json.loads(o[SRC_KEY])['target'] for o in made) + f' ({preset})'
-    if failed:
-        msg += ' | not on ' + ', '.join(failed) + ' (the line missed it)'
-    return msg
+    return f'Belt "{ob.name}" {how} {" + ".join(t.name for t in targets)} ({preset}){size_note(ob)}'
 
 
-def _make_belt(context, path, frozen, target):
-    """One live belt of ``path`` on ``target`` (the old one-part belt)."""
+def _make_belt(context, path, frozen, targets):
+    """One live belt of ``path`` on ``targets`` (0.24.280: several parts bound together)."""
     from . import face_extract as fx
     st = context.scene.mch_belt
+    target = targets[0]
     me = bpy.data.meshes.new(target.name + '_Belt')
     ob = bpy.data.objects.new(me.name, me)
     fx._parts_collection(context, COLLECTION).objects.link(ob)
     ob[SRC_KEY] = json.dumps({'path': [[float(x), float(y)] for x, y in path], 'proj': frozen,
-                              'target': target.name, 'stamp': id(ob) % 100000})
+                              'target': target.name, 'targets': [t.name for t in targets],
+                              'stamp': id(ob) % 100000})
     p = ob.mch_belt
     for k in LIVE_KEYS:
         setattr(p, k, getattr(st, k))

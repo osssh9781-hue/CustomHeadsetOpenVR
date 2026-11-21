@@ -1258,6 +1258,7 @@ DRAWERS = {
     'OMASS': draw_omass,
     'MHOLE': _module_drawer('mecha_holes'),
     'LARRAY': _module_drawer('line_array'),
+    'SDF': _module_drawer('sdf_builder'),
     'MUSCLE': _muscle_drawer('MUSCLE'),
     'BODYKIT': _module_drawer('body_kit'),
     'RIG': _module_drawer('rigging'),            # 0.24.241
