@@ -282,6 +282,36 @@ def pick_target(context, projector, path):
     return bpy.data.objects[max(counts, key=counts.get)] if counts else None
 
 
+def pick_targets(context, projector, path):
+    """0.24.279 (user: "벨트 메이커 쓸 때 하나만 선택이 되니까 오토랑 셀렉트 액티브별로 여러 개 선택하면 쓸 수 있게")
+    Every part the line crosses (Auto), or the selected ones it crosses (Selected), or the active one (Active) - each
+    gets its own belt.  A part the line only grazes (under a tenth of the most-crossed part's hits) is left out."""
+    dg = context.evaluated_depsgraph_get()
+    counts = {}
+    probes = []
+    for a, b in zip(path, path[1:]):
+        n = max(1, int(math.dist(a, b) / 12.0))
+        probes += [(a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n) for k in range(n)]
+    probes.append(path[-1])
+    for xy in probes[::max(1, len(probes) // 60)]:
+        o, d = projector.ray(xy)
+        for _ in range(16):
+            hit, loc, _n, _i, ob, _m = target_rules.scene_ray(context, dg, o, d)
+            if not hit or ob is None:
+                break
+            real = bpy.data.objects.get(ob.name)
+            if real is not None and real.type == 'MESH' and not real.get(SRC_KEY) and not real.get('mch_spike_src') \
+                    and not real.get('mch_scales_src') and not real.get('mch_sbrush_src'):
+                counts[real.name] = counts.get(real.name, 0) + 1
+                break
+            o = loc + d * 1e-4
+    if not counts:
+        return []
+    top = max(counts.values())
+    names = sorted((n for n, c in counts.items() if c >= max(1, 0.1 * top)), key=lambda n: -counts[n])
+    return [bpy.data.objects[n] for n in names]
+
+
 class _Target:
     """0.24.89 The belt's mesh, read once and kept while it does not change: world points / faces (numpy, through
     the built-in attributes) and a BVH built in C (object space, queries translated).  A belt on a 1.3M-face part
@@ -691,12 +721,41 @@ def perform(context, path, projector):
     path = [tuple(q) for q in path]
     if len(path) < 2:
         raise cg.CutError('Belt: draw a line (at least 2 points).')
-    target = pick_target(context, projector, path)
-    if target is None:
+    targets = pick_targets(context, projector, path)
+    if not targets:
         raise cg.CutError('Belt: draw the line over a mesh.')
     frozen = ap.freeze_projector(projector)
     if frozen is None:
         raise cg.CutError('This view cannot be saved for the belt.')
+    made, failed, last_err = [], [], None
+    for target in targets:
+        try:
+            made.append(_make_belt(context, path, frozen, target))
+        except cg.CutError as ex:
+            failed.append(target.name)
+            last_err = ex
+    if not made:
+        raise last_err if last_err is not None else cg.CutError('Belt: no belt could be made')
+    for o in context.selected_objects:
+        o.select_set(False)
+    for o in made:
+        o.select_set(True)
+    context.view_layer.objects.active = made[0]
+    p = made[0].mch_belt
+    preset = dict((i[0], i[1]) for i in PRESET_ITEMS)[p.preset]
+    how = 'around' if p.mode == 'WRAP' else 'along the line on'
+    if len(made) == 1:
+        msg = f'Belt "{made[0].name}" {how} {targets[0].name if not failed else made[0].name} ({preset}){size_note(made[0])}'
+    else:
+        msg = f'{len(made)} belts {how} ' + ', '.join(json.loads(o[SRC_KEY])['target'] for o in made) + f' ({preset})'
+    if failed:
+        msg += ' | not on ' + ', '.join(failed) + ' (the line missed it)'
+    return msg
+
+
+def _make_belt(context, path, frozen, target):
+    """One live belt of ``path`` on ``target`` (the old one-part belt)."""
+    from . import face_extract as fx
     st = context.scene.mch_belt
     me = bpy.data.meshes.new(target.name + '_Belt')
     ob = bpy.data.objects.new(me.name, me)
@@ -718,13 +777,7 @@ def perform(context, path, projector):
     me.transform(Matrix.Translation(-cen))
     ob.matrix_world = Matrix.Translation(cen)
     p.live = True
-    for o in context.selected_objects:
-        o.select_set(False)
-    ob.select_set(True)
-    context.view_layer.objects.active = ob
-    preset = dict((i[0], i[1]) for i in PRESET_ITEMS)[p.preset]
-    how = 'around' if p.mode == 'WRAP' else 'along the line on'
-    return f'Belt "{ob.name}" {how} {target.name} ({preset}){size_note(ob)}'
+    return ob
 
 
 def loop_size(ob):

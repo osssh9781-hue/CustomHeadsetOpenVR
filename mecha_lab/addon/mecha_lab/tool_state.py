@@ -200,6 +200,10 @@ TOOLS = (
     ('MASK', 'Mask', 'Paint a face mask with the shared shapes (Alt: erase)', 'mask', 'MOD_MASK', 'mecha.mask', 'PARTIAL'),
     ('ARRAY', 'Curve Array', 'Repeat a part along a drawn curve', 'array', 'MOD_ARRAY', None, 'OK'),
     ('RADIAL', 'Radial Array', 'Radial copies around the 3D cursor + Boolean', 'radial', 'MOD_SCREW', None, 'OK'),
+    # 0.24.279 (user: "직선이나 대각선 토글도 되고 내가 긋는 직선대로 어레이되는 툴 - 라쏘 · 오토 셀렉트 액티브 다")
+    ('LARRAY', 'Line Array', 'Draw from a part: copies of it along the line - Straight (Free / Straight / Diagonal snap) '
+     'or Follow the drawn path, round a drawn outline; Count or Spacing, Align; Targets Auto / Selected / Active; live, '
+     'Enter makes it real', 'larray', 'MOD_ARRAY', 'mecha.line_array', 'OK'),
     ('DRAW', 'Mesh Curve', 'Draw a curve and sweep a profile along it (or a panel-line cut); '
      'smooth/straight points, resolution, rotation, twist', 'panel', 'CURVE_BEZCURVE', None, 'OK'),
     ('POSE', 'Deform', 'Lattice Cage / Bend Curve: click control points and Move / Rotate / Scale them with '
@@ -256,7 +260,7 @@ QUICK_TOOLS = ('CUT', 'BOOLEAN', 'BASE', 'SUBD', 'SPLIT', 'RADIAL', 'PLATE')   #
 NATIVE_TO_TOOL = {t[5]: t[0] for t in TOOLS if t[5]}
 SHAPE_TOOLS = {'CUT', 'SPLIT', 'MASK', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'HIDE', 'DETAIL', 'DETAIL2',
                'DETAIL3', 'DETAIL4', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER', 'SCURVE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'SDRAW',
-               'FUR', 'WING', 'OMASS', 'MHOLE', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW', 'PCUT'}
+               'FUR', 'WING', 'OMASS', 'MHOLE', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW', 'PCUT', 'LARRAY'}
 
 DRAW_TOOLS = SHAPE_TOOLS | {'PRESS'}      # 0.24.95 + Press Cut (Shift + draw its stamp): the lasso settings it keeps
 DRAW_TOOLS |= {'GREEBLE', 'CGREEBLE'}   # 0.24.154 + Greeble / Scale Line (Shift + draw a part)
@@ -267,7 +271,7 @@ TOOL_GROUPS = (
     ('Cut', ('CUT', 'SPLIT', 'PRESS', 'HIDE', 'BOOLEAN', 'BBEVEL', 'FUSE', 'PERF')),
     ('Surface detail', ('GSCULPT', 'GREEBLE', 'PLATE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'SDRAW', 'SCREW', 'EXTRACT', 'FPOP', 'MHOLE', 'MOLDING', 'BELT')),
     ('Move', ('CMOVE', 'CPATH', 'SMOVE', 'SMART', 'POSE', 'RIG', 'REMESH')),   # 0.24.241 + Rig (beside Pose)
-    ('Symmetry & repeat', ('MIRROR', 'RSYM', 'RADIAL', 'ARRAY')),
+    ('Symmetry & repeat', ('MIRROR', 'RSYM', 'RADIAL', 'ARRAY', 'LARRAY')),
     ('Curves', ('TUBE', 'TUBE_SAME', 'SCURVE', 'CABLE', 'MMUSCLE', 'ALONG', 'LOFT')),
     ('Creature', ('CPLATE', 'DETAIL4', 'CGREEBLE', 'FGREEBLE', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER', 'HAIR', 'FUR', 'WING', 'MEMBRANE', 'BODYKIT', 'MUSCLE')),
     ('Weathering', ('WDIRT', 'WDUST', 'WLEAF', 'WSNOW')),                  # 0.24.158 click a shape: dirt / dust / ...
@@ -299,7 +303,7 @@ _ENUM_NUMBERS = {'CUT': 1, 'BOOLEAN': 2, 'FUSE': 3, 'MIRROR': 4, 'MASK': 5, 'DRA
                  'EXTRACT': 20, 'MOLDING': 21, 'HOLLOW': 22, 'ALONG': 23, 'CABLE': 24, 'PLATE': 25, 'WRINKLE': 26, 'TUBE': 27,
                  'HIDE': 28, 'DETAIL': 29, 'DETAIL2': 30, 'SCREW': 31, 'DETAIL3': 32, 'TUBE_SAME': 33,
                  'CBASE': 34, 'CPLATE': 35, 'BELT': 36, 'SPIKE': 37, 'SCALES': 38, 'FLOWER': 39, 'SCURVE': 40, 'SBRUSH': 41, 'BRIDGE': 42, 'CAPE': 43, 'HAIR': 44, 'GARMENT': 45, 'HOOD': 46, 'SCARF': 47, 'CMOVE': 48, 'CPATH': 50, 'PERF': 51, 'SDRAW': 52, 'SCAPE': 53, 'RSYM': 55, 'SMOVE': 56, 'WLINES': 57, 'CDRAPE': 58, 'ZONE': 59, 'PRESS': 60, 'SMART': 61, 'GSCULPT': 62, 'GREEBLE': 63, 'CGREEBLE': 64, 'FUR': 65, 'WDIRT': 66,
-                 'WDUST': 67, 'WLEAF': 68, 'WSNOW': 69, 'DETAIL4': 70, 'PMEASURE': 71, 'PCUT': 72, 'FGREEBLE': 73, 'WING': 74, 'MEMBRANE': 75, 'BBEVEL': 76, 'FPOP': 77, 'OMASS': 78, 'MUSCLE': 79, 'MMUSCLE': 80, 'MHOLE': 81, 'BODYKIT': 82, 'RIG': 83}   # 54: the removed Cloth Wrap (kept free)   # 49: the removed Jungle Gym prototype (0.24.31), kept free
+                 'WDUST': 67, 'WLEAF': 68, 'WSNOW': 69, 'DETAIL4': 70, 'PMEASURE': 71, 'PCUT': 72, 'FGREEBLE': 73, 'WING': 74, 'MEMBRANE': 75, 'BBEVEL': 76, 'FPOP': 77, 'OMASS': 78, 'MUSCLE': 79, 'MMUSCLE': 80, 'MHOLE': 81, 'BODYKIT': 82, 'RIG': 83, 'LARRAY': 84}   # 54: the removed Cloth Wrap (kept free)   # 49: the removed Jungle Gym prototype (0.24.31), kept free
 TOOL_ENUM_ITEMS = [(t[0], t[1], t[2], t[4], _ENUM_NUMBERS[t[0]]) for t in TOOLS]
 
 SHAPES = (

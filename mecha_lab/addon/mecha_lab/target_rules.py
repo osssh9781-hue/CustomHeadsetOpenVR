@@ -26,7 +26,7 @@ MOVE_TOOLS = {'CMOVE', 'CPATH', 'SMOVE', 'SMART'}
 # viewport tools that draw on / pick a mesh under the mouse: these get the row in their panel
 PICKING = {'PRESS', 'SDRAW', 'BASE', 'CBASE', 'PLATE', 'CPLATE', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER',
            'SCURVE', 'CAPE', 'SCAPE', 'HAIR', 'FUR', 'WING', 'OMASS', 'MHOLE', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW', 'GARMENT', 'HOOD', 'SCARF', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'SCREW', 'WRINKLE', 'CDRAPE', 'ZONE', 'WLINES',
-           'PRIMITIVE', 'MASK', 'TUBE', 'TUBE_SAME', 'DRAW', 'CABLE'}
+           'PRIMITIVE', 'MASK', 'TUBE', 'TUBE_SAME', 'DRAW', 'CABLE', 'LARRAY'}
 
 
 # 0.24.179 (user: "베벨 불린은 항상 말했듯이 셀렉트랑 오토 이거 다 만들어 줘, 버벅이니까"): picking tools with no lasso -

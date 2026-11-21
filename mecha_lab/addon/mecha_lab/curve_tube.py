@@ -831,7 +831,7 @@ class TubeLogic:
         if side.length < 1e-12:
             return None
         # 0.24.38 always right beside the white point (HANDLE_PX on screen), whatever the radius
-        return p + side * (HANDLE_PX / math.hypot(1.0, 0.6))
+        return p + side * (handle_px() / math.hypot(1.0, 0.6))
 
     def _near_handle(self, context, xy):
         ob = self._ob()
@@ -1541,6 +1541,19 @@ class MCH_OT_tube_link_selected(bpy.types.Operator):
 
 
 HANDLE_PX = 26.0          # 0.24.38 the orange radius dot sits this far beside its white point (screen pixels)
+HANDLE_GAP = 52.0         # 0.24.279 (user: "포인트가 너무 크고 크기랑 위치 변경하는 게 겹쳐 있어 - 두 개 포인트를 떨어뜨려")
+POINT_SCALE = 0.065       # the white point (was 0.09) and the orange size dot (was 0.07) - smaller, still clear circles
+SIZE_SCALE = 0.045
+
+
+def handle_px():
+    """The orange dot's distance beside its white point, in screen pixels - grows with Blender's Resolution Scale
+    (a 4K screen at 200 %: 68 px), so the two never overlap."""
+    try:
+        f = bpy.context.preferences.system.ui_scale
+    except AttributeError:
+        f = 1.0
+    return HANDLE_GAP * max(1.0, f)
 
 
 def beside_offset(context, ob, p_local, side_local):
@@ -1552,7 +1565,7 @@ def beside_offset(context, ob, p_local, side_local):
         s = view3d_utils.location_3d_to_region_2d(region, rv3d, pw)
         if s is None:
             raise ValueError
-        d = Vector((1.0, 0.6)).normalized() * HANDLE_PX
+        d = Vector((1.0, 0.6)).normalized() * handle_px()
         q = view3d_utils.region_2d_to_location_3d(region, rv3d, (s.x + d.x, s.y + d.y), pw)
         off = ob.matrix_world.inverted().to_3x3() @ (q - pw)
         if off.length > 1e-12:
@@ -1602,7 +1615,7 @@ class MCH_GGT_tube_points(bpy.types.GizmoGroup):
             gz.alpha = 0.95
             gz.color_highlight = (0.4, 0.8, 1.0)
             gz.alpha_highlight = 1.0
-            gz.scale_basis = 0.09
+            gz.scale_basis = POINT_SCALE
             gz.target_set_handler('offset', get=self._getter(i), set=self._setter(i))
             self.pts_gz.append(gz)
             hz = self.gizmos.new('GIZMO_GT_move_3d')
@@ -1612,7 +1625,7 @@ class MCH_GGT_tube_points(bpy.types.GizmoGroup):
             hz.alpha = 0.95
             hz.color_highlight = (1.0, 0.85, 0.4)
             hz.alpha_highlight = 1.0
-            hz.scale_basis = 0.07
+            hz.scale_basis = SIZE_SCALE
             hz.target_set_handler('offset', get=self._rgetter(i), set=self._rsetter(i))
             self.rad_gz.append(hz)
         self.count = n

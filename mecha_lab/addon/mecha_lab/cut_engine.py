@@ -1455,6 +1455,7 @@ _COLORS = {
     'OMASS': (0.85, 0.7, 0.45, 1.0),
     'PCUT': (0.45, 1.0, 0.75, 1.0),
     'MHOLE': (0.6, 0.85, 1.0, 1.0),
+    'LARRAY': (0.95, 0.8, 0.35, 1.0),
     'CPLATE': (0.55, 0.9, 0.6, 1.0),
     'BELT': (0.95, 0.75, 0.3, 1.0),
     'SPIKE': (0.6, 0.85, 0.4, 1.0),
@@ -1827,7 +1828,8 @@ class StrokeLogic:
     def _needs_target(self):
         return self.mode not in {'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'ZONE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE',
                                  'FLOWER', 'SCURVE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'SDRAW', 'PRESS',
-                                 'GREEBLE', 'CGREEBLE', 'FUR', 'WING', 'OMASS', 'MHOLE', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW'}
+                                 'GREEBLE', 'CGREEBLE', 'FUR', 'WING', 'OMASS', 'MHOLE', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW',
+                                 'LARRAY'}
 
     def _tangents(self, pts=None):
         pts = self.pts if pts is None else pts
@@ -2243,6 +2245,15 @@ class StrokeLogic:
             _ob, msg = greeble_line.make_stamp(context, loops, self.projector,
                                                'CREATURE' if self.mode == 'CGREEBLE' else 'MECH')
             return msg
+        if self.mode == 'LARRAY':                # 0.24.279 Line Array: the drawing is the path
+            from . import line_array
+            pts = list(self.pts)
+            if self.shape not in {'LASSO', 'CURVE_LASSO', 'STROKE'}:
+                loops = self._current_loops(self.ctrl_held, self.shift_held)
+                pts = list(loops[0]) if loops else pts
+            elif self.shape == 'STROKE':
+                pts = self._line_path()
+            return line_array.perform(context, pts, self.shape, self.projector)
         if self.mode == 'PRESS':                 # 0.24.95 Press Cut: the drawing is the stamp (or goes into a sketch)
             from . import press_cut
             loops = self._current_loops(self.ctrl_held, self.shift_held)
@@ -2517,6 +2528,10 @@ class StrokeLogic:
                 if self.mode == 'SPLIT':
                     return self._run(context, lambda c: perform_line(
                         c, 'SPLIT', self._targets(), self.pts, self.projector, self.pts[0]))
+                if self.mode == 'LARRAY':        # 0.24.279 Line Array: a two-point lasso = its line
+                    from . import line_array
+                    return self._run(context, lambda c: line_array.perform(c, list(self.pts), self.shape,
+                                                                           self.projector))
                 if self.mode == 'PCUT':          # 0.24.183 Print Cut: a two-point lasso = its line
                     from . import print3d
                     return self._run(context, lambda c: _print_cut(lambda: print3d.cut_line_for(
@@ -2899,6 +2914,7 @@ class MCH_OT_cut_stroke(StrokeLogic, bpy.types.Operator):
         ('ZONE', 'Lasso Zone', 'A Paint / Split Zone on the Mech / Creature part under the outline'),
         ('CBASE', 'Creature Base Mesh', 'New rounded solid (Puff / Ridge / Pillow) from the drawn outline'),
         ('MHOLE', 'Mecha Holes', 'A panel of holes on the part under the outline'),
+        ('LARRAY', 'Line Array', 'Copies of the part along the drawn line / outline'),
         ('PCUT', 'Print Cut', 'Cut a part along the drawn shape, connection pins across the cut'),
         ('OMASS', 'Creature Base Mesh 2', 'A big organic lump in the drawn outline: rock, scale, mushroom, crystal...'),
         ('CPLATE', 'Creature Plate', 'New rounded plate (Puff / Ridge / Pillow) on the mesh under the outline'),

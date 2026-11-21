@@ -126,8 +126,8 @@ check('Ctrl+Wheel on a point: its radius', abs(ct.get_points(ob)[0][1] - r0 * 1.
 h = op.handle_world(ctx, 1)
 p1 = op._world_pts()[1]
 import math as _m
-check('0.24.38 orange radius handle right beside the point (26 px on screen), whatever the radius', h is not None
-      and abs(_m.dist(VIEW.to_screen(h), VIEW.to_screen(p1)) - ct.HANDLE_PX) < 0.5,
+check('0.24.38 orange radius handle right beside the point (0.24.279: handle_px() on screen - 52 px at 100 %, apart from the white point), whatever the radius', h is not None
+      and abs(_m.dist(VIEW.to_screen(h), VIEW.to_screen(p1)) - ct.handle_px()) < 0.5,
       _m.dist(VIEW.to_screen(h), VIEW.to_screen(p1)))
 rad0 = ob.mch_tube.radius * ct.get_points(ob)[1][1]
 hs = VIEW.to_screen(h)
@@ -141,7 +141,7 @@ check('drag the orange handle twice as far: that point gets twice the radius', r
       (r, txt, ob.mch_tube.radius * ct.get_points(ob)[1][1], rad0))
 h2 = op.handle_world(ctx, 1)
 check('... and the handle is back beside the point after the drag', abs(_m.dist(VIEW.to_screen(h2), VIEW.to_screen(p1))
-                                                                   - ct.HANDLE_PX) < 0.5)
+                                                                   - ct.handle_px()) < 0.5)
 check('other points keep their radius', abs(ct.get_points(ob)[2][1] - 1.0) < 1e-6)
 op.delete_point(ctx, (300, 500))
 check('X on a point deletes it', len(ct.get_points(ob)) == 3)
