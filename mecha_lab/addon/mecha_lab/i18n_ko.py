@@ -9199,7 +9199,7 @@ KO = {
     'W spot': 'W 스팟',
     'Waist': '허리',
     'Walk': '걷기',
-    'Wall Angle': '벽 기울기',
+    'Wall Angle': '벽 각도',
     'Wall Thickness': '벽 두께',
     'Wander': '헤매기',
     'Warm / Cool': '따뜻함 / 차가움',
