@@ -646,6 +646,7 @@ BLOCK_GAP = 12.0                      # between two bands of parts inside the bl
 BLOCK_SEP = 8.0                       # between the two blocks
 BLOCK_SHARE = 0.62                    # the LASSO block: at most this much of the bar's width
 BOTTOM_GAP = 10.0                     # the tool's block: this far above the bottom dock
+HALF_FROM = 700.0                     # 0.24.286 a tool's box wider than this in one row is cut in two rows
 SIDE_TITLE = 'Settings'               # the block at the right: Options, Depth, Surface and the tool's own
 
 
@@ -985,6 +986,13 @@ def items(context, region_w, region_h, k=1.0, left=None, right=None, part='TOP')
         # 0.24.226 (user: "변동성 있는 메뉴도 다 내려놓고, 모든 공통인 라쏘랑 지금 왼쪽에 묶어 놓은 것만 위에 놓으면"): the
         # LASSO block alone at the top; the tool's block - what changes from tool to tool - at the bottom, above the dock
         room_b = inner - 2 * BLOCK_PAD * k
+        # 0.24.286 (user: "프레스 컷 이거 왼쪽 바가 너무 옆으로 길어서 반으로 잘라서 짧게"): the tool's box at about half
+        # of its one-row width - its parts wrap into a second row (never narrower than its widest part)
+        if side_parts:
+            one_row = sum(p_[3] for p_ in side_parts) + SEP * k * (len(side_parts) - 1)
+            widest = max(p_[3] for p_ in side_parts)
+            if one_row > HALF_FROM * k:
+                room_b = min(room_b, max(widest, one_row * 0.5 + SEP * k))
         side_places, last[1] = flow(side_parts, room_b, 1, 0)
 
         def bh(key):

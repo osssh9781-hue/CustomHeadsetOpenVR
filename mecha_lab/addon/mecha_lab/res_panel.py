@@ -23,7 +23,9 @@ KEYS = {'Remesh': 'REMESH', 'Quad': 'QUAD', 'Low Poly': 'LOWPOLY', 'HP Keep': 'H
 # (0.24.284: it picks the Clean (Planar) lasso tool - draw over the area to flatten)
 EXTRA = [('Clean', 'shade_flat', 'tool:PLANAR', {}, '', False),
          # 0.24.286 (user: "서브디비전은 쿼드 안에가 아니라 따로 빼서") Subdivision as its own button
-         ('Subdiv', 'png:subd', 'mch.quad_subdiv', {}, 'mesh', False)]
+         ('Subdiv', 'subdiv', 'mch.quad_subdiv', {}, 'mesh', False),
+         # 0.24.286 (user: "엣지 클리너 어디 있어?") Edge Clear here too: it picks the tool
+         ('Edge Clear', 'eclear', 'tool:ECLEAR', {}, '', False)]
 TITLES = {'REMESH': 'Remesh', 'QUAD': 'Quad Remesh', 'LOWPOLY': 'Low Poly', 'HP_KEEP': 'HP Keep',
           'HP_ROUND': 'HP Round', 'HP_DIVIDE': 'HP Divide', 'DECIMATE': 'Decimate', 'SUBD': 'Subdivision'}
 

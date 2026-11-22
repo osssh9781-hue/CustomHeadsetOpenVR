@@ -395,6 +395,14 @@ def glyph(name, x, y, size, color=TEXT, width=2.0):
         polyline([P(.12, .2), P(.88, .2), P(.5, .85)], color, width, True)
         lines([(P(.31, .525), P(.5, .2)), (P(.31, .2), P(.215, .36)), (P(.31, .2), P(.405, .36)),
                (P(.215, .36), P(.405, .36))], color, width * 0.7)
+    elif name == 'subdiv':                       # 0.24.286 Subdivision: the cage (thin, its corner points) and the smooth
+        polyline([P(.12, .12), P(.88, .12), P(.88, .88), P(.12, .88)], color, width * 0.5, True)     # shape inside
+        for u, v in ((.12, .12), (.88, .12), (.88, .88), (.12, .88)):
+            polyline(circle_pts(x + u * size, y + v * size, size * .045, 8), color, width * 0.9, True)
+        polyline(circle_pts(cx, cy, size * .27, 28), color, width, True)
+    elif name == 'eclear':                       # 0.24.286 Edge Clear: an edge (two faces' fold) and a small x on it
+        polyline([P(.10, .30), P(.45, .78), P(.90, .55)], color, width)
+        lines([(P(.52, .18), P(.78, .44)), (P(.78, .18), P(.52, .44))], color, width * 0.9)
     elif name == 'bakehp':                       # 0.24.95 Bake High Poly: a dense grid inside a crisp outline
         polyline([P(.15, .15), P(.85, .15), P(.85, .85), P(.15, .85)], color, width, True)
         for t in (.32, .5, .68):
