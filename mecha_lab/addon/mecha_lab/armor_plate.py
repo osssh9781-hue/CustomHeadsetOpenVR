@@ -495,6 +495,10 @@ def perform_plate(context, loops, projector, preset=None, spacing=None):
     brush = getattr(scene, 'mch_brush', None)
     if getattr(brush, 'through_mode', False):
         return _perform_through(context, loops, projector, preset, target, groups, st, brush)
+    from . import ramp_edit
+    _old = ramp_edit.live_target(context, ('platecarve',))
+    if _old is not None:
+        ramp_edit.finish(_old)                   # 0.24.293 a new plate: the live Alt carve is kept as it is
     region, surround, local_size, missing = plate_meshes(context, target, groups, projector, face_px)
     part = create_plate(context, target, region, surround, preset, local_size, st.auto_size)
     frozen = freeze_projector(projector)
@@ -647,7 +651,37 @@ def carve_profile(preset, size, auto=True, memory=None, scale=1.0):
     return depth, kind, width, segs, float(vals.get('bevel_profile', 0.5) or 0.5)
 
 
-def perform_plate_carve(context, loops, projector, preset=None):
+def perform_plate_carve(context, loops, projector, preset=None, target=None, live=None):
+    """0.24.293 (user: "알트 눌러서 빼는 거 뺀 이후에 실시간으로 조정하는 거 왜 안 돼?") the carve stays live like the
+    Cut tool's last cut (ramp_edit 'platecarve'): the mesh before it is kept; Alt Carve Depth / Floor and the profile
+    carve it again from that mesh until the next carve / plate (or an edit of the mesh).  ``target``: carve into
+    this part (a re-carve); ``live``: None = the Live Last Cut preference."""
+    from . import ramp_edit
+    groups = cg.prepare_loops(loops)
+    if target is None:
+        target = pick_surface(context, projector, groups)
+    if target is None:
+        raise cg.CutError('Alt + draw carves a plate into a mesh: draw over one (armour parts and plates are '
+                          'skipped).')
+    if live is None:
+        from .workspace_ui import pref
+        live = bool(pref('live_last_cut', True))
+    if live:
+        cg.check_target(target)
+        ramp_edit.begin(context, target, loops, projector, kind='platecarve', extra={'preset': preset or ''})
+    try:
+        msg = _plate_carve(context, loops, projector, preset, target, groups)
+    except Exception:
+        if live:
+            ramp_edit.finish(target)
+        raise
+    if live:
+        ramp_edit.stamp(target)
+        msg += ' | live: Alt Carve Depth / Floor / profile carve it again'
+    return msg
+
+
+def _plate_carve(context, loops, projector, preset, target, groups):
     """0.24.42 Alt + draw with the Armor Plate tool: a recess in the shape drawn, as deep as the plate would be tall.
     0.24.290 (user: "알트로 빼는 거는 왜 아머 플레이트 프리셋 고른 거랑 상관없이 다 똑같은 모양으로 빠져?") - it was the plate
     mirrored through the surface, so the profile's top edge went to the bottom of the recess and every opening was the
@@ -655,11 +689,6 @@ def perform_plate_carve(context, loops, projector, preset=None):
     Stepped ...) is the opening's edge.  Returns a report; raises cg.CutError (the mesh unchanged)."""
     scene = context.scene
     st = scene.mch_plate
-    groups = cg.prepare_loops(loops)
-    target = pick_surface(context, projector, groups)
-    if target is None:
-        raise cg.CutError('Alt + draw carves a plate into a mesh: draw over one (armour parts and plates are '
-                          'skipped).')
     cg.check_target(target)
     preset = preset or st.preset
     if preset in {'RIDGE', 'MRIDGE'}:
@@ -1077,7 +1106,11 @@ def create_plate(context, target, region, surround, preset, local_size, auto=Tru
 def cycle_preset(scene, step):
     st = scene.mch_plate
     i = PRESET_IDS.index(st.preset) if st.preset in PRESET_IDS else 0
-    st.preset = PRESET_IDS[(i + step) % len(PRESET_IDS)]
+    _QUIET[0] = True                     # 0.24.293 the wheel while drawing picks the NEXT plate's profile: the live
+    try:                                 # Alt carve is not carved again with it
+        st.preset = PRESET_IDS[(i + step) % len(PRESET_IDS)]
+    finally:
+        _QUIET[0] = False
     return dict((p[0], p[1]) for p in PRESETS)[st.preset]
 
 
@@ -1142,8 +1175,23 @@ def _spacing_update(self, context):
         rebuild_plate(context, ob, self.spacing)
 
 
+_QUIET = [False]
+
+
+def _carve_update(self, context):
+    """0.24.293 an Alt Carve setting / the profile changed: the live carve (if any) is carved again (from a timer)."""
+    if _QUIET[0]:
+        return
+    try:
+        from . import ramp_edit
+        ramp_edit.refresh_later(context, 'platecarve')
+    except Exception:          # a setting must never fail
+        pass
+
+
 class MCH_PG_Plate(bpy.types.PropertyGroup):
     preset: EnumProperty(name='Profile', items=[(p[0], p[1], p[2]) for p in PRESETS], default='CHAMFER',
+                         update=_carve_update,
                          description='Plate profile (mouse wheel while drawing steps through them)')
     spacing: IntProperty(name='Face Size (px)', default=120, min=4, max=400, update=_spacing_update,
                          description='Size of the new faces on screen: bigger = fewer, cleaner faces '
@@ -1151,10 +1199,10 @@ class MCH_PG_Plate(bpy.types.PropertyGroup):
     auto_size: BoolProperty(name='Auto Size', default=True,
                             description='Profile height / bevel / chamfer scale with the plate size')
     carve_depth: FloatProperty(name='Alt Carve Depth', default=0.0, min=0.0, soft_max=1.0, precision=4,
-                               unit='LENGTH', description='Alt + draw carves the plate the other way: how deep '
+                               unit='LENGTH', update=_carve_update, description='Alt + draw carves the plate the other way: how deep '
                                                           '(0 = as deep as the plate is tall)')
     # 0.24.291 (user: "옆에 세팅에 플렛 팔로우 레벨 버튼 만들면 되것네") the Alt carve's floor, as the Cut tool's
-    carve_floor: EnumProperty(name='Alt Carve Floor', default='FOLLOW', items=[
+    carve_floor: EnumProperty(name='Alt Carve Floor', default='FOLLOW', update=_carve_update, items=[
         ('FOLLOW', 'Follow', 'As deep below the surface everywhere under the shape, however the part is turned'),
         ('LEVEL', 'Level', 'A flat floor at the depth below the point you press: everything higher under the shape '
                            'is cleared down to it'),

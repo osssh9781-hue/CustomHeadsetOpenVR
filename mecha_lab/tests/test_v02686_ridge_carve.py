@@ -27,13 +27,13 @@ for preset in ('RIDGE', 'MRIDGE'):
     bpy.ops.mesh.primitive_cube_add(size=2.0)
     cube = C.active_object
     n0 = len(bpy.data.objects)
-    nme = len(bpy.data.meshes)
+    nme = len([m for m in bpy.data.meshes if not m.name.startswith('MCH_RampBackup_')])
     msg = ap.perform_plate_carve(C, [LOOP], TOP, preset)
     C.view_layer.update()
     d0 = depth(0, 0)
     side = [d for d in (depth(0.38, 0.0), depth(-0.38, 0.0)) if d is not None]     # across the ridge line (N-S)
     check(f'{preset}: carved, closed, no plate object / mesh left', 'carved' in msg and non_manifold(cube) == 0
-          and len(bpy.data.objects) == n0 and len(bpy.data.meshes) == nme, (msg, non_manifold(cube),
+          and len(bpy.data.objects) == n0 and len([m for m in bpy.data.meshes if not m.name.startswith('MCH_RampBackup_')]) == nme, (msg, non_manifold(cube),
                                                                              len(bpy.data.objects), len(bpy.data.meshes)))
     check(f'{preset}: a valley - the middle deeper than the sides across the ridge', d0 is not None and d0 > 0.01
           and side and min(d0 - d for d in side) > d0 * 0.1, (d0, side))

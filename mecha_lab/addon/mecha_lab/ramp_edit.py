@@ -75,7 +75,7 @@ def record(ob):
 
 
 RAMP_KINDS = ('base', 'cut')
-ALL_KINDS = RAMP_KINDS + ('cutlive',)
+ALL_KINDS = RAMP_KINDS + ('cutlive', 'platecarve')     # 0.24.293 the Armor Plate Alt carve
 
 
 def live_target(context, kinds=RAMP_KINDS):
@@ -136,7 +136,7 @@ def begin(context, target, loops, projector, kind='base', extra=None):
     backup.name = 'MCH_RampBackup_' + target.name
     backup.use_fake_user = True
     segs = sides(loops[0])
-    corners_w = [] if kind == 'cutlive' else _corners_world(context, target, projector, [a for a, _b in segs])
+    corners_w = [] if kind in {'cutlive', 'platecarve'} else _corners_world(context, target, projector, [a for a, _b in segs])
     rec = {'kind': kind, 'loops': [[[float(x), float(y)] for x, y in lp] for lp in loops], 'proj': frozen,
            'side': 0,
            'backup': backup.name, 'corners': [[float(x), float(y)] for x, y in (a for a, _b in segs)],
@@ -209,6 +209,8 @@ def recarve(context, ob):
         if rec.get('kind') == 'cut':             # 0.24.46 a Cut Ramp: the Cut settings
             from . import cut_engine
             out = cut_engine.cut_ramp(context, [ob], loops, projector, edge=segs[side], live=False)
+        elif rec.get('kind') == 'platecarve':    # 0.24.293 the Armor Plate Alt carve, with its settings now
+            out = ap.perform_plate_carve(context, loops, projector, rec.get('preset') or None, target=ob, live=False)
         elif rec.get('kind') == 'cutlive':       # 0.24.56 the last plain cut, with the Cut settings now
             from . import cut_engine
             out = cut_engine.perform_closed(context, 'CUT', [ob], loops, projector, bool(rec.get('inverted')))
