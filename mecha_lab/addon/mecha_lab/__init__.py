@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
     "author": "OpenAI / ChatGPT, Claude Code",
-    "version": (0, 24, 283),
+    "version": (0, 24, 284),
     "blender": (4, 3, 0),
     "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
     "description": "Cut, Split, Base Mesh, Boolean, Face Extract, Armor Sculpt, Molding, Cable, Hollow, curve arrays, Mirror",
@@ -21,7 +21,7 @@ from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform
                creature_shader, my_presets, decals, zones, my_materials, bake_material, color_pick,
                random_shapes, material_overlay, tire_gen, work_scene, press_cut, name_fix, quick_render, fast_view,
                light_copies, bg_color, creature_light, render_panel, hdri_turn, hair_view_width, perf_view, line_array, sdf_builder,
-               res_panel)
+               res_panel, clean_flat)
 import os
 import re
 from pathlib import Path
@@ -2191,6 +2191,7 @@ def _register():
     bg_color.register()                 # 0.24.137 Background Colour
     sdf_builder.register()              # 0.24.280 SDF Builder
     res_panel.register()                # 0.24.282 the bottom row's Resolution buttons: settings, again = run
+    clean_flat.register()               # 0.24.284 Clean (Planar): the lasso area pushed onto a plane
     line_array.register()               # 0.24.279 Line Array
     perf_view.register()                # 0.24.277 viewport performance
     hair_view_width.register()          # 0.24.268 hair: Render Like Viewport (strand width)
@@ -2263,6 +2264,7 @@ def _unregister_steps():
         ('line_array', line_array.unregister),
         ('sdf_builder', sdf_builder.unregister),
         ('res_panel', res_panel.unregister),
+        ('clean_flat', clean_flat.unregister),
         ('creature_light', creature_light.unregister),
         ('bg_color', bg_color.unregister),
         ('light_copies', light_copies.unregister),

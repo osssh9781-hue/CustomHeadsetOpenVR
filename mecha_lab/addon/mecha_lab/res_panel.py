@@ -18,6 +18,10 @@ SETTINGS = [False]       # 0.24.283 the Settings switch beside the RESOLUTION ti
 # (label of the button in mecha_menu.ACTIONS 'Resolution') -> key
 KEYS = {'Remesh': 'REMESH', 'Quad': 'QUAD', 'Low Poly': 'LOWPOLY', 'HP Keep': 'HP_KEEP', 'HP Round': 'HP_ROUND',
         'HP Divide': 'HP_DIVIDE', 'Decimate': 'DECIMATE'}
+# 0.24.284 (user: "이건 리메시가 아니라 클린이라고 새로 만들자") the bottom row's own extra Resolution button (the right-click
+# popup's card has no room: mecha_menu.ACTIONS stays as it is)
+# (0.24.284: it picks the Clean (Planar) lasso tool - draw over the area to flatten)
+EXTRA = [('Clean', 'shade_flat', 'tool:PLANAR', {}, '', False)]
 TITLES = {'REMESH': 'Remesh', 'QUAD': 'Quad Remesh', 'LOWPOLY': 'Low Poly', 'HP_KEEP': 'HP Keep',
           'HP_ROUND': 'HP Round', 'HP_DIVIDE': 'HP Divide', 'DECIMATE': 'Decimate'}
 
@@ -67,7 +71,7 @@ def _run(context, key):
         op, props, invoke = 'mch.mesh_tool', {'action': 'QUAD_REMESH'}, False
     else:
         label = next(lb for lb, k in KEYS.items() if k == key)
-        btn = next(b for sec, bs in mm.ACTIONS if sec == 'Resolution' for b in bs if b[0] == label)
+        btn = next(b for sec, bs in mm.ACTIONS if sec == 'Resolution' for b in list(bs) + EXTRA if b[0] == label)
         op, props, invoke = btn[2], dict(btn[3]), btn[5]
     if context.mode != 'OBJECT':
         try:

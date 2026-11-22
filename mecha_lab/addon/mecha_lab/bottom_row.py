@@ -128,7 +128,9 @@ def boxes(context, region_w, region_h, k):
     if live:
         sections.append(('Live', live))
     for n, (a, b) in enumerate(CHUNKS):
-        parts = [_section(context, sec, buttons, k) for sec, buttons in sections[a:b]]
+        from . import res_panel                  # 0.24.284 Clean: the bottom row's own extra Resolution button
+        parts = [_section(context, sec, list(buttons) + (res_panel.EXTRA if sec == 'Resolution' else []), k)
+                 for sec, buttons in sections[a:b]]
         if n == 0:
             s = _settings(context, k)
             if s:

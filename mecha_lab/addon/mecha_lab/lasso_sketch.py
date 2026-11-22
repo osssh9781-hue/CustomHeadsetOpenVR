@@ -26,7 +26,7 @@ from . import tool_state as ts
 
 KEY = 'mch_lasso_sketch'          # Scene ID prop (JSON) - Ctrl+Z steps back through it
 MODES = {'CUT', 'SPLIT', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'HIDE',
-         'PRESS', 'WING', 'OMASS', 'MHOLE', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW'}   # 0.24.1 + Plate Detail 1 / 2, Box Hide; 0.24.95 Cloth Drape, Press Cut (the
+         'PRESS', 'WING', 'OMASS', 'MHOLE', 'PLANAR', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW'}   # 0.24.1 + Plate Detail 1 / 2, Box Hide; 0.24.95 Cloth Drape, Press Cut (the
 #                                               sketch = the stamp); 0.24.173 Insect Wing, Creature Cloth
 
 
@@ -193,6 +193,9 @@ def commit(context, alt=False):
     elif mode == 'MHOLE':
         from . import mecha_holes          # 0.24.183 Mecha Holes sketch: the combined outline is the panel
         msg = mecha_holes.perform(context, loops, proj)
+    elif mode == 'PLANAR':
+        from . import clean_flat           # 0.24.284 Clean (Planar) sketch: every outline flattened
+        msg = clean_flat.perform(context, loops, proj)
     elif mode == 'OMASS':
         from . import organic_mass         # 0.24.183 Creature Base Mesh 2 sketch: the combined outline is the lump
         msg = organic_mass.perform(context, loops, proj)
