@@ -67,30 +67,33 @@ check('... still mostly quads, about the asked count', quads > 0.9 and 2000 < le
       (quads, len(o.data.polygons), msg))
 
 zb = C.scene.mch_zb
-check('defaults: Flow 1, Subdivision 0, Hard Edges 30 degrees', abs(zb.qr_flow - 1.0) < 1e-6 and zb.qr_subd == 0
-      and abs(math.degrees(zb.qr_angle) - 30.0) < 1e-4)
+check('defaults: Flow 1, Hard Edges 30 degrees (Subdivision its own button, 2 levels)', abs(zb.qr_flow - 1.0) < 1e-6
+      and zb.qr_subd == 2 and abs(math.degrees(zb.qr_angle) - 30.0) < 1e-4)
 
-# Subdivision
+# Subdivision (0.24.286: its own button, not part of Quad Remesh)
 o = cyl()
 for x in list(C.selected_objects):
     x.select_set(False)
 o.select_set(True)
 C.view_layer.objects.active = o
-zb.qr_target, zb.qr_subd = 1.0, 2
+zb.qr_target = 1.0
 msg = mt.run_one(C, o, zb, 'QUAD_REMESH')
+check('Quad Remesh no longer adds a Subdivision', qf.subdiv_modifier(o) is None, msg)
+r = bpy.ops.mch.quad_subdiv()
 m = qf.subdiv_modifier(o)
-creased = o.data.attributes.get('crease_edge')
-check('Subdivision 2: a Subdivision Surface on the result (2 levels, render 2, creases used)',
-      m is not None and m.levels == 2 and m.render_levels == 2 and m.use_creases, (msg, m))
+check('Subdivision button: a Subdivision Surface (the setting\'s 2 levels, render 2, creases used)',
+      r == {'FINISHED'} and m is not None and m.levels == 2 and m.render_levels == 2 and m.use_creases, m)
 dg = C.evaluated_depsgraph_get()
 nev = len(o.evaluated_get(dg).data.polygons)
 check('... the shape is subdivided (16x the faces), the mesh itself stays the remesh', nev >= 15 * len(o.data.polygons),
       (nev, len(o.data.polygons)))
+zb.qr_subd = 3
+bpy.ops.mch.quad_subdiv()
+check('... again with 3: the same modifier, 3 levels', qf.subdiv_modifier(o).levels == 3
+      and sum(1 for x in o.modifiers if x.type == 'SUBSURF') == 1)
 r = bpy.ops.mch.quad_subdiv(levels=0)
-check('Subdivision off (x): the modifier taken off', r == {'FINISHED'} and qf.subdiv_modifier(o) is None)
-zb.qr_subd = 0
-mt.run_one(C, o, zb, 'QUAD_REMESH')
-check('Subdivision 0: no modifier added', qf.subdiv_modifier(o) is None)
+check('Subdivision 0: the modifier taken off', r == {'FINISHED'} and qf.subdiv_modifier(o) is None)
+zb.qr_subd = 2
 o.modifiers.new('Mine', 'SUBSURF')
 qf.set_subdiv(o, 0)
 check('... the user\'s own Subdivision is never touched', o.modifiers.get('Mine') is not None)
@@ -103,7 +106,7 @@ from mecha_lab import bg_jobs
 if bg_jobs.can_run():
     o = cyl()
     o.name = 'BgCyl'
-    zb.bg_jobs, zb.qr_target, zb.qr_subd, zb.qr_flow = True, 2.5, 1, 1.0
+    zb.bg_jobs, zb.qr_target, zb.qr_flow = True, 2.5, 1.0
     msg = mt.run_one(C, o, zb, 'QUAD_REMESH')
     t = time.perf_counter()
     while bg_jobs.busy(o) and time.perf_counter() - t < 300:
@@ -111,10 +114,10 @@ if bg_jobs.can_run():
     bg_jobs.poll()
     a_bg = dev(o)
     m = qf.subdiv_modifier(o)
-    check('Background: the result follows the flow too and gets its Subdivision',
-          'started in the background' in msg and a_bg.mean() < 0.6 * a0.mean() and m is not None and m.levels == 1,
+    check('Background: the result follows the flow too (no Subdivision added)',
+          'started in the background' in msg and a_bg.mean() < 0.6 * a0.mean() and m is None,
           (msg[:60], round(a_bg.mean(), 2), bg_jobs.last_message(o)[:120]))
-    zb.bg_jobs, zb.qr_subd = False, 0
+    zb.bg_jobs = False
 else:
     check('Background: the worker can run here', False)
 
@@ -122,10 +125,11 @@ else:
 for name, drawer in (('right-click Quad Remesh', qr.draw), ('Mesh Tools', mt.draw)):
     root = pc.capture(drawer, C)
     props = {x.prop for x in pc.walk(root) if x.kind == 'prop'} if root is not None else set()
-    check(f'{name} panel: Hard Edges, Flow, Subdivision', {'qr_angle', 'qr_flow', 'qr_subd'} <= props, sorted(props))
+    check(f'{name} panel: Hard Edges, Flow (Subdivision not in Quad any more)', {'qr_angle', 'qr_flow'} <= props
+          and 'qr_subd' not in props, sorted(props))
 bpy.ops.object.mode_set(mode='SCULPT')
 root = pc.capture(zu.draw_tool_shelf, C)
 props = {x.prop for x in pc.walk(root) if x.kind == 'prop'} if root is not None else set()
-check('ZBrush shelf: Hard Edges, Flow, Subdivision', {'qr_angle', 'qr_flow', 'qr_subd'} <= props, sorted(props))
+check('ZBrush shelf: Hard Edges, Flow', {'qr_angle', 'qr_flow'} <= props, sorted(props))
 bpy.ops.object.mode_set(mode='OBJECT')
 summary()

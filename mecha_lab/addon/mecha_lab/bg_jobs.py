@@ -216,9 +216,6 @@ def _apply(j):
         from . import cloth_sim
         cloth_sim.finish_cloth([ob])
     j['message'] = res.get('message', '') + f' | background, {time.perf_counter() - j["started"]:.0f} s'
-    if j['kind'] == 'QUAD_REMESH' and j.get('subd'):      # 0.24.281 Subdivision on the result (the modifier is here)
-        from . import quad_field as qf
-        j['message'] += qf.set_subdiv(ob, j['subd'])
     try:
         bpy.ops.ed.undo_push(message=KINDS.get(j['kind'], j['kind']))
     except RuntimeError:

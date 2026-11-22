@@ -1260,6 +1260,7 @@ DRAWERS = {
     'LARRAY': _module_drawer('line_array'),
     'SDF': _module_drawer('sdf_builder'),
     'PLANAR': _module_drawer('clean_flat'),
+    'ECLEAR': _module_drawer('edge_clear'),
     'MUSCLE': _muscle_drawer('MUSCLE'),
     'BODYKIT': _module_drawer('body_kit'),
     'RIG': _module_drawer('rigging'),            # 0.24.241

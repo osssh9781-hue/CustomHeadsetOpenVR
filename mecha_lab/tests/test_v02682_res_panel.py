@@ -87,7 +87,7 @@ def click(key):
 parts = pieces()
 check('Cut + Split made two pieces', len(parts) == 2, [(o.name, len(o.data.polygons)) for o in parts])
 
-res = next(bs for sec, bs in mm.ACTIONS if sec == 'Resolution')
+res = list(next(bs for sec, bs in mm.ACTIONS if sec == 'Resolution')) + rp.EXTRA
 _w, _h, its = bottom_row._section(C, 'Resolution', res, 1.0)
 acts = {i.label: i.action for i in its if i.kind == 'abtn'}
 sw = [i for i in its if i.action == ('resset',)]
@@ -120,17 +120,21 @@ n0 = len(b.data.polygons)
 click('QUAD')
 c = rp.card(C, 1.0)
 props = {i.prop for i in c[2]} if c else set()
-check('... Quad: nothing runs, its settings in the box (engine, Target, Hard Edges, Flow, Subdivision), lit',
+check('... Quad: nothing runs, its settings in the box (engine, Target, Hard Edges, Flow; no Subdivision), lit',
       rp.armed() == 'QUAD' and len(b.data.polygons) == n0
-      and {'mch_res_quad_engine', 'qr_target', 'qr_angle', 'qr_flow', 'qr_subd'} <= props
+      and {'mch_res_quad_engine', 'qr_target', 'qr_angle', 'qr_flow'} <= props and 'qr_subd' not in props
       and next(i for i in bottom_row._section(C, 'Resolution', res, 1.0)[2] if i.label == 'Quad').on, sorted(props))
 click('QUAD')
 check('... Quad again: still only the settings', len(b.data.polygons) == n0 and rp.armed() == 'QUAD')
-S.mch_zb.qr_subd = 1
 apply_box('QUAD')
-check('... Apply in the box: runs with them (quads, Subdivision 1), the box stays',
-      len(b.data.polygons) > 300 and qf.subdiv_modifier(b) is not None and rp.armed() == 'QUAD')
-S.mch_zb.qr_subd = 0
+check('... Apply in the box: runs with them (quads), the box stays', len(b.data.polygons) > 300 and rp.armed() == 'QUAD')
+click('SUBD')
+check('... Subdiv (its own button): its setting in the box (Levels)', rp.armed() == 'SUBD'
+      and 'qr_subd' in {i.prop for i in rp.card(C, 1.0)[2]} and qf.subdiv_modifier(b) is None)
+apply_box('SUBD')
+check('... Apply: a Subdivision Surface, the setting\'s levels', qf.subdiv_modifier(b) is not None
+      and qf.subdiv_modifier(b).levels == S.mch_zb.qr_subd)
+click('QUAD')
 S.mch_res_quad_engine = 'OLD'
 c = rp.card(C, 1.0)
 check('... engine QuadriFlow / Patch: its own settings', {'method', 'faces', 'edge_angle'} <= {i.prop for i in c[2]})

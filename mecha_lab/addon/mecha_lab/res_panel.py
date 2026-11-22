@@ -17,13 +17,15 @@ SETTINGS = [False]       # 0.24.283 the Settings switch beside the RESOLUTION ti
 
 # (label of the button in mecha_menu.ACTIONS 'Resolution') -> key
 KEYS = {'Remesh': 'REMESH', 'Quad': 'QUAD', 'Low Poly': 'LOWPOLY', 'HP Keep': 'HP_KEEP', 'HP Round': 'HP_ROUND',
-        'HP Divide': 'HP_DIVIDE', 'Decimate': 'DECIMATE'}
+        'HP Divide': 'HP_DIVIDE', 'Decimate': 'DECIMATE', 'Subdiv': 'SUBD'}
 # 0.24.284 (user: "이건 리메시가 아니라 클린이라고 새로 만들자") the bottom row's own extra Resolution button (the right-click
 # popup's card has no room: mecha_menu.ACTIONS stays as it is)
 # (0.24.284: it picks the Clean (Planar) lasso tool - draw over the area to flatten)
-EXTRA = [('Clean', 'shade_flat', 'tool:PLANAR', {}, '', False)]
+EXTRA = [('Clean', 'shade_flat', 'tool:PLANAR', {}, '', False),
+         # 0.24.286 (user: "서브디비전은 쿼드 안에가 아니라 따로 빼서") Subdivision as its own button
+         ('Subdiv', 'png:subd', 'mch.quad_subdiv', {}, 'mesh', False)]
 TITLES = {'REMESH': 'Remesh', 'QUAD': 'Quad Remesh', 'LOWPOLY': 'Low Poly', 'HP_KEEP': 'HP Keep',
-          'HP_ROUND': 'HP Round', 'HP_DIVIDE': 'HP Divide', 'DECIMATE': 'Decimate'}
+          'HP_ROUND': 'HP Round', 'HP_DIVIDE': 'HP Divide', 'DECIMATE': 'Decimate', 'SUBD': 'Subdivision'}
 
 ROW = 34.0               # px (x UI factor) a settings row
 WIDTH = 300.0
@@ -113,7 +115,7 @@ def fields(context, key):
         out.append(('enum', sc, 'mch_res_quad_engine', 'Engine'))
         if sc.mch_res_quad_engine == 'NEW' and zb is not None:
             out += [('num', zb, 'qr_target', 'Target (k)'), ('enum', zb, 'qr_mode', ''),
-                    ('num', zb, 'qr_angle', 'Hard Edges'), ('num', zb, 'qr_flow', ''), ('num', zb, 'qr_subd', '')]
+                    ('num', zb, 'qr_angle', 'Hard Edges'), ('num', zb, 'qr_flow', '')]
         else:
             st = sc.mch_quadremesh
             out += [('enum', st, 'method', ''), ('num', st, 'faces', ''), ('num', st, 'edge_angle', ''),
@@ -125,6 +127,8 @@ def fields(context, key):
     elif key in {'HP_KEEP', 'HP_ROUND', 'HP_DIVIDE'} and zb is not None:
         out += [('num', zb, 'bk_target', ''), ('num', zb, 'bk_rounding', ''), ('num', zb, 'bk_fillet', ''),
                 ('bool', zb, 'bk_copy', '')]
+    elif key == 'SUBD' and zb is not None:
+        out.append(('num', zb, 'qr_subd', 'Levels (0: off)'))
     elif key == 'DECIMATE' and zb is not None:
         out += [('num', zb, 'decimate', 'Keep %'), ('bool', zb, 'dec_even', ''), ('bool', zb, 'dec_quads', ''),
                 ('bool', zb, 'dec_borders', ''), ('enum', zb, 'result_shade', '')]

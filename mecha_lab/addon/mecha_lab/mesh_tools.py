@@ -83,7 +83,7 @@ def run_one(context, ob, zb, action):
         msg = qf.remesh_object(ob, max(1, int(round(zb.qr_target * 1000))), all_quads=zb.qr_mode == 'ALL',
                                crease_deg=math.degrees(zb.qr_angle), flow=zb.qr_flow)
         zs.shade_result(ob, zb)
-        return msg + qf.set_subdiv(ob, zb.qr_subd)
+        return msg
     if action == 'EDGE_MESH':
         if not fd.available():
             raise RuntimeError('the Fast Decimate engine is not available on this system')
@@ -178,30 +178,33 @@ class MCH_OT_mesh_tool(bpy.types.Operator):
 
 def qf_options(layout, zb, ob):
     """0.24.281 Quad Remesh: Hard Edges (how sharp a fold is a fixed line), Flow (how much the softer folds steer the
-    quads), Subdivision (levels of a Subdivision Surface on the result; the result's own modifier when it has one)."""
+    quads).  (0.24.286 Subdivision is its own button now - user: "서브디비전은 쿼드 안에가 아니라 따로 빼서")"""
     col = layout.column(align=True)
     col.prop(zb, 'qr_angle', text='Hard Edges')
     col.prop(zb, 'qr_flow', slider=True)
-    r = col.row(align=True)
-    r.prop(zb, 'qr_subd')
-    from . import quad_field as qf
-    mod = qf.subdiv_modifier(ob)
-    if mod is not None:
-        r.prop(mod, 'levels', text='Now')
-        r.operator('mch.quad_subdiv', text='', icon='X').levels = 0
 
 
 class MCH_OT_quad_subdiv(bpy.types.Operator):
-    """Quad Remesh Subdivision on the selected parts now (0: take it off)"""
+    """Subdivision: a Subdivision Surface on the selected parts (creased edges stay sharp), Subdivision levels; again
+    with other levels changes them, 0 takes it off"""
     bl_idname = 'mch.quad_subdiv'
-    bl_label = 'Quad Remesh Subdivision'
+    bl_label = 'Subdivision'
     bl_options = {'REGISTER', 'UNDO'}
-    levels: bpy.props.IntProperty(min=0, max=4)
+    levels: bpy.props.IntProperty(min=-1, max=4, default=-1, options={'SKIP_SAVE'})   # (-1: the Subdivision setting)
 
     def execute(self, context):
         from . import quad_field as qf
-        for o in _targets(context):
-            qf.set_subdiv(o, self.levels)
+        lv = self.levels if self.levels >= 0 else context.scene.mch_zb.qr_subd
+        obs = _targets(context)
+        if not obs:
+            self.report({'WARNING'}, 'Subdivision: select a mesh part')
+            return {'CANCELLED'}
+        if context.mode != 'OBJECT':
+            bpy.ops.object.mode_set(mode='OBJECT')
+        for o in obs:
+            qf.set_subdiv(o, lv)
+        self.report({'INFO'}, f'Subdivision {lv} on {len(obs)} part{"s" if len(obs) != 1 else ""}' if lv else
+                    'Subdivision off')
         return {'FINISHED'}
 
 
