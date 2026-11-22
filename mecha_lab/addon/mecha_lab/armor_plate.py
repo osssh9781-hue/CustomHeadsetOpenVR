@@ -545,10 +545,31 @@ def mirrored_into(verts, bvh, lift, scale=1.0):
     return out
 
 
+def carve_profile(preset, size, auto=True, memory=None, scale=1.0):
+    """0.24.290 the Alt carve's recess from the plate profile: (depth, edge finish 'NONE' / 'CHAMFER' / 'BEVEL', width,
+    segments, profile) in world units for a plate ``size`` (world) - what the plate has at its top edge goes on the
+    recess's opening (a Chamfer plate: a chamfered opening, a Round one: a rounded opening, Stepped: a wide chamfer)."""
+    vals = dict(preset_values(preset, size, auto))
+    for k, v in (memory or {}).items():          # (what you changed on the last plate of this profile: local units)
+        vals[k] = v * scale if k in LENGTH_KEYS and isinstance(v, (int, float)) else v
+    depth = float(vals.get('extract_height', 0.03 * size)) + float(vals.get('thickness', 0.0) or 0.0) * 0.0
+    cw = float(vals.get('chamfer_width', 0.0) or 0.0) + float(vals.get('outer_chamfer_width', 0.0) or 0.0)
+    bw = float(vals.get('bevel_width', 0.0) or 0.0)
+    if cw > 1e-9:
+        kind, width, segs = 'CHAMFER', cw, 1
+    elif bw > 1e-9:
+        kind, width, segs = 'BEVEL', bw, int(vals.get('bevel_segments', 3) or 3)
+    else:
+        kind, width, segs = 'NONE', 0.0, 1
+    return depth, kind, width, segs, float(vals.get('bevel_profile', 0.5) or 0.5)
+
+
 def perform_plate_carve(context, loops, projector, preset=None):
-    """0.24.42 Alt + draw with the Armor Plate tool: the plate it would make, turned the other way (mirrored
-    through the surface into the mesh) and carved out with a Boolean - a recess with the plate's profile
-    (chamfer / bevel / steps) as its walls.  Returns a report; raises cg.CutError (the mesh unchanged)."""
+    """0.24.42 Alt + draw with the Armor Plate tool: a recess in the shape drawn, as deep as the plate would be tall.
+    0.24.290 (user: "알트로 빼는 거는 왜 아머 플레이트 프리셋 고른 거랑 상관없이 다 똑같은 모양으로 빠져?") - it was the plate
+    mirrored through the surface, so the profile's top edge went to the bottom of the recess and every opening was the
+    same sharp hole: now the outline is cut in From Surface and the profile's top edge (Chamfer / Bevel / Round /
+    Stepped ...) is the opening's edge.  Returns a report; raises cg.CutError (the mesh unchanged)."""
     scene = context.scene
     st = scene.mch_plate
     groups = cg.prepare_loops(loops)
@@ -560,68 +581,39 @@ def perform_plate_carve(context, loops, projector, preset=None):
     preset = preset or st.preset
     if preset == 'MRIDGE':
         preset = 'CHAMFER'
-    from . import face_extract as fx
     region, surround, local_size, _missing = plate_meshes(context, target, groups, projector, st.spacing)
-    part = create_plate(context, target, region, surround, preset, local_size, st.auto_size)
-    try:
-        dg = context.evaluated_depsgraph_get()
-        dg.update()
-        ev = _lc_full(part, dg)
-        pm = ev.to_mesh()
-        try:
-            mw = ev.matrix_world
-            verts = [mw @ v.co for v in pm.vertices]
-            faces = [tuple(p.vertices) for p in pm.polygons]
-        finally:
-            ev.to_mesh_clear()
-    finally:
-        fx._remove_part(part)
-    if not faces:
-        raise cg.CutError('The plate came out empty; nothing was carved.')
-    tev = _lc_full(target, context.evaluated_depsgraph_get())
-    tme = tev.to_mesh()
-    try:
-        tw = tev.matrix_world
-        bvh = BVHTree.FromPolygons([tw @ v.co for v in tme.vertices], [tuple(p.vertices) for p in tme.polygons])
-    finally:
-        tev.to_mesh_clear()
-    lo = Vector([min(v[i] for v in verts) for i in range(3)])
-    hi = Vector([max(v[i] for v in verts) for i in range(3)])
-    lift = max((hi - lo).length * 0.004, 1e-5)
-    tall = max((h[2] for h in heights_above(verts, bvh) if h is not None), default=0.0)
-    depth = getattr(st, 'carve_depth', 0.0)
-    scale = depth / tall if depth > 0 and tall > 1e-9 else 1.0          # Carve Depth: 0 = as tall as the plate
-    world = mirrored_into(verts, bvh, lift, scale)
-    inv = target.matrix_world.inverted()
-    me = bpy.data.meshes.new('MCH_PlateCarve')
-    me.from_pydata([tuple(inv @ v) for v in world], [], faces)
-    me.validate()
-    bm = bmesh.new()
-    try:
-        bm.from_mesh(me)
-        bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
-        bm.to_mesh(me)
-    finally:
-        bm.free()
-    cutter = cg.link_temp_object(context, me, 'MCH_Cutter_Plate')
-    cutter.matrix_world = target.matrix_world.copy()
+    for me_ in (region, surround):
+        if me_ is not None and me_.users == 0:
+            bpy.data.meshes.remove(me_)
+    sc = target.matrix_world.to_scale()
+    scale = (abs(sc.x) + abs(sc.y) + abs(sc.z)) / 3.0
+    depth, kind, width, segs, prof = carve_profile(preset, local_size * scale, st.auto_size,
+                                                   plate_memory(scene).get(preset, {}), scale)
+    if getattr(st, 'carve_depth', 0.0) > 0.0:     # Carve Depth: 0 = as deep as the plate is tall
+        depth = float(st.carve_depth)
+    width = min(width, depth * 0.95)
+    from . import cut_engine as ce
     cut = scene.mch_cut
+    keep = (cut.depth_mode, cut.depth, cut.edge_finish, cut.gn_finish, cut.gn_width, cut.gn_segments, cut.gn_ramp)
     try:
-        res, _solver = cg.boolean_result(context, target, cutter, 'DIFFERENCE', cut.solver, cut.hole_tolerant)
-        try:
-            cg.commit_mesh(target, res, cut.shared_mesh)
-        finally:
-            if res.users == 0:
-                bpy.data.meshes.remove(res)
+        cut.depth_mode, cut.depth = 'SURFACE', max(depth, 1e-5)
+        cut.edge_finish = 'NONE'
+        # (the GN Edge: the profile swept along the opening only, its full width - the plain bevel was clamped by
+        #  the short walls to a sliver)
+        cut.gn_ramp = False
+        cut.gn_finish = kind if width > 1e-9 else 'NONE'
+        cut.gn_width, cut.gn_segments = width, max(2, segs) if kind == 'BEVEL' else 1
+        ce.perform_closed(context, 'CUT', [target], loops, projector)
     finally:
-        cg.remove_object_and_mesh(cutter)
+        (cut.depth_mode, cut.depth, cut.edge_finish, cut.gn_finish, cut.gn_width, cut.gn_segments,
+         cut.gn_ramp) = keep
     for o in context.selected_objects:
         o.select_set(False)
     target.select_set(True)
     context.view_layer.objects.active = target
     name = dict((p_[0], p_[1]) for p_ in PRESETS)[preset]
-    return (f'Armor plate carved into "{target.name}" (Alt: {name} the other way round, '
-            f'{tall * scale:.3g} deep)')
+    edge = {'CHAMFER': 'chamfered', 'BEVEL': 'rounded'}.get(kind, 'sharp') if width > 1e-9 else 'sharp'
+    return f'Armor plate carved into "{target.name}" (Alt: {name}, {depth:.3g} deep, {edge} opening)'
 
 
 def _perform_through(context, loops, projector, preset, target, groups, st, brush):
