@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
     "author": "OpenAI / ChatGPT, Claude Code",
-    "version": (0, 24, 293),
+    "version": (0, 24, 294),
     "blender": (4, 3, 0),
     "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
     "description": "Cut, Split, Base Mesh, Boolean, Face Extract, Armor Sculpt, Molding, Cable, Hollow, curve arrays, Mirror",
@@ -20,7 +20,7 @@ from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform
                surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, creature_fur, skin_cover, insect_wing, organic_mass, muscle_gen, body_kit, body_whole, mecha_holes, creature_membrane, outline_mesh, creature_shapes, weathering, print3d, clothing_gen, hood_gen, scarf_gen, quad_cloth, concept_move, smart_move, geo_sculpt, greeble_line, perforate, surface_draw, radial_sym, brush_resize, ramp_edit, bg_jobs, quad_remesh, mesh_fix, tool_recent, actions_menu, key_legend, quick_hud, mecha_menu, symmetry, groups, ui_bars, safety_save, lasso_memory, armor_shell, paint_lab, bake_maps, res_parts, final_export, mech_shader,
                creature_shader, my_presets, decals, zones, my_materials, bake_material, color_pick,
                random_shapes, material_overlay, tire_gen, work_scene, press_cut, name_fix, quick_render, fast_view,
-               light_copies, bg_color, creature_light, render_panel, hdri_turn, hair_view_width, perf_view, line_array, sdf_builder,
+               light_copies, bg_color, creature_light, render_panel, hdri_turn, hair_view_width, perf_view, line_array, spring_gen, sdf_builder,
                res_panel, clean_flat, edge_clear)
 import os
 import re
@@ -2194,6 +2194,7 @@ def _register():
     edge_clear.register()               # 0.24.286 Edge Clear
     clean_flat.register()               # 0.24.284 Clean (Planar): the lasso area pushed onto a plane
     line_array.register()               # 0.24.279 Line Array
+    spring_gen.register()               # 0.24.294 Spring
     perf_view.register()                # 0.24.277 viewport performance
     hair_view_width.register()          # 0.24.268 hair: Render Like Viewport (strand width)
     hdri_turn.register()                # 0.24.266 HDRI Rotation / Follow Camera
@@ -2263,6 +2264,7 @@ def _unregister_steps():
         ('hair_view_width', hair_view_width.unregister),
         ('perf_view', perf_view.unregister),
         ('line_array', line_array.unregister),
+        ('spring_gen', spring_gen.unregister),
         ('sdf_builder', sdf_builder.unregister),
         ('res_panel', res_panel.unregister),
         ('clean_flat', clean_flat.unregister),

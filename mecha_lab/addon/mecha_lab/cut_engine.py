@@ -1457,6 +1457,7 @@ _COLORS = {
     'MHOLE': (0.6, 0.85, 1.0, 1.0),
     'PLANAR': (0.75, 0.95, 1.0, 1.0),
     'LARRAY': (0.95, 0.8, 0.35, 1.0),
+    'SPRING': (0.8, 0.85, 0.95, 1.0),
     'CPLATE': (0.55, 0.9, 0.6, 1.0),
     'BELT': (0.95, 0.75, 0.3, 1.0),
     'SPIKE': (0.6, 0.85, 0.4, 1.0),
@@ -1830,7 +1831,7 @@ class StrokeLogic:
         return self.mode not in {'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'ZONE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE',
                                  'FLOWER', 'SCURVE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'SDRAW', 'PRESS',
                                  'GREEBLE', 'CGREEBLE', 'FUR', 'WING', 'OMASS', 'MHOLE', 'PLANAR', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW',
-                                 'LARRAY'}
+                                 'LARRAY', 'SPRING'}
 
     def _tangents(self, pts=None):
         pts = self.pts if pts is None else pts
@@ -2255,6 +2256,15 @@ class StrokeLogic:
             elif self.shape == 'STROKE':
                 pts = self._line_path()
             return line_array.perform(context, pts, self.shape, self.projector)
+        if self.mode == 'SPRING':                # 0.24.294 Spring: the drawing is its line
+            from . import spring_gen
+            pts = list(self.pts)
+            if self.shape not in {'LASSO', 'CURVE_LASSO', 'STROKE'}:
+                loops = self._current_loops(self.ctrl_held, self.shift_held)
+                pts = list(loops[0]) if loops else pts
+            elif self.shape == 'STROKE':
+                pts = self._line_path()
+            return spring_gen.perform(context, pts, self.shape, self.projector)
         if self.mode == 'PRESS':                 # 0.24.95 Press Cut: the drawing is the stamp (or goes into a sketch)
             from . import press_cut
             loops = self._current_loops(self.ctrl_held, self.shift_held)
@@ -2535,6 +2545,10 @@ class StrokeLogic:
                 if self.mode == 'LARRAY':        # 0.24.279 Line Array: a two-point lasso = its line
                     from . import line_array
                     return self._run(context, lambda c: line_array.perform(c, list(self.pts), self.shape,
+                                                                           self.projector))
+                if self.mode == 'SPRING':        # 0.24.294 Spring: a two-point lasso = its line
+                    from . import spring_gen
+                    return self._run(context, lambda c: spring_gen.perform(c, list(self.pts), self.shape,
                                                                            self.projector))
                 if self.mode == 'PCUT':          # 0.24.183 Print Cut: a two-point lasso = its line
                     from . import print3d
@@ -2920,6 +2934,7 @@ class MCH_OT_cut_stroke(StrokeLogic, bpy.types.Operator):
         ('MHOLE', 'Mecha Holes', 'A panel of holes on the part under the outline'),
         ('PLANAR', 'Clean (Planar)', 'The surface under the outline pushed onto one flat plane'),
         ('LARRAY', 'Line Array', 'Copies of the part along the drawn line / outline'),
+        ('SPRING', 'Spring', 'A coil spring along the drawn line'),
         ('PCUT', 'Print Cut', 'Cut a part along the drawn shape, connection pins across the cut'),
         ('OMASS', 'Creature Base Mesh 2', 'A big organic lump in the drawn outline: rock, scale, mushroom, crystal...'),
         ('CPLATE', 'Creature Plate', 'New rounded plate (Puff / Ridge / Pillow) on the mesh under the outline'),

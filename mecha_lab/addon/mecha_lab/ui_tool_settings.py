@@ -1258,6 +1258,7 @@ DRAWERS = {
     'OMASS': draw_omass,
     'MHOLE': _module_drawer('mecha_holes'),
     'LARRAY': _module_drawer('line_array'),
+    'SPRING': _module_drawer('spring_gen'),
     'SDF': _module_drawer('sdf_builder'),
     'PLANAR': _module_drawer('clean_flat'),
     'ECLEAR': _module_drawer('edge_clear'),
