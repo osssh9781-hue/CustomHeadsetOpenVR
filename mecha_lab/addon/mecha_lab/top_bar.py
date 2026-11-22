@@ -141,7 +141,8 @@ def groups(context, tool):
             _cell('mini', 'Curve UD', action=('number',), data=pr, prop='curve_y', width=130),
             _cell('mini', 'Start', action=('number',), data=pr, prop='start', width=110),
             _cell('mini', 'Speed', action=('number',), data=pr, prop='speed', width=120),
-            _cell('mini', 'Max', action=('number',), data=pr, prop='max_depth', width=100)]))
+            _cell('mini', 'Max', action=('number',), data=pr, prop='max_depth', width=100),
+            _cell('mini', 'Wall Angle', action=('number',), data=pr, prop='wall_angle', width=150)]))
         # 0.24.124 (user: "프레스 컷에 플레이트 버튼 넣어 주라") Plate: press = the stamp as a plate, Line = its section
         # along the surface, Lasso = that plate tool's lasso
         out.append(('Plate', _enum_segs(pr, 'result', (('PLATE', 'Armor'), ('CPLATE', 'Creature')))))

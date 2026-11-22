@@ -19,6 +19,15 @@ import mecha_lab
 from mecha_lab import core_geometry as cg, cut_engine as ce, cut_presets, press_cut as pc, tool_state as ts
 
 mecha_lab.register()
+_fresh0 = fresh
+
+
+def fresh():                                     # (0.24.289: these check the straight walls; the slant: v02685)
+    _fresh0()
+    bpy.context.scene.mch_press.wall_angle = 0.0
+
+
+fresh()
 C = bpy.context
 TOP = cg.OrthoProjector(Quaternion(), pixels_per_unit=100.0)
 

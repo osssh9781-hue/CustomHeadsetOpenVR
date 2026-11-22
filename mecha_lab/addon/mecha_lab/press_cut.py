@@ -129,6 +129,11 @@ class MCH_PG_Press(bpy.types.PropertyGroup):
                          'the stamp - bumps in the surface never show on it; the walls reach down to the surface'),
         ('FOLLOW', 'Follow', 'The outer face follows the surface under the stamp (its bumps and curve included)')],
         description='Hold (Grow): the shape of the outer face')
+    # 0.24.289 (user: "프레스 컷 들어갈 때 훅 들어가는데 스탬프 모양에 맞춰서 대각선으로 들어가게")
+    wall_angle: FloatProperty(name='Wall Angle', default=math.radians(20.0), min=0.0, max=math.radians(60.0),
+                              subtype='ANGLE', update=_redraw,
+                              description='Press Cut: the walls go in on this slant (0: straight in) - the floor is '
+                                          'drawn in toward the stamp\'s middle, the deeper the more')
     start: FloatProperty(name='Start', default=0.01, min=0.0005, max=1.0, subtype='FACTOR', precision=3,
                          description='Depth at the press, of the part\'s size (a quick tap)')
     speed: FloatProperty(name='Speed', default=0.12, min=0.005, soft_max=1.0, max=5.0, precision=3,
@@ -880,6 +885,7 @@ class Press:
             cut.finish_width = st.stamp_edge_width
             cut.finish_segments = 1 if st.stamp_edge == 'CHAMFER' else st.stamp_edge_segments
         cg.FLOOR[0] = self.floor(depth)
+        cg.WARP[0] = self.warp(st, depth)                # 0.24.289 Wall Angle
         try:
             self.message = ce.perform_closed(context, self.result, [self.target], self.loops, self.projector)
         except (cg.CutError, RuntimeError) as ex:
@@ -898,11 +904,44 @@ class Press:
         finally:
             cut_presets.QUIET[0] = False
             cg.FLOOR[0] = None
+            cg.WARP[0] = None
             if st.stamp_edge != 'INHERIT':
                 cut.edge_finish, cut.finish_width, cut.finish_segments, cut.gn_finish = edge_before
         self.pieces = [o.name for o in bpy.data.objects if o.name not in before]
         self.depth = depth
         return True
+
+    def px_per_world(self):
+        """Screen px per world unit at the part (for the Wall Angle's slant on screen)."""
+        pr = self.projector
+        if hasattr(pr, 'ppu'):
+            return float(pr.ppu)
+        try:
+            c = self.target.matrix_world @ (sum((Vector(b) for b in self.target.bound_box), Vector()) / 8.0)
+            right = pr.rv3d.view_rotation @ Vector((1.0, 0.0, 0.0))
+            step = max(1e-4, 0.01 * self.size)
+            a, b = pr.to_screen(c), pr.to_screen(c + right * step)
+            if a is None or b is None:
+                return 0.0
+            return math.hypot(b[0] - a[0], b[1] - a[1]) / step
+        except (AttributeError, ReferenceError, ValueError, ZeroDivisionError):
+            return 0.0
+
+    def warp(self, st, depth):
+        """0.24.289 the far cap drawn in toward the stamp's middle by ``depth`` x tan(Wall Angle) (on screen): a
+        function xy -> xy, or None (straight walls)."""
+        ang = float(getattr(st, 'wall_angle', 0.0))
+        if ang < 1e-4 or depth <= 0.0:
+            return None
+        pxw = self.px_per_world()
+        pts = [p for lp in self.loops for p in lp]
+        cx = sum(p[0] for p in pts) / len(pts)
+        cy = sum(p[1] for p in pts) / len(pts)
+        rad = sum(math.hypot(p[0] - cx, p[1] - cy) for p in pts) / len(pts)
+        if pxw <= 0.0 or rad <= 1e-6:
+            return None
+        s = max(0.15, 1.0 - depth * math.tan(ang) * pxw / rad)
+        return lambda xy: (cx + (xy[0] - cx) * s, cy + (xy[1] - cy) * s)
 
     def _settings_back(self, context):
         cut = context.scene.mch_cut
@@ -2666,6 +2705,7 @@ def draw(layout, context):
     col.prop(st, 'start')
     col.prop(st, 'speed')
     col.prop(st, 'max_depth')
+    col.prop(st, 'wall_angle')
     row = layout.row(align=True)
     row.enabled = cut_presets.LAST_LOOPS[0] is not None
     row.operator('mch.save_cut_shape', text='Save Shape (the outline you drew last)', icon='FILE_TICK')

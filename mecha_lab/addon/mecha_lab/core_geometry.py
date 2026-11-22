@@ -472,6 +472,8 @@ def depth_planes(projector, bounds_points, mode='THROUGH', hit=None, depth=0.1,
     return near, far
 
 
+WARP = [None]        # 0.24.289 a function screen xy -> screen xy for the cutter's far cap (Press Cut Wall Angle: the
+                     # floor drawn in toward the stamp's middle - the walls go in on a slant)
 FLOOR = [None]       # 0.24.95 an object with offset(screen xy, far plane point) -> depth offset along the view,
                      # spacing (grid px) and near_shift(near plane point): a curved far cap (Press Cut curve,
                      # Follow Surface)
@@ -539,9 +541,10 @@ def _curved_cap(loops, projector, far_co, vd, floor, spacing, folds=None):
         if src:
             where.append(('wall', src[0]))
         else:
-            o, dr = projector.ray((c.x, c.y))
+            q = WARP[0]((c.x, c.y)) if WARP[0] is not None else (c.x, c.y)
+            o, dr = projector.ray(q)
             p, _t = _plane_hit(o, dr, far_co, vd)
-            where.append(('new', p + vd * floor((c.x, c.y))))
+            where.append(('new', p + vd * floor(q)))
     return where, keep
 
 
@@ -594,14 +597,18 @@ def build_cutter_mesh(groups, projector, near_co, far_co, name='MCH_Cutter'):
         base = len(verts)
         near_pts = []
         far_pts = []
+        warp = WARP[0]
         for xy in flat:
             o, d = projector.ray(xy)
             p_near, t_near = _plane_hit(o, d, near_co, vd)
+            xy_f = warp(xy) if warp is not None else xy
+            if warp is not None:
+                o, d = projector.ray(xy_f)
             p_far, t_far = _plane_hit(o, d, far_co, vd)
             if projector.is_perspective and (t_near < 0 or t_far <= t_near):
                 raise CutError('Shape projects behind the view; zoom out or use orthographic view.')
             near_pts.append(p_near)
-            far_pts.append(p_far + vd * floor.offset(xy, far_co) if floor is not None else p_far)
+            far_pts.append(p_far + vd * floor.offset(xy_f, far_co) if floor is not None else p_far)
         verts.extend(near_pts)
         verts.extend(far_pts)
         tris = cap_triangles(loops)
