@@ -632,6 +632,34 @@ def _carve_mirror(context, target, part, remove, st):
     return tall * scale
 
 
+def carve_warp(projector, loops, target, depth, angle):
+    """0.24.295 Alt carve Wall Angle: the cutter's far cap drawn in toward the shape's middle by depth x tan(angle) (on
+    the screen, as Press Cut's Wall Angle): a function xy -> xy, or None (straight walls)."""
+    if angle < 1e-4 or depth <= 0.0:
+        return None
+    pts = [p for lp in loops for p in lp]
+    if not pts:
+        return None
+    if hasattr(projector, 'ppu'):
+        pxw = float(projector.ppu)
+    else:
+        try:
+            c = target.matrix_world @ (sum((Vector(b) for b in target.bound_box), Vector()) / 8.0)
+            right = projector.rv3d.view_rotation @ Vector((1.0, 0.0, 0.0))
+            step = max(1e-4, 0.01 * max(target.dimensions))
+            a, b = projector.to_screen(c), projector.to_screen(c + right * step)
+            pxw = math.hypot(b[0] - a[0], b[1] - a[1]) / step if a is not None and b is not None else 0.0
+        except (AttributeError, ReferenceError, ValueError, ZeroDivisionError, TypeError):
+            pxw = 0.0
+    cx = sum(p[0] for p in pts) / len(pts)
+    cy = sum(p[1] for p in pts) / len(pts)
+    rad = sum(math.hypot(p[0] - cx, p[1] - cy) for p in pts) / len(pts)
+    if pxw <= 0.0 or rad <= 1e-6:
+        return None
+    s = max(0.15, 1.0 - depth * math.tan(angle) * pxw / rad)
+    return lambda xy: (cx + (xy[0] - cx) * s, cy + (xy[1] - cy) * s)
+
+
 def carve_profile(preset, size, auto=True, memory=None, scale=1.0):
     """0.24.290 the Alt carve's recess from the plate profile: (depth, edge finish 'NONE' / 'CHAMFER' / 'BEVEL', width,
     segments, profile) in world units for a plate ``size`` (world) - what the plate has at its top edge goes on the
@@ -746,8 +774,10 @@ def _plate_carve(context, loops, projector, preset, target, groups):
         cut.depth_floor = getattr(st, 'carve_floor', 'FOLLOW')
         cut.gn_finish = kind if width > 1e-9 else 'NONE'
         cut.gn_width, cut.gn_segments = width, max(2, segs) if kind == 'BEVEL' else 1
+        cg.WARP[0] = carve_warp(projector, loops, target, depth, getattr(st, 'carve_wall', 0.0))   # 0.24.295
         ce.perform_closed(context, 'CUT', [target], loops, projector)
     finally:
+        cg.WARP[0] = None
         (cut.depth_mode, cut.depth, cut.edge_finish, cut.gn_finish, cut.gn_width, cut.gn_segments,
          cut.gn_ramp, cut.depth_floor) = keep
     for o in context.selected_objects:
@@ -1201,6 +1231,12 @@ class MCH_PG_Plate(bpy.types.PropertyGroup):
     carve_depth: FloatProperty(name='Alt Carve Depth', default=0.0, min=0.0, soft_max=1.0, precision=4,
                                unit='LENGTH', update=_carve_update, description='Alt + draw carves the plate the other way: how deep '
                                                           '(0 = as deep as the plate is tall)')
+    # 0.24.295 (user: "아머플레이트도 아까 프레스 컷처럼 대각선으로 잘리는 버튼") the recess's walls slant in toward its
+    # middle (as Press Cut's Wall Angle); 0 = straight down (as before)
+    carve_wall: FloatProperty(name='Alt Carve Wall Angle', default=0.0, min=0.0, max=math.radians(60.0),
+                              subtype='ANGLE', update=_carve_update,
+                              description='Alt + draw carve: the walls go in diagonally - the floor narrower than the '
+                                          'opening by depth x tan(angle); 0 = straight walls')
     # 0.24.291 (user: "옆에 세팅에 플렛 팔로우 레벨 버튼 만들면 되것네") the Alt carve's floor, as the Cut tool's
     carve_floor: EnumProperty(name='Alt Carve Floor', default='FOLLOW', update=_carve_update, items=[
         ('FOLLOW', 'Follow', 'As deep below the surface everywhere under the shape, however the part is turned'),
@@ -1689,6 +1725,7 @@ def draw(layout, context):
     row.prop(st, 'auto_size', toggle=True)
     box.prop(st, 'carve_depth')                       # 0.24.42 Alt + draw: the recess depth
     box.row(align=True).prop(st, 'carve_floor', expand=True)     # 0.24.291 the recess floor
+    box.prop(st, 'carve_wall')                        # 0.24.295 slanted walls
     ob = pending_plate(context)
     if ob is not None:
         p = ob.mch_extract

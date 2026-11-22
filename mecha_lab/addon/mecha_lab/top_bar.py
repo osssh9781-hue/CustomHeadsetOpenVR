@@ -113,12 +113,27 @@ def groups(context, tool):
             extra.append(_cell('drop', '', action=('menu_enum',), data=ws, prop='sim_preset', width=110))
     if extra:
         out.append(('', extra))
+    if tool == 'BASE':
+        # 0.24.295 (user: "만든 모양대로 옆면 쪽에 몰딩처럼 튀어나오게, 두께랑 개수 정할 수 있게") in the tool's own box (the
+        # LASSO block keeps its size: its cells stay where they are for every tool)
+        from . import base_mesh
+        ob_ = base_mesh.active_live_base(context)
+        bp = ob_.mch_base if ob_ is not None else base_mesh.scene_defaults(context)
+        if bp is not None and hasattr(bp, 'mold_count') and bp.profile in {'FLAT', 'BEVEL', 'CHAMFER'}:
+            cells = [_mini('Count', bp, 'mold_count', 110)]
+            if bp.mold_count > 0:
+                cells += [_mini('Thickness', bp, 'mold_thick', 150), _mini('Width', bp, 'mold_width', 130)]
+                cells += _enum_segs(bp, 'mold_shape', (('SQUARE', 'Square'), ('CHAMFER', 'Chamfer'),
+                                                       ('ROUND', 'Round')))
+            out.append(('Side Molding', cells))
     pst = getattr(scene, 'mch_plate', None)
     if tool == 'PLATE' and pst is not None and hasattr(pst, 'carve_floor'):
         # 0.24.291 (user: "옆에 세팅에 플렛 팔로우 레벨 버튼 만들면 되것네") Alt + draw (the carve): floor and depth
         out.append(('Alt Carve', _enum_segs(pst, 'carve_floor', (('FOLLOW', 'Follow'), ('LEVEL', 'Level'),
                                                                  ('FLAT', 'Flat')))
-                    + [_cell('mini', 'Depth', action=('number',), data=pst, prop='carve_depth', width=130)]))
+                    + [_cell('mini', 'Depth', action=('number',), data=pst, prop='carve_depth', width=130),
+                       # 0.24.295 (user: "프레스 컷처럼 대각선으로 잘리는 버튼") the walls slant in
+                       _cell('mini', 'Wall Angle', action=('number',), data=pst, prop='carve_wall', width=150)]))
     if tool == 'PRESS' and hasattr(scene, 'mch_press'):          # 0.24.95 Press Cut: the stamp and how it presses
         pr = scene.mch_press
         # (user: "원래 쓰던 라쏘랑 스케치 다 넣어 줘") Shift + draw: the stamp drawn with the shared shapes

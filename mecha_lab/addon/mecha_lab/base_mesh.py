@@ -68,7 +68,7 @@ SETTING_KEYS = ('height', 'wall', 'bevel_width', 'bevel_segments', 'roundness', 
                 'bottom_too', 'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link', 'puff',
                 'outline_smooth', 'edge_round', 'peak', 'attach_curve', 'profile_sweep', 'section_width',
                 'section_rotation', 'section_twist', 'section_taper', 'line_corner', 'corner_radius', 'line_up',
-                'line_detail', 'line_end')
+                'line_detail', 'line_end', 'mold_count', 'mold_thick', 'mold_width', 'mold_shape')
 SWEEP_KEY = 'mch_base_line_sweep'  # 0.24.103 serialized path + alpha loops for live rebuild
 DEPTH_KEY = 'mch_base_depth_guide'   # side-view polyline reshapes the base depth, kept live
 ATTACH_KEY = 'mch_base_attach'          # 0.24.57 Line: the ends stuck to the meshes where the line began / ended
@@ -80,7 +80,7 @@ PUFF_RINGS = (0.12, 0.3, 0.55, 0.85)      # rows just inside the outline (in poi
 CARRY_KEYS = ('profile', 'height', 'wall', 'bevel_width', 'bevel_segments', 'roundness', 'resolution', 'offset',
               'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link', 'puff', 'outline_smooth',
               'edge_round', 'section_rotation', 'section_twist', 'section_taper', 'line_corner', 'corner_radius', 'line_up',
-              'line_detail', 'line_end')
+              'line_detail', 'line_end', 'mold_count', 'mold_thick', 'mold_width', 'mold_shape')
 # 0.24.107 'profile_sweep' / 'section_width' are not carried: a Press Cut Alt+draw part (always a shape sweep) had
 # every later plain Base Mesh line turned into a shape sweep once one of its sliders was touched.
 
@@ -293,6 +293,22 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
     bend_axis: FloatProperty(name='Bend Direction', default=0.0, min=math.radians(-90), max=math.radians(90),
                              subtype='ANGLE', update=_rebuild_update,
                              description='Turn the bend direction (0 = along the longest side of the shape)')
+    # 0.24.295 (user: "베이스 메쉬 옵션 - 라쏘든 뭐든 만든 모양 대로 옆면 쪽에 몰딩처럼 튀어나오게, 두께랑 개수 정할 수 있게")
+    # bands round the side wall, standing out of it along the drawn outline (Flat / Chamfer / Bevel profiles)
+    mold_count: IntProperty(name='Side Molding', default=0, min=0, max=20, update=_rebuild_update,
+                            description='How many molding bands stand out round the side wall, along the drawn outline '
+                                        '(0 = none)')
+    mold_thick: FloatProperty(name='Molding Thickness', default=0.02, min=0.0001, soft_max=0.5, precision=4,
+                              unit='LENGTH', update=_rebuild_update,
+                              description='How far each molding band stands out of the side wall')
+    mold_width: FloatProperty(name='Molding Width', default=0.0, min=0.0, soft_max=1.0, precision=4, unit='LENGTH',
+                              update=_rebuild_update,
+                              description='How tall each band is up the side (0 = Auto: about half its share of the '
+                                          'wall)')
+    mold_shape: EnumProperty(name='Molding Shape', default='CHAMFER', update=_rebuild_update, items=[
+        ('SQUARE', 'Square', 'A square step out'),
+        ('CHAMFER', 'Chamfer', 'Slanted edges top and bottom'),
+        ('ROUND', 'Round', 'A half-round bead')])
     live: BoolProperty(name='Live', default=False, update=_live_changed,
                        description='Settings rebuild this object (outline stored on the object)')
     outline: StringProperty(default='', options={'HIDDEN'})
@@ -490,7 +506,67 @@ def _orient_ccw(tri, pts):
     return tri if area > 0 else [tri[0], tri[2], tri[1]]
 
 
-def _add_prism(bm, outer, holes, height):
+def offset_outline(loop, d, limit=3.0):
+    """0.24.295 a closed outline (CCW) moved out by ``d`` (mitred corners, at most ``limit`` x d at a sharp one)."""
+    n = len(loop)
+    out = []
+    for i in range(n):
+        p0, p1, p2 = loop[i - 1], loop[i], loop[(i + 1) % n]
+        e1 = (p1[0] - p0[0], p1[1] - p0[1])
+        e2 = (p2[0] - p1[0], p2[1] - p1[1])
+        l1, l2 = math.hypot(*e1) or 1e-12, math.hypot(*e2) or 1e-12
+        n1 = (e1[1] / l1, -e1[0] / l1)
+        n2 = (e2[1] / l2, -e2[0] / l2)
+        mx, my = n1[0] + n2[0], n1[1] + n2[1]
+        ml = math.hypot(mx, my)
+        if ml < 1e-9:
+            mx, my, ml = n1[0], n1[1], 1.0
+        mx, my = mx / ml, my / ml
+        cos_h = max(mx * n1[0] + my * n1[1], 1.0 / limit)
+        out.append((p1[0] + mx * d / cos_h, p1[1] + my * d / cos_h))
+    return out
+
+
+def molding_rings(p, height):
+    """0.24.295 Side Molding: [(z, offset)] up the side wall between the bottom and the top (bands of
+    ``p.mold_count``, standing out ``p.mold_thick``), clear of the Bevel / Chamfer rims.  [] = none."""
+    n = int(getattr(p, 'mold_count', 0) or 0)
+    t = float(getattr(p, 'mold_thick', 0.0) or 0.0)
+    if n <= 0 or t <= 0.0 or height <= 0.0:
+        return []
+    top_m = bot_m = 0.0
+    if p.profile in {'BEVEL', 'CHAMFER'} and p.bevel_sides != 'NONE':
+        w_top = p.bevel_width
+        w_bot = p.bevel_width if p.bevel_link else p.bevel_width_bottom
+        if p.bevel_sides in {'TOP', 'BOTH'}:
+            top_m = min(w_top, height * 0.45)
+        if p.bevel_sides in {'BOTTOM', 'BOTH'}:
+            bot_m = min(w_bot, height * 0.45)
+    lo, hi = bot_m + height * 0.02, height - top_m - height * 0.02
+    if hi - lo <= 1e-6:
+        return []
+    pitch = (hi - lo) / n
+    bw = float(getattr(p, 'mold_width', 0.0) or 0.0)
+    bw = min(bw if bw > 0.0 else pitch * 0.45, pitch * 0.92)
+    shape = getattr(p, 'mold_shape', 'CHAMFER')
+    rings = []
+    for i in range(n):
+        zc = lo + pitch * (i + 0.5)
+        z0, z1 = zc - bw / 2.0, zc + bw / 2.0
+        if shape == 'SQUARE':
+            band = [(z0, 0.0), (z0, t), (z1, t), (z1, 0.0)]
+        elif shape == 'ROUND':
+            k = 6
+            band = [(z0 + bw * (1.0 - math.cos(math.pi * j / k)) / 2.0, t * math.sin(math.pi * j / k))
+                    for j in range(k + 1)]
+        else:
+            c = min(t, bw * 0.35)
+            band = [(z0, 0.0), (z0 + c, t), (z1 - c, t), (z1, 0.0)]
+        rings += band
+    return rings
+
+
+def _add_prism(bm, outer, holes, height, rings=()):
     loops = [outer] + list(holes)
     flat = [p for lp in loops for p in lp]
     bottom = [bm.verts.new((x, y, 0.0)) for x, y in flat]
@@ -511,11 +587,21 @@ def _add_prism(bm, outer, holes, height):
             bm.faces.new([bottom[i] for i in reversed(tri)])
     rim_top, rim_bottom = [], []
     off = 0
-    for lp in loops:
+    for li, lp in enumerate(loops):
         n = len(lp)
+        # 0.24.295 Side Molding: the outer wall goes up through rings standing out of it (the holes stay plain)
+        chain = [bottom[off:off + n]]
+        if li == 0 and rings:
+            for z, d in rings:
+                ring = offset_outline(lp, d) if d > 1e-9 else lp
+                chain.append([bm.verts.new((x, y, z)) for x, y in ring])
+        chain.append(top[off:off + n])
+        for lo_r, hi_r in zip(chain, chain[1:]):
+            for i in range(n):
+                j = (i + 1) % n
+                bm.faces.new((lo_r[i], lo_r[j], hi_r[j], hi_r[i]))
         for i in range(n):
             a, b = off + i, off + (i + 1) % n
-            bm.faces.new((bottom[a], bottom[b], top[b], top[a]))
             rim_top.append((top[a], top[b]))
             rim_bottom.append((bottom[a], bottom[b]))
         off += n
@@ -1020,7 +1106,7 @@ def build_bmesh(groups, p, flip=False):
             elif p.profile in PUFF_BUILT:
                 _add_puff(bm, outer, holes, p)
             else:
-                rt, rb = _add_prism(bm, outer, holes, p.height)
+                rt, rb = _add_prism(bm, outer, holes, p.height, molding_rings(p, p.height))
                 rim_top += rt
                 rim_bottom += rb
         bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-7)

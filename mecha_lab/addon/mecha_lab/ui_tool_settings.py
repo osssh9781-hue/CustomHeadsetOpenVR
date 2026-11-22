@@ -780,6 +780,15 @@ def draw_base(layout, context):
     col.prop(p, 'offset')
     if ob is not None and p.embed > 0:
         col.prop(p, 'embed')
+    if p.profile in {'FLAT', 'BEVEL', 'CHAMFER'} and hasattr(p, 'mold_count'):
+        # 0.24.295 Side Molding: bands standing out round the side wall, along the drawn outline
+        mold = target.box()
+        mold.prop(p, 'mold_count')
+        if p.mold_count > 0:
+            c2 = mold.column(align=True)
+            c2.prop(p, 'mold_thick')
+            c2.prop(p, 'mold_width', text='Molding Width (0: Auto)')
+            mold.row(align=True).prop(p, 'mold_shape', expand=True)
     # 0.24.103: line-swept custom Alpha profile is shared with Press Cut Alt+Draw.
     if not creature:
         section = target.box()
