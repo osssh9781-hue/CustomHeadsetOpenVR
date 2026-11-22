@@ -55,7 +55,7 @@ def _settings(context, k):
 
 def _section(context, sec, buttons, k):
     from .mecha_menu import Item
-    from . import mecha_menu as mm
+    from . import mecha_menu as mm, res_panel
     ob = context.active_object
     active = ts.effective_tool(context)
     per = max(1, (len(buttons) + 2) // 3)
@@ -79,6 +79,10 @@ def _section(context, sec, buttons, k):
                 pass
         if op.startswith('tool:'):
             action, on_ = ('tool', op[5:]), active == op[5:]
+        elif sec == 'Resolution' and label in res_panel.KEYS:
+            # 0.24.282 first click: its settings in the leftmost box; the same button again: run it
+            key = res_panel.KEYS[label]
+            action, on_ = ('resarm', key), on_ or res_panel.armed() == key
         else:
             action = ('mop', op, props, closes)
         out.append(Item('abtn', c * BTN_W * k + 3 * k, -TITLE_H * k - (r + 1) * BTN_H * k, (BTN_W - 6) * k,
@@ -91,7 +95,20 @@ def boxes(context, region_w, region_h, k):
     from .mecha_menu import Item
     from . import mecha_menu as mm, top_bar
     out = []
-    tool = top_bar.items(context, region_w, region_h, k, part='BOTTOM')
+    from . import res_panel
+    rc = res_panel.card(context, k)                  # 0.24.282 a Resolution button's settings instead of the tool's
+    if rc is not None:
+        rw, rh, its = rc
+        w, h = rw + 2 * PAD * k, rh + 2 * PAD * k
+        items = [Item('card', 0, 0, w, h)]
+        for i in its:
+            i.x += PAD * k
+            i.y += h - PAD * k
+            items.append(i)
+        out.append((w, h, items))
+        tool = []
+    else:
+        tool = top_bar.items(context, region_w, region_h, k, part='BOTTOM')
     card = next((i for i in tool if i.kind == 'card'), None)
     if card is not None:
         dx, dy = -card.x, -card.y
@@ -136,7 +153,9 @@ def layout(context, region_w, region_h, k):
     from . import ui_bars
     try:
         ob = context.active_object
-        key = (region_w, region_h, round(k, 4), ts.effective_tool(context), ob.name if ob else '', ui_bars.VERSION[0])
+        from . import res_panel
+        key = (region_w, region_h, round(k, 4), ts.effective_tool(context), ob.name if ob else '', ui_bars.VERSION[0],
+               res_panel.armed())
     except (AttributeError, ReferenceError, UnicodeDecodeError):
         key = None
     now = time.monotonic()

@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
     "author": "OpenAI / ChatGPT, Claude Code",
-    "version": (0, 24, 281),
+    "version": (0, 24, 282),
     "blender": (4, 3, 0),
     "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
     "description": "Cut, Split, Base Mesh, Boolean, Face Extract, Armor Sculpt, Molding, Cable, Hollow, curve arrays, Mirror",
@@ -20,7 +20,8 @@ from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform
                surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, creature_fur, skin_cover, insect_wing, organic_mass, muscle_gen, body_kit, body_whole, mecha_holes, creature_membrane, outline_mesh, creature_shapes, weathering, print3d, clothing_gen, hood_gen, scarf_gen, quad_cloth, concept_move, smart_move, geo_sculpt, greeble_line, perforate, surface_draw, radial_sym, brush_resize, ramp_edit, bg_jobs, quad_remesh, mesh_fix, tool_recent, actions_menu, key_legend, quick_hud, mecha_menu, symmetry, groups, ui_bars, safety_save, lasso_memory, armor_shell, paint_lab, bake_maps, res_parts, final_export, mech_shader,
                creature_shader, my_presets, decals, zones, my_materials, bake_material, color_pick,
                random_shapes, material_overlay, tire_gen, work_scene, press_cut, name_fix, quick_render, fast_view,
-               light_copies, bg_color, creature_light, render_panel, hdri_turn, hair_view_width, perf_view, line_array, sdf_builder)
+               light_copies, bg_color, creature_light, render_panel, hdri_turn, hair_view_width, perf_view, line_array, sdf_builder,
+               res_panel)
 import os
 import re
 from pathlib import Path
@@ -2189,6 +2190,7 @@ def _register():
     light_copies.register()             # 0.24.136 Light Copies
     bg_color.register()                 # 0.24.137 Background Colour
     sdf_builder.register()              # 0.24.280 SDF Builder
+    res_panel.register()                # 0.24.282 the bottom row's Resolution buttons: settings, again = run
     line_array.register()               # 0.24.279 Line Array
     perf_view.register()                # 0.24.277 viewport performance
     hair_view_width.register()          # 0.24.268 hair: Render Like Viewport (strand width)
@@ -2260,6 +2262,7 @@ def _unregister_steps():
         ('perf_view', perf_view.unregister),
         ('line_array', line_array.unregister),
         ('sdf_builder', sdf_builder.unregister),
+        ('res_panel', res_panel.unregister),
         ('creature_light', creature_light.unregister),
         ('bg_color', bg_color.unregister),
         ('light_copies', light_copies.unregister),

@@ -184,7 +184,7 @@ titles = [[i.label for i in its_ if i.kind == 'glabel' and i.icon == 'title'] fo
 check(f'the row of boxes: the tool\'s box first, then the right-click popup\'s actions in three boxes ({titles[1:]}); '
       f'every action of the popup is there ({len(acts)} of {want})',
       len(bx) == 4 and bx[0][2][1].label == 'CUT' and len(acts) >= want
-      and all(a.action[0] in {'mop', 'tool'} for a in acts)
+      and all(a.action[0] in {'mop', 'tool', 'resarm'} for a in acts)   # (0.24.282 Resolution: settings, again = run)
       and 'ACTIONS' in titles[1] and 'SYMMETRY' in titles[2] and 'GROUPS' in titles[3])
 ob = C.active_object
 it = next(i for i in acts if i.action[0] == 'mop' and i.action[1] == 'mch.actions_mirror' and i.action[2].get('axis') == 0)
