@@ -735,6 +735,8 @@ def draw(layout, context):
         r.operator('mch.mesh_tool', text='Quad Remesh').action = 'QUAD_REMESH'
         r.prop(zb, 'qr_target', text='Target (k)')
         box.row(align=True).prop(zb, 'qr_mode', expand=True)
+        from . import mesh_tools
+        mesh_tools.qf_options(box, zb, ob)                       # 0.24.281 Hard Edges / Flow / Subdivision
         box.operator('mch.fix_mesh', icon='TOOL_SETTINGS')
     box = layout.box()
     box.label(text='MAKE QUAD (old: QuadriFlow / Patch)', icon='MOD_REMESH')

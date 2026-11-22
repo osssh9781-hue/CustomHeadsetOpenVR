@@ -81,9 +81,9 @@ def run_one(context, ob, zb, action):
         if bg:
             return bg
         msg = qf.remesh_object(ob, max(1, int(round(zb.qr_target * 1000))), all_quads=zb.qr_mode == 'ALL',
-                               crease_deg=math.degrees(zb.qr_angle))
+                               crease_deg=math.degrees(zb.qr_angle), flow=zb.qr_flow)
         zs.shade_result(ob, zb)
-        return msg
+        return msg + qf.set_subdiv(ob, zb.qr_subd)
     if action == 'EDGE_MESH':
         if not fd.available():
             raise RuntimeError('the Fast Decimate engine is not available on this system')
@@ -176,6 +176,35 @@ class MCH_OT_mesh_tool(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def qf_options(layout, zb, ob):
+    """0.24.281 Quad Remesh: Hard Edges (how sharp a fold is a fixed line), Flow (how much the softer folds steer the
+    quads), Subdivision (levels of a Subdivision Surface on the result; the result's own modifier when it has one)."""
+    col = layout.column(align=True)
+    col.prop(zb, 'qr_angle', text='Hard Edges')
+    col.prop(zb, 'qr_flow', slider=True)
+    r = col.row(align=True)
+    r.prop(zb, 'qr_subd')
+    from . import quad_field as qf
+    mod = qf.subdiv_modifier(ob)
+    if mod is not None:
+        r.prop(mod, 'levels', text='Now')
+        r.operator('mch.quad_subdiv', text='', icon='X').levels = 0
+
+
+class MCH_OT_quad_subdiv(bpy.types.Operator):
+    """Quad Remesh Subdivision on the selected parts now (0: take it off)"""
+    bl_idname = 'mch.quad_subdiv'
+    bl_label = 'Quad Remesh Subdivision'
+    bl_options = {'REGISTER', 'UNDO'}
+    levels: bpy.props.IntProperty(min=0, max=4)
+
+    def execute(self, context):
+        from . import quad_field as qf
+        for o in _targets(context):
+            qf.set_subdiv(o, self.levels)
+        return {'FINISHED'}
+
+
 def draw(layout, context):
     zb = getattr(context.scene, 'mch_zb', None)
     if zb is None:
@@ -209,6 +238,7 @@ def draw(layout, context):
     from . import bg_jobs
     bg_jobs.draw_status(col, context.active_object)
     col.row(align=True).prop(zb, 'qr_mode', expand=True)
+    qf_options(col, zb, context.active_object)          # 0.24.281 Hard Edges / Flow / Subdivision
     col = box.column(align=True)
     r = col.row(align=True)
     op(r, 'Edge Mesh', 'EDGE_MESH')
@@ -262,7 +292,7 @@ class MCH_PT_mesh_tools(bpy.types.Panel):
         draw(self.layout, context)
 
 
-CLASSES = (MCH_OT_mesh_tool, MCH_OT_bake_copy_toggle, MCH_PT_mesh_tools)
+CLASSES = (MCH_OT_mesh_tool, MCH_OT_bake_copy_toggle, MCH_PT_mesh_tools, MCH_OT_quad_subdiv)
 
 
 def register():

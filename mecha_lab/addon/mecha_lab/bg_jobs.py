@@ -77,7 +77,8 @@ def start(context, ob, kind, params, extra=()):
         log.close()
         return f'{KINDS.get(kind, kind)}: could not start the background Blender ({ex})'
     JOBS[ob.name] = dict(kind=kind, proc=proc, dir=d, out=out, log=log, started=time.perf_counter(), object=ob.name,
-                         mesh=me.name, faces=len(me.polygons), verts=len(me.vertices), message='', done=False)
+                         mesh=me.name, faces=len(me.polygons), verts=len(me.vertices), message='', done=False,
+                         subd=int((params or {}).get('subd', 0)))
     _ensure_timer()
     return f'{KINDS.get(kind, kind)} started in the background on {ob.name} ({len(me.polygons):,} faces) - keep working'
 
@@ -215,6 +216,9 @@ def _apply(j):
         from . import cloth_sim
         cloth_sim.finish_cloth([ob])
     j['message'] = res.get('message', '') + f' | background, {time.perf_counter() - j["started"]:.0f} s'
+    if j['kind'] == 'QUAD_REMESH' and j.get('subd'):      # 0.24.281 Subdivision on the result (the modifier is here)
+        from . import quad_field as qf
+        j['message'] += qf.set_subdiv(ob, j['subd'])
     try:
         bpy.ops.ed.undo_push(message=KINDS.get(j['kind'], j['kind']))
     except RuntimeError:

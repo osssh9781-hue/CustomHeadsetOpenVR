@@ -142,7 +142,8 @@ def draw_tool_shelf(layout, context):
     r.prop(zb, 'bg_jobs', text='Background', toggle=True)        # 0.24.86 a second Blender does the work
     from . import bg_jobs
     bg_jobs.draw_status(box, context.active_object)
-    box.prop(zb, 'qr_angle')
+    from . import mesh_tools
+    mesh_tools.qf_options(box, zb, context.active_object)        # 0.24.281 Hard Edges / Flow / Subdivision
     ops(box.row(), ('Half', 'QR_HALF'), ('Same', 'QR_SAME'), ('Double', 'QR_DOUBLE'))
     box = layout.box()
     box.label(text='Edge Mesh')

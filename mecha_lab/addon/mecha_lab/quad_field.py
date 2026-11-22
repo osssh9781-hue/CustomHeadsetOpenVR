@@ -21,7 +21,7 @@ import bpy
 
 from . import fast_decimate as fd
 
-VERSION = 2                     # mquad API this module talks to (2: guide lines, hard edges out)
+VERSION = 3                     # mquad API this module talks to (2: guide lines, hard edges out; 3: flow)
 MAXLEV = 8
 LENGTH_WEIGHT = 0.1             # Fast Decimate even spacing for the levels
 LEVELS = (16.0, 4.0, 1.0, 0.25)  # level triangles per quad, fine to coarse
@@ -40,7 +40,7 @@ class _Opts(ctypes.Structure):
     _fields_ = [('scale', ctypes.c_float), ('crease_deg', ctypes.c_float), ('min_chain', ctypes.c_float),
                 ('all_quads', ctypes.c_int), ('threads', ctypes.c_int), ('seed', ctypes.c_int),
                 ('iters_orient', ctypes.c_int * MAXLEV), ('iters_pos', ctypes.c_int * MAXLEV),
-                ('crease_tol', ctypes.c_float)]
+                ('crease_tol', ctypes.c_float), ('flow', ctypes.c_float)]
 
 
 class _Out(ctypes.Structure):
@@ -299,7 +299,7 @@ def is_cut_mesh(me, target):
     return 0 < nt <= GUIDE_RATIO * max(int(target), 1)
 
 
-def remesh_cut(me, target, all_quads=False, crease_deg=30.0, nthreads=None, extra=None):
+def remesh_cut(me, target, all_quads=False, crease_deg=30.0, nthreads=None, extra=None, flow=0.0):
     """Quad Remesh of a low-poly part (see ``is_cut_mesh``).  Returns (points, faces, polygon under each face,
     part's point nearest each point, stats with 'tries' = how much finer it had to go, 'open' = sides left open)."""
     area = sum(p.area for p in me.polygons)
@@ -308,7 +308,7 @@ def remesh_cut(me, target, all_quads=False, crease_deg=30.0, nthreads=None, extr
         h = math.sqrt(2.0 * area / max(1, 6 * target * k))
         V, T, tpoly, near = even_triangles(me, h)
         P, Fq, tsrc, psrc, st = remesh_arrays(V, T, target * k, all_quads=all_quads, crease_deg=crease_deg,
-                                              nthreads=nthreads, guide=True, extra=extra)
+                                              nthreads=nthreads, guide=True, extra=extra, flow=flow)
         bad = len(holes(P, open_edges(Fq), border_tree(me, 0.25 * h), 0.5 * h))   # (an open plate's border stays)
         if best is not None and bad >= best[0]:
             break                                    # 0.24.76 finer did not help: no use going finer still
@@ -487,7 +487,8 @@ def level_iters(wanted, got):
     return out
 
 
-def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None, seed=0, guide='auto', extra=None):
+def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None, seed=0, guide='auto', extra=None,
+                  flow=0.0):
     """Quad remesh triangles T over points V to about ``target`` faces.
 
     guide: 'auto' - a coarse input (a decimated part: at most GUIDE_RATIO triangles per wanted face) is followed edge
@@ -556,6 +557,7 @@ def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None,
     o.threads = nthreads or fd.threads()
     o.seed = seed
     o.crease_tol = 0.02 * h
+    o.flow = max(0.0, min(1.0, float(flow)))          # 0.24.281 follow the softer folds (0: as before)
     for k, (io, ip) in enumerate(level_iters(counts, [len(lv[1]) for lv in levels])):
         o.iters_orient[k], o.iters_pos[k] = io, ip
     nv = (ctypes.c_int * n)(*[len(lv[0]) for lv in levels])
@@ -604,7 +606,40 @@ def remembered_lines(me):
     return em.lines(me, m).astype(np.float32)
 
 
-def remesh_object(ob, target, all_quads=False, crease_deg=30.0, nthreads=None):
+SUBD_MOD = 'MCH Quad Subdiv'
+
+
+def subdiv_modifier(ob):
+    """0.24.281 the Quad Remesh Subdivision modifier of ``ob``, or None."""
+    if ob is None or ob.type != 'MESH':
+        return None
+    m = ob.modifiers.get(SUBD_MOD)
+    return m if m is not None and m.type == 'SUBSURF' else None
+
+
+def set_subdiv(ob, levels):
+    """0.24.281 A Subdivision Surface (Catmull-Clark) on the remeshed part, ``levels`` in the viewport and in renders;
+    creases used, so the hard edges the remesh creased stay sharp.  0: the modifier taken off (only ours).  Returns
+    a message tail ('' when nothing changed)."""
+    levels = max(0, min(4, int(levels)))
+    m = subdiv_modifier(ob)
+    if levels == 0:
+        if m is None:
+            return ''
+        ob.modifiers.remove(m)
+        return ', Subdivision off'
+    if m is None:
+        m = ob.modifiers.new(SUBD_MOD, 'SUBSURF')
+        m.subdivision_type = 'CATMULL_CLARK'
+        m.use_creases = True
+        m.show_only_control_edges = True
+        m.quality = 3
+    m.levels = levels
+    m.render_levels = levels
+    return f', Subdivision {levels}'
+
+
+def remesh_object(ob, target, all_quads=False, crease_deg=30.0, nthreads=None, flow=0.0):
     """Quad remesh mesh object ``ob`` (Object Mode) to about ``target`` polygons.  Returns a message."""
     me = ob.data
     if me.shape_keys is not None:
@@ -626,13 +661,13 @@ def remesh_object(ob, target, all_quads=False, crease_deg=30.0, nthreads=None):
             bpy.data.meshes.remove(fixed)
             fixed = fixst = None
     try:
-        return _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nthreads)
+        return _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nthreads, flow)
     finally:
         if fixed is not None and fixed.users == 0:
             bpy.data.meshes.remove(fixed)
 
 
-def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nthreads):
+def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nthreads, flow=0.0):
     me.calc_loop_triangles()
     nt = len(me.loop_triangles)
     if nt < 4:
@@ -651,10 +686,10 @@ def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nth
         if cut:
             # 0.24.75 a low-poly part (Cut / Base Mesh / decimated): even triangles, its own edges as fixed lines
             P, Fq, fpoly, pvert, st = remesh_cut(me, target, all_quads=all_q, crease_deg=crease_deg,
-                                                 nthreads=nthreads, extra=memo)
+                                                 nthreads=nthreads, extra=memo, flow=flow)
         else:
             P, Fq, tsrc, psrc, st = remesh_arrays(V, T.reshape(-1, 3), target, all_quads=all_q,
-                                                  crease_deg=crease_deg, nthreads=nthreads, extra=memo)
+                                                  crease_deg=crease_deg, nthreads=nthreads, extra=memo, flow=flow)
             fpoly, pvert = tpoly[tsrc], psrc
         return P, Fq, fpoly, pvert, st
     try:
@@ -739,7 +774,7 @@ def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nth
         if tries < VOLUME_TRIES and target * 2 <= QUAD_MAX_FACES:
             _st_tries[id(ob)] = tries + 1
             try:
-                return _remesh_object(ob, me, polys0, t0, fixst, target * 2, all_quads, crease_deg, nthreads)
+                return _remesh_object(ob, me, polys0, t0, fixst, target * 2, all_quads, crease_deg, nthreads, flow)
             finally:
                 _st_tries.pop(id(ob), None)
         why = (f'{open_new} sides would stay open' if open_new > max(OPEN_OK_MIN, OPEN_OK * max(1, n_new))

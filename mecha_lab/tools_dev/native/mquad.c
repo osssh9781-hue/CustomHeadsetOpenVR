@@ -48,6 +48,7 @@ typedef struct {
   int iters_orient[MAXLEV];  /* Gauss-Seidel sweeps per level (fine first) */
   int iters_pos[MAXLEV];
   float crease_tol;          /* v2 guide: an edge whose ends and middle are this close to a guide line is on it */
+  float flow;                /* v3 0..1: how much the quads follow the softer folds below crease_deg (0: as v2) */
 } MquadOpts;
 
 typedef struct {
@@ -222,6 +223,10 @@ typedef struct {
   int ncol, *cs, *cv; /* points by colour */
   double *Q, *O;
   int *up;       /* nearest point of the next coarser level */
+  double *edih;  /* v3 the angle (radians) the faces of each edge meet at (0: an open border) */
+  double flow;   /* v3 opt->flow */
+  double *fd;    /* v3 the folds' direction at the point (tangent; NULL: no flow) */
+  double *fw;    /* v3 how much it counts (0 .. 1) */
 } Level;
 
 static int uf_find(int *par, int x) {
@@ -288,12 +293,21 @@ static void build_level(Mem *m, Level *L, const float *V, int nv, const int *F, 
   L->ne = ne;
   int *E = L->E = (int *)xmalloc(m, sizeof(int) * 2 * ne);
   int *ecr = L->ecr = (int *)xcalloc(m, ne, sizeof(int));
+  double *edih = L->edih = (double *)xcalloc(m, ne, sizeof(double));
   int e = 0;
   for (int i = 0; i < 3 * nf;) {
     int j = i;
     while (j < 3 * nf && ek[j].key == ek[i].key) j++;
     E[2 * e] = (int)(ek[i].key / nv);
     E[2 * e + 1] = (int)(ek[i].key % nv);
+    if (j - i == 2) {
+      const double *na = &fn[3 * ek[i].f], *nb = &fn[3 * ek[i + 1].f];
+      double la = norm3(na), lb = norm3(nb);
+      if (la > 1e-30 && lb > 1e-30) {
+        double c = dot3(na, nb) / (la * lb);
+        edih[e] = acos(c > 1.0 ? 1.0 : (c < -1.0 ? -1.0 : c));
+      }
+    }
     if (j - i != 2) {
       ecr[e] = 1;
       L->nbound++;
@@ -555,6 +569,109 @@ static void round4(double *o, const double *q, const double *n, const double *p,
   for (int k = 0; k < 3; k++) o[k] += q[k] * a + t[k] * b;
 }
 
+/* v3 flow: every point's direction of the folds round it - the edges where the faces meet at an angle (an edge turning
+ * by crease_deg over one quad length counts fully, a nearly flat one not; FLOW_FLOOR of that is ignored as noise) -
+ * as a 4-fold average (a fold and the line across it are the same quad direction); fw = how much they agree x how
+ * strongly they fold.  Then FLOW_SMOOTH passes with the neighbours. */
+#ifndef FLOW_GAIN
+#define FLOW_GAIN 1.0
+#endif
+#ifndef FLOW_FLOOR
+#define FLOW_FLOOR 0.15
+#endif
+#ifndef FLOW_SMOOTH
+#define FLOW_SMOOTH 3
+#endif
+#ifndef FLOW_INHERIT
+#define FLOW_INHERIT 1
+#endif
+#ifndef FLOW_INHERIT_LEN
+#define FLOW_INHERIT_LEN 0.6
+#endif
+#ifndef FLOW_POW
+#define FLOW_POW 1.0
+#endif
+static void flow_level(Mem *m, Level *L, double h, double crease_rad) {
+  int nv = L->nv;
+  double *fd = L->fd = (double *)xcalloc(m, 3 * (size_t)nv, sizeof(double));
+  double *fw = L->fw = (double *)xcalloc(m, nv, sizeof(double));
+  double *T1 = (double *)xmalloc(m, sizeof(double) * 3 * (size_t)nv);
+  double *cs = (double *)xcalloc(m, 2 * (size_t)nv, sizeof(double));
+  int *deg = (int *)xcalloc(m, nv, sizeof(int));
+  for (int i = 0; i < nv; i++) {
+    const double *n = &L->N[3 * i];
+    double ax[3] = {1, 0, 0};
+    if (fabs(n[0]) > 0.9) {
+      ax[0] = 0;
+      ax[1] = 1;
+    }
+    double *t = &T1[3 * i];
+    memcpy(t, ax, sizeof(ax));
+    tangent3(t, n);
+  }
+  for (int e = 0; e < L->ne; e++) {
+    int va = L->E[2 * e], vb = L->E[2 * e + 1];
+    double d[3];
+    sub3(&L->P[3 * vb], &L->P[3 * va], d);
+    double len = norm3(d);
+    if (len < 1e-30) continue;
+    double w = L->ecr[e] ? 1.0 : L->edih[e] * h / len / crease_rad;
+    w = (w - FLOW_FLOOR) / (1.0 - FLOW_FLOOR);
+    w = w < 0.0 ? 0.0 : (w > 1.0 ? 1.0 : w);
+    for (int k = 0; k < 2; k++) {
+      int v = k ? vb : va;
+      deg[v]++;
+      if (w <= 0.0) continue;
+      const double *n = &L->N[3 * v], *t1 = &T1[3 * v];
+      double t2[3];
+      cross3(n, t1, t2);
+      double phi = atan2(dot3(d, t2), dot3(d, t1));
+      cs[2 * v] += w * cos(4.0 * phi);
+      cs[2 * v + 1] += w * sin(4.0 * phi);
+    }
+  }
+  for (int i = 0; i < nv; i++) {
+    if (!deg[i]) continue;
+    double c = cs[2 * i], sn = cs[2 * i + 1], r = sqrt(c * c + sn * sn);
+    if (r < 1e-12) continue;
+    double phi = atan2(sn, c) / 4.0, t2[3];
+    const double *n = &L->N[3 * i], *t1 = &T1[3 * i];
+    cross3(n, t1, t2);
+    for (int d = 0; d < 3; d++) fd[3 * i + d] = t1[d] * cos(phi) + t2[d] * sin(phi);
+    fw[i] = pow(r / deg[i], FLOW_POW);
+  }
+  double *fd2 = (double *)xmalloc(m, sizeof(double) * 3 * (size_t)nv);
+  double *fw2 = (double *)xmalloc(m, sizeof(double) * (size_t)nv);
+  for (int pass = 0; pass < FLOW_SMOOTH; pass++) {
+    for (int i = 0; i < nv; i++) {
+      const double *n = &L->N[3 * i];
+      double s[3], a[3], b[3], ws = fw[i], wsum = fw[i];
+      int cnt = 1;
+      memcpy(s, &fd[3 * i], sizeof(s));
+      for (int k = L->as[i]; k < L->as[i + 1]; k++) {
+        int j = L->aj[k];
+        cnt++;
+        wsum += fw[j];
+        if (fw[j] <= 0.0) continue;
+        if (ws <= 0.0) {
+          memcpy(s, &fd[3 * j], sizeof(s));
+          tangent3(s, n);
+          ws = fw[j];
+          continue;
+        }
+        compat_orient(s, n, &fd[3 * j], &L->N[3 * j], a, b);
+        for (int d = 0; d < 3; d++) s[d] = a[d] * ws + b[d] * fw[j];
+        tangent3(s, n);
+        ws += fw[j];
+      }
+      memcpy(&fd2[3 * i], s, sizeof(s));
+      fw2[i] = ws > 0.0 && norm3(s) > 0.5 ? 0.5 * fw[i] + 0.5 * wsum / cnt : 0.0;
+    }
+    memcpy(fd, fd2, sizeof(double) * 3 * (size_t)nv);
+    memcpy(fw, fw2, sizeof(double) * (size_t)nv);
+  }
+}
+
 static void orient_point(Level *L, int i) {
   const double *n = &L->N[3 * i];
   double s[3], a[3], b[3];
@@ -566,6 +683,12 @@ static void orient_point(Level *L, int i) {
     for (int d = 0; d < 3; d++) s[d] = a[d] * ws + b[d];
     tangent3(s, n);
     ws += 1.0;
+  }
+  if (L->fd && L->cc[i] == 0 && L->fw[i] > 0.0 && ws > 0.0) { /* v3 flow: toward the softer folds' direction */
+    compat_orient(s, n, &L->fd[3 * i], n, a, b);
+    double wf = FLOW_GAIN * L->flow * L->fw[i] * ws;
+    for (int d = 0; d < 3; d++) s[d] = a[d] * ws + b[d] * wf;
+    tangent3(s, n);
   }
   if ((L->cc[i] == 1 || L->cc[i] == 2) && norm3(&L->cd[3 * i]) > 0.5) { /* along the hard edge */
     compat_orient(s, n, &L->cd[3 * i], n, a, b);
@@ -1474,7 +1597,7 @@ static void snap_points(Hash *tri, Hash *seg, double *pos, const int *kind, int 
   }
 }
 
-EXPORT int mquad_version(void) { return 2; }
+EXPORT int mquad_version(void) { return 3; }
 
 EXPORT void mquad_free(MquadOut *out) {
   if (!out) return;
@@ -1563,6 +1686,42 @@ EXPORT int mquad_run(int nlevels, const int *nv, const int *nf, const float *V, 
     so += nv[k + 1];
   }
   int threads = opt->threads > 1 ? opt->threads : 1;
+  if (opt->flow > 0.0f) { /* v3 flow on every level from its own edges */
+    double cr = opt->crease_deg * 3.14159265358979323846 / 180.0;
+    /* the folds read on the levels whose edges are about a quad long (finer ones: noise of the sampling), handed
+     * down to the finer levels through their nearest coarser point */
+    int kf = 0;
+#if FLOW_INHERIT
+    for (kf = 0; kf + 1 < nlevels; kf++) {
+      Level *L = &lv[kf];
+      double sl = 0.0;
+      for (int e = 0; e < L->ne; e++) {
+        double d[3];
+        sub3(&L->P[3 * L->E[2 * e + 1]], &L->P[3 * L->E[2 * e]], d);
+        sl += norm3(d);
+      }
+      if (L->ne && sl / L->ne >= FLOW_INHERIT_LEN * h) break;
+    }
+#endif
+    for (int k = nlevels - 1; k >= 0; k--) {
+      Level *L = &lv[k];
+      L->flow = opt->flow > 1.0f ? 1.0 : opt->flow;
+      if (k >= kf || !L->up) {
+        flow_level(&mem, L, h, cr > 1e-3 ? cr : 1e-3);
+        continue;
+      }
+      Level *U = &lv[k + 1];
+      L->fd = (double *)xcalloc(&mem, 3 * (size_t)L->nv, sizeof(double));
+      L->fw = (double *)xcalloc(&mem, L->nv, sizeof(double));
+      for (int i = 0; i < L->nv; i++) {
+        int u = L->up[i];
+        if (u < 0 || U->fw[u] <= 0.0) continue;
+        memcpy(&L->fd[3 * i], &U->fd[3 * u], sizeof(double) * 3);
+        tangent3(&L->fd[3 * i], &L->N[3 * i]);
+        L->fw[i] = norm3(&L->fd[3 * i]) > 0.5 ? U->fw[u] : 0.0;
+      }
+    }
+  }
   /* orientation, coarse to fine */
   for (int k = nlevels - 1; k >= 0; k--) {
     Level *L = &lv[k];

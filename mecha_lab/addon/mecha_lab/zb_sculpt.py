@@ -1415,6 +1415,15 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
                             max=math.radians(90.0), subtype='ANGLE',
                             description='Quad Remesh: faces meeting at more than this make a hard edge - the quads '
                                         'line up along it and keep it sharp')
+    # 0.24.281 (user: "리메시를 흐름을 따라가면서", "면 각도가 넓은 부분은 덜 잡히게", "서브디비전도 추가")
+    qr_flow: FloatProperty(name='Flow', default=1.0, min=0.0, max=1.0, subtype='FACTOR',
+                           description='Quad Remesh: the quads follow the softer folds too (rounded edges, bevels, '
+                                       'curves) - the sharper a fold below Hard Edges, the more it counts; nearly '
+                                       'flat areas hardly at all.  0: as before 0.24.281')
+    qr_subd: IntProperty(name='Subdivision', default=0, min=0, max=4,
+                         description='Quad Remesh: a Subdivision Surface modifier on the result, this many levels '
+                                     '(0: none).  The hard edges are creased, so they stay sharp; live - change it '
+                                     'on the modifier any time')
     # 0.24.72 Hard Edges (hard_edges): find the hard edges, crease them, a live adjustable bevel
     he_angle: FloatProperty(name='Angle', default=math.radians(30.0), min=math.radians(1.0), max=math.radians(150.0),
                             subtype='ANGLE', description='Find Edges: faces meeting at more than this make a hard edge')
@@ -1936,7 +1945,8 @@ def bg_params(zb, kind):
     """The shelf settings a background worker needs for ``kind`` (plain values: they travel as JSON)."""
     p = dict(result_shade=getattr(zb, 'result_shade', 'SMOOTH'), qr_angle=float(getattr(zb, 'qr_angle', math.radians(30.0))))
     if kind == 'QUAD_REMESH':
-        p.update(target=max(1, int(round(zb.qr_target * 1000))), all_quads=zb.qr_mode == 'ALL', crease_deg=math.degrees(zb.qr_angle))
+        p.update(target=max(1, int(round(zb.qr_target * 1000))), all_quads=zb.qr_mode == 'ALL', crease_deg=math.degrees(zb.qr_angle),
+                 flow=float(getattr(zb, 'qr_flow', 0.0)), subd=int(getattr(zb, 'qr_subd', 0)))
     else:
         p.update(refix_finish=getattr(zb, 'refix_finish', 'DECIMATE'), refix_faces=int(getattr(zb, 'refix_faces', 0)),
                  refix_smooth=int(getattr(zb, 'refix_smooth', 2)))
@@ -2321,8 +2331,9 @@ def run(context, action):
             if bg:
                 return bg
             msg = qf.remesh_object(ob, max(1, int(round(zb.qr_target * 1000))), all_quads=zb.qr_mode == 'ALL',
-                                   crease_deg=math.degrees(zb.qr_angle))
+                                   crease_deg=math.degrees(zb.qr_angle), flow=zb.qr_flow)
             shade_result(ob, zb)
+            msg += qf.set_subdiv(ob, zb.qr_subd)
         finally:
             _mode(context, 'SCULPT')
         return msg
