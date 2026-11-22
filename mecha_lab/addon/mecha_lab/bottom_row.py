@@ -61,6 +61,10 @@ def _section(context, sec, buttons, k):
     per = max(1, (len(buttons) + 2) // 3)
     w = max(per * BTN_W * k, 64 * k)
     out = [Item('glabel', 0, -TITLE_H * k, w, TITLE_H * k, sec.upper(), 'title')]
+    if sec == 'Resolution':                      # 0.24.283 the Settings switch beside the title
+        sw = 92 * k
+        out.append(Item('seg', w - sw - 3 * k, -TITLE_H * k - 2 * k, sw, TITLE_H * k + 4 * k, 'Settings', '',
+                        res_panel.settings_on(), True, ('resset',)))
     rows = 0
     for i, (label, icon, op, props, needs, closes) in enumerate(buttons):
         c, r = i % per, i // per
@@ -80,9 +84,9 @@ def _section(context, sec, buttons, k):
         if op.startswith('tool:'):
             action, on_ = ('tool', op[5:]), active == op[5:]
         elif sec == 'Resolution' and label in res_panel.KEYS:
-            # 0.24.282 first click: its settings in the leftmost box; the same button again: run it
+            # 0.24.283 runs at once; with the Settings switch on: its settings in the leftmost box
             key = res_panel.KEYS[label]
-            action, on_ = ('resarm', key), on_ or res_panel.armed() == key
+            action, on_ = ('resarm', key), on_ or (res_panel.settings_on() and res_panel.armed() == key)
         else:
             action = ('mop', op, props, closes)
         out.append(Item('abtn', c * BTN_W * k + 3 * k, -TITLE_H * k - (r + 1) * BTN_H * k, (BTN_W - 6) * k,
@@ -155,7 +159,7 @@ def layout(context, region_w, region_h, k):
         ob = context.active_object
         from . import res_panel
         key = (region_w, region_h, round(k, 4), ts.effective_tool(context), ob.name if ob else '', ui_bars.VERSION[0],
-               res_panel.armed())
+               res_panel.armed(), res_panel.settings_on())
     except (AttributeError, ReferenceError, UnicodeDecodeError):
         key = None
     now = time.monotonic()

@@ -723,12 +723,18 @@ def run(context, item):
         elif kind == 'mop':                       # 0.24.226 an action button (the right-click popup's): as there
             mod, name = a[1].split('.')
             getattr(getattr(bpy.ops, mod), name)('INVOKE_DEFAULT' if a[3] else 'EXEC_DEFAULT', True, **a[2])
-        elif kind == 'resarm':                    # 0.24.282 a Resolution button: its settings, again = run
+        elif kind == 'resarm':                    # 0.24.283 a Resolution button: run, or (Settings on) its settings
             from . import res_panel
             msg = res_panel.press(context, a[1])
         elif kind == 'resclose':
             from . import res_panel
             res_panel.close()
+        elif kind == 'resapply':                  # 0.24.283 the settings box's Apply
+            from . import res_panel
+            msg = res_panel.apply(context, a[1])
+        elif kind == 'resset':                    # 0.24.283 the Settings switch beside RESOLUTION
+            from . import res_panel
+            res_panel.toggle_settings()
         elif kind == 'menu':
             open_menu(a[1])
         elif kind == 'fold':

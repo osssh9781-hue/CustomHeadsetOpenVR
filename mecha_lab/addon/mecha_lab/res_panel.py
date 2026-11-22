@@ -1,9 +1,10 @@
-"""0.24.282 (user: "아래 패널 오른쪽 해상도 탭의 리메시 / 데시메이션 - 누르면 상세 설정이 왼쪽 패널 (메뉴마다 바뀌는 설정
-패널) 에 뜨고, 버튼 다시 누르면 그냥 적용") The bottom row's Resolution buttons in two steps.
+"""0.24.282 / 0.24.283 (user: "해상도 글씨 옆에 세팅 버튼 - 누르면 옆에 세팅 뜨고, 원하는 버튼 (리메시, 데시메이션 등)
+누르면 그땐 세팅 조절 가능, 다시 세팅 버튼 눌러서 끄면 버튼 누르면 바로 적용") The bottom row's Resolution settings.
 
-The first click on Remesh / Quad / Low Poly / HP Keep / HP Round / HP Divide / Decimate shows that button's settings in
-the row's leftmost box (the one that changes with the tool) - the button lit; the same button again runs it with those
-settings (as the one click did before); another of them switches the box over; Close puts the tool's box back.
+A Settings switch beside the RESOLUTION title.  Off (as always): Remesh / Quad / Low Poly / HP Keep / HP Round /
+HP Divide / Decimate run at once.  On: the row's leftmost box (the one that changes with the tool) shows the settings
+of the button clicked last (the button lit) instead of running it; Apply in the box runs it; the switch off again (or
+Close) puts the tool's box back and the buttons run at once again.
 The settings are the ones the panels already had (the scene's / the ZBrush shelf's): nothing copied.
 Quad: the engine - Mecha Lab's own (Flow, 0.24.281) or the old QuadriFlow / Patch (Make Quad, the original kept).
 """
@@ -12,6 +13,7 @@ from __future__ import annotations
 import bpy
 
 ARMED = [None]           # the key of the button whose settings the box shows, or None
+SETTINGS = [False]       # 0.24.283 the Settings switch beside the RESOLUTION title
 
 # (label of the button in mecha_menu.ACTIONS 'Resolution') -> key
 KEYS = {'Remesh': 'REMESH', 'Quad': 'QUAD', 'Low Poly': 'LOWPOLY', 'HP Keep': 'HP_KEEP', 'HP Round': 'HP_ROUND',
@@ -28,7 +30,19 @@ def armed():
     return ARMED[0]
 
 
+def settings_on():
+    return SETTINGS[0]
+
+
+def toggle_settings():
+    SETTINGS[0] = not SETTINGS[0]
+    if not SETTINGS[0]:
+        ARMED[0] = None
+    _redraw()
+
+
 def close():
+    SETTINGS[0] = False
     ARMED[0] = None
     _redraw()
 
@@ -66,14 +80,17 @@ def _run(context, key):
 
 
 def press(context, key):
-    """A click on one of the buttons: shows its settings, or (shown already) runs it.  Returns a short report."""
-    if ARMED[0] == key:
-        ARMED[0] = None
+    """A click on one of the buttons: Settings on - its settings in the box; off - run it.  Returns a short report."""
+    if SETTINGS[0]:
+        ARMED[0] = key
         _redraw()
-        return _run(context, key)
-    ARMED[0] = key
-    _redraw()
-    return ''
+        return ''
+    return _run(context, key)
+
+
+def apply(context, key):
+    """The box's Apply: run ``key`` with the settings shown (the box stays)."""
+    return _run(context, key)
 
 
 def fields(context, key):
@@ -112,15 +129,22 @@ def fields(context, key):
 
 def card(context, k):
     """(width, height, items from 0, 0 going down) of the box with the armed button's settings, or None."""
-    key = ARMED[0]
-    if key is None:
+    if not SETTINGS[0]:
         return None
+    key = ARMED[0]
     from .mecha_menu import Item
     from . import i18n
     ko = i18n.lang() == 'KO'
     w = WIDTH * k
+    if key is None:
+        title = '해상도 설정' if ko else 'RESOLUTION SETTINGS'
+        out = [Item('glabel', 0, -TITLE_H * k, w, TITLE_H * k, title, 'title')]
+        note = '해상도 버튼을 누르면 그 설정이 여기에' if ko else 'Click a Resolution button: its settings show here'
+        out.append(Item('glabel', 0, -(TITLE_H + ROW) * k, w, 30 * k, note, ''))
+        out.append(Item('seg', 0, -(TITLE_H + 2 * ROW) * k, w, 30 * k, 'Close', '', False, True, ('resclose',)))
+        return w, (TITLE_H + 2 * ROW) * k, out
     title = i18n.tr(TITLES.get(key, key))
-    title = (title + '  ·  버튼 다시 = 적용') if ko else (title.upper() + '  ·  AGAIN = APPLY')
+    title = title if ko else title.upper()
     out = [Item('glabel', 0, -TITLE_H * k, w, TITLE_H * k, title, 'title')]
     y = -TITLE_H * k
     for kind, data, prop, label in fields(context, key):
@@ -139,7 +163,7 @@ def card(context, k):
                 out.append(Item('seg', n * cw, y, cw - 3 * k, 30 * k, nm, '', cur == ident, True, ('enum', ident),
                                 data, prop))
     y -= ROW * k
-    out.append(Item('seg', 0, y, w * 0.62, 30 * k, 'Apply', '', True, True, ('resarm', key)))
+    out.append(Item('seg', 0, y, w * 0.62, 30 * k, 'Apply', '', True, True, ('resapply', key)))
     out.append(Item('seg', w * 0.64, y, w * 0.36, 30 * k, 'Close', '', False, True, ('resclose',)))
     return w, -y, out
 
@@ -156,5 +180,6 @@ def register():
 
 def unregister():
     ARMED[0] = None
+    SETTINGS[0] = False
     if hasattr(bpy.types.Scene, 'mch_res_quad_engine'):
         del bpy.types.Scene.mch_res_quad_engine
