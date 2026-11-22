@@ -15,7 +15,7 @@ from __future__ import annotations
 import numpy as np
 
 import bpy
-from bpy.props import EnumProperty, FloatProperty
+from bpy.props import BoolProperty, EnumProperty, FloatProperty
 from mathutils import Vector
 
 
@@ -35,6 +35,10 @@ class MCH_PG_Clean(bpy.types.PropertyGroup):
                                     '(0: a hard step at the outline)')
     strength: FloatProperty(name='Strength', default=1.0, min=0.0, max=1.0, subtype='FACTOR',
                             description='Clean: how far the points go onto the plane (1: all the way)')
+    # 0.24.285 (user: "좀 더 더 밀어도 돼, 아직도 너무 촘촘해")
+    merge: BoolProperty(name='Merge Flat', default=True,
+                        description='Clean: the flattened area becomes a few big faces instead of the sculpt\'s many '
+                                    'small ones (the shape does not change)')
 
 
 def screen_xy(projector, P):
@@ -168,7 +172,31 @@ def planar(ob, loop, projector, st):
     co2 = Wn @ Mi[:3, :3].T + Mi[:3, 3]
     me.vertices.foreach_set('co', co2.astype(np.float32).ravel())
     me.update()
+    if getattr(st, 'merge', False) and st.strength >= 0.999:
+        flat = np.zeros(n, bool)
+        flat[idx[(w >= 0.999) | (np.abs(off) < 1e-9 * size)]] = True
+        _merge_flat(ob, flat)
     return moved
+
+
+def _merge_flat(ob, flat):
+    """0.24.285 the flattened area made of a few big triangles: everything else (and the flat's own rim) locked, the
+    points inside the flat collapsed away (they lie on one plane: the shape does not change)."""
+    from . import fast_decimate as fd
+    me = ob.data
+    me.calc_loop_triangles()
+    nt = len(me.loop_triangles)
+    T = np.empty(nt * 3, np.int64)
+    me.loop_triangles.foreach_get('vertices', T)
+    T = T.reshape(-1, 3)
+    on = flat[T].all(1)                       # triangles lying on the flat
+    if on.sum() < 8 or not fd.available():
+        return
+    rim = np.zeros(len(flat), bool)
+    rim[T[~on].ravel()] = True                # flat points touching the rest: kept (the shape round it stays)
+    locked = ~flat | rim
+    target = int((~on).sum()) + max(8, int(on.sum() * 0.01))
+    fd.decimate_object(ob, 100.0 * target / nt, quads=True, keep_borders=True, keep_edges=False, locked=locked)
 
 
 def perform(context, loops, projector):
@@ -187,6 +215,7 @@ def perform(context, loops, projector):
             raise cg.CutError('Draw the outline over a part')
         obs = [bpy.data.objects.get(found[2].name) or found[2]]
     total = 0
+    nf0 = sum(len(o.data.polygons) for o in obs)
     for ob in obs:
         if ob.data.shape_keys is not None or any(m.type == 'MULTIRES' for m in ob.modifiers):
             continue
@@ -194,7 +223,9 @@ def perform(context, loops, projector):
             total += planar(ob, outer, projector, st)
     if not total:
         raise cg.CutError('Clean: nothing to flatten under the outline (draw it over the part, on the side you see)')
-    return f'Clean: {total:,} points pushed onto the plane'
+    nf = sum(len(o.data.polygons) for o in obs)
+    return f'Clean: {total:,} points pushed onto the plane ({nf0:,} > {nf:,} faces)' if nf != nf0 else \
+        f'Clean: {total:,} points pushed onto the plane'
 
 
 def draw(layout, context):
@@ -206,6 +237,7 @@ def draw(layout, context):
     col.prop(st, 'height')
     col.prop(st, 'soft')
     col.prop(st, 'strength')
+    col.prop(st, 'merge')
 
 
 CLASSES = (MCH_PG_Clean,)

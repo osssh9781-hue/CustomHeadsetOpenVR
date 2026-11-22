@@ -287,8 +287,9 @@ def hard_feat(me, T, nv):
 
 
 def decimate_object(ob, keep_percent, even=False, quads=False, keep_mask=False, keep_groups=False,
-                    keep_borders=False, nthreads=None, keep_edges=True):
+                    keep_borders=False, nthreads=None, keep_edges=True, locked=None):
     """Decimate mesh object ``ob`` (Object Mode) to about ``keep_percent`` % of its triangles.  Returns a message.
+    ``locked`` (0.24.285, one bool per point): points that never move or go (only the rest is decimated).
     ``keep_edges`` (0.24.95): the remembered hard edges (Edge Memory) are kept like borders and marked again on
     the result."""
     from . import edge_memory as em
@@ -339,7 +340,7 @@ def decimate_object(ob, keep_percent, even=False, quads=False, keep_mask=False, 
             seg, size0 = em.lines(me), em.mesh_size(me)
     target = max(12, int(round(nt * keep_percent / 100.0)))   # (never under a box's 12 triangles)
     oV, oF, vsrc, fsrc = run(V, T, target, even=even, keep_borders=keep_borders, weight=weight, feat=feat,
-                             nthreads=nthreads)
+                             nthreads=nthreads, locked=locked)
     # corners: the triangle's own corner when it still has its point, else any corner of the point that stayed
     first_loop = np.full(nv, -1, np.int64)
     first_loop[cvert[::-1]] = np.arange(len(cvert))[::-1]

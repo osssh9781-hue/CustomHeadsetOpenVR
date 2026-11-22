@@ -70,7 +70,7 @@ def spread(Q):
 
 def run(ob, loop, **kw):
     st = S.mch_clean
-    for k, v in dict(mode='BOTH', plane='FIT', height=0.0, soft=0.0, strength=1.0).items():
+    for k, v in dict(mode='BOTH', plane='FIT', height=0.0, soft=0.0, strength=1.0, merge=False).items():
         setattr(st, k, kw.get(k, v))
     return cf.perform(C, [loop], TOP)
 
@@ -150,4 +150,20 @@ try:
 except cg.CutError as ex:
     ok = 'nothing' in str(ex).lower() or 'over a part' in str(ex).lower()
 check('an outline off the part: says so, changes nothing', ok)
+# Merge Flat (0.24.285): the flattened area as a few big faces
+ob = lump(7)
+nf0 = len(ob.data.polygons)
+inner0 = sum(1 for p in ob.data.polygons if -0.68 < p.center.x < -0.17 and abs(p.center.y) < 0.36 and p.center.z > 0.4)
+P0 = pts(ob)
+msg = run(ob, SQ, merge=True, soft=10.0)
+nf1 = len(ob.data.polygons)
+Pm = pts(ob)
+fl = [p for p in ob.data.polygons if -0.68 < p.center.x < -0.17 and abs(p.center.y) < 0.36 and p.center.z > 0.4]
+ns = np.array([p.normal for p in fl])
+quads = sum(1 for p in ob.data.polygons if len(p.vertices) == 4) / nf1
+check('Merge Flat: the flat area as a few big faces (10x fewer there), the rest back as quads, no more faces overall',
+      len(fl) * 10 < inner0 and quads > 0.8 and nf1 < nf0 * 1.1, (inner0, len(fl), round(quads, 2), nf0, nf1, msg))
+check('... still a closed, clean mesh; the merged faces all lie flat (one normal)', cg.non_manifold_edge_count(ob.data) == 0
+      and len(fl) > 0 and float(np.degrees(np.arccos(np.clip(ns @ ns.mean(0) / np.linalg.norm(ns.mean(0)), -1, 1))).max()) < 0.5,
+      (cg.non_manifold_edge_count(ob.data), len(fl)))
 summary()
