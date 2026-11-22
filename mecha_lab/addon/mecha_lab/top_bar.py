@@ -113,6 +113,12 @@ def groups(context, tool):
             extra.append(_cell('drop', '', action=('menu_enum',), data=ws, prop='sim_preset', width=110))
     if extra:
         out.append(('', extra))
+    pst = getattr(scene, 'mch_plate', None)
+    if tool == 'PLATE' and pst is not None and hasattr(pst, 'carve_floor'):
+        # 0.24.291 (user: "옆에 세팅에 플렛 팔로우 레벨 버튼 만들면 되것네") Alt + draw (the carve): floor and depth
+        out.append(('Alt Carve', _enum_segs(pst, 'carve_floor', (('FOLLOW', 'Follow'), ('LEVEL', 'Level'),
+                                                                 ('FLAT', 'Flat')))
+                    + [_cell('mini', 'Depth', action=('number',), data=pst, prop='carve_depth', width=130)]))
     if tool == 'PRESS' and hasattr(scene, 'mch_press'):          # 0.24.95 Press Cut: the stamp and how it presses
         pr = scene.mch_press
         # (user: "원래 쓰던 라쏘랑 스케치 다 넣어 줘") Shift + draw: the stamp drawn with the shared shapes

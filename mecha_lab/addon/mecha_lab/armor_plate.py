@@ -545,6 +545,89 @@ def mirrored_into(verts, bvh, lift, scale=1.0):
     return out
 
 
+def _densify(me, n=24):
+    """0.24.291 the region mesh split into small triangles (about ``n`` across): on a flat face the region was one
+    big face round the outline - no point inside to raise the Center Ridge, the plate came out flat."""
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+        if not bm.faces:
+            return
+        lo = Vector([min(v.co[i] for v in bm.verts) for i in range(3)])
+        hi = Vector([max(v.co[i] for v in bm.verts) for i in range(3)])
+        step = max((hi - lo).length / n, 1e-6)
+        bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method='BEAUTY', ngon_method='BEAUTY')
+        for _ in range(6):
+            long_ = [e for e in bm.edges if e.calc_length() > step]
+            if not long_:
+                break
+            bmesh.ops.subdivide_edges(bm, edges=long_, cuts=1, use_grid_fill=False)
+            bmesh.ops.triangulate(bm, faces=[f for f in bm.faces if len(f.verts) > 3])
+        bm.to_mesh(me)
+    finally:
+        bm.free()
+
+
+def _carve_mirror(context, target, part, remove, st):
+    """0.24.291 the ridge presets (Center Ridge, Mech Ridge): the plate turned the other way - mirrored through the
+    surface into the mesh - and carved out: its ridge becomes a valley (the deepest along the ridge line).  part:
+    the plate just made, taken away with remove.  Returns the depth."""
+    scene = context.scene
+    try:
+        dg = context.evaluated_depsgraph_get()
+        dg.update()
+        ev = _lc_full(part, dg)
+        pm = ev.to_mesh()
+        try:
+            mw = ev.matrix_world
+            verts = [mw @ v.co for v in pm.vertices]
+            faces = [tuple(p.vertices) for p in pm.polygons]
+        finally:
+            ev.to_mesh_clear()
+    finally:
+        remove(part)
+    if not faces:
+        raise cg.CutError('The plate came out empty; nothing was carved.')
+    tev = _lc_full(target, context.evaluated_depsgraph_get())
+    tme = tev.to_mesh()
+    try:
+        tw = tev.matrix_world
+        bvh = BVHTree.FromPolygons([tw @ v.co for v in tme.vertices], [tuple(p.vertices) for p in tme.polygons])
+    finally:
+        tev.to_mesh_clear()
+    lo = Vector([min(v[i] for v in verts) for i in range(3)])
+    hi = Vector([max(v[i] for v in verts) for i in range(3)])
+    lift = max((hi - lo).length * 0.004, 1e-5)
+    tall = max((h[2] for h in heights_above(verts, bvh) if h is not None), default=0.0)
+    depth = getattr(st, 'carve_depth', 0.0)
+    scale = depth / tall if depth > 0 and tall > 1e-9 else 1.0          # Carve Depth: 0 = as tall as the plate
+    world = mirrored_into(verts, bvh, lift, scale)
+    inv = target.matrix_world.inverted()
+    me = bpy.data.meshes.new('MCH_PlateCarve')
+    me.from_pydata([tuple(inv @ v) for v in world], [], faces)
+    me.validate()
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+        bm.to_mesh(me)
+    finally:
+        bm.free()
+    cutter = cg.link_temp_object(context, me, 'MCH_Cutter_Plate')
+    cutter.matrix_world = target.matrix_world.copy()
+    cut = scene.mch_cut
+    try:
+        res, _solver = cg.boolean_result(context, target, cutter, 'DIFFERENCE', cut.solver, cut.hole_tolerant)
+        try:
+            cg.commit_mesh(target, res, cut.shared_mesh)
+        finally:
+            if res.users == 0:
+                bpy.data.meshes.remove(res)
+    finally:
+        cg.remove_object_and_mesh(cutter)
+    return tall * scale
+
+
 def carve_profile(preset, size, auto=True, memory=None, scale=1.0):
     """0.24.290 the Alt carve's recess from the plate profile: (depth, edge finish 'NONE' / 'CHAMFER' / 'BEVEL', width,
     segments, profile) in world units for a plate ``size`` (world) - what the plate has at its top edge goes on the
@@ -579,8 +662,35 @@ def perform_plate_carve(context, loops, projector, preset=None):
                           'skipped).')
     cg.check_target(target)
     preset = preset or st.preset
-    if preset == 'MRIDGE':
-        preset = 'CHAMFER'
+    if preset in {'RIDGE', 'MRIDGE'}:
+        # 0.24.291 (user: "릿지는?") a ridge's shape is its whole top, not an edge: the plate turned the other way
+        from . import face_extract as fx
+        if preset == 'MRIDGE':
+            from . import mech_ridge
+            before = set(bpy.data.objects)
+            mech_ridge.perform(context, loops, projector)
+            made = [o for o in bpy.data.objects if o not in before]
+            if not made:
+                raise cg.CutError('The ridge came out empty; nothing was carved.')
+            part = made[0]
+
+            def remove(o):
+                me_ = o.data
+                bpy.data.objects.remove(o, do_unlink=True)
+                if me_ is not None and me_.users == 0:
+                    bpy.data.meshes.remove(me_)
+        else:
+            region, surround, local_size, _m = plate_meshes(context, target, groups, projector, st.spacing)
+            _densify(region)
+            part = create_plate(context, target, region, surround, preset, local_size, st.auto_size)
+            remove = fx._remove_part
+        deep = _carve_mirror(context, target, part, remove, st)
+        for o in context.selected_objects:
+            o.select_set(False)
+        target.select_set(True)
+        context.view_layer.objects.active = target
+        name = dict((p_[0], p_[1]) for p_ in PRESETS)[preset]
+        return f'Armor plate carved into "{target.name}" (Alt: {name} the other way round - a valley, {deep:.3g} deep)'
     region, surround, local_size, _missing = plate_meshes(context, target, groups, projector, st.spacing)
     for me_ in (region, surround):
         if me_ is not None and me_.users == 0:
@@ -594,19 +704,23 @@ def perform_plate_carve(context, loops, projector, preset=None):
     width = min(width, depth * 0.95)
     from . import cut_engine as ce
     cut = scene.mch_cut
-    keep = (cut.depth_mode, cut.depth, cut.edge_finish, cut.gn_finish, cut.gn_width, cut.gn_segments, cut.gn_ramp)
+    keep = (cut.depth_mode, cut.depth, cut.edge_finish, cut.gn_finish, cut.gn_width, cut.gn_segments, cut.gn_ramp,
+            cut.depth_floor)
     try:
         cut.depth_mode, cut.depth = 'SURFACE', max(depth, 1e-5)
         cut.edge_finish = 'NONE'
         # (the GN Edge: the profile swept along the opening only, its full width - the plain bevel was clamped by
         #  the short walls to a sliver)
         cut.gn_ramp = False
+        # 0.24.291 (user: "표면 따라서 들어가야지 왜 한쪽이 깊게 들어가?") the floor follows the surface under the
+        # shape (a flat floor went deeper on one side of a slanted / curved surface)
+        cut.depth_floor = getattr(st, 'carve_floor', 'FOLLOW')
         cut.gn_finish = kind if width > 1e-9 else 'NONE'
         cut.gn_width, cut.gn_segments = width, max(2, segs) if kind == 'BEVEL' else 1
         ce.perform_closed(context, 'CUT', [target], loops, projector)
     finally:
         (cut.depth_mode, cut.depth, cut.edge_finish, cut.gn_finish, cut.gn_width, cut.gn_segments,
-         cut.gn_ramp) = keep
+         cut.gn_ramp, cut.depth_floor) = keep
     for o in context.selected_objects:
         o.select_set(False)
     target.select_set(True)
@@ -1039,6 +1153,13 @@ class MCH_PG_Plate(bpy.types.PropertyGroup):
     carve_depth: FloatProperty(name='Alt Carve Depth', default=0.0, min=0.0, soft_max=1.0, precision=4,
                                unit='LENGTH', description='Alt + draw carves the plate the other way: how deep '
                                                           '(0 = as deep as the plate is tall)')
+    # 0.24.291 (user: "옆에 세팅에 플렛 팔로우 레벨 버튼 만들면 되것네") the Alt carve's floor, as the Cut tool's
+    carve_floor: EnumProperty(name='Alt Carve Floor', default='FOLLOW', items=[
+        ('FOLLOW', 'Follow', 'As deep below the surface everywhere under the shape, however the part is turned'),
+        ('LEVEL', 'Level', 'A flat floor at the depth below the point you press: everything higher under the shape '
+                           'is cleared down to it'),
+        ('FLAT', 'Flat', 'A flat floor across the view from the point you press (seen at an angle: one side deeper)')],
+        description='Alt + draw carve: how the floor of the recess lies under the shape')
     creature: BoolProperty(name='Creature Shell', default=False,
                            description='Creature Shell brush: new plates get hard random facets, bulges, '
                                        'N/E/S/W edge lift and gravity')
@@ -1519,6 +1640,7 @@ def draw(layout, context):
     row.prop(st, 'spacing')
     row.prop(st, 'auto_size', toggle=True)
     box.prop(st, 'carve_depth')                       # 0.24.42 Alt + draw: the recess depth
+    box.row(align=True).prop(st, 'carve_floor', expand=True)     # 0.24.291 the recess floor
     ob = pending_plate(context)
     if ob is not None:
         p = ob.mch_extract
