@@ -9,7 +9,7 @@ import numpy as np
 import bpy
 from bpy.props import BoolProperty, PointerProperty
 
-HOVER = {'part': None, 'edges': None}
+HOVER = {'part': None, 'edges': None, 'add': False}
 PX = 16.0                       # how near the mouse (px) an edge must be on screen
 
 
@@ -95,10 +95,12 @@ def clear_edges(me, edges, sharp=True):
     return int(was)
 
 
-def screen_edge(ob, region, rv3d, xy, px=PX):
-    """The marked edge of ``ob`` nearest ``xy`` on screen (within ``px``), or None."""
+def screen_edge(ob, region, rv3d, xy, px=PX, any_edge=False, near=None):
+    """The marked edge of ``ob`` nearest ``xy`` on screen (within ``px``), or None.  ``any_edge`` (0.24.288 Alt: add):
+    any edge; ``near`` (world point - the surface under the mouse): of the edges that close on screen, the one
+    nearest it (not one on the back)."""
     me = ob.data
-    mark = marked(me)
+    mark = np.ones(len(me.edges), bool) if any_edge else marked(me)
     ids = np.nonzero(mark)[0]
     if not len(ids):
         return None
@@ -119,22 +121,102 @@ def screen_edge(ob, region, rv3d, xy, px=PX):
     t = np.clip(((p - A) * d).sum(1) / np.maximum((d * d).sum(1), 1e-12), 0.0, 1.0)
     dist = np.linalg.norm(A + d * t[:, None] - p, axis=1)
     dist[~(ok[E[:, 0]] & ok[E[:, 1]])] = np.inf
-    # the side you see: an edge behind the part (its middle farther than the surface under the mouse) does not count
+    if near is not None:                      # (the side you see: of the close ones, the one nearest the surface hit)
+        close = np.nonzero(dist <= px)[0]
+        if not len(close):
+            return None
+        mid = (co[E[close, 0]] + co[E[close, 1]]) * 0.5
+        mw = np.array(ob.matrix_world)
+        midw = mid @ mw[:3, :3].T + mw[:3, 3]
+        dd = np.linalg.norm(midw - np.array(near), axis=1) + dist[close] * 1e-6
+        return int(ids[close[int(np.argmin(dd))]])
     k = int(np.argmin(dist))
     if dist[k] > px:
         return None
     return int(ids[k])
 
 
-def _part(context, xy):
+def edge_loop(me, e):
+    """0.24.288 the edge loop through edge ``e`` (as Blender's loop select: straight on through points where four
+    edges and four faces meet; stops at other points, open sides, or when it comes round)."""
+    import bmesh
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.edges.ensure_lookup_table()
+    start = bm.edges[e]
+    out = {e}
+
+    def walk(edge, v):
+        cur, vert = edge, v
+        for _ in range(len(bm.edges)):
+            if len(vert.link_edges) != 4 or len(vert.link_faces) != 4:
+                return
+            fs = set(cur.link_faces)
+            nxt = [x for x in vert.link_edges if x is not cur and not (set(x.link_faces) & fs)]
+            if len(nxt) != 1:
+                return
+            cur = nxt[0]
+            if cur.index in out:
+                return
+            out.add(cur.index)
+            vert = cur.other_vert(vert)
+    walk(start, start.verts[0])
+    walk(start, start.verts[1])
+    bm.free()
+    return sorted(out)
+
+
+def mark_edges(me, edges, sharp=True):
+    """0.24.288 Crease 1 (and sharp) on ``edges``.  Returns how many were not marked before."""
+    edges = np.asarray(edges, np.int64)
+    if not len(edges):
+        return 0
+    n = len(me.edges)
+    new = int((~marked(me)[edges]).sum())
+    a = me.attributes.get('crease_edge') or me.attributes.new('crease_edge', 'FLOAT', 'EDGE')
+    v = np.empty(n, np.float32)
+    a.data.foreach_get('value', v)
+    v[edges] = 1.0
+    a.data.foreach_set('value', v)
+    if sharp:
+        b = me.attributes.get('sharp_edge') or me.attributes.new('sharp_edge', 'BOOLEAN', 'EDGE')
+        sv = np.zeros(n, bool)
+        b.data.foreach_get('value', sv)
+        sv[edges] = True
+        b.data.foreach_set('value', sv)
+    me.update()
+    return new
+
+
+def _part(context, xy, with_hit=False):
     from . import geo_sculpt as gs, target_rules
     hit = gs.pick_part(context, xy)
     if hit is not None:
-        return hit[0]
+        return (hit[0], hit[1]) if with_hit else hit[0]
     ob = bpy.data.objects.get(HOVER['part']) if HOVER['part'] else None     # (just off the part: the one last over)
     if ob is not None and ob.type == 'MESH' and target_rules.ok(context, ob):
-        return ob
-    return None
+        return (ob, None) if with_hit else ob
+    return (None, None) if with_hit else None
+
+
+def pick(context, xy, add, single):
+    """(part, the edges a click there takes) - clear: the creased line / edge; add (Alt): the edge loop / edge."""
+    ob, hit = _part(context, xy, True)
+    if ob is None or ob.type != 'MESH':
+        return ob, None
+    if add:
+        if hit is None:
+            return ob, None
+        e = screen_edge(ob, context.region, context.region_data, xy, any_edge=True, near=hit)
+        if e is None:
+            return ob, None
+        whole = context.scene.mch_edge_clear.whole != single
+        return ob, (edge_loop(ob.data, e) if whole else [e])
+    e = screen_edge(ob, context.region, context.region_data, xy)
+    if e is None:
+        return ob, None
+    whole = context.scene.mch_edge_clear.whole != single
+    return ob, (line_of(ob.data, e) if whole else [e])
 
 
 def tool_on(context):
@@ -165,7 +247,8 @@ def draw_edges():
         if len(ids) and len(ids) < 200000:
             edge_runs.draw_lines(_segs(ob, ids), (0.35, 0.85, 1.0, 0.6), 2.0)
         if HOVER['edges']:
-            edge_runs.draw_lines(_segs(ob, HOVER['edges']), (1.0, 0.45, 0.2, 1.0), 4.5)
+            col = (0.35, 1.0, 0.45, 1.0) if HOVER.get('add') else (1.0, 0.45, 0.2, 1.0)    # (green: Alt adds)
+            edge_runs.draw_lines(_segs(ob, HOVER['edges']), col, 4.5)
     except (ReferenceError, AttributeError, RuntimeError, KeyError, IndexError):
         pass
 
@@ -180,23 +263,17 @@ class MCH_OT_edge_clear_hover(bpy.types.Operator):
         if context.region is None or context.region.type != 'WINDOW':
             return {'PASS_THROUGH'}
         xy = (event.mouse_region_x, event.mouse_region_y)
-        ob = _part(context, xy)
-        edges = None
-        if ob is not None and ob.type == 'MESH':
-            e = screen_edge(ob, context.region, context.region_data, xy)
-            if e is not None:
-                whole = context.scene.mch_edge_clear.whole != event.shift
-                edges = line_of(ob.data, e) if whole else [e]
+        ob, edges = pick(context, xy, event.alt, event.shift)
         part = ob.name if ob is not None else None
-        if (part, edges) != (HOVER['part'], HOVER['edges']):
-            HOVER['part'], HOVER['edges'] = part, edges
+        if (part, edges, event.alt) != (HOVER['part'], HOVER['edges'], HOVER.get('add')):
+            HOVER['part'], HOVER['edges'], HOVER['add'] = part, edges, bool(event.alt)
             context.region.tag_redraw()
         return {'PASS_THROUGH'}
 
 
 class MCH_OT_edge_clear_click(bpy.types.Operator):
     """Edge Clear: click a creased edge of a part - its crease (and sharp mark) is cleared, the whole line it belongs
-    to (Shift: only that edge)"""
+    to (Shift: only that edge); Alt + click: an edge loop creased (Alt+Shift: one edge)"""
     bl_idname = 'mch.edge_clear_click'
     bl_label = 'Edge Clear'
     bl_options = {'REGISTER', 'UNDO'}
@@ -205,19 +282,23 @@ class MCH_OT_edge_clear_click(bpy.types.Operator):
         if context.region is None or context.region.type != 'WINDOW':
             return {'PASS_THROUGH'}
         xy = (event.mouse_region_x, event.mouse_region_y)
-        ob = _part(context, xy)
+        ob, edges = pick(context, xy, event.alt, event.shift)
         if ob is None or ob.type != 'MESH':
             return {'PASS_THROUGH'}
-        e = screen_edge(ob, context.region, context.region_data, xy)
-        if e is None:
-            self.report({'INFO'}, 'Edge Clear: no creased edge under the mouse')
+        if not edges:
+            self.report({'INFO'}, 'Edge Clear: no edge under the mouse' if event.alt else
+                        'Edge Clear: no creased edge under the mouse')
             return {'CANCELLED'}
         st = context.scene.mch_edge_clear
-        edges = line_of(ob.data, e) if st.whole != event.shift else [e]
-        n = clear_edges(ob.data, edges, st.sharp)
+        if event.alt:                             # 0.24.288 (user: "알트 누르고 누르면 엣지 추가")
+            n = mark_edges(ob.data, edges, st.sharp)
+            msg = f'Edge Clear: {n} edge{"s" if n != 1 else ""} creased on {ob.name}'
+        else:
+            n = clear_edges(ob.data, edges, st.sharp)
+            msg = f'Edge Clear: {n} edge{"s" if n != 1 else ""} cleared on {ob.name}'
         HOVER['edges'] = None
         context.region.tag_redraw()
-        self.report({'INFO'}, f'Edge Clear: {n} edge{"s" if n != 1 else ""} cleared on {ob.name}')
+        self.report({'INFO'}, msg)
         return {'FINISHED'}
 
 
@@ -225,6 +306,7 @@ def draw(layout, context):
     st = context.scene.mch_edge_clear
     col = layout.column(align=True)
     col.label(text='Click a creased edge: cleared (Shift: one edge)')
+    col.label(text='Alt + click: an edge loop creased (Alt+Shift: one edge)')
     col.prop(st, 'whole')
     col.prop(st, 'sharp')
 
@@ -242,12 +324,14 @@ class MCH_TOOL_edge_clear(bpy.types.WorkSpaceTool):
     bl_idname = 'mecha.edge_clear'
     bl_label = 'Edge Clear'
     bl_description = ('Click a creased edge of a part: its crease (and sharp mark) is cleared - the whole line.\n'
-                      'Shift: only that edge')
+                      'Shift: only that edge.  Alt + click: an edge loop creased (Alt+Shift: one edge)')
     bl_icon = 'ops.generic.select_box'
     bl_widget = None
     bl_keymap = (('mch.edge_clear_hover', {'type': 'MOUSEMOVE', 'value': 'ANY', 'any': True}, None),
                  ('mch.edge_clear_click', {'type': 'LEFTMOUSE', 'value': 'PRESS'}, None),
                  ('mch.edge_clear_click', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'shift': True}, None),
+                 ('mch.edge_clear_click', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'alt': True}, None),       # (add)
+                 ('mch.edge_clear_click', {'type': 'LEFTMOUSE', 'value': 'PRESS', 'alt': True, 'shift': True}, None),
                  ('mch.toggle_targets', {'type': 'T', 'value': 'PRESS'}, None),
                  ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None))
     draw_settings = staticmethod(_tool_settings)

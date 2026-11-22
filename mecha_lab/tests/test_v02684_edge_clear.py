@@ -79,8 +79,38 @@ cb = C.active_object
 crease_all(cb)
 check('cube: the line stops at the corners (3 lines meet): one edge', len(ec.line_of(cb.data, 0)) == 1)
 
+# 0.24.288 Alt + click: add - an edge loop creased (Alt+Shift: one edge)
+bpy.ops.mesh.primitive_uv_sphere_add(segments=32, ring_count=16)
+sp = C.active_object
+sme = sp.data
+E = ec.edge_verts(sme)
+co = np.array([v.co for v in sme.vertices])
+ring = [k for k, (a, b) in enumerate(E) if abs(co[a, 2]) < 1e-4 and abs(co[b, 2]) < 1e-4]
+loop = ec.edge_loop(sme, ring[5])
+check('Alt: the edge loop through the edge clicked (the sphere\'s equator: 32 edges)', sorted(loop) == sorted(ring),
+      (len(loop), len(ring)))
+n = ec.mark_edges(sme, loop, True)
+mk = ec.marked(sme)
+crease = np.empty(len(sme.edges), np.float32)
+sme.attributes['crease_edge'].data.foreach_get('value', crease)
+check('... creased (1) and sharp, only those', n == 32 and int(mk.sum()) == 32 and crease[ring].min() == 1.0)
+check('... and a plain click on it clears the same line again', sorted(ec.line_of(sme, ring[0])) == sorted(ring))
+ec.clear_edges(sme, ec.line_of(sme, ring[0]), True)
+n = ec.mark_edges(sme, [ring[2]], True)
+check('Alt+Shift: one edge only', n == 1 and int(ec.marked(sme).sum()) == 1)
+vert = [k for k, (a, b) in enumerate(E) if abs(co[a, 2] - co[b, 2]) > 1e-3][7]
+lp = ec.edge_loop(sme, vert)
+check('... a loop along the meridian stops at the poles (not quads there)', 2 < len(lp) < 32, len(lp))
+region = SimpleNamespace(width=1000, height=1000)
+rv3d = SimpleNamespace(perspective_matrix=Matrix.Diagonal((0.5, 0.5, -0.1, 1.0)))
+from mathutils import Vector  # noqa: E402
+e = ec.screen_edge(sp, region, rv3d, (500 + 250 * 0.0, 500 + 250 * 0.5), any_edge=True, near=Vector((0.0, 0.5, 0.86)))
+mid = (co[E[e, 0]] + co[E[e, 1]]) / 2 if e is not None else None
+check('Alt: any edge under the mouse, the one on the side you see (front, not the back)', e is not None and mid[2] > 0,
+      (e, mid))
 check('a tool (Cut group, Target row), its own window settings, a workspace tool: click / Shift+click / move = hover',
       'ECLEAR' in ts.TOOL_BY_ID and ts.TOOL_BY_ID['ECLEAR'][5] == 'mecha.edge_clear'
       and {k[0] for k in workspace_ui and ec.MCH_TOOL_edge_clear.bl_keymap} >= {'mch.edge_clear_click',
-                                                                               'mch.edge_clear_hover'})
+                                                                               'mch.edge_clear_hover'}
+      and any(k[1].get('alt') for k in ec.MCH_TOOL_edge_clear.bl_keymap if k[0] == 'mch.edge_clear_click'))
 summary()
