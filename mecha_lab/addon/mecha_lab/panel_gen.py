@@ -153,6 +153,49 @@ def edge_profile(width, depth, direction='IN', bevel=0.0, segments=0, profile=0.
 # =============================================================================
 
 
+def fix_bowties(bm):
+    """0.24.292 (user: armor plate "Plate could not be built: the selection touches itself at a single vertex") a
+    region drawn on a dense sculpt often meets itself at one point (two face fans sharing a corner): the point is
+    split so each fan has its own, and bits hanging on by such a point (under 5 % of the biggest piece) are dropped.
+    Returns the number of points split."""
+    n = 0
+    for _round in range(3):
+        bad = []
+        for v in bm.verts:
+            bnd = [e for e in v.link_edges if len(e.link_faces) == 1]
+            if len(bnd) > 2:
+                bad.append((v, bnd))
+        if not bad:
+            break
+        for v, bnd in bad:
+            if v.is_valid:
+                bmesh.utils.vert_separate(v, [e for e in bnd if e.is_valid])
+                n += 1
+    if n:
+        islands, seen = [], set()
+        for f in bm.faces:
+            if f in seen:
+                continue
+            stack, isl = [f], []
+            seen.add(f)
+            while stack:
+                g = stack.pop()
+                isl.append(g)
+                for e in g.edges:
+                    for h in e.link_faces:
+                        if h not in seen:
+                            seen.add(h)
+                            stack.append(h)
+            islands.append(isl)
+        big = max(len(i) for i in islands)
+        drop = [f for i in islands if len(i) < 0.05 * big for f in i]
+        if drop:
+            bmesh.ops.delete(bm, geom=drop, context='FACES')
+        bm.verts.ensure_lookup_table()
+        bm.normal_update()
+    return n
+
+
 def boundary_loops(bm, faces):
     """Ordered boundary loops of a face set (region on the LEFT of each loop
     w.r.t. the face normals).  Returns lists of BMVerts."""
@@ -547,6 +590,7 @@ def _build(bm, context_mesh, p, armor, notes):
     def fxy(co):
         d = co - fcen
         return d.dot(ft), d.dot(fb)
+    fix_bowties(bm)
     project = _project_factory(context_mesh, bm)
     faces = list(bm.faces)
     loops = boundary_loops(bm, faces)
