@@ -318,9 +318,10 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
                                         'round the top face)')
     emold_bottom: BoolProperty(name='Bottom Edge Molding', default=False, update=_rebuild_update,
                                description='A flange round the bottom edge, standing out of the wall')
-    emold_out: FloatProperty(name='Edge Molding Out', default=0.03, min=0.0001, soft_max=0.5, precision=4,
+    emold_out: FloatProperty(name='Edge Molding Out', default=0.03, soft_min=-0.5, soft_max=0.5, precision=4,
                              unit='LENGTH', update=_rebuild_update,
-                             description='How far the top band / bottom flange stands out of the wall')
+                             description='How far the top band / bottom flange stands out of the wall (0.24.301 less '
+                                         'than 0: it goes IN - the top / bottom edge stepped into the wall)')
     emold_band: FloatProperty(name='Edge Molding Height', default=0.0, min=0.0, soft_max=1.0, precision=4,
                               unit='LENGTH', update=_rebuild_update,
                               description='How tall the band / flange is up the wall (0 = Auto: a fifth of the height)')
@@ -602,7 +603,9 @@ def edge_molding(p, height):
     bot_on = bool(getattr(p, 'emold_bottom', False))
     if not (top_on or bot_on) or height <= 0.0:
         return [], 0.0, [], 0.0, 0.0, 0.0
-    t = float(getattr(p, 'emold_out', 0.0))
+    t = float(getattr(p, 'emold_out', 0.0))       # (0.24.301 < 0: the edge steps IN)
+    if abs(t) < 1e-6:
+        t = 1e-6
     band = float(getattr(p, 'emold_band', 0.0)) or height * 0.2
     band = min(band, height * (0.45 if top_on and bot_on else 0.9))
     shape = getattr(p, 'emold_shape', 'SQUARE')
@@ -610,7 +613,7 @@ def edge_molding(p, height):
     if bot_on:
         b_off = t
         if shape == 'CHAMFER':
-            c = min(t, band * 0.6)
+            c = min(abs(t), band * 0.6)
             bottom = [(band - c, t), (band, 0.0)]
         elif shape == 'ROUND':
             k = 6
@@ -621,7 +624,7 @@ def edge_molding(p, height):
         z0 = height - band
         lip = float(getattr(p, 'emold_lip', 0.0))
         if shape == 'CHAMFER':
-            c = min(t, band * 0.6)
+            c = min(abs(t), band * 0.6)
             top = [(z0, 0.0), (z0 + c, t)]
         elif shape == 'ROUND':
             k = 6
@@ -630,7 +633,7 @@ def edge_molding(p, height):
         else:
             top = [(z0, 0.0), (z0, t)]
         if lip > 0.0:
-            rim = max(t * 1.5, band * 0.25)                 # (the lip's own thickness, inward from the band's face)
+            rim = max(abs(t) * 1.5, band * 0.25)                 # (the lip's own thickness, inward from the band's face)
             top += [(height + lip, t), (height + lip, t - rim)]
             t_off = t - rim
         else:

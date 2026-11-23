@@ -52,6 +52,28 @@ check('Top with a Lip 0.04 + Bottom: the rim stands 0.04 above the top face, the
 for shape in ('CHAMFER', 'ROUND'):
     ob = build(emold_shape=shape)
     check(f'{shape}: closed, 0.05 out', non_manifold(ob) == 0 and abs(max(v.co.x for v in ob.data.vertices) - 1.05) < 1e-3)
+# 0.24.301 (user: "베이스 메쉬 위아래 튀어나온 거 - 도 만들어서 안으로 들어가게도") Out < 0: the edges step IN
+p.emold_shape = 'SQUARE'
+
+
+def xmin_at(ob, z0, z1):
+    return max((v.co.x for v in ob.data.vertices if z0 - 1e-6 <= v.co.z <= z1 + 1e-6 and v.co.x > 0), default=None)
+
+
+ob = build(emold_top=True, emold_bottom=True, emold_out=-0.05, emold_band=0.1, emold_lip=0.0)
+check('Out -0.05 (top + bottom): the top and bottom edges step 0.05 IN (x 0.95), the wall between at 1.0; closed',
+      abs(xmax_at(ob, 0.0, 0.09) - 0.95) < 1e-4 and abs(xmax_at(ob, 0.41, 0.5) - 0.95) < 1e-4
+      and abs(xmax_at(ob, 0.1, 0.4) - 1.0) < 1e-4 and non_manifold(ob) == 0,
+      (xmax_at(ob, 0.0, 0.09), xmax_at(ob, 0.1, 0.4), xmax_at(ob, 0.41, 0.5)))
+for shape in ('CHAMFER', 'ROUND'):
+    ob = build(emold_shape=shape)
+    check(f'... {shape} going in: closed, nothing wider than the wall', non_manifold(ob) == 0
+          and max(v.co.x for v in ob.data.vertices) < 1.0 + 1e-4)
+ob = build(emold_shape='SQUARE', emold_lip=0.03)
+check('... with a Lip Rim: closed, the rim 0.03 up', non_manifold(ob) == 0 and abs(max(v.co.z for v in ob.data.vertices) - 0.53) < 1e-4)
+p.emold_out = 0.05
+p.emold_lip = 0.0
+p.emold_top = p.emold_bottom = False
 # 0.24.299 (user: "림 할 때 밑에 옵션으로 윗면이 살짝 둥글게 올라오는 것도") Top Dome
 p.emold_shape = 'SQUARE'
 ob = build(emold_top=True, emold_bottom=False, emold_lip=0.04, emold_dome=0.1)

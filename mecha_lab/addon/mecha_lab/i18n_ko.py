@@ -4026,6 +4026,7 @@ KO = {
     'How far the tips go to the Tip Color (0: the root colour all along)': '끝이 팁 색으로 가는 정도 (0: 뿌리 색이 끝까지)',
     'How far the tips rise off the body (x thickness)': '끝이 몸에서 솟아오르는 정도 (x 두께)',
     'How far the top band / bottom flange stands out of the wall': '윗 띠 / 바닥 플랜지가 벽에서 튀어나오는 정도',
+    'How far the top band / bottom flange stands out of the wall (0.24.301 less than 0: it goes IN - the top / bottom edge stepped into the wall)': '윗 띠 / 바닥 플랜지가 벽에서 튀어나오는 정도 (0 보다 작으면: 안으로 들어감 - 위 / 아래 모서리가 벽 안쪽으로 한 단 들어감)',
     'How far the tube goes into the surface (x radius)': '튜브가 표면 안으로 들어가는 정도 (x 반지름)',
     'How far the tube stands off the surface: 0 = half sunk in, 100 % = a full round pipe lying on it': '튜브가 표면에서 떠 있는 정도: 0 = 반쯤 묻힘, 100 % = 위에 놓인 완전한 둥근 파이프',
     "How far the veins stand out (raised), % of the wing's length": '시맥이 튀어나오는 (솟는) 정도, 날개 길이의 %',
