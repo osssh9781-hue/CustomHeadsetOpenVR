@@ -632,6 +632,73 @@ def _carve_mirror(context, target, part, remove, st):
     return tall * scale
 
 
+def px_per_world(projector, target):
+    """Screen px per world unit at ``target`` (0.0: unknown)."""
+    if hasattr(projector, 'ppu'):
+        return float(projector.ppu)
+    try:
+        c = target.matrix_world @ (sum((Vector(b) for b in target.bound_box), Vector()) / 8.0)
+        right = projector.rv3d.view_rotation @ Vector((1.0, 0.0, 0.0))
+        step = max(1e-4, 0.01 * max(target.dimensions))
+        a, b = projector.to_screen(c), projector.to_screen(c + right * step)
+        return math.hypot(b[0] - a[0], b[1] - a[1]) / step if a is not None and b is not None else 0.0
+    except (AttributeError, ReferenceError, ValueError, ZeroDivisionError, TypeError):
+        return 0.0
+
+
+def _area2(lp):
+    return sum(lp[i - 1][0] * lp[i][1] - lp[i][0] * lp[i - 1][1] for i in range(len(lp)))
+
+
+def _crosses(lp):
+    """The closed outline crosses itself (any two edges that are not neighbours intersect)."""
+    n = len(lp)
+
+    def ccw(a, b, c):
+        return (c[1] - a[1]) * (b[0] - a[0]) - (b[1] - a[1]) * (c[0] - a[0])
+    segs = [(lp[i], lp[(i + 1) % n]) for i in range(n)]
+    for i in range(n):
+        a, b = segs[i]
+        for j in range(i + 2, n):
+            if i == 0 and j == n - 1:
+                continue
+            c, d = segs[j]
+            if max(a[0], b[0]) < min(c[0], d[0]) or max(c[0], d[0]) < min(a[0], b[0]):
+                continue
+            if max(a[1], b[1]) < min(c[1], d[1]) or max(c[1], d[1]) < min(a[1], b[1]):
+                continue
+            if ccw(a, b, c) * ccw(a, b, d) < 0 and ccw(c, d, a) * ccw(c, d, b) < 0:
+                return True
+    return False
+
+
+def step_loops(loops, inset_px):
+    """0.24.296 the drawn outline(s) moved in by ``inset_px`` on the screen (a step of a stepped carve), or None when
+    the shape is too small for it.  An even inset where it stays a clean outline; where it would cross itself (tight
+    lobes of a wiggly outline) the outline drawn in toward its middle instead."""
+    from .base_mesh import offset_outline
+    out = []
+    for lp in loops:
+        lp = [tuple(q) for q in lp]
+        if len(lp) >= 3 and math.dist(lp[0], lp[-1]) < 1e-6:
+            lp = lp[:-1]
+        if len(lp) < 3:
+            return None
+        a0 = _area2(lp)
+        ccw = lp if a0 > 0 else lp[::-1]
+        inner = offset_outline(ccw, -inset_px, limit=2.0)
+        if _area2(inner) <= abs(a0) * 0.04 or _crosses(inner):
+            cx = sum(q[0] for q in lp) / len(lp)
+            cy = sum(q[1] for q in lp) / len(lp)
+            rad = sum(math.hypot(q[0] - cx, q[1] - cy) for q in lp) / len(lp)
+            s = 1.0 - inset_px / max(rad, 1e-9)
+            if s < 0.2:
+                return None
+            inner = [(cx + (q[0] - cx) * s, cy + (q[1] - cy) * s) for q in ccw]
+        out.append(inner if a0 > 0 else inner[::-1])
+    return out
+
+
 def carve_warp(projector, loops, target, depth, angle):
     """0.24.295 Alt carve Wall Angle: the cutter's far cap drawn in toward the shape's middle by depth x tan(angle) (on
     the screen, as Press Cut's Wall Angle): a function xy -> xy, or None (straight walls)."""
@@ -640,17 +707,7 @@ def carve_warp(projector, loops, target, depth, angle):
     pts = [p for lp in loops for p in lp]
     if not pts:
         return None
-    if hasattr(projector, 'ppu'):
-        pxw = float(projector.ppu)
-    else:
-        try:
-            c = target.matrix_world @ (sum((Vector(b) for b in target.bound_box), Vector()) / 8.0)
-            right = projector.rv3d.view_rotation @ Vector((1.0, 0.0, 0.0))
-            step = max(1e-4, 0.01 * max(target.dimensions))
-            a, b = projector.to_screen(c), projector.to_screen(c + right * step)
-            pxw = math.hypot(b[0] - a[0], b[1] - a[1]) / step if a is not None and b is not None else 0.0
-        except (AttributeError, ReferenceError, ValueError, ZeroDivisionError, TypeError):
-            pxw = 0.0
+    pxw = px_per_world(projector, target)
     cx = sum(p[0] for p in pts) / len(pts)
     cy = sum(p[1] for p in pts) / len(pts)
     rad = sum(math.hypot(p[0] - cx, p[1] - cy) for p in pts) / len(pts)
@@ -763,6 +820,7 @@ def _plate_carve(context, loops, projector, preset, target, groups):
     cut = scene.mch_cut
     keep = (cut.depth_mode, cut.depth, cut.edge_finish, cut.gn_finish, cut.gn_width, cut.gn_segments, cut.gn_ramp,
             cut.depth_floor)
+    steps_done = [0]
     try:
         cut.depth_mode, cut.depth = 'SURFACE', max(depth, 1e-5)
         cut.edge_finish = 'NONE'
@@ -776,6 +834,34 @@ def _plate_carve(context, loops, projector, preset, target, groups):
         cut.gn_width, cut.gn_segments = width, max(2, segs) if kind == 'BEVEL' else 1
         cg.WARP[0] = carve_warp(projector, loops, target, depth, getattr(st, 'carve_wall', 0.0))   # 0.24.295
         ce.perform_closed(context, 'CUT', [target], loops, projector)
+        # 0.24.296 (user: "알트로 빼낼 때 바닥 쪽에 계단처럼 한 단 더 파이면서 들어가는 것") Steps: the floor carved again,
+        # the outline moved in by Step Inset, Step Depth deeper (from the floor: From Surface follows it), as often as
+        # Steps says; the edge the same kind as the opening's, no wider than the step is deep
+        n_steps = int(getattr(st, 'carve_steps', 0))
+        if n_steps > 0:
+            pxw = px_per_world(projector, target)
+            sdepth = float(getattr(st, 'step_depth', 0.0)) or depth * 0.5
+            sinset = float(getattr(st, 'step_inset', 0.0))
+            cur = loops
+            if pxw > 0.0:
+                pts = [q for lp in loops for q in lp]
+                cx = sum(q[0] for q in pts) / len(pts)
+                cy = sum(q[1] for q in pts) / len(pts)
+                rad = sum(math.hypot(q[0] - cx, q[1] - cy) for q in pts) / len(pts)
+                inset_px = sinset * pxw if sinset > 0.0 else rad * 0.22
+                inset_px = max(inset_px, width * pxw + 2.0)       # (past the opening's edge finish)
+                for k_ in range(n_steps):
+                    nxt = step_loops(loops, inset_px * (k_ + 1))     # (each step from the drawn outline)
+                    if nxt is None:
+                        break
+                    cur = nxt
+                    cut.depth = max(sdepth, 1e-5)
+                    sw = min(width, sdepth * 0.95)
+                    cut.gn_finish = kind if sw > 1e-9 else 'NONE'
+                    cut.gn_width = sw
+                    cg.WARP[0] = carve_warp(projector, cur, target, sdepth, getattr(st, 'carve_wall', 0.0))
+                    ce.perform_closed(context, 'CUT', [target], cur, projector)
+                    steps_done[0] += 1
     finally:
         cg.WARP[0] = None
         (cut.depth_mode, cut.depth, cut.edge_finish, cut.gn_finish, cut.gn_width, cut.gn_segments,
@@ -786,7 +872,8 @@ def _plate_carve(context, loops, projector, preset, target, groups):
     context.view_layer.objects.active = target
     name = dict((p_[0], p_[1]) for p_ in PRESETS)[preset]
     edge = {'CHAMFER': 'chamfered', 'BEVEL': 'rounded'}.get(kind, 'sharp') if width > 1e-9 else 'sharp'
-    return f'Armor plate carved into "{target.name}" (Alt: {name}, {depth:.3g} deep, {edge} opening)'
+    st_ = f', {steps_done[0]} step{"s" if steps_done[0] != 1 else ""} more' if steps_done[0] else ''
+    return f'Armor plate carved into "{target.name}" (Alt: {name}, {depth:.3g} deep, {edge} opening{st_})'
 
 
 def _perform_through(context, loops, projector, preset, target, groups, st, brush):
@@ -1237,6 +1324,17 @@ class MCH_PG_Plate(bpy.types.PropertyGroup):
                               subtype='ANGLE', update=_carve_update,
                               description='Alt + draw carve: the walls go in diagonally - the floor narrower than the '
                                           'opening by depth x tan(angle); 0 = straight walls')
+    # 0.24.296 (user: "알트로 빼낼 때 바닥 쪽에 계단처럼 한 단 더 파이면서 들어가는 것도") stepped carve
+    carve_steps: IntProperty(name='Alt Carve Steps', default=0, min=0, max=6, update=_carve_update,
+                             description='Alt + draw carve: the floor stepped down this many times more - each step '
+                                         'the outline moved in (Step Inset) and Step Depth deeper; 0 = one plain floor')
+    step_inset: FloatProperty(name='Step Inset', default=0.0, min=0.0, soft_max=1.0, precision=4, unit='LENGTH',
+                              update=_carve_update,
+                              description='How far in from the edge above each step starts (0 = Auto: about a fifth '
+                                          'of the shape)')
+    step_depth: FloatProperty(name='Step Depth', default=0.0, min=0.0, soft_max=1.0, precision=4, unit='LENGTH',
+                              update=_carve_update,
+                              description='How much deeper each step goes (0 = Auto: half the carve depth)')
     # 0.24.291 (user: "옆에 세팅에 플렛 팔로우 레벨 버튼 만들면 되것네") the Alt carve's floor, as the Cut tool's
     carve_floor: EnumProperty(name='Alt Carve Floor', default='FOLLOW', update=_carve_update, items=[
         ('FOLLOW', 'Follow', 'As deep below the surface everywhere under the shape, however the part is turned'),
@@ -1726,6 +1824,11 @@ def draw(layout, context):
     box.prop(st, 'carve_depth')                       # 0.24.42 Alt + draw: the recess depth
     box.row(align=True).prop(st, 'carve_floor', expand=True)     # 0.24.291 the recess floor
     box.prop(st, 'carve_wall')                        # 0.24.295 slanted walls
+    col_ = box.column(align=True)                     # 0.24.296 stepped floor
+    col_.prop(st, 'carve_steps')
+    if st.carve_steps > 0:
+        col_.prop(st, 'step_inset', text='Step Inset (0: Auto)')
+        col_.prop(st, 'step_depth', text='Step Depth (0: Auto)')
     ob = pending_plate(context)
     if ob is not None:
         p = ob.mch_extract

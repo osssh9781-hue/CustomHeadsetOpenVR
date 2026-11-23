@@ -133,7 +133,12 @@ def groups(context, tool):
                                                                  ('FLAT', 'Flat')))
                     + [_cell('mini', 'Depth', action=('number',), data=pst, prop='carve_depth', width=130),
                        # 0.24.295 (user: "프레스 컷처럼 대각선으로 잘리는 버튼") the walls slant in
-                       _cell('mini', 'Wall Angle', action=('number',), data=pst, prop='carve_wall', width=150)]))
+                       _cell('mini', 'Wall Angle', action=('number',), data=pst, prop='carve_wall', width=150),
+                       # 0.24.296 (user: "바닥 쪽에 계단처럼 한 단 더") the stepped floor
+                       _cell('mini', 'Steps', action=('number',), data=pst, prop='carve_steps', width=110)]
+                    + ([_cell('mini', 'Step In', action=('number',), data=pst, prop='step_inset', width=130),
+                        _cell('mini', 'Step Depth', action=('number',), data=pst, prop='step_depth', width=150)]
+                       if pst.carve_steps > 0 else [])))
     if tool == 'PRESS' and hasattr(scene, 'mch_press'):          # 0.24.95 Press Cut: the stamp and how it presses
         pr = scene.mch_press
         # (user: "원래 쓰던 라쏘랑 스케치 다 넣어 줘") Shift + draw: the stamp drawn with the shared shapes
