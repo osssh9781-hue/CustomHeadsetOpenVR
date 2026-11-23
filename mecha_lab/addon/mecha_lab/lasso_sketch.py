@@ -26,7 +26,8 @@ from . import tool_state as ts
 
 KEY = 'mch_lasso_sketch'          # Scene ID prop (JSON) - Ctrl+Z steps back through it
 MODES = {'CUT', 'SPLIT', 'PLATE', 'CPLATE', 'WRINKLE', 'CDRAPE', 'ZONE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'HIDE',
-         'PRESS', 'WING', 'OMASS', 'MHOLE', 'PLANAR', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW'}   # 0.24.1 + Plate Detail 1 / 2, Box Hide; 0.24.95 Cloth Drape, Press Cut (the
+         'PRESS', 'WING', 'OMASS', 'MHOLE', 'PLANAR', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW',
+         'ACUT'}   # 0.24.297 Array Cut: always a sketch (its Shift + draw is the guide)   # 0.24.1 + Plate Detail 1 / 2, Box Hide; 0.24.95 Cloth Drape, Press Cut (the
 #                                               sketch = the stamp); 0.24.173 Insect Wing, Creature Cloth
 
 
@@ -50,6 +51,8 @@ def set_on(context, value):
 
 
 def enabled(context, mode):
+    if mode == 'ACUT':                     # 0.24.297 (user: "스케치 모드가 기본 작동") Array Cut always sketches
+        return True
     brush = getattr(context.scene, 'mch_brush', None)
     return bool(brush is not None and getattr(brush, 'sketch_first', False) and mode in MODES)
 
@@ -160,6 +163,8 @@ def commit(context, alt=False):
     if not loops:
         raise cg.CutError('The sketch is empty (everything was subtracted). Esc clears it.')
     mode = d['mode']
+    if mode == 'ACUT':
+        raise cg.CutError('Array Cut: Shift + draw the guide line - the sketch is cut along it.')
     if mode == 'PRESS':
         from . import press_cut               # 0.24.95 Press Cut: the combined outline (islands, holes) is the stamp
         ok, why = press_cut.use_loops(context, loops)

@@ -612,7 +612,11 @@ def _tool_keymap(mode):
         # 0.24.294 Spring: Enter keeps the selected live springs
         ('mch.spring_apply', {'type': 'RET', 'value': 'PRESS'}, None),
         ('mch.spring_apply', {'type': 'NUMPAD_ENTER', 'value': 'PRESS'}, None),
-    ) if mode == 'SPRING' else ()) + (
+    ) if mode == 'SPRING' else ()) + ((
+        # 0.24.297 Array Cut: Enter keeps the live array cut (the sketch's own Enter comes first while one is drawn)
+        ('mch.array_cut_apply', {'type': 'RET', 'value': 'PRESS'}, None),
+        ('mch.array_cut_apply', {'type': 'NUMPAD_ENTER', 'value': 'PRESS'}, None),
+    ) if mode == 'ACUT' else ()) + (
         # Esc with no stroke pending: back to Blender's Select Box tool.
         ('mch.exit_tool', {'type': 'ESC', 'value': 'PRESS'}, None),
         # B06: R turns a PNG stamp (poll fails for other shapes -> Blender's R).  0.24.95 (user: "스탬프 돌리는 것도
@@ -926,6 +930,22 @@ class MCH_TOOL_line_array(bpy.types.WorkSpaceTool):
     bl_icon = 'ops.generic.select_lasso'
     bl_widget = None
     bl_keymap = _tool_keymap('LARRAY')
+
+    def draw_settings(context, layout, tool):
+        _draw_tool_settings(context, layout, tool)
+
+
+class MCH_TOOL_array_cut(bpy.types.WorkSpaceTool):
+    """0.24.297 Array Cut"""
+    bl_space_type = 'VIEW_3D'
+    bl_context_mode = 'OBJECT'
+    bl_idname = 'mecha.array_cut'
+    bl_label = 'Mecha Array Cut'
+    bl_description = ('Draw the shape (a sketch), Shift + draw the guide (Line / Free / Circle / Box): the shape is cut '
+                      'along it.\nCount / Spacing / End Size change it live, Enter keeps it.  RMB: shapes, Esc: exit')
+    bl_icon = 'ops.generic.select_lasso'
+    bl_widget = None
+    bl_keymap = _tool_keymap('ACUT')
 
     def draw_settings(context, layout, tool):
         _draw_tool_settings(context, layout, tool)
@@ -1269,7 +1289,7 @@ class MCH_TOOL_primitive(bpy.types.WorkSpaceTool):
 
 NATIVE_TOOLS = (MCH_TOOL_cut, MCH_TOOL_split, MCH_TOOL_press_cut, MCH_TOOL_base_mesh, MCH_TOOL_primitive, MCH_TOOL_armor_plate,
                 MCH_TOOL_cloth_wrinkle, MCH_TOOL_box_hide, MCH_TOOL_plate_detail, MCH_TOOL_plate_detail2, MCH_TOOL_plate_detail3, MCH_TOOL_plate_detail4,
-                MCH_TOOL_screw_stamp, MCH_TOOL_cloth_drape, MCH_TOOL_lasso_zone, MCH_TOOL_wrinkle_lines, MCH_TOOL_creature_base, MCH_TOOL_organic_mass, MCH_TOOL_mecha_holes, MCH_TOOL_clean_planar, MCH_TOOL_line_array, MCH_TOOL_spring, MCH_TOOL_creature_plate,
+                MCH_TOOL_screw_stamp, MCH_TOOL_cloth_drape, MCH_TOOL_lasso_zone, MCH_TOOL_wrinkle_lines, MCH_TOOL_creature_base, MCH_TOOL_organic_mass, MCH_TOOL_mecha_holes, MCH_TOOL_clean_planar, MCH_TOOL_line_array, MCH_TOOL_spring, MCH_TOOL_array_cut, MCH_TOOL_creature_plate,
                 MCH_TOOL_belt_maker, MCH_TOOL_creature_spike, MCH_TOOL_creature_scales,
                 MCH_TOOL_scale_brush, MCH_TOOL_bridge_patch, MCH_TOOL_flower_plate, MCH_TOOL_surface_curve, MCH_TOOL_cape, MCH_TOOL_scarf_cape, MCH_TOOL_creature_hair, MCH_TOOL_creature_fur, MCH_TOOL_insect_wing, MCH_TOOL_creature_membrane, MCH_TOOL_surface_draw, MCH_TOOL_clothing, MCH_TOOL_hood, MCH_TOOL_scarf)   # MCH_TOOL_mask kept, not registered (Mask hidden)
 
@@ -1329,6 +1349,7 @@ def register_native_tools():
     bpy.utils.register_tool(MCH_TOOL_line_array, after={MCH_TOOL_mecha_holes.bl_idname}, group=False)   # 0.24.279
     bpy.utils.register_tool(MCH_TOOL_clean_planar, after={MCH_TOOL_line_array.bl_idname}, group=False)   # 0.24.284
     bpy.utils.register_tool(MCH_TOOL_spring, after={MCH_TOOL_clean_planar.bl_idname}, group=False)   # 0.24.294
+    bpy.utils.register_tool(MCH_TOOL_array_cut, after={MCH_TOOL_spring.bl_idname}, group=False)   # 0.24.297
     bpy.utils.register_tool(MCH_TOOL_creature_plate, after={MCH_TOOL_screw_stamp.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_belt_maker, after={MCH_TOOL_creature_plate.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_creature_spike, after={MCH_TOOL_belt_maker.bl_idname}, group=False)

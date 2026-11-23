@@ -89,6 +89,22 @@ DOCS = {
               ('Cloth Detail', '작을수록 촘촘 - 잔주름 (느려짐). 드레이프 마스크는 점 개수', 'less = finer: small wrinkles (slower). Drape Mask: Points'),
               ('Pins & Stitches', '천을 몸에 고정 · 박음질 선으로 모으기', 'pin it to the body · gather it along stitch lines')],
         tips=[('뒷면까지 감싼 마스크도 사각 격자로 고르게 주름짐', 'A mask round the body is a grid of quads too: even folds')]),
+    # 0.24.297 Array Cut
+    'ACUT': dict(
+        what=('그린 모양을 Shift + 그린 가이드 라인을 따라 여러 번 자른다', 'The drawn shape cut again and again along a Shift + drawn guide'),
+        how=[('그냥 그리면 자를 모양이 스케치로 쌓임 (아직 안 잘림)', 'Draw: the shape goes into a sketch (nothing is cut yet)'),
+             ('Shift + 그리면 가이드 - 그 순간 가이드를 따라 잘림', 'Shift + draw: the guide - the sketch is cut along it at once'),
+             ('Count · Spacing · End Size 를 바꾸면 실시간으로 다시 잘림, Enter 로 확정', 'Count / Spacing / End Size cut it again live; Enter keeps it')],
+        keys=[('Shift + 드래그', '가이드 라인', 'the guide'),
+              ('Alt + 드래그', '스케치에서 빼기', 'subtract from the sketch'),
+              ('Enter', '확정', 'keep it')],
+        opts=[('Guide', 'Line: 시작 → 끝 직선 · Free: 그린 그대로 · Circle: 시작점 둘레 원 · Box: 사각형',
+               'Line: start to end / Free: as drawn / Circle: round the start / Box: a rectangle'),
+              ('Count', '잘리는 개수 (그린 모양 포함)', 'how many cuts (the drawn shape the first)'),
+              ('Spacing', '간격 (0 = 가이드 전체에 고르게)', 'the distance between cuts (0 = spread over the guide)'),
+              ('End Size', '마지막 크기 비율 (작으면 점점 작아짐)', 'the last cut\'s size (less: smaller and smaller)'),
+              ('Align', '가이드 방향 따라 돌림', 'each cut turned with the guide')],
+        tips=[('깊이 · 모서리 마감은 컷 툴 설정 그대로', 'Depth and edge finish: the Cut tool\'s settings')]),
     # 0.24.294 Spring
     'SPRING': dict(
         what=('선을 그으면 그 선을 따라 코일 스프링이 생기고, 두께 · 폭은 나중에 정한다',

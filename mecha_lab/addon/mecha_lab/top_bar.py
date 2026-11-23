@@ -113,6 +113,17 @@ def groups(context, tool):
             extra.append(_cell('drop', '', action=('menu_enum',), data=ws, prop='sim_preset', width=110))
     if extra:
         out.append(('', extra))
+    if tool == 'ACUT' and hasattr(scene, 'mch_acut'):
+        # 0.24.297 Array Cut: the guide (Shift + draw) and the array - live after the cut
+        from . import array_cut
+        ac_ = scene.mch_acut
+        out.append(('Guide', _enum_segs(ac_, 'guide', (('LINE', 'Line'), ('FREE', 'Free'), ('CIRCLE', 'Circle'),
+                                                        ('BOX', 'Box')))))
+        cells = [_mini('Count', ac_, 'count', 110), _mini('Spacing', ac_, 'spacing', 140),
+                 _mini('End Size', ac_, 'end_scale', 140), _seg('Align', ac_, 'align')]
+        if array_cut.record(scene) is not None:
+            cells.append(_cell('seg', 'Apply', action=('op', 'mch.array_cut_apply', {})))
+        out.append(('Array', cells))
     if tool == 'BASE':
         # 0.24.295 (user: "만든 모양대로 옆면 쪽에 몰딩처럼 튀어나오게, 두께랑 개수 정할 수 있게") in the tool's own box (the
         # LASSO block keeps its size: its cells stay where they are for every tool)

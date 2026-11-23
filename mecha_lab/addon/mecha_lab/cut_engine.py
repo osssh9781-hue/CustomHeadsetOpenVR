@@ -1458,6 +1458,7 @@ _COLORS = {
     'PLANAR': (0.75, 0.95, 1.0, 1.0),
     'LARRAY': (0.95, 0.8, 0.35, 1.0),
     'SPRING': (0.8, 0.85, 0.95, 1.0),
+    'ACUT': (1.0, 0.45, 0.35, 1.0),
     'CPLATE': (0.55, 0.9, 0.6, 1.0),
     'BELT': (0.95, 0.75, 0.3, 1.0),
     'SPIKE': (0.6, 0.85, 0.4, 1.0),
@@ -1831,7 +1832,7 @@ class StrokeLogic:
         return self.mode not in {'BASE', 'CBASE', 'PLATE', 'CPLATE', 'WRINKLE', 'ZONE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'DETAIL4', 'BELT', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE',
                                  'FLOWER', 'SCURVE', 'CAPE', 'SCAPE', 'HAIR', 'GARMENT', 'HOOD', 'SCARF', 'SDRAW', 'PRESS',
                                  'GREEBLE', 'CGREEBLE', 'FUR', 'WING', 'OMASS', 'MHOLE', 'PLANAR', 'MEMBRANE', 'WDIRT', 'WDUST', 'WLEAF', 'WSNOW',
-                                 'LARRAY', 'SPRING'}
+                                 'LARRAY', 'SPRING', 'ACUT'}
 
     def _tangents(self, pts=None):
         pts = self.pts if pts is None else pts
@@ -2002,6 +2003,12 @@ class StrokeLogic:
         self.alt_held = bool(event.alt)
         self.shift_held = bool(event.shift) and self.mode not in STAMP_MODES   # (Press Cut, 0.24.154 Greeble / Scale
         #                                                       Line: Shift only starts the drawing)
+        # 0.24.297 Array Cut: Shift + draw = the array's guide (drawn freely, held: its Line / Circle / Box from the
+        # first and last points); no Shift snapping inside it
+        self.acut_guide = self.mode == 'ACUT' and bool(event.shift)
+        if self.acut_guide:
+            self.shift_held = False
+            self.shape = 'STROKE'
         self.ctrl_held = bool(event.ctrl)
         self.line_open = bool(self.brush.line_open)
         self.mouse = xy
@@ -2256,6 +2263,16 @@ class StrokeLogic:
             elif self.shape == 'STROKE':
                 pts = self._line_path()
             return line_array.perform(context, pts, self.shape, self.projector)
+        if self.mode == 'ACUT':                  # 0.24.297 Array Cut: Shift + draw = the guide, else the sketch
+            from . import array_cut
+            if getattr(self, 'acut_guide', False):
+                pts = list(self.pts)
+                if self.shape not in {'LASSO', 'CURVE_LASSO', 'STROKE'}:
+                    loops = self._current_loops(self.ctrl_held, False)
+                    pts = list(loops[0]) if loops else pts
+                return array_cut.set_guide(context, pts, self.projector)
+            loops = self._current_loops(self.ctrl_held, self.shift_held)
+            return lasso_sketch.add(context, 'ACUT', loops, self.projector, subtract=self.inverted())
         if self.mode == 'SPRING':                # 0.24.294 Spring: the drawing is its line
             from . import spring_gen
             pts = list(self.pts)
@@ -2618,7 +2635,7 @@ class StrokeLogic:
         if et in {'LEFT_ALT', 'RIGHT_ALT'}:
             self.alt_held = ev == 'PRESS'
         if et in {'LEFT_SHIFT', 'RIGHT_SHIFT'}:
-            self.shift_held = ev == 'PRESS'
+            self.shift_held = ev == 'PRESS' and not getattr(self, 'acut_guide', False)
         if et in {'LEFT_CTRL', 'RIGHT_CTRL', 'OSKEY'}:
             self.ctrl_held = ev == 'PRESS'
 
@@ -2935,6 +2952,7 @@ class MCH_OT_cut_stroke(StrokeLogic, bpy.types.Operator):
         ('PLANAR', 'Clean (Planar)', 'The surface under the outline pushed onto one flat plane'),
         ('LARRAY', 'Line Array', 'Copies of the part along the drawn line / outline'),
         ('SPRING', 'Spring', 'A coil spring along the drawn line'),
+        ('ACUT', 'Array Cut', 'The drawn shape cut along a Shift + drawn guide'),
         ('PCUT', 'Print Cut', 'Cut a part along the drawn shape, connection pins across the cut'),
         ('OMASS', 'Creature Base Mesh 2', 'A big organic lump in the drawn outline: rock, scale, mushroom, crystal...'),
         ('CPLATE', 'Creature Plate', 'New rounded plate (Puff / Ridge / Pillow) on the mesh under the outline'),
