@@ -3582,37 +3582,52 @@ def molded(p):
 
 def carve_molded(context, loops, projector, p, targets=None):
     """0.24.300 (user: "왜 컷할 때는 림이랑 몰드가 적용이 안 돼?" / "당연히 빠지는 걸로 가야지") Alt + draw with moldings / a
-    dome: the solid that would be made, turned the other way (mirrored through the surface into the part) and carved
-    out - the bottom flange becomes a wide step at the opening, the top band an undercut by the floor, the Lip Rim a
-    ring groove round the floor, the Dome a bowl.  Carve Depth: 0 = as deep as the solid is tall."""
-    from types import SimpleNamespace
-    from . import armor_plate as ap
+    dome: the solid that would be made, turned the other way and carved out - the bottom flange becomes a wide step at
+    the opening, the top band an undercut by the floor, the Lip Rim a ring groove round the floor, the Dome a bowl.
+    Carve Depth: 0 = as deep as the solid is tall.
+    0.24.303 (user, a picture of a broken carve on a round part): the solid is flipped as one piece in its own drawing
+    plane (z -> -z) - each point mirrored on its own through the surface under it folded the moldings' overhangs into a
+    cutter that crossed itself on a curved part, and the Boolean broke."""
     screen_groups = cg.prepare_loops(loops)
     targets = _cutter_targets(context, projector, screen_groups, targets)
     if not targets:
         raise cg.CutError('Alt Base Mesh carves into a mesh: draw over one (nothing was changed).')
     target = targets[0]
     cg.check_target(target)
-    before = set(bpy.data.objects)
     groups, frame, _sg, embed = _local_groups(context, loops, projector, allow_invert=False)
-    _create_live_base(context, groups, frame, p, embed)
-    made = [o for o in bpy.data.objects if o not in before and o.type == 'MESH']
-    if not made:
-        raise cg.CutError('The shape came out empty; nothing was carved.')
-    part = made[0]
-
-    def remove(o):
-        me_ = o.data
-        bpy.data.objects.remove(o, do_unlink=True)
-        if me_ is not None and me_.users == 0:
-            bpy.data.meshes.remove(me_)
-    deep = ap._carve_mirror(context, target, part, remove, SimpleNamespace(carve_depth=getattr(p, 'carve_depth', 0.0)))
+    bm = build_bmesh(groups, _WithEmbed(p, embed))
+    try:
+        top = max((v.co.z for v in bm.verts), default=0.0)
+        tall = max(top, 1e-6)
+        depth = float(getattr(p, 'carve_depth', 0.0) or 0.0)
+        scale = depth / tall if depth > 0.0 else 1.0
+        lift = max(embed, tall * 0.01)                # (the opening's cap just above the surface: a clean opening)
+        for v in bm.verts:
+            z = v.co.z
+            v.co.z = lift if z <= 1e-7 else -z * scale
+        bmesh.ops.reverse_faces(bm, faces=bm.faces[:])
+        me = bpy.data.meshes.new('MCH_BaseCarve')
+        bm.to_mesh(me)
+    finally:
+        bm.free()
+    cutter = cg.link_temp_object(context, me, 'MCH_Cutter_BaseCarve')
+    cutter.matrix_world = frame
+    cut = context.scene.mch_cut
+    try:
+        res, _solver = cg.boolean_result(context, target, cutter, 'DIFFERENCE', cut.solver, cut.hole_tolerant)
+        try:
+            cg.commit_mesh(target, res, cut.shared_mesh)
+        finally:
+            if res.users == 0:
+                bpy.data.meshes.remove(res)
+    finally:
+        cg.remove_object_and_mesh(cutter)
     for o in context.selected_objects:
         o.select_set(False)
     target.select_set(True)
     context.view_layer.objects.active = target
     return (f'Base Mesh carve (Alt): {target.name} | the shape with its moldings carved in the other way round, '
-            f'{deep:.3g} deep')
+            f'{tall * scale:.3g} deep')
 
 
 def carve_surface(context, loops, projector, p, targets=None, ramp_edge=None, live=True):

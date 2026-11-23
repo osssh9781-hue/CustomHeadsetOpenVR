@@ -84,4 +84,30 @@ bm_.perform_base(C, [LOOP], TOP, cutter=True)
 check('Base Mesh Alt + Top Dome: a bowl 0.25 in the middle, closed', abs(depth(0.0) - 0.25) < 0.01 and non_manifold(c) == 0,
       depth(0.0))
 p.emold_dome = 0.0
+# 0.24.303 (user, a picture: Alt carve with moldings on a round part broke) - on the side of a cylinder
+from mathutils import Euler
+FRONT = cg.OrthoProjector(Euler((math.radians(90), 0, 0)).to_quaternion(), pixels_per_unit=100.0)
+for combo in (dict(emold_top=True, emold_bottom=False, emold_out=0.08, emold_band=0.05, emold_dome=0.0),
+              dict(emold_top=True, emold_bottom=True, emold_out=0.06, emold_band=0.04, emold_dome=0.05),
+              dict(emold_top=True, emold_bottom=True, emold_out=-0.05, emold_band=0.04, emold_dome=0.0, emold_shape='SLOPE')):
+    for o in list(bpy.data.objects):
+        bpy.data.objects.remove(o)
+    bpy.ops.mesh.primitive_cylinder_add(radius=1.5, depth=2.0, vertices=96)
+    cyl = C.active_object
+    p.emold_shape = 'SQUARE'
+    for k, v in combo.items():
+        setattr(p, k, v)
+    p.height = 0.25
+    p.surface_align = True
+    msg = bm_.perform_base(C, [[(500 + 45 * math.cos(a), 500 + 45 * math.sin(a)) for a in (2 * math.pi * k / 64 for k in range(64))]],
+                           FRONT, cutter=True)
+    C.view_layer.update()
+    r = S.ray_cast(C.evaluated_depsgraph_get(), Vector((0, -5, 0)), Vector((0, 1, 0)))
+    d = r[1].y + 1.5 if r[0] else None
+    check(f'on a cylinder\'s side {combo}: a clean pocket (closed mesh, one part), about Height deep in the middle',
+          non_manifold(cyl) == 0 and len([o for o in bpy.data.objects if o.type == 'MESH']) == 1 and d is not None
+          and 0.15 < d < 0.45, (non_manifold(cyl), d, msg[:80]))
+p.emold_top = p.emold_bottom = False
+p.emold_dome = 0.0
+p.emold_shape = 'SQUARE'
 summary()
