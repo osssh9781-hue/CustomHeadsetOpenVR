@@ -149,6 +149,10 @@ _ANN = {
                                                 'height)'),
     'emold_lip': _p(FloatProperty, name='Lip Rim', default=0.0, min=0.0, soft_max=0.3, precision=4, unit='LENGTH',
                     description='Top: a rim standing this high round the top face (0 = a flat band, flush)'),
+    # 0.24.299 (user: "림 할 때 밑에 옵션으로 윗면이 살짝 둥글게 올라오는 것도")
+    'emold_dome': _p(FloatProperty, name='Top Dome', default=0.0, min=0.0, soft_max=0.3, precision=4, unit='LENGTH',
+                     description='The top face rises this much toward its middle, softly from the edge (with or without the '
+                                 'Top / Bottom molding; 0 = flat)'),
     'emold_shape': _p(EnumProperty, name='Edge Molding Shape', default='SQUARE', items=[
         ('SQUARE', 'Square', 'A square step out'),
         ('CHAMFER', 'Chamfer', 'The band slanted back into the wall'),

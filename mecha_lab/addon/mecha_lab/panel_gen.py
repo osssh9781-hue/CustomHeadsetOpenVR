@@ -236,6 +236,26 @@ def fix_bowties(bm):
     return n
 
 
+def _fill_inside(bm, n=16):
+    """0.24.299 The region split into small triangles (about ``n`` across) when it has (almost) no points inside its
+    outline - on a flat face it was one big face round the outline: nothing to raise for a Top Dome."""
+    inner = [v for v in bm.verts if not v.is_boundary]
+    if len(inner) >= max(8, len(bm.verts) // 4):
+        return
+    lo = Vector([min(v.co[i] for v in bm.verts) for i in range(3)])
+    hi = Vector([max(v.co[i] for v in bm.verts) for i in range(3)])
+    step = max((hi - lo).length / n, 1e-6)
+    bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method='BEAUTY', ngon_method='BEAUTY')
+    for _ in range(6):
+        long_ = [e for e in bm.edges if e.calc_length() > step]
+        if not long_:
+            break
+        bmesh.ops.subdivide_edges(bm, edges=long_, cuts=1, use_grid_fill=False)
+        bmesh.ops.triangulate(bm, faces=[f for f in bm.faces if len(f.verts) > 3])
+    bm.verts.ensure_lookup_table()
+    bm.normal_update()
+
+
 def boundary_loops(bm, faces):
     """Ordered boundary loops of a face set (region on the LEFT of each loop
     w.r.t. the face normals).  Returns lists of BMVerts."""
@@ -603,6 +623,8 @@ def _build(bm, context_mesh, p, armor, notes):
     if levels:
         for _ in range(levels):
             bmesh.ops.subdivide_edges(bm, edges=bm.edges[:], cuts=1, use_grid_fill=True)
+    if getattr(p, 'emold_dome', 0.0) > 0.0:
+        _fill_inside(bm)        # 0.24.299 Top Dome: points inside the outline to raise (a flat face gave none)
     bm.normal_update()
     # 0.19.2 surface lines: cut the region along each crease line first, so the
     # crease is a real edge (sharp, even on a light plate)
@@ -871,6 +893,8 @@ def _build(bm, context_mesh, p, armor, notes):
             return 1.0
         t = min(1.0, (d - rim_w) / (rim_slope * rim_w))
         return 0.5 * (1.0 + math.cos(math.pi * t)) if rim_kind == 'BEVEL' else 1.0 - t
+    dome_h = float(getattr(p, 'emold_dome', 0.0))       # (0.24.299 on its own too)
+
     def top_height(v, co_for_uv):
         r = 1.0 - min(dist[v], dmax) / dmax
         u, w_ = local_uv(co_for_uv)
@@ -897,6 +921,9 @@ def _build(bm, context_mesh, p, armor, notes):
         if lines:
             x, y = fxy(co_for_uv)
             h = max(p.extract_height * 0.15, h + crease_h * facet_value(lines, x, y, fall, half))
+        if dome_h > 0.0:                            # 0.24.299 Top Dome (with the Top Edge Molding)
+            t_ = min(1.0, dist[v] / max(dmax * 0.35, 1e-9))
+            h += dome_h * math.sqrt(max(0.0, 1.0 - (1.0 - t_) ** 2))     # (the edge rolls over round)
         return h
 
     # ---- assemble -----------------------------------------------------------------------------

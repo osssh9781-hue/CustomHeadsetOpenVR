@@ -1817,6 +1817,7 @@ def _draw_edge_molding(layout, p, title='Edge Molding'):
     row = col.row(align=True)
     row.prop(p, 'emold_top', text='Top', toggle=True)
     row.prop(p, 'emold_bottom', text='Bottom', toggle=True)
+    col.prop(p, 'emold_dome')                         # 0.24.299 (on its own too)
     if p.emold_top or p.emold_bottom:
         col.prop(p, 'emold_out', text='Out')
         col.prop(p, 'emold_band', text='Height (0: Auto)')

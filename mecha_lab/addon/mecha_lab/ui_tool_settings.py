@@ -795,6 +795,7 @@ def draw_base(layout, context):
             r_ = em.row(align=True)
             r_.prop(p, 'emold_top', text='Top', toggle=True)
             r_.prop(p, 'emold_bottom', text='Bottom', toggle=True)
+            em.prop(p, 'emold_dome')                  # 0.24.299 (on its own too)
             if p.emold_top or p.emold_bottom:
                 c3 = em.column(align=True)
                 c3.prop(p, 'emold_out', text='Out')

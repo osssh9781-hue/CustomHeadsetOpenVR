@@ -236,7 +236,8 @@ def groups(context, tool):
 
 def edge_molding_group(p):
     """0.24.298 ('Edge Molding', cells): Top / Bottom, and with one on: Out, Height, Lip, the shape."""
-    cells = [_seg('Top', p, 'emold_top'), _seg('Bottom', p, 'emold_bottom')]
+    cells = [_seg('Top', p, 'emold_top'), _seg('Bottom', p, 'emold_bottom'),
+             _mini('Top Dome', p, 'emold_dome', 140)]                # 0.24.299 (on its own too)
     if p.emold_top or p.emold_bottom:
         cells += [_mini('Out', p, 'emold_out', 110), _mini('Height', p, 'emold_band', 130)]
         if p.emold_top:

@@ -52,7 +52,30 @@ check('Top with a Lip 0.04 + Bottom: the rim stands 0.04 above the top face, the
 for shape in ('CHAMFER', 'ROUND'):
     ob = build(emold_shape=shape)
     check(f'{shape}: closed, 0.05 out', non_manifold(ob) == 0 and abs(max(v.co.x for v in ob.data.vertices) - 1.05) < 1e-3)
+# 0.24.299 (user: "림 할 때 밑에 옵션으로 윗면이 살짝 둥글게 올라오는 것도") Top Dome
 p.emold_shape = 'SQUARE'
+ob = build(emold_top=True, emold_bottom=False, emold_lip=0.04, emold_dome=0.1)
+zs = [v.co.z for v in ob.data.vertices]
+mid_z = max(v.co.z for v in ob.data.vertices if abs(v.co.x) < 0.05 and abs(v.co.y) < 0.05)
+check('Top Dome 0.1 (with the Lip): the top face rises to 0.6 in the middle, the rim still at 0.54, closed',
+      abs(mid_z - 0.6) < 1e-4 and abs(max(v.co.z for v in ob.data.vertices if abs(v.co.x) > 0.99) - 0.54) < 1e-4
+      and non_manifold(ob) == 0, (mid_z, max(zs)))
+ob = build(emold_dome=0.1, emold_lip=0.0)
+check('... without a Lip too (flat band, the top rising inside it), closed', non_manifold(ob) == 0
+      and abs(max(v.co.z for v in ob.data.vertices) - 0.6) < 1e-4)
+ob = build(emold_top=False, emold_bottom=True, emold_out=0.12, emold_band=0.03, emold_dome=0.1, emold_lip=0.0)
+check('Top Dome on its own (user picture: a thin wide flange + a softly domed top): rises to 0.6, flange 0.12 out, closed',
+      abs(max(v.co.z for v in ob.data.vertices) - 0.6) < 1e-4 and abs(max(v.co.x for v in ob.data.vertices) - 1.12) < 1e-4
+      and non_manifold(ob) == 0)
+p.profile = 'BEVEL'
+p.bevel_sides = 'TOP'
+ob = build()
+check('... with a Bevel profile: the dome takes the top (no bevel fight), closed', non_manifold(ob) == 0
+      and abs(max(v.co.z for v in ob.data.vertices) - 0.6) < 1e-4)
+p.profile = 'FLAT'
+p.emold_dome = 0.0
+p.emold_out = 0.05
+p.emold_band = 0.1
 p.profile = 'BEVEL'
 p.bevel_sides = 'BOTH'
 p.bevel_width = 0.05
@@ -100,6 +123,17 @@ pe.emold_lip = 0.02
 C.view_layer.update()
 x2, z2, b2 = extent()
 check('... Top with a Lip 0.02: the rim 0.02 above the top', abs((z2 - z0) - 0.02) < 0.003, (z0, z2))
+pe.emold_dome = 0.05
+C.view_layer.update()
+x4, z4, b4 = extent()
+check('... Top Dome 0.05: the middle of the top rises 0.05 above the plate\'s top (above the 0.02 lip)',
+      abs((z4 - z0) - 0.05) < 0.01, (z0, z2, z4))
+pe.emold_top = False
+C.view_layer.update()
+x5, z5, b5 = extent()
+check('... Top Dome on its own (no top molding): still rises 0.05 above the plate\'s top', abs((z5 - z0) - 0.05) < 0.01,
+      (z0, z5))
+pe.emold_dome = 0.0
 pe.emold_top = pe.emold_bottom = False
 C.view_layer.update()
 x3, z3, b3 = extent()

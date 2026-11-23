@@ -69,7 +69,7 @@ SETTING_KEYS = ('height', 'wall', 'bevel_width', 'bevel_segments', 'roundness', 
                 'outline_smooth', 'edge_round', 'peak', 'attach_curve', 'profile_sweep', 'section_width',
                 'section_rotation', 'section_twist', 'section_taper', 'line_corner', 'corner_radius', 'line_up',
                 'line_detail', 'line_end', 'mold_count', 'mold_thick', 'mold_width', 'mold_shape',
-                'emold_top', 'emold_bottom', 'emold_out', 'emold_band', 'emold_lip', 'emold_shape')
+                'emold_top', 'emold_bottom', 'emold_out', 'emold_band', 'emold_lip', 'emold_shape', 'emold_dome')
 SWEEP_KEY = 'mch_base_line_sweep'  # 0.24.103 serialized path + alpha loops for live rebuild
 DEPTH_KEY = 'mch_base_depth_guide'   # side-view polyline reshapes the base depth, kept live
 ATTACH_KEY = 'mch_base_attach'          # 0.24.57 Line: the ends stuck to the meshes where the line began / ended
@@ -82,7 +82,7 @@ CARRY_KEYS = ('profile', 'height', 'wall', 'bevel_width', 'bevel_segments', 'rou
               'bevel_sides', 'bevel_width_bottom', 'bevel_segments_bottom', 'bevel_link', 'puff', 'outline_smooth',
               'edge_round', 'section_rotation', 'section_twist', 'section_taper', 'line_corner', 'corner_radius', 'line_up',
               'line_detail', 'line_end', 'mold_count', 'mold_thick', 'mold_width', 'mold_shape',
-                'emold_top', 'emold_bottom', 'emold_out', 'emold_band', 'emold_lip', 'emold_shape')
+                'emold_top', 'emold_bottom', 'emold_out', 'emold_band', 'emold_lip', 'emold_shape', 'emold_dome')
 # 0.24.107 'profile_sweep' / 'section_width' are not carried: a Press Cut Alt+draw part (always a shape sweep) had
 # every later plain Base Mesh line turned into a shape sweep once one of its sliders was touched.
 
@@ -328,6 +328,11 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
                              update=_rebuild_update,
                              description='Top: a rim standing this high round the top face (0 = a flat band, flush '
                                          'with the top)')
+    # 0.24.299 (user: "림 할 때 밑에 옵션으로 윗면이 살짝 둥글게 올라오는 것도") the top face inside the top molding rises
+    emold_dome: FloatProperty(name='Top Dome', default=0.0, min=0.0, soft_max=0.5, precision=4, unit='LENGTH',
+                              update=_rebuild_update,
+                              description='The top face rises this much toward its middle, softly from the edge (with or '
+                                          'without the Top / Bottom molding; 0 = flat)')
     emold_shape: EnumProperty(name='Edge Molding Shape', default='SQUARE', update=_rebuild_update, items=[
         ('SQUARE', 'Square', 'A square step out'),
         ('CHAMFER', 'Chamfer', 'The band slanted back into the wall'),
@@ -633,7 +638,38 @@ def edge_molding(p, height):
     return bottom, b_off, top, t_off, (band if bot_on else 0.0), (band if top_on else 0.0)
 
 
-def _add_prism(bm, outer, holes, height, rings=(), edge=None):
+def dome_curve(t):
+    """0.24.299 Top Dome height (0 at the edge, 1 in the middle) at ``t`` in from the edge (0..1): a quarter ellipse -
+    the edge rolls over round, the middle stays full (user picture: a soft rounded top)."""
+    t = min(1.0, max(0.0, t))
+    return math.sqrt(max(0.0, 1.0 - (1.0 - t) ** 2))
+
+
+def _dome_rings(loop, rise, n=14):
+    """0.24.299 Top Dome: [(ring points, z rise)] from the outline (0) in toward the middle (rise) - each ring an even
+    inset of the outline where it stays clean, else drawn in toward the middle."""
+    a0 = sum(loop[i - 1][0] * loop[i][1] - loop[i][0] * loop[i - 1][1] for i in range(len(loop)))
+    cx = sum(q[0] for q in loop) / len(loop)
+    cy = sum(q[1] for q in loop) / len(loop)
+    rad = sum(math.hypot(q[0] - cx, q[1] - cy) for q in loop) / len(loop)
+    out = []
+    for k in range(1, n):
+        t = 1.0 - math.cos(k / n * math.pi / 2)         # (more rings near the edge, where it rolls over)
+        s = 1.0 - t
+        ring = [(cx + (q[0] - cx) * s, cy + (q[1] - cy) * s) for q in loop]
+        try:
+            from .armor_plate import _crosses
+            inset = offset_outline(loop, -rad * t * 0.95, limit=2.0)
+            a1 = sum(inset[i - 1][0] * inset[i][1] - inset[i][0] * inset[i - 1][1] for i in range(len(inset)))
+            if a1 > a0 * 0.02 and not _crosses(inset):
+                ring = inset
+        except (ImportError, ValueError):
+            pass
+        out.append((ring, rise * dome_curve(t / 0.35)))     # (round over the outer third, then full)
+    return out, (cx, cy)
+
+
+def _add_prism(bm, outer, holes, height, rings=(), edge=None, dome=0.0):
     loops = [outer] + list(holes)
     flat = [p for lp in loops for p in lp]
     e_bot, b_off, e_top, t_off = (edge[:4] if edge else ([], 0.0, [], 0.0))
@@ -642,7 +678,22 @@ def _add_prism(bm, outer, holes, height, rings=(), edge=None):
     ot_ = offset_outline(outer, t_off) if abs(t_off) > 1e-9 else outer
     bottom = [bm.verts.new((x, y, 0.0)) for x, y in ob_ + flat[n0:]]
     top = [bm.verts.new((x, y, height)) for x, y in ot_ + flat[n0:]]
-    if not holes:
+    if not holes and dome > 1e-9:
+        # 0.24.299 Top Dome: the top face in rings rising toward the middle (a fan at the very middle)
+        bm.faces.new([bottom[i] for i in reversed(range(len(outer)))])
+        dr, (cx_, cy_) = _dome_rings(ot_, dome)
+        prev = top[:len(outer)]
+        m_ = len(outer)
+        for ring, z in dr:
+            cur = [bm.verts.new((x, y, height + z)) for x, y in ring]
+            for i in range(m_):
+                j = (i + 1) % m_
+                bm.faces.new((prev[i], prev[j], cur[j], cur[i]))
+            prev = cur
+        mid = bm.verts.new((cx_, cy_, height + dome))
+        for i in range(m_):
+            bm.faces.new((prev[i], prev[(i + 1) % m_], mid))
+    elif not holes:
         bm.faces.new([bottom[i] for i in reversed(range(len(outer)))])
         bm.faces.new(top[:len(outer)])
     else:
@@ -1176,7 +1227,7 @@ class _NoBevelUnder:
     def __getattr__(self, name):
         v = getattr(self._p, name)
         if name == 'bevel_sides':
-            top = bool(getattr(self._p, 'emold_top', False))
+            top = bool(getattr(self._p, 'emold_top', False)) or float(getattr(self._p, 'emold_dome', 0.0)) > 0.0
             bot = bool(getattr(self._p, 'emold_bottom', False))
             keep = {'TOP': not top, 'BOTTOM': not bot}
             if v == 'BOTH':
@@ -1199,7 +1250,8 @@ def build_bmesh(groups, p, flip=False):
                 _add_puff(bm, outer, holes, p)
             else:
                 em = edge_molding(p, p.height)
-                rt, rb = _add_prism(bm, outer, holes, p.height, molding_rings(p, p.height, em[4], em[5]), em)
+                dome = float(getattr(p, 'emold_dome', 0.0))     # (0.24.299 on its own too: a softly domed top)
+                rt, rb = _add_prism(bm, outer, holes, p.height, molding_rings(p, p.height, em[4], em[5]), em, dome)
                 rim_top += rt
                 rim_bottom += rb
         bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-7)
