@@ -776,7 +776,12 @@ def _plate_carve(context, loops, projector, preset, target, groups):
     st = scene.mch_plate
     cg.check_target(target)
     preset = preset or st.preset
-    if preset in {'RIDGE', 'MRIDGE'}:
+    ex_ = getattr(scene, 'mch_extract', None)
+    molded_ = ex_ is not None and (ex_.emold_top or ex_.emold_bottom or ex_.emold_dome > 0.0)
+    if preset in {'RIDGE', 'MRIDGE'} or (molded_ and preset != 'MRIDGE'):
+        # 0.24.300 (user: "왜 컷할 때는 림이랑 몰드가 적용이 안 돼?" / "당연히 빠지는 걸로") a plate with Edge Molding / a
+        # Top Dome is carved the same way: the plate turned the other way - its flange a wide step at the opening,
+        # its top band an undercut by the floor, the Lip Rim a ring groove round the floor, the Dome a bowl
         # 0.24.291 (user: "릿지는?") a ridge's shape is its whole top, not an edge: the plate turned the other way
         from . import face_extract as fx
         if preset == 'MRIDGE':

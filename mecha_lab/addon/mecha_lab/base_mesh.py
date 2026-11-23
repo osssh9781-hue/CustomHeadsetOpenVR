@@ -3373,6 +3373,8 @@ def perform_base(context, loops, projector, cutter=False, targets=None, attach=N
         return _create_section_sweep(context, loops, projector, path, defaults, attach)
     if cutter and not creature and getattr(defaults, 'alt_mode', 'HEIGHT') == 'CUT':
         return cut_like_cut_tool(context, loops, projector, targets)
+    if cutter and not creature and molded(defaults) and getattr(defaults, 'alt_mode', 'HEIGHT') == 'HEIGHT':
+        return carve_molded(context, loops, projector, defaults, targets)     # 0.24.300 the moldings carved in too
     if cutter and not creature and defaults.profile in SURFACE_CARVE:
         return carve_surface(context, loops, projector, defaults, targets)
     groups, frame, screen_groups, embed = _local_groups(context, loops, projector, allow_invert=not cutter)
@@ -3560,6 +3562,47 @@ def first_edge(loops, min_px=2.0):
         if math.dist(a, b) >= min_px:
             return a, b
     return None
+
+
+def molded(p):
+    """0.24.300 Edge / Side Molding or a Top Dome is on (an Alt carve then carves the whole shape in, mirrored)."""
+    return bool(getattr(p, 'emold_top', False) or getattr(p, 'emold_bottom', False)
+                or getattr(p, 'emold_dome', 0.0) > 0.0 or getattr(p, 'mold_count', 0) > 0)
+
+
+def carve_molded(context, loops, projector, p, targets=None):
+    """0.24.300 (user: "왜 컷할 때는 림이랑 몰드가 적용이 안 돼?" / "당연히 빠지는 걸로 가야지") Alt + draw with moldings / a
+    dome: the solid that would be made, turned the other way (mirrored through the surface into the part) and carved
+    out - the bottom flange becomes a wide step at the opening, the top band an undercut by the floor, the Lip Rim a
+    ring groove round the floor, the Dome a bowl.  Carve Depth: 0 = as deep as the solid is tall."""
+    from types import SimpleNamespace
+    from . import armor_plate as ap
+    screen_groups = cg.prepare_loops(loops)
+    targets = _cutter_targets(context, projector, screen_groups, targets)
+    if not targets:
+        raise cg.CutError('Alt Base Mesh carves into a mesh: draw over one (nothing was changed).')
+    target = targets[0]
+    cg.check_target(target)
+    before = set(bpy.data.objects)
+    groups, frame, _sg, embed = _local_groups(context, loops, projector, allow_invert=False)
+    _create_live_base(context, groups, frame, p, embed)
+    made = [o for o in bpy.data.objects if o not in before and o.type == 'MESH']
+    if not made:
+        raise cg.CutError('The shape came out empty; nothing was carved.')
+    part = made[0]
+
+    def remove(o):
+        me_ = o.data
+        bpy.data.objects.remove(o, do_unlink=True)
+        if me_ is not None and me_.users == 0:
+            bpy.data.meshes.remove(me_)
+    deep = ap._carve_mirror(context, target, part, remove, SimpleNamespace(carve_depth=getattr(p, 'carve_depth', 0.0)))
+    for o in context.selected_objects:
+        o.select_set(False)
+    target.select_set(True)
+    context.view_layer.objects.active = target
+    return (f'Base Mesh carve (Alt): {target.name} | the shape with its moldings carved in the other way round, '
+            f'{deep:.3g} deep')
 
 
 def carve_surface(context, loops, projector, p, targets=None, ramp_edge=None, live=True):
