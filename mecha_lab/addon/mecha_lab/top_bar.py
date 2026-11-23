@@ -113,6 +113,13 @@ def groups(context, tool):
             extra.append(_cell('drop', '', action=('menu_enum',), data=ws, prop='sim_preset', width=110))
     if extra:
         out.append(('', extra))
+    if tool == 'PLATE':
+        # 0.24.298 Top / Bottom Edge Molding: the live plate's, else the next plates'
+        from . import armor_plate as ap_
+        lp = ap_.pending_plate(context)
+        pp = lp.mch_extract if lp is not None else getattr(scene, 'mch_extract', None)
+        if pp is not None and hasattr(pp, 'emold_top'):
+            out.append(edge_molding_group(pp))
     if tool == 'ACUT' and hasattr(scene, 'mch_acut'):
         # 0.24.297 Array Cut: the guide (Shift + draw) and the array - live after the cut
         from . import array_cut
@@ -137,6 +144,7 @@ def groups(context, tool):
                 cells += _enum_segs(bp, 'mold_shape', (('SQUARE', 'Square'), ('CHAMFER', 'Chamfer'),
                                                        ('ROUND', 'Round')))
             out.append(('Side Molding', cells))
+            out.append(edge_molding_group(bp))                    # 0.24.298
     pst = getattr(scene, 'mch_plate', None)
     if tool == 'PLATE' and pst is not None and hasattr(pst, 'carve_floor'):
         # 0.24.291 (user: "옆에 세팅에 플렛 팔로우 레벨 버튼 만들면 되것네") Alt + draw (the carve): floor and depth
@@ -224,6 +232,17 @@ def groups(context, tool):
                      _cell('seg', LANG_LABEL, i18n.lang() == 'KO', ('op', 'mch.toggle_language', {}))]))
     return out
 
+
+
+def edge_molding_group(p):
+    """0.24.298 ('Edge Molding', cells): Top / Bottom, and with one on: Out, Height, Lip, the shape."""
+    cells = [_seg('Top', p, 'emold_top'), _seg('Bottom', p, 'emold_bottom')]
+    if p.emold_top or p.emold_bottom:
+        cells += [_mini('Out', p, 'emold_out', 110), _mini('Height', p, 'emold_band', 130)]
+        if p.emold_top:
+            cells.append(_mini('Lip Rim', p, 'emold_lip', 130))
+        cells += _enum_segs(p, 'emold_shape', (('SQUARE', 'Square'), ('CHAMFER', 'Chamfer'), ('ROUND', 'Round')))
+    return ('Edge Molding', cells)
 
 def pc_shape_name(pr):
     from . import press_cut

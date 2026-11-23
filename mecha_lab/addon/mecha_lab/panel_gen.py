@@ -115,6 +115,46 @@ def _fillet(prev_pt, corner, next_pt, size, segments, profile):
     return pts
 
 
+def edge_molding_profiles(p, height, top, bot, shell=False):
+    """0.24.298 Top / Bottom Edge Molding on the plate's outer wall: the top profile (wall -> cap, z from the top) and
+    the bottom one (wall -> base, z from the base) with a band standing out ``emold_out`` at the top (+ a Lip up round
+    the top face) and a flange at the bottom.  The profiles as they were when both are off."""
+    top_on = bool(getattr(p, 'emold_top', False))
+    bot_on = bool(getattr(p, 'emold_bottom', False)) and not shell
+    if not (top_on or bot_on) or height <= 1e-9:
+        return top, bot
+    t = float(getattr(p, 'emold_out', 0.0))
+    band = float(getattr(p, 'emold_band', 0.0)) or height * 0.25
+    band = min(band, height * (0.45 if top_on and bot_on else 0.9))
+    shape = getattr(p, 'emold_shape', 'SQUARE')
+    ws = top[0][0]
+    k = 6
+    if top_on:
+        if shape == 'CHAMFER':
+            c = min(t, band * 0.6)
+            nt = [(ws, -band), (ws - t, -band + c)]
+        elif shape == 'ROUND':
+            nt = [(ws - t * math.sin(math.pi / 2 * j / k), -band * math.cos(math.pi / 2 * j / k)) for j in range(k)]
+        else:
+            nt = [(ws, -band), (ws - t, -band)]
+        lip = float(getattr(p, 'emold_lip', 0.0))
+        if lip > 0.0:
+            rim = max(t * 1.5, band * 0.25)
+            nt += [(ws - t, lip), (ws - t + rim, lip), (ws - t + rim, 0.0)]
+        else:
+            nt.append((ws - t, 0.0))
+        top = nt
+    if bot_on:
+        if shape == 'CHAMFER':
+            c = min(t, band * 0.6)
+            bot = [(ws, band), (ws - t, band - c), (ws - t, 0.0)]
+        elif shape == 'ROUND':
+            bot = [(ws - t * math.sin(math.pi / 2 * j / k), band * math.cos(math.pi / 2 * j / k)) for j in range(k + 1)]
+        else:
+            bot = [(ws, band), (ws - t, band), (ws - t, 0.0)]
+    return top, bot
+
+
 def edge_profile(width, depth, direction='IN', bevel=0.0, segments=0, profile=0.5, wall_room=1e9):
     """Cross-section of an edge as (s, z) points from the wall end to the cap
     end.  The flat face is z = 0 for s >= end, the wall is at the first point's
@@ -740,6 +780,7 @@ def _build(bm, context_mesh, p, armor, notes):
             top, (od, obw) = top_profile(c['cp'])
             wall_s = top[0][0]
             bot = bottom_profile(c['cp'], wall_s, od, obw)
+            top, bot = edge_molding_profiles(p, c['cp']['height'], top, bot, shell)      # 0.24.298
             pt.append(top)
             pb.append(bot)
             nd = max(abs(sv) for sv, _z in top + bot) * c['miter']

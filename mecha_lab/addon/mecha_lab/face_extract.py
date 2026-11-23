@@ -135,6 +135,24 @@ _ANN = {
                     description='Width of the chamfer / bevel from the rim down to the plate (part of the rim width)'),
     'rim_width': _p(FloatProperty, name='Rim Width', default=0.15, min=0.01, soft_max=0.6, subtype='FACTOR',
                     description='Width of the border band (part of the plate size)'),
+    # 0.24.298 (user: "아머 플레이트랑 베이스 메쉬에 윗부분 엣지 부분이랑 아래 바닥면 엣지 부분 몰딩 넣는 옵션") the outer
+    # wall: a band at the top edge (a Lip standing up round the top), a flange at the bottom edge
+    'emold_top': _p(BoolProperty, name='Top Edge Molding', default=False,
+                    description='A band round the top edge, standing out of the wall (Lip: a rim standing up round '
+                                'the top face); instead of the top chamfer / bevel'),
+    'emold_bottom': _p(BoolProperty, name='Bottom Edge Molding', default=False,
+                       description='A flange round the bottom edge, standing out of the wall'),
+    'emold_out': _p(FloatProperty, name='Edge Molding Out', default=0.015, min=0.0001, soft_max=0.3, precision=4,
+                    unit='LENGTH', description='How far the top band / bottom flange stands out of the wall'),
+    'emold_band': _p(FloatProperty, name='Edge Molding Height', default=0.0, min=0.0, soft_max=0.5, precision=4,
+                     unit='LENGTH', description='How tall the band / flange is (0 = Auto: a quarter of the plate '
+                                                'height)'),
+    'emold_lip': _p(FloatProperty, name='Lip Rim', default=0.0, min=0.0, soft_max=0.3, precision=4, unit='LENGTH',
+                    description='Top: a rim standing this high round the top face (0 = a flat band, flush)'),
+    'emold_shape': _p(EnumProperty, name='Edge Molding Shape', default='SQUARE', items=[
+        ('SQUARE', 'Square', 'A square step out'),
+        ('CHAMFER', 'Chamfer', 'The band slanted back into the wall'),
+        ('ROUND', 'Round', 'A rounded band')]),
     'smooth_shading': _p(BoolProperty, name='Smooth Shading', default=True,
                          description='Smooth shading with sharp edges by angle (OFF = flat)'),
     # ---- Armor Sculpt: orientation -----------------------------------------------------------------

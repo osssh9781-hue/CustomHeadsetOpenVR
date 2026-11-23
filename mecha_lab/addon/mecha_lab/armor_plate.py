@@ -1807,6 +1807,23 @@ def _draw_labels():
         pass
 
 
+
+def _draw_edge_molding(layout, p, title='Edge Molding'):
+    """0.24.298 Top / Bottom Edge Molding of a plate (the live one's, or the next plates')."""
+    if not hasattr(p, 'emold_top'):
+        return
+    col = layout.column(align=True)
+    col.label(text=title, icon='MOD_SOLIDIFY')
+    row = col.row(align=True)
+    row.prop(p, 'emold_top', text='Top', toggle=True)
+    row.prop(p, 'emold_bottom', text='Bottom', toggle=True)
+    if p.emold_top or p.emold_bottom:
+        col.prop(p, 'emold_out', text='Out')
+        col.prop(p, 'emold_band', text='Height (0: Auto)')
+        if p.emold_top:
+            col.prop(p, 'emold_lip')
+        col.row(align=True).prop(p, 'emold_shape', expand=True)
+
 def draw(layout, context):
     from . import face_extract as fx
     st = context.scene.mch_plate
@@ -1830,6 +1847,8 @@ def draw(layout, context):
         col_.prop(st, 'step_inset', text='Step Inset (0: Auto)')
         col_.prop(st, 'step_depth', text='Step Depth (0: Auto)')
     ob = pending_plate(context)
+    if ob is None and hasattr(context.scene, 'mch_extract'):
+        _draw_edge_molding(box.box(), context.scene.mch_extract, 'Edge Molding (next plates)')
     if ob is not None:
         p = ob.mch_extract
         sub = box.box()
@@ -1864,6 +1883,7 @@ def draw(layout, context):
                 r = ln.row(align=True)
                 r.prop(p, 'facet_count')
                 r.prop(p, 'facet_seed')
+        _draw_edge_molding(sub, p)                    # 0.24.298
         r = sub.row(align=True)
         r.scale_y = 1.3
         r.operator('mch.plate_apply', text='Apply', icon='CHECKMARK')

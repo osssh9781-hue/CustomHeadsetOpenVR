@@ -789,6 +789,19 @@ def draw_base(layout, context):
             c2.prop(p, 'mold_thick')
             c2.prop(p, 'mold_width', text='Molding Width (0: Auto)')
             mold.row(align=True).prop(p, 'mold_shape', expand=True)
+        if hasattr(p, 'emold_top'):                   # 0.24.298 Top / Bottom Edge Molding
+            em = target.box()
+            em.label(text='Edge Molding')
+            r_ = em.row(align=True)
+            r_.prop(p, 'emold_top', text='Top', toggle=True)
+            r_.prop(p, 'emold_bottom', text='Bottom', toggle=True)
+            if p.emold_top or p.emold_bottom:
+                c3 = em.column(align=True)
+                c3.prop(p, 'emold_out', text='Out')
+                c3.prop(p, 'emold_band', text='Height (0: Auto)')
+                if p.emold_top:
+                    c3.prop(p, 'emold_lip')
+                em.row(align=True).prop(p, 'emold_shape', expand=True)
     # 0.24.103: line-swept custom Alpha profile is shared with Press Cut Alt+Draw.
     if not creature:
         section = target.box()

@@ -698,7 +698,7 @@ def _show_scope(context, g):
     """Apply visual isolation without altering the saved scope navigation path."""
     _restore_scope_objects(context)
     inside = set(members(g)) | {g}
-    view_mode = getattr(context.scene, 'mch_group_scope_display', 'WIRE')
+    view_mode = getattr(context.scene, 'mch_group_scope_display', 'NORMAL')
     vl = context.view_layer
     for o in context.scene.objects:
         if o in inside or CARRIER_KEY in o or o.library is not None:
@@ -1752,7 +1752,9 @@ def register():
         items=[('NORMAL', 'Normal', 'Outside objects keep their display, but cannot be selected'),
                ('WIRE', 'Ghost (Wire)', 'Outside objects are shown as non-selectable wireframes'),
                ('HIDDEN', 'Hidden', 'Outside objects are hidden while working in the group')],
-        default='WIRE', update=_scope_display_update)
+        # 0.24.298 (user: "그룹 내부로 들어가면 다른 오브젝트들이 다 에딧 모드로 바뀌어서 렉이 너무 걸리니까") Normal by
+        # default: the outside parts keep their look (only not pickable) - every heavy part drawn as wire was slow
+        default='NORMAL', update=_scope_display_update)
     _auto_timer_live = True
     _seen_scene_objects.clear()
     _pending.clear()

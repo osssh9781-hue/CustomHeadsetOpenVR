@@ -258,6 +258,7 @@ check('Apply: the copies become real objects in the group, the repetition is off
       and len(gr.members(g)) == n_before + 6 and gr.carrier_of(g) is None and gr.repeat_mode(g) == 'OFF')
 outside = cube('Outside', loc=(-4, 0, 0))
 select_only(a)
+C.scene.mch_group_scope_display = 'WIRE'      # 0.24.298 (the default is Normal now: Wire is the option)
 bpy.ops.mch.group_action(action='ENTER')
 check('Enter: everything else is wire and cannot be picked', outside.hide_select
       and outside.display_type == 'WIRE' and gr.scope(C) == g)
