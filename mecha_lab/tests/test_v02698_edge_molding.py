@@ -65,10 +65,23 @@ check('Out -0.05 (top + bottom): the top and bottom edges step 0.05 IN (x 0.95),
       abs(xmax_at(ob, 0.0, 0.09) - 0.95) < 1e-4 and abs(xmax_at(ob, 0.41, 0.5) - 0.95) < 1e-4
       and abs(xmax_at(ob, 0.1, 0.4) - 1.0) < 1e-4 and non_manifold(ob) == 0,
       (xmax_at(ob, 0.0, 0.09), xmax_at(ob, 0.1, 0.4), xmax_at(ob, 0.41, 0.5)))
+ledge = sorted({round(v.co.x, 3) for v in ob.data.vertices if abs(v.co.z - 0.4) < 1e-6 and v.co.x > 0 and v.co.y > 0})
+check('... a real step (user picture): at the top band\'s foot (z 0.4) a flat ledge from the wall (1.0) in to 0.95',
+      0.95 in ledge and 1.0 in ledge, ledge)
 for shape in ('CHAMFER', 'ROUND'):
     ob = build(emold_shape=shape)
     check(f'... {shape} going in: closed, nothing wider than the wall', non_manifold(ob) == 0
           and max(v.co.x for v in ob.data.vertices) < 1.0 + 1e-4)
+# 0.24.302 Slope: a straight slant from the wall to the top / bottom (user's 2nd picture)
+ob = build(emold_shape='SLOPE', emold_lip=0.0)
+top_ring = sorted({round(v.co.x, 3) for v in ob.data.vertices if v.co.x > 0 and v.co.y > 0 and abs(v.co.z - 0.5) < 1e-6})
+foot = sorted({round(v.co.x, 3) for v in ob.data.vertices if v.co.x > 0 and v.co.y > 0 and abs(v.co.z - 0.4) < 1e-6})
+check('Slope (Out -0.05): no ledge - the wall (1.0 at z 0.4) runs straight to the top edge (0.95 at z 0.5); closed',
+      top_ring == [0.95] and foot == [1.0] and non_manifold(ob) == 0, (foot, top_ring))
+ob = build(emold_shape='SLOPE', emold_out=0.05)
+check('Slope (Out +0.05): flared out to 1.05 at the top and the bottom, closed', non_manifold(ob) == 0
+      and abs(max(v.co.x for v in ob.data.vertices) - 1.05) < 1e-4)
+p.emold_out = -0.05
 ob = build(emold_shape='SQUARE', emold_lip=0.03)
 check('... with a Lip Rim: closed, the rim 0.03 up', non_manifold(ob) == 0 and abs(max(v.co.z for v in ob.data.vertices) - 0.53) < 1e-4)
 p.emold_out = 0.05
@@ -140,6 +153,18 @@ C.view_layer.update()
 x1, z1, b1 = extent()
 check('Armor Plate (live) Bottom: the plate 0.03 wider at the bottom, as tall as before', abs((x1 - x0) - 0.03) < 0.006
       and abs(z1 - z0) < 1e-4, (x0, x1, z0, z1))
+pe.emold_shape = 'SLOPE'
+pe.emold_out = -0.03
+C.view_layer.update()
+xs_, zs_, bs_ = extent()
+me_ = part.evaluated_get(C.evaluated_depsgraph_get()).to_mesh()
+vs_ = [part.matrix_world @ v.co for v in me_.vertices]
+low = max(v.x for v in vs_ if v.z < bs_ + 0.003)
+part.evaluated_get(C.evaluated_depsgraph_get()).to_mesh_clear()
+check('Armor Plate Slope, Out -0.03 (bottom): at the bottom the plate is 0.03 in (tapered), the top edge and height kept',
+      abs((x0 - low) - 0.03) < 0.008 and abs(xs_ - x0) < 1e-4 and abs(zs_ - z0) < 1e-4, (x0, low, xs_))
+pe.emold_shape = 'SQUARE'
+pe.emold_out = 0.03
 pe.emold_top = True
 pe.emold_lip = 0.02
 C.view_layer.update()

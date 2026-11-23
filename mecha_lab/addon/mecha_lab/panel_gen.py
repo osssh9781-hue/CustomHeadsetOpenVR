@@ -123,15 +123,17 @@ def edge_molding_profiles(p, height, top, bot, shell=False):
     bot_on = bool(getattr(p, 'emold_bottom', False)) and not shell
     if not (top_on or bot_on) or height <= 1e-9:
         return top, bot
-    t = float(getattr(p, 'emold_out', 0.0))
+    t = float(getattr(p, 'emold_out', 0.0))           # (0.24.302 < 0: in)
     band = float(getattr(p, 'emold_band', 0.0)) or height * 0.25
     band = min(band, height * (0.45 if top_on and bot_on else 0.9))
     shape = getattr(p, 'emold_shape', 'SQUARE')
     ws = top[0][0]
     k = 6
     if top_on:
-        if shape == 'CHAMFER':
-            c = min(t, band * 0.6)
+        if shape == 'SLOPE':
+            nt = [(ws, -band)]                          # 0.24.302 straight from the wall to the top edge
+        elif shape == 'CHAMFER':
+            c = min(abs(t), band * 0.6)
             nt = [(ws, -band), (ws - t, -band + c)]
         elif shape == 'ROUND':
             nt = [(ws - t * math.sin(math.pi / 2 * j / k), -band * math.cos(math.pi / 2 * j / k)) for j in range(k)]
@@ -139,14 +141,16 @@ def edge_molding_profiles(p, height, top, bot, shell=False):
             nt = [(ws, -band), (ws - t, -band)]
         lip = float(getattr(p, 'emold_lip', 0.0))
         if lip > 0.0:
-            rim = max(t * 1.5, band * 0.25)
+            rim = max(abs(t) * 1.5, band * 0.25)
             nt += [(ws - t, lip), (ws - t + rim, lip), (ws - t + rim, 0.0)]
         else:
             nt.append((ws - t, 0.0))
         top = nt
     if bot_on:
-        if shape == 'CHAMFER':
-            c = min(t, band * 0.6)
+        if shape == 'SLOPE':
+            bot = [(ws, band), (ws - t, 0.0)]
+        elif shape == 'CHAMFER':
+            c = min(abs(t), band * 0.6)
             bot = [(ws, band), (ws - t, band - c), (ws - t, 0.0)]
         elif shape == 'ROUND':
             bot = [(ws - t * math.sin(math.pi / 2 * j / k), band * math.cos(math.pi / 2 * j / k)) for j in range(k + 1)]

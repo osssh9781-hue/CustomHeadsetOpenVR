@@ -242,7 +242,8 @@ def edge_molding_group(p):
         cells += [_mini('Out', p, 'emold_out', 110), _mini('Height', p, 'emold_band', 130)]
         if p.emold_top:
             cells.append(_mini('Lip Rim', p, 'emold_lip', 130))
-        cells += _enum_segs(p, 'emold_shape', (('SQUARE', 'Square'), ('CHAMFER', 'Chamfer'), ('ROUND', 'Round')))
+        cells += _enum_segs(p, 'emold_shape', (('SQUARE', 'Square'), ('CHAMFER', 'Chamfer'), ('ROUND', 'Round'),
+                                               ('SLOPE', 'Slope')))
     return ('Edge Molding', cells)
 
 def pc_shape_name(pr):

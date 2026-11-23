@@ -142,8 +142,9 @@ _ANN = {
                                 'the top face); instead of the top chamfer / bevel'),
     'emold_bottom': _p(BoolProperty, name='Bottom Edge Molding', default=False,
                        description='A flange round the bottom edge, standing out of the wall'),
-    'emold_out': _p(FloatProperty, name='Edge Molding Out', default=0.015, min=0.0001, soft_max=0.3, precision=4,
-                    unit='LENGTH', description='How far the top band / bottom flange stands out of the wall'),
+    'emold_out': _p(FloatProperty, name='Edge Molding Out', default=0.015, soft_min=-0.3, soft_max=0.3, precision=4,
+                    unit='LENGTH', description='How far the top band / bottom flange stands out of the wall (less than '
+                                               '0: it goes IN)'),
     'emold_band': _p(FloatProperty, name='Edge Molding Height', default=0.0, min=0.0, soft_max=0.5, precision=4,
                      unit='LENGTH', description='How tall the band / flange is (0 = Auto: a quarter of the plate '
                                                 'height)'),
@@ -156,7 +157,10 @@ _ANN = {
     'emold_shape': _p(EnumProperty, name='Edge Molding Shape', default='SQUARE', items=[
         ('SQUARE', 'Square', 'A square step out'),
         ('CHAMFER', 'Chamfer', 'The band slanted back into the wall'),
-        ('ROUND', 'Round', 'A rounded band')]),
+        ('ROUND', 'Round', 'A rounded band'),
+        # 0.24.302 (user, two pictures: "옵션을 두 개를") a straight slant from the wall to the top / bottom (no step)
+        ('SLOPE', 'Slope', 'The wall slants straight to the top / bottom edge over the Height - in (Out < 0: tapered) or '
+                           'out (Out > 0: flared), no step')]),
     'smooth_shading': _p(BoolProperty, name='Smooth Shading', default=True,
                          description='Smooth shading with sharp edges by angle (OFF = flat)'),
     # ---- Armor Sculpt: orientation -----------------------------------------------------------------

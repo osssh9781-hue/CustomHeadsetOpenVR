@@ -337,7 +337,10 @@ class MCH_PG_BaseMesh(bpy.types.PropertyGroup):
     emold_shape: EnumProperty(name='Edge Molding Shape', default='SQUARE', update=_rebuild_update, items=[
         ('SQUARE', 'Square', 'A square step out'),
         ('CHAMFER', 'Chamfer', 'The band slanted back into the wall'),
-        ('ROUND', 'Round', 'A rounded band')])
+        ('ROUND', 'Round', 'A rounded band'),
+        # 0.24.302 (user, two pictures: "옵션을 두 개를") a straight slant from the wall to the top / bottom (no step)
+        ('SLOPE', 'Slope', 'The wall slants straight to the top / bottom edge over the Height - in (Out < 0: tapered) or '
+                           'out (Out > 0: flared), no step')])
     live: BoolProperty(name='Live', default=False, update=_live_changed,
                        description='Settings rebuild this object (outline stored on the object)')
     outline: StringProperty(default='', options={'HIDDEN'})
@@ -612,7 +615,9 @@ def edge_molding(p, height):
     bottom, b_off, top, t_off = [], 0.0, [], 0.0
     if bot_on:
         b_off = t
-        if shape == 'CHAMFER':
+        if shape == 'SLOPE':
+            bottom = [(band, 0.0)]                      # (the bottom cap at Out, straight up to the wall)
+        elif shape == 'CHAMFER':
             c = min(abs(t), band * 0.6)
             bottom = [(band - c, t), (band, 0.0)]
         elif shape == 'ROUND':
@@ -623,7 +628,9 @@ def edge_molding(p, height):
     if top_on:
         z0 = height - band
         lip = float(getattr(p, 'emold_lip', 0.0))
-        if shape == 'CHAMFER':
+        if shape == 'SLOPE':
+            top = [(z0, 0.0)]                           # (straight from the wall to the top cap at Out)
+        elif shape == 'CHAMFER':
             c = min(abs(t), band * 0.6)
             top = [(z0, 0.0), (z0 + c, t)]
         elif shape == 'ROUND':
@@ -718,7 +725,7 @@ def _add_prism(bm, outer, holes, height, rings=(), edge=None, dome=0.0):
         chain = [bottom[off:off + n]]
         if li == 0 and (rings or e_bot or e_top):
             for z, d in list(e_bot) + list(rings) + list(e_top):
-                ring = offset_outline(lp, d) if d > 1e-9 else lp
+                ring = offset_outline(lp, d) if abs(d) > 1e-9 else lp     # (0.24.302 inward too)
                 chain.append([bm.verts.new((x, y, z)) for x, y in ring])
         chain.append(top[off:off + n])
         for lo_r, hi_r in zip(chain, chain[1:]):
