@@ -63,7 +63,8 @@ EXTRA = {
                 'Shift   the line straight;  click a part   along its edges (its rim, else its sharp edges)',
                 'The window   Profile, Width, Height, Offset, Chamfer, Bevel (live)'],
     'RIG': ['Make Rig in the window (Human / Quadruped / Mecha / Chain)   click a mecha part: its joint there   Edit Bones / Pose / Bind'],   # 0.24.241
-    'CYLGEN': ['Summon Cylinder at the 3D cursor   select a layer: the sliders change the whole stack   Gap: pull the layers apart to see the screw'],
+    'CYLGEN': ['Summon Cylinder at the 3D cursor   select it: the sliders change it   move its Rod along Z to extend it'],
+    'BOLT': ['Click a surface: a bolt in a pocket   Alt + click: remove   the sliders change the selected bolts'],
     'TIREGEN': ['Summon Tire / Wheel / Gear at the 3D cursor   select one: its sliders change it live   Array Around: a piece drawn on it, round the axle'],
     'BODYKIT': ['Click a part to pick it - on a one-piece body: the head, a forearm, a finger ... (Shift: more)   R: turn it at its joint   the window: Body Shape / Part sliders',
                 'Mirror Pose: the picked side onto the other   Join to One Mesh: one mesh as shaped'],

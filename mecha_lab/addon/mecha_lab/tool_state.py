@@ -234,9 +234,14 @@ TOOLS = (
      'Saw, hole) at the 3D cursor - the sliders change the selected one live; draw a piece on it, Array Around',
      'tiregear', 'PREFERENCES', 'mecha.tire_gear', 'OK'),
     # 0.24.307 (user: "실린더 메뉴 ... 두께랑 그런거 수정하고 위아래 레이어 분리" / "연결 부위도 나사 박히는 부분 내가 사이즈 조정")
-    ('CYLGEN', 'Cylinder', 'Summon a cylinder in layers (each its own object) screwed together: Diameter, Height, '
-     'Wall, Layers, Split, Gap; the joint\'s Thread Size, Length, Pitch, Depth, Clearance - live while selected',
+    ('CYLGEN', 'Cylinder', 'Summon a cylinder (an actuator): a Round or Square body and a rod sliding out of it, a mount '
+     '(Eye / Clevis) at each end - its size, thickness, hole and bolt; Length, Width, Body / Rod / Cap proportions - '
+     'live while selected',
      'cylgen', 'MESH_CYLINDER', 'mecha.cylinder_gen', 'OK'),
+    # 0.24.308 (user: "나사는 박히는 메뉴로 바꾸자 ... 육각도 ... 깍이는 부분도 쳄퍼랑 베벨 아니면 그냥 깍이기")
+    ('BOLT', 'Bolt Insert', 'Click a surface: a round pocket cut there (Plain / Chamfer / Bevel rim) and a bolt set in '
+     'it (Hex / Round / Socket head, threaded shank) - live while selected; Alt + click removes. Also: Screw Stack',
+     'bolt', 'MOD_BOOLEAN', 'mecha.bolt_insert', 'OK'),
     ('DRAW', 'Mesh Curve', 'Draw a curve and sweep a profile along it (or a panel-line cut); '
      'smooth/straight points, resolution, rotation, twist', 'panel', 'CURVE_BEZCURVE', None, 'OK'),
     ('POSE', 'Deform', 'Lattice Cage / Bend Curve: click control points and Move / Rotate / Scale them with '
@@ -303,7 +308,7 @@ DRAW_TOOLS |= {'GREEBLE', 'CGREEBLE'}   # 0.24.154 + Greeble / Scale Line (Shift
 TOOL_GROUPS = (
     ('Block-out', ('BASE', 'MBASE', 'CBASE', 'OMASS', 'SUBD', 'PRIMITIVE', 'TIREGEN', 'CYLGEN')),
     ('Cut', ('CUT', 'SPLIT', 'PRESS', 'ACUT', 'HIDE', 'BOOLEAN', 'BBEVEL', 'FUSE', 'SDF', 'PLANAR', 'ECLEAR', 'PERF')),
-    ('Surface detail', ('GSCULPT', 'GREEBLE', 'PLATE', 'MPLATE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'SDRAW', 'SCREW', 'EXTRACT', 'FPOP', 'MHOLE', 'MOLDING', 'BELT')),
+    ('Surface detail', ('GSCULPT', 'GREEBLE', 'PLATE', 'MPLATE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'SDRAW', 'SCREW', 'BOLT', 'EXTRACT', 'FPOP', 'MHOLE', 'MOLDING', 'BELT')),
     ('Move', ('CMOVE', 'CPATH', 'SMOVE', 'SMART', 'POSE', 'RIG', 'REMESH')),   # 0.24.241 + Rig (beside Pose)
     ('Symmetry & repeat', ('MIRROR', 'RSYM', 'RADIAL', 'ARRAY', 'LARRAY')),
     ('Curves', ('TUBE', 'TUBE_SAME', 'SCURVE', 'CABLE', 'SPRING', 'MMUSCLE', 'ALONG', 'LOFT')),
@@ -337,7 +342,7 @@ _ENUM_NUMBERS = {'CUT': 1, 'BOOLEAN': 2, 'FUSE': 3, 'MIRROR': 4, 'MASK': 5, 'DRA
                  'EXTRACT': 20, 'MOLDING': 21, 'HOLLOW': 22, 'ALONG': 23, 'CABLE': 24, 'PLATE': 25, 'WRINKLE': 26, 'TUBE': 27,
                  'HIDE': 28, 'DETAIL': 29, 'DETAIL2': 30, 'SCREW': 31, 'DETAIL3': 32, 'TUBE_SAME': 33,
                  'CBASE': 34, 'CPLATE': 35, 'BELT': 36, 'SPIKE': 37, 'SCALES': 38, 'FLOWER': 39, 'SCURVE': 40, 'SBRUSH': 41, 'BRIDGE': 42, 'CAPE': 43, 'HAIR': 44, 'GARMENT': 45, 'HOOD': 46, 'SCARF': 47, 'CMOVE': 48, 'CPATH': 50, 'PERF': 51, 'SDRAW': 52, 'SCAPE': 53, 'RSYM': 55, 'SMOVE': 56, 'WLINES': 57, 'CDRAPE': 58, 'ZONE': 59, 'PRESS': 60, 'SMART': 61, 'GSCULPT': 62, 'GREEBLE': 63, 'CGREEBLE': 64, 'FUR': 65, 'WDIRT': 66,
-                 'WDUST': 67, 'WLEAF': 68, 'WSNOW': 69, 'DETAIL4': 70, 'PMEASURE': 71, 'PCUT': 72, 'FGREEBLE': 73, 'WING': 74, 'MEMBRANE': 75, 'BBEVEL': 76, 'FPOP': 77, 'OMASS': 78, 'MUSCLE': 79, 'MMUSCLE': 80, 'MHOLE': 81, 'BODYKIT': 82, 'RIG': 83, 'LARRAY': 84, 'SDF': 85, 'PLANAR': 86, 'ECLEAR': 87, 'SPRING': 88, 'ACUT': 89, 'MBASE': 90, 'MPLATE': 91, 'TIREGEN': 92, 'CYLGEN': 93}   # 54: the removed Cloth Wrap (kept free)   # 49: the removed Jungle Gym prototype (0.24.31), kept free
+                 'WDUST': 67, 'WLEAF': 68, 'WSNOW': 69, 'DETAIL4': 70, 'PMEASURE': 71, 'PCUT': 72, 'FGREEBLE': 73, 'WING': 74, 'MEMBRANE': 75, 'BBEVEL': 76, 'FPOP': 77, 'OMASS': 78, 'MUSCLE': 79, 'MMUSCLE': 80, 'MHOLE': 81, 'BODYKIT': 82, 'RIG': 83, 'LARRAY': 84, 'SDF': 85, 'PLANAR': 86, 'ECLEAR': 87, 'SPRING': 88, 'ACUT': 89, 'MBASE': 90, 'MPLATE': 91, 'TIREGEN': 92, 'CYLGEN': 93, 'BOLT': 94}   # 54: the removed Cloth Wrap (kept free)   # 49: the removed Jungle Gym prototype (0.24.31), kept free
 TOOL_ENUM_ITEMS = [(t[0], t[1], t[2], t[4], _ENUM_NUMBERS[t[0]]) for t in TOOLS]
 
 SHAPES = (

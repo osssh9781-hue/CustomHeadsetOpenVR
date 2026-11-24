@@ -1,4 +1,5 @@
-"""0.24.307 Cylinder (user: "실린더 메뉴 만들어주라 두께랑 그런거 수정하고 위아래 레이어 분리되게 만들어주라" /
+"""0.24.307 Screw Stack (0.24.308: moved into the Bolt Insert tool's window - the Cylinder tool is the actuator now)
+(user: "실린더 메뉴 만들어주라 두께랑 그런거 수정하고 위아래 레이어 분리되게 만들어주라" /
 "연결 부위도 나사 박히는 부분 내가 사이즈 조정 가능하게").
 
 A cylinder stood on the 3D cursor (its axis up, Z) in Layers stacked one on the other, each layer an object of its
@@ -364,7 +365,7 @@ def load(context, p):
 def draw(layout, context):
     st = _st(context)
     box = layout.box()
-    box.label(text='Cylinder')
+    box.label(text='Screw Stack (layers screwed together)')
     c = box.column(align=True)
     for k in ('diameter', 'height', 'wall', 'segments'):
         c.prop(st, k)
@@ -379,7 +380,7 @@ def draw(layout, context):
         r = c.row(align=True)
         r.active = st.thread or k in {'thread_size', 'thread_length', 'clearance'}
         r.prop(st, k)
-    box.operator('mch.cylinder_add', icon='MESH_CYLINDER')
+    box.operator('mch.cylinder_add', text='Summon Screw Stack', icon='MESH_CYLINDER')
     act = getattr(context, 'active_object', None)
     sid = stack_of(act) if act is not None and act.select_get() else ''
     if sid:
@@ -391,26 +392,6 @@ def draw(layout, context):
         box.label(text='Select a layer: the sliders change its cylinder', icon='INFO')
 
 
-class MCH_TOOL_cylinder(bpy.types.WorkSpaceTool):
-    """0.24.307 Cylinder: its own tool (the window: its sliders)"""
-    bl_space_type = 'VIEW_3D'
-    bl_context_mode = 'OBJECT'
-    bl_idname = 'mecha.cylinder_gen'
-    bl_label = 'Cylinder'
-    bl_description = ('Summon a cylinder in layers screwed together (Diameter, Height, Wall, Layers, Thread Size / '
-                      'Length / Pitch / Depth / Clearance) - select a layer and the sliders change it')
-    bl_icon = 'ops.generic.select'
-    bl_widget = None
-    bl_keymap = (('view3d.select', {'type': 'LEFTMOUSE', 'value': 'CLICK'}, None),
-                 ('view3d.select', {'type': 'LEFTMOUSE', 'value': 'CLICK', 'shift': True},
-                  {'properties': [('toggle', True)]}))
-
-    def draw_settings(context, layout, tool):
-        region = getattr(context, 'region', None)
-        if region is not None and region.type == 'TOOL_HEADER':
-            return
-
-
 CLASSES = (MCH_PG_Cylinder, MCH_OT_cylinder_add, MCH_OT_cylinder_plain, MCH_OT_cylinder_pick)
 
 
@@ -418,17 +399,9 @@ def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
     bpy.types.Scene.mch_cylinder = bpy.props.PointerProperty(type=MCH_PG_Cylinder)
-    try:
-        bpy.utils.register_tool(MCH_TOOL_cylinder, separator=False, group=False)
-    except (ValueError, RuntimeError, KeyError):
-        pass
 
 
 def unregister():
-    try:
-        bpy.utils.unregister_tool(MCH_TOOL_cylinder)
-    except (ValueError, RuntimeError, KeyError):
-        pass
     try:
         del bpy.types.Scene.mch_cylinder
     except AttributeError:
