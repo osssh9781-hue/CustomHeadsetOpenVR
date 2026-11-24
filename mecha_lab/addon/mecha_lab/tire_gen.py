@@ -229,7 +229,7 @@ def build_mesh(me, kind, p):
         bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
         bm.normal_update()
         for f in bm.faces:
-            f.smooth = True
+            f.smooth = kind != 'GEAR'                        # (a gear: flat, hard faces)
         for e in bm.edges:                                   # (the corners stay sharp, the round shades smooth)
             if len(e.link_faces) == 2 and e.calc_face_angle(0.0) > math.radians(40):
                 e.smooth = False
