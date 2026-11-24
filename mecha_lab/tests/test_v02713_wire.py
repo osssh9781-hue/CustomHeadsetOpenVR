@@ -91,6 +91,22 @@ C.view_layer.update()
 st.gravity = 0.1
 check('the mesh moved, a slider changed: its end follows', abs(W(w)[:, 0].max() - 3.0) < 0.03, W(w)[:, 0].max())
 check('materials: rubber, colours, metal', len(w.data.materials) == 5 and len({p.material_index for p in w.data.polygons}) >= 3)
+# 0.24.314 end finishes (user's photos: a hose clamp, a ribbed boot): five more, each closed, on the surface
+st.style, st.count, st.plugs, st.gravity = 'SINGLE', 1, True, 0.2
+right.location.x -= 1.0
+C.view_layer.update()
+st.thick = 0.1
+for es in ('CLAMP', 'BOOT', 'FERRULE', 'HEX', 'FLANGE'):
+    st.end_style = es
+    bm = bmesh.new()
+    bm.from_mesh(w.data)
+    op = sum(1 for e in bm.edges if not e.is_manifold)
+    bm.free()
+    V = W(w)
+    check(f'End Finish {es}: closed ({op} open edges), on the surfaces (nothing into them: {V[:, 0].min():.4f} / '
+          f'{V[:, 0].max():.4f}), metal on it', op == 0 and V[:, 0].min() > -2.0 - 0.01 and V[:, 0].max() < 2.0 + 0.01
+          and 2 in {p_.material_index for p_ in w.data.polygons})
+st.end_style = 'PLUG'
 bpy.ops.mch.wire_plain()
 check('Make Plain: a plain mesh', not wg.is_wire(w))
 summary()

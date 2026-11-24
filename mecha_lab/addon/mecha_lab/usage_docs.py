@@ -155,7 +155,7 @@ DOCS = {
               ('Length / Gravity', '길이 (늘리면 처짐) / 아래로 처짐', 'longer: it hangs / droop down'),
               ('Twist', '꼬임 (끝에서 끝까지 감는 횟수)', 'turns from end to end'),
               ('Bend Left / Right / Bend Front / Back', '좌우 / 앞뒤 휨', 'bend sideways / front-back'),
-              ('End Plugs', '양 끝 플러그', 'a plug at each end')],
+              ('End Finish', '양 끝 마감: 플러그 / 호스 클램프 / 주름 부트 / 압착 슬리브 / 육각 피팅 / 플랜지', 'plug / hose clamp / bellows boot / crimp sleeve / hex fitting / flange')],
         tips=[('기존 Cable 도구는 그대로', 'The Cable tool stays as it was')]),
     # 0.24.308 Bolt Insert
     'BOLT': dict(

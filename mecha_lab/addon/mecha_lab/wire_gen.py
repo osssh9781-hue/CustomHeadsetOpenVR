@@ -38,7 +38,7 @@ def _st(context):
 
 
 KEYS = ('style', 'count', 'thick', 'main_thick', 'length', 'gravity', 'twist', 'bend_lr', 'bend_fb', 'ties', 'plugs',
-        'loose', 'seed', 'sides', 'segments')
+        'loose', 'seed', 'sides', 'segments', 'end_style')
 
 
 def numbers(st):
@@ -162,6 +162,10 @@ def build_mesh(me, a, na, b, nb, p):
     rnd = random.Random(int(p['seed']))
     sides = max(6, int(p['sides']))
     r = max(float(p['thick']) / 2, 1e-5)
+    a0, b0 = Vector(a), Vector(b)                   # (the surface points: the end finishes stand on them)
+    fl = fit_len(p, est_bundle_r(p, r), r) * 0.85   # 0.24.314 the wire comes out of its finish's mouth
+    a = a0 + Vector(na).normalized() * fl
+    b = b0 + Vector(nb).normalized() * fl
     P, L = centerline(a, na, b, nb, p)
     F = frames(P, Vector(na).cross((P[-1] - P[0]).normalized()) if Vector(na).cross((P[-1] - P[0])).length > 1e-6
                else Vector(na).orthogonal())
@@ -221,6 +225,7 @@ def build_mesh(me, a, na, b, nb, p):
                     span = max(1, int(round(m * r * 3.0 / max(L, 1e-6))))
                     a_, b2 = max(i0 - span, 0), min(i0 + span, m)
                     sweep(bm, P[a_:b2 + 1], F[a_:b2 + 1], _round(rr_, sides * 2), sides * 2, 2)
+        a, b = a0, b0                                   # (the plugs on the surfaces)
         if p['plugs'] and st == 'RIBBON':               # (a flat ribbon: a flat rectangular plug at each end)
             n = max(1, int(p['count']))
             w, h = n * r, r * 0.75
@@ -235,6 +240,9 @@ def build_mesh(me, a, na, b, nb, p):
                       for y in (-hh, hh)]
                 for q in ((0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)):
                     bm.faces.new([vs[i] for i in q]).material_index = 2
+        elif p['plugs'] and p.get('end_style', 'PLUG') != 'PLUG':   # 0.24.314 the other end finishes
+            for (pt, nn) in ((Vector(a), Vector(na)), (Vector(b), Vector(nb))):
+                end_fitting(bm, pt, nn.normalized(), bundle_r, p.get('end_style'), sides)
         elif p['plugs']:                                # (a plug at each end, into its surface)
             for (pt, nn) in ((Vector(a), Vector(na)), (Vector(b), Vector(nb))):
                 pr = bundle_r * 1.45
@@ -270,6 +278,108 @@ def build_mesh(me, a, na, b, nb, p):
         bm.free()
     me.update()
     return L
+
+
+END_STYLES = (('PLUG', 'Plug', 'A plain plug'),
+              ('CLAMP', 'Hose Clamp', 'The wire\'s end over a nipple, a ribbed clamp band with its screw round it'),
+              ('BOOT', 'Bellows Boot', 'A ribbed rubber boot on a metal collar'),
+              ('FERRULE', 'Crimp Sleeve', 'A metal sleeve crimped on (two grooves)'),
+              ('HEX', 'Hex Fitting', 'A hydraulic fitting: two hex nuts and a taper'),
+              ('FLANGE', 'Flange', 'A square flange plate with four bolts'))
+
+
+def est_bundle_r(p, r):
+    """How thick the wire is round its middle (before it is built)."""
+    st = p['style']
+    if st == 'SINGLE':
+        return r
+    if st == 'RIBBON':
+        return max(1, int(p['count'])) * r
+    if st == 'MAIN':
+        return max(float(p['main_thick']) / 2, r) + 2 * r
+    offs = strand_offsets(p, r)
+    return max([o[0] + o[2] for o in offs] + [r])
+
+
+def fit_len(p, R, r):
+    """How far an end finish stands out of its surface (0: none)."""
+    if not p['plugs']:
+        return 0.0
+    style = p.get('end_style', 'PLUG')
+    if p['style'] == 'RIBBON' and style == 'PLUG':
+        return max(r * 0.75 * 6, r * 4)
+    return {'PLUG': max(R * 1.6, r * 4), 'CLAMP': R * 3.2, 'BOOT': R * 5.5, 'FERRULE': R * 3.6, 'HEX': R * 3.25,
+            'FLANGE': R * 1.65}.get(style, 0.0)
+
+
+def end_fitting(bm, pt, nn, R, style, sides):
+    """0.24.314 (user, two photos - a hose clamp, a ribbed boot: "케이블 양 끝에 이런 식의 마감을 할 수 있는 옵션, 다섯 개"):
+    an end finish on the surface at ``pt`` going out along ``nn``; ``R`` the wire (bundle) radius.  Materials:
+    0 rubber, 2 metal."""
+    from . import mech_revolve as mr
+    M = mr.frame(pt, nn)
+    segs = max(24, sides * 3)
+    R = max(R, 1e-5)
+    if style == 'CLAMP':
+        mr.revolve(bm, [(0.0, 0.0, 0.0, 'R'), (R * 1.55, 0.0, 0.0, 'R'), (R * 1.55, R * 0.22, 0.0, 'R'),
+                        (R * 0.75, R * 0.22, 0.0, 'R'), (R * 0.75, R * 0.9, 0.0, 'R'), (0.0, R * 0.9, 0.0, 'R')],
+                   segs, matrix=M, mat=2)                          # (a washer and the nipple)
+        mr.revolve(bm, [(R * 0.9, R * 0.2, 0.0, 'R'), (R * 1.12, R * 0.2, 0.0, 'R'), (R * 1.12, R * 3.0, 0.0, 'R'),
+                        (R * 0.9, R * 3.2, 0.0, 'R')], segs, matrix=M, mat=0)   # (the hose's end, swollen)
+        z0, z1 = R * 1.1, R * 1.9
+        mr.revolve(bm, [(R * 1.08, z0, 0.0, 'R'), (R * 1.25, z0, 0.0, 'C'), (R * 1.25, z1, 0.0, 'C'),
+                        (R * 1.08, z1, 0.0, 'R')], 96, sq_p=24, matrix=M, mat=2)   # (the band, ribbed)
+        hb = Matrix.Translation(pt) @ M.to_3x3().to_4x4()
+        cx = R * 1.45
+        lo, hi = (cx - R * 0.25, -R * 0.45, z0 - R * 0.05), (cx + R * 0.3, R * 0.45, z1 + R * 0.05)
+        vs = [bm.verts.new(hb @ Vector((x, y, z))) for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])]
+        for q in ((0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)):
+            bm.faces.new([vs[i] for i in q]).material_index = 2   # (the screw's housing)
+        sc = hb @ Vector((cx + R * 0.05, R * 0.45, (z0 + z1) / 2))
+        mr.revolve(bm, mr.bolt_profile(R * 0.12, R * 0.6, 'HEX', R * 0.26, R * 0.18, thread=False), 36,
+                   matrix=mr.frame(sc, (hb.to_3x3() @ Vector((0, 1, 0))).normalized()), mat=2)
+    elif style == 'BOOT':
+        P = [(0.0, 0.0, 0.0, 'R'), (R * 1.6, 0.0, 0.0, 'R'), (R * 1.6, R * 0.55, 0.0, 'R'), (R * 1.5, R * 0.6, 0.0, 'R'),
+             (R * 1.5, R * 0.75, 0.0, 'R'), (R * 1.6, R * 0.8, 0.0, 'R'), (R * 1.6, R * 1.05, 0.0, 'R'),
+             (0.0, R * 1.05, 0.0, 'R')]
+        mr.revolve(bm, P, segs, matrix=M, mat=2)                 # (the metal collar, a groove round it)
+        ribs, L = 6, R * 4.2
+        P = [(R * 0.9, R * 1.0, 0.0, 'R')]
+        n = ribs * 8
+        for i in range(n + 1):
+            t = i / n
+            base = R * (1.42 - 0.34 * t)
+            P.append((base + R * 0.14 * (0.5 + 0.5 * math.cos(2 * math.pi * ribs * t)), R * 1.0 + L * t, 0.0, 'R'))
+        P += [(R * 1.03, R * 1.0 + L + R * 0.3, 0.0, 'R'), (R * 0.9, R * 1.0 + L + R * 0.3, 0.0, 'R')]
+        mr.revolve(bm, P, segs, matrix=M, mat=0)
+    elif style == 'FERRULE':
+        L = R * 3.6
+        P = [(0.0, 0.0, 0.0, 'R'), (R * 1.5, 0.0, 0.0, 'R'), (R * 1.5, R * 0.3, 0.0, 'R'), (R * 1.22, R * 0.38, 0.0, 'R')]
+        for zc in (0.38, 0.62):                                   # (two crimps)
+            z = L * zc
+            P += [(R * 1.22, z - R * 0.22, 0.0, 'R'), (R * 1.1, z - R * 0.08, 0.0, 'R'), (R * 1.1, z + R * 0.08, 0.0, 'R'),
+                  (R * 1.22, z + R * 0.22, 0.0, 'R')]
+        P += [(R * 1.22, L - R * 0.15, 0.0, 'R'), (R * 1.08, L, 0.0, 'R'), (R * 0.9, L, 0.0, 'R'), (0.0, L, 0.0, 'R')]
+        mr.revolve(bm, P, segs, matrix=M, mat=2)
+    elif style == 'HEX':
+        segh = 36
+        P = [(0.0, 0.0, 0.0, 'R'), (R * 1.55, 0.0, 0.0, 'H'), (R * 1.75, R * 0.1, 0.0, 'H'), (R * 1.75, R * 0.85, 0.0, 'H'),
+             (R * 1.5, R * 0.95, 0.0, 'R'), (R * 1.05, R * 0.95, 0.0, 'R'), (R * 1.05, R * 1.35, 0.0, 'R'),
+             (R * 1.3, R * 1.4, 0.0, 'H'), (R * 1.42, R * 1.5, 0.0, 'H'), (R * 1.42, R * 2.0, 0.0, 'H'),
+             (R * 1.3, R * 2.1, 0.0, 'R'), (R * 1.18, R * 2.1, 0.0, 'R'), (R * 1.05, R * 3.2, 0.0, 'R'),
+             (R * 0.9, R * 3.25, 0.0, 'R'), (0.0, R * 3.25, 0.0, 'R')]
+        mr.revolve(bm, P, segh, matrix=M, mat=2)
+    elif style == 'FLANGE':
+        B = R * 2.3
+        mr.revolve(bm, [(0.0, 0.0, 0.0, 'R'), (B, 0.0, 0.0, 'S'), (B, R * 0.35, 0.0, 'S'), (0.0, R * 0.35, 0.0, 'R')],
+                   64, sq_p=10.0, matrix=M, mat=2)
+        mr.revolve(bm, [(0.0, R * 0.3, 0.0, 'R'), (R * 1.35, R * 0.3, 0.0, 'R'), (R * 1.35, R * 1.4, 0.0, 'R'),
+                        (R * 1.1, R * 1.65, 0.0, 'R'), (0.0, R * 1.65, 0.0, 'R')], segs, matrix=M, mat=2)
+        for u in (-1, 1):
+            for v in (-1, 1):
+                c = M @ Vector((u * B * 0.7, v * B * 0.7, R * 0.33))
+                mr.revolve(bm, mr.bolt_profile(R * 0.12, 0.0, 'HEX', R * 0.3, R * 0.22), 36,
+                           matrix=mr.frame(c, nn), mat=2)
 
 
 def _mats(me):
@@ -377,6 +487,8 @@ class MCH_PG_Wire(bpy.types.PropertyGroup):
                                 description='Wire Loom: bands round the bundle')
     plugs: bpy.props.BoolProperty(name='End Plugs', default=True, update=_update,
                                   description='A plug at each end, on the surface')
+    end_style: bpy.props.EnumProperty(name='End Finish', items=END_STYLES, default='PLUG', update=_update,
+                                      description='How each end is finished on its surface')
     loose: bpy.props.FloatProperty(name='Loose', default=0.3, min=0.0, max=2.0, update=_update,
                                    description='Each wire its own way a little (0: tight)')
     seed: bpy.props.IntProperty(name='Seed', default=1, min=0, update=_update)
@@ -520,7 +632,9 @@ def draw(layout, context):
     if st.style in {'THIN', 'MAIN', 'LOOM'}:
         c.prop(st, 'loose', slider=True)
         c.prop(st, 'seed')
-    c.prop(st, 'plugs')
+    c.prop(st, 'plugs', text='End Finish')
+    if st.plugs:
+        c.prop(st, 'end_style', text='')
     r = box.row(align=True)
     r.prop(st, 'sides')
     r.prop(st, 'segments')
