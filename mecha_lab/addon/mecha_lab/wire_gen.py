@@ -178,20 +178,19 @@ def build_mesh(me, a, na, b, nb, p):
         if st == 'SINGLE':
             sweep(bm, P, F, _round(r, sides), sides, 0)
         elif st == 'RIBBON':
+            # 0.24.316 (user: "넓적한 케이블은 얇은 케이블이 옆으로 나란히 있으면서 붙어 있는 거"): round thin wires side by
+            # side, touching (a ribbon cable) - the first one red, the row turning with Twist
             n = max(1, int(p['count']))
-            w = n * r                                   # (half its width: the wires side by side)
-            h = r * 0.75
-            ns = min(max(n * 8, sides * 2), 480)
-
-            def sec(i, k):
-                th = 2 * math.pi * k / ns
-                x = w * math.cos(th)
-                y = h * math.sin(th)
-                if abs(math.cos(th)) < 0.97:            # (a groove between each two wires, top and bottom)
-                    y *= 1.0 - 0.22 * abs(math.sin(math.pi * (x + w) / (2 * r)))
-                return x, y
-            sweep(bm, P, F, sec, ns, 0)
-            bundle_r = max(w, h)
+            step = 2 * r * 0.97                          # (a hair into each other: stuck together)
+            ws = max(6, sides // 2 + 2)
+            for k in range(n):
+                x = (k - (n - 1) / 2) * step
+                pts = []
+                for i, (c, (t, n_, b_)) in enumerate(zip(P, F)):
+                    a_ = tw * i / m
+                    pts.append(c + n_ * (x * math.cos(a_)) + b_ * (x * math.sin(a_)))
+                sweep(bm, pts, frames(pts, F[0][1]), _round(r, ws), ws, 1 if k == 0 else 0)
+            bundle_r = max((n - 1) / 2 * step + r, r)
         else:
             main_r = 0.0
             if st == 'MAIN':
@@ -348,9 +347,9 @@ def end_fitting(bm, pt, nn, R, style, sides):
         n = ribs * 8
         for i in range(n + 1):
             t = i / n
-            base = R * (1.42 - 0.34 * t)
+            base = R * 1.22                              # 0.24.316 (user: "평행하게, 줄어들지 말고"): the same all along
             P.append((base + R * 0.14 * (0.5 + 0.5 * math.cos(2 * math.pi * ribs * t)), R * 1.0 + L * t, 0.0, 'R'))
-        P += [(R * 1.03, R * 1.0 + L + R * 0.3, 0.0, 'R'), (R * 0.9, R * 1.0 + L + R * 0.3, 0.0, 'R')]
+        P += [(R * 1.36, R * 1.0 + L + R * 0.15, 0.0, 'R'), (R * 0.9, R * 1.0 + L + R * 0.15, 0.0, 'R')]
         mr.revolve(bm, P, segs, matrix=M, mat=0)
     elif style == 'FERRULE':
         L = R * 3.6

@@ -95,4 +95,42 @@ st.piston = False
 check('Piston off: gone', 'PISTON_A' not in jg.parts_of(S, jg.joint_of(upper)))
 bpy.ops.mch.joint_plain()
 check('Make Plain', not jg.joint_of(upper))
+
+# 0.24.316 My Joints: your own joint saved and loaded (in a scratch folder, never the user's own)
+import os
+import tempfile
+jg.DIR[0] = tempfile.mkdtemp()
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+bpy.ops.mesh.primitive_cube_add(size=1, location=(1, 2, 3))
+a_ = C.active_object
+a_.name = 'MyKnee_Upper'
+bpy.ops.mesh.primitive_uv_sphere_add(radius=0.3, location=(1, 2, 2))
+b_ = C.active_object
+b_.name = 'MyKnee_Ball'
+b_.parent = a_
+b_.matrix_parent_inverse = a_.matrix_world.inverted()
+c_ = b_.constraints.new('DAMPED_TRACK')
+c_.target = a_
+C.view_layer.update()
+path = jg.save_joint(C, 'My Knee', [a_, b_], a_.matrix_world.translation.copy())
+check('Save: a .blend in My Joints', path is not None and os.path.isfile(path) and jg.my_joints() == ['My_Knee'],
+      jg.my_joints())
+check('... the scene\'s objects untouched (no marks left on them)', jg.PIVOT not in a_.keys() and jg.PIVOT not in b_.keys())
+for o in list(bpy.data.objects):
+    bpy.data.objects.remove(o)
+S.cursor.location = (10, 0, 0)
+obs = jg.load_joint(C, 'My_Knee')
+C.view_layer.update()
+by = {o.name.split('.')[0]: o for o in obs}
+up, ball = by.get('MyKnee_Upper'), by.get('MyKnee_Ball')
+check('Load: both parts back, the parent and the constraint kept', len(obs) == 2 and up is not None and ball is not None
+      and ball.parent == up and ball.constraints and ball.constraints[0].target == up)
+check('... its pivot on the 3D cursor, the parts where they were to each other',
+      (up.matrix_world.translation - Vector((10, 0, 0))).length < 1e-5 and
+      (ball.matrix_world.translation - Vector((10, 0, -1))).length < 1e-5, (up.matrix_world.translation[:], ball.matrix_world.translation[:]))
+obs2 = jg.load_joint(C, 'My_Knee', where=(0, 5, 0))
+check('loaded twice: two copies', len(obs2) == 2 and len([o for o in bpy.data.objects if o.type == 'MESH']) == 4)
+os.remove(path)
+check('deleted: gone from the list', jg.my_joints() == [])
 summary()

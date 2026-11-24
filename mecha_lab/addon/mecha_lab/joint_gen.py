@@ -534,6 +534,8 @@ class MCH_PG_Joint(bpy.types.PropertyGroup):
     segs: bpy.props.IntProperty(name='Segments', default=48, min=12, max=256, update=_update)
     bend: bpy.props.FloatProperty(name='Bend', default=30.0, min=-170.0, max=170.0, update=_bend_update,
                                   description='The lower link turned round the pin (degrees) - live')
+    my_name: bpy.props.StringProperty(name='Name', default='My Joint',
+                                      description='The name to save the selected joint under')
     side: bpy.props.FloatProperty(name='Side', default=0.0, min=-90.0, max=90.0, update=_bend_update,
                                   description='Universal: the lower link turned the other way (degrees)')
 
@@ -577,7 +579,171 @@ class MCH_OT_joint_plain(bpy.types.Operator):
         return {'FINISHED'} if js else {'CANCELLED'}
 
 
+# --- 0.24.316 My Joints (user: "관절은 그냥 내가 만들게, 내가 프리셋 만든 거나 저장해서 불러올 수 있게 해 줘") ------------
+
+DIR = [None]                    # (a test points it elsewhere: never the user's own folder)
+PIVOT = 'mch_myjoint_pivot'     # on saved objects: the point that goes to the 3D cursor when loaded
+
+
+def my_dir(create=False):
+    import os
+    if DIR[0]:
+        d = DIR[0]
+    else:
+        d = os.path.join(bpy.utils.user_resource('CONFIG', path='mecha_lab', create=create), 'my_joints')
+    if create:
+        os.makedirs(d, exist_ok=True)
+    return d
+
+
+def my_joints():
+    """The saved joints' names (their .blend files in the My Joints folder), sorted."""
+    import os
+    d = my_dir()
+    try:
+        return sorted(f[:-6] for f in os.listdir(d) if f.endswith('.blend'))
+    except OSError:
+        return []
+
+
+def _safe(name):
+    import re
+    name = re.sub(r'[^\w.\-]+', '_', name.strip(), flags=re.UNICODE).strip('._')
+    return name[:60] or 'Joint'
+
+
+def save_joint(context, name, objs, pivot):
+    """``objs`` (the joint you made) written to My Joints as ``name`` (their meshes, materials, parents among them,
+    constraints kept); ``pivot`` (world) - where it sits on the 3D cursor when loaded."""
+    import os
+    objs = [o for o in objs if o is not None]
+    if not objs:
+        return None
+    path = os.path.join(my_dir(create=True), _safe(name) + '.blend')
+    for o in objs:
+        o[PIVOT] = list(pivot)
+    try:
+        bpy.data.libraries.write(path, set(objs), fake_user=False, compress=True)
+    finally:
+        for o in objs:
+            if PIVOT in o.keys():
+                del o[PIVOT]
+    return path
+
+
+def load_joint(context, name, where=None):
+    """A saved joint brought in (new copies, in the active collection), its pivot on ``where`` (the 3D cursor)."""
+    import os
+    path = os.path.join(my_dir(), _safe(name) + '.blend')
+    if not os.path.isfile(path):
+        return []
+    with bpy.data.libraries.load(path, link=False) as (src, dst):
+        dst.objects = list(src.objects)
+    obs = [o for o in dst.objects if o is not None]
+    coll = context.collection
+    where = Vector(where if where is not None else context.scene.cursor.location)
+    pivot = None
+    for o in obs:
+        if PIVOT in o.keys():
+            pivot = Vector(o[PIVOT])
+            del o[PIVOT]
+    delta = where - (pivot if pivot is not None else Vector())
+    names = {o.name for o in obs}
+    for o in obs:
+        if o.name not in coll.objects:
+            coll.objects.link(o)
+    for o in obs:
+        if o.parent is None:                             # (just loaded: its own location, not a stale world matrix)
+            o.location = o.location + delta
+        elif o.parent.name not in names:
+            o.parent = None
+            o.location = o.location + delta
+    return obs
+
+
+class MCH_OT_joint_save(bpy.types.Operator):
+    """Save the selected objects (the joint you made) to My Joints - the active one's origin is its pivot"""
+    bl_idname = 'mch.joint_save'
+    bl_label = 'Save Selected as Joint'
+    bl_options = {'REGISTER'}
+
+    def execute(self, context):
+        objs = list(context.selected_objects)
+        if not objs:
+            self.report({'WARNING'}, 'My Joints: select the joint\'s parts first')
+            return {'CANCELLED'}
+        name = _st(context).my_name.strip() or (context.active_object.name if context.active_object else 'Joint')
+        act = context.active_object if context.active_object in objs else objs[0]
+        path = save_joint(context, name, objs, act.matrix_world.translation.copy())
+        self.report({'INFO'}, f'My Joints: "{_safe(name)}" saved ({len(objs)} objects)')
+        return {'FINISHED'} if path else {'CANCELLED'}
+
+
+class MCH_OT_joint_load(bpy.types.Operator):
+    """Bring this saved joint in on the 3D cursor"""
+    bl_idname = 'mch.joint_load'
+    bl_label = 'Load Joint'
+    bl_options = {'REGISTER', 'UNDO'}
+    name: bpy.props.StringProperty()
+
+    def execute(self, context):
+        if context.mode != 'OBJECT':
+            self.report({'WARNING'}, 'My Joints: Object Mode only')
+            return {'CANCELLED'}
+        obs = load_joint(context, self.name)
+        if not obs:
+            self.report({'WARNING'}, f'My Joints: "{self.name}" not found')
+            return {'CANCELLED'}
+        for o in context.selected_objects:
+            o.select_set(False)
+        for o in obs:
+            try:
+                o.select_set(True)
+            except RuntimeError:
+                pass
+        context.view_layer.objects.active = obs[0]
+        return {'FINISHED'}
+
+
+class MCH_OT_joint_delete(bpy.types.Operator):
+    """Delete this saved joint from My Joints"""
+    bl_idname = 'mch.joint_delete'
+    bl_label = 'Delete Saved Joint'
+    bl_options = {'REGISTER'}
+    name: bpy.props.StringProperty()
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_confirm(self, event)
+
+    def execute(self, context):
+        import os
+        path = os.path.join(my_dir(), _safe(self.name) + '.blend')
+        try:
+            os.remove(path)
+        except OSError:
+            return {'CANCELLED'}
+        return {'FINISHED'}
+
+
+def draw_my(layout, context):
+    st = _st(context)
+    box = layout.box()
+    box.label(text='My Joints')
+    r = box.row(align=True)
+    r.prop(st, 'my_name', text='')
+    r.operator('mch.joint_save', text='Save Selected', icon='ADD')
+    names = my_joints()
+    if not names:
+        box.label(text='Make a joint, select its parts, Save Selected', icon='INFO')
+    col = box.column(align=True)
+    for nm in names:
+        r = col.row(align=True)
+        r.operator('mch.joint_load', text=nm, icon='IMPORT').name = nm
+        r.operator('mch.joint_delete', text='', icon='X').name = nm
+
+
 def draw(layout, context):
+    draw_my(layout, context)
     st = _st(context)
     box = layout.box()
     box.label(text='Joint Generator')
@@ -637,7 +803,8 @@ class MCH_TOOL_joint(bpy.types.WorkSpaceTool):
             return
 
 
-CLASSES = (MCH_PG_Joint, MCH_OT_joint_add, MCH_OT_joint_plain)
+CLASSES = (MCH_PG_Joint, MCH_OT_joint_add, MCH_OT_joint_plain, MCH_OT_joint_save, MCH_OT_joint_load,
+           MCH_OT_joint_delete)
 
 
 def register():

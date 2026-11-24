@@ -72,7 +72,7 @@ st.bend_lr, st.bend_fb = 0.0, 0.5
 Vb = W(w)
 check('Bend Front / Back: the other way (Z here)', np.abs(Vb[:, 2]).max() > 0.6 and np.abs(Vb[:, 1]).max() < 0.05)
 st.bend_fb = 0.0
-for style, n, want in (('THIN', 5, 5), ('LOOM', 12, 12), ('MAIN', 3, 4), ('RIBBON', 6, 1)):
+for style, n, want in (('THIN', 5, 5), ('LOOM', 12, 12), ('MAIN', 3, 4), ('RIBBON', 6, 6)):
     st.style, st.count = style, n
     st.ties = 3 if style == 'LOOM' else st.ties
     isl, op = islands(w)
@@ -106,6 +106,17 @@ for es in ('CLAMP', 'BOOT', 'FERRULE', 'HEX', 'FLANGE'):
     check(f'End Finish {es}: closed ({op} open edges), on the surfaces (nothing into them: {V[:, 0].min():.4f} / '
           f'{V[:, 0].max():.4f}), metal on it', op == 0 and V[:, 0].min() > -2.0 - 0.01 and V[:, 0].max() < 2.0 + 0.01
           and 2 in {p_.material_index for p_ in w.data.polygons})
+st.end_style = 'PLUG'
+st.end_style = 'BOOT'
+st.style = 'SINGLE'
+V = W(w)
+from mathutils import Vector as _V
+ring = np.hypot(V[:, 1], V[:, 2])
+near = V[(V[:, 0] > -2 + 0.05 * 1.3) & (V[:, 0] < -2 + 0.05 * 4.8)]
+rr_ = np.hypot(near[:, 1], near[:, 2])
+check(f'Bellows Boot: parallel - its ribs the same size all along ({rr_.max():.4f} max at either end)',
+      abs(np.hypot(V[(V[:, 0] > -2 + 0.05 * 1.2) & (V[:, 0] < -2 + 0.05 * 2.0)][:, 1:3].T[0], V[(V[:, 0] > -2 + 0.05 * 1.2) & (V[:, 0] < -2 + 0.05 * 2.0)][:, 1:3].T[1]).max()
+          - np.hypot(V[(V[:, 0] > -2 + 0.05 * 4.0) & (V[:, 0] < -2 + 0.05 * 5.0)][:, 1:3].T[0], V[(V[:, 0] > -2 + 0.05 * 4.0) & (V[:, 0] < -2 + 0.05 * 5.0)][:, 1:3].T[1]).max()) < 0.003)
 st.end_style = 'PLUG'
 bpy.ops.mch.wire_plain()
 check('Make Plain: a plain mesh', not wg.is_wire(w))

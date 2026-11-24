@@ -146,16 +146,18 @@ DOCS = {
     'JOINT': dict(
         what=('관절 생성: 위 링크 · 관절 · 아래 링크 (Fork / Side Plates / Tube Frame / Ball Joint / Universal)',
               'A joint: upper link, hinge, lower link (Fork / Side Plates / Tube Frame / Ball Joint / Universal)'),
-        how=[('Summon Joint (3D 커서에)', 'Summon Joint (on the 3D cursor)'),
+        how=[('My Joints: 직접 만든 관절의 부품을 선택하고 이름을 넣어 Save Selected - 목록에서 누르면 3D 커서에 불러옴', 'My Joints: select the parts of a joint you made, name it, Save Selected - click it in the list to bring it in on the 3D cursor'),
+             ('Summon Joint (3D 커서에)', 'Summon Joint (on the 3D cursor)'),
              ('선택한 채로 슬라이더를 바꾸면 바로 바뀜, Bend 는 아래 링크만 돌림 (바로)', 'With it selected the sliders change it; Bend turns the lower link at once')],
         keys=[('LMB', '오브젝트 선택', 'select an object')],
         opts=[('Style', '포크 · 양쪽 판 · 파이프 프레임 · 볼 조인트 · 2 축', 'the kind of joint'),
               ('Joint Size / Joint Width', '관절 드럼 지름 / 폭', 'the drum across / its width'),
               ('Upper Length / Lower Length / Link Width / Link Depth', '위 · 아래 링크 길이, 굵기', 'the links'),
-              ('Cap / Cap Bolts / Holes', '캡 모양 · 볼트 수 · 판 경량 구멍', 'cap, bolts, plate holes'),
+              ('Cap / Cap Bolts', '캡 모양 · 볼트 수 (Side Plates: 판 경량 구멍 수도)', 'cap, bolts (Side Plates: plate holes too)'),
               ('Bend', '굽힘 각도 (Universal: Side 도)', 'the bend (Universal: Side too)'),
               ('Piston', '링크 사이 피스톤 (굽히면 따라감)', 'a piston between the links (follows the bend)')],
-        tips=[('기존 Real Parts 의 관절 부품은 그대로', 'The Real Parts joints stay as they were')]),
+        tips=[('기존 Real Parts 의 관절 부품은 그대로', 'The Real Parts joints stay as they were'),
+              ('저장한 관절은 Blender 설정 폴더의 mecha_lab/my_joints 에 .blend 로', 'Saved joints: .blend files in Blender\'s config folder, mecha_lab/my_joints')]),
     # 0.24.313 Wire Harness
     'WIRE': dict(
         what=('점 두 개를 찍으면 그 사이에 전선 (넓은 리본 / 한 가닥 / 여러 가닥 / 굵은 선 + 얇은 선 / 묶인 와이어)',
