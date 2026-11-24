@@ -20,6 +20,7 @@ from mathutils import Matrix, Vector
 from mathutils.geometry import tessellate_polygon
 
 from . import mech_revolve as mr
+from . import click_place  # 0.24.320 a click summons it there
 
 TAG = 'mch_joint'
 PART = 'mch_joint_part'
@@ -954,13 +955,11 @@ class MCH_TOOL_joint(bpy.types.WorkSpaceTool):
     bl_context_mode = 'OBJECT'
     bl_idname = 'mecha.joint_gen'
     bl_label = 'Joint Generator'
-    bl_description = ('Summon a joint (Fork / Side Plates / Tube Frame / Ball Joint / Universal) on the 3D cursor - '
+    bl_description = ('Click: a joint where you click (Mech Knee / Fork / Side Plates / Tube Frame / Ball Joint / Universal) - '
                       'select it and the sliders change it; Bend turns it live')
     bl_icon = 'ops.generic.select'
     bl_widget = None
-    bl_keymap = (('view3d.select', {'type': 'LEFTMOUSE', 'value': 'CLICK'}, None),
-                 ('view3d.select', {'type': 'LEFTMOUSE', 'value': 'CLICK', 'shift': True},
-                  {'properties': [('toggle', True)]}))
+    bl_keymap = click_place.keymap('mch.joint_click')  # 0.24.320
 
     def draw_settings(context, layout, tool):
         region = getattr(context, 'region', None)
@@ -968,7 +967,23 @@ class MCH_TOOL_joint(bpy.types.WorkSpaceTool):
             return
 
 
-CLASSES = (MCH_PG_Joint, MCH_OT_joint_add, MCH_OT_joint_plain, MCH_OT_joint_save, MCH_OT_joint_load,
+class MCH_OT_joint_click(bpy.types.Operator):
+    """Click: a joint there (on the surface hit, else on the ground); a click on a joint selects it"""
+    bl_idname = 'mch.joint_click'
+    bl_label = 'Joint Where Clicked'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        from . import click_place
+        return click_place.poll(context)
+
+    def invoke(self, context, event):
+        from . import click_place
+        return click_place.click(self, context, event, lambda ob: bool(joint_of(ob)), lambda: bpy.ops.mch.joint_add())
+
+
+CLASSES = (MCH_PG_Joint, MCH_OT_joint_add, MCH_OT_joint_click, MCH_OT_joint_plain, MCH_OT_joint_save, MCH_OT_joint_load,
            MCH_OT_joint_delete)
 
 

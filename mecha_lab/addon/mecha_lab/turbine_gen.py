@@ -18,6 +18,7 @@ import bpy
 from mathutils import Matrix, Vector
 
 from . import mech_revolve as mr
+from . import click_place  # 0.24.320 a click summons it there
 
 TAG = 'mch_turbine'
 PART = 'mch_turbine_part'
@@ -519,13 +520,11 @@ class MCH_TOOL_turbine(bpy.types.WorkSpaceTool):
     bl_context_mode = 'OBJECT'
     bl_idname = 'mecha.turbine_gen'
     bl_label = 'Turbine'
-    bl_description = ('Summon a turbine (Fan / Motor / Nozzle / Engine) on the 3D cursor - select it and the sliders '
+    bl_description = ('Click: a turbine where you click (Fan / Motor / Nozzle / Engine) - select it and the sliders '
                       'change it; Spin turns its rotor')
     bl_icon = 'ops.generic.select'
     bl_widget = None
-    bl_keymap = (('view3d.select', {'type': 'LEFTMOUSE', 'value': 'CLICK'}, None),
-                 ('view3d.select', {'type': 'LEFTMOUSE', 'value': 'CLICK', 'shift': True},
-                  {'properties': [('toggle', True)]}))
+    bl_keymap = click_place.keymap('mch.turbine_click')  # 0.24.320
 
     def draw_settings(context, layout, tool):
         region = getattr(context, 'region', None)
@@ -533,7 +532,23 @@ class MCH_TOOL_turbine(bpy.types.WorkSpaceTool):
             return
 
 
-CLASSES = (MCH_PG_Turbine, MCH_OT_turbine_add, MCH_OT_turbine_plain)
+class MCH_OT_turbine_click(bpy.types.Operator):
+    """Click: a turbine there (on the surface hit, else on the ground); a click on a turbine selects it"""
+    bl_idname = 'mch.turbine_click'
+    bl_label = 'Turbine Where Clicked'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        from . import click_place
+        return click_place.poll(context)
+
+    def invoke(self, context, event):
+        from . import click_place
+        return click_place.click(self, context, event, lambda ob: bool(turbine_of(ob)), lambda: bpy.ops.mch.turbine_add())
+
+
+CLASSES = (MCH_PG_Turbine, MCH_OT_turbine_add, MCH_OT_turbine_click, MCH_OT_turbine_plain)
 
 
 def register():

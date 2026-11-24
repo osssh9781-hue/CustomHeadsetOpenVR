@@ -25,6 +25,7 @@ import bmesh
 import bpy
 from mathutils import Matrix, Vector
 from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
+from . import click_place  # 0.24.320 a click summons it there
 
 TAG = 'mch_tire'                   # on a summoned object: 'TIRE' / 'WHEEL'
 PARAMS = 'mch_tire_p'              # its numbers (JSON)
@@ -595,6 +596,10 @@ def _stagger_update(self, context):
 
 
 class MCH_PG_Tire(bpy.types.PropertyGroup):
+    click_kind: bpy.props.EnumProperty(name='Click Makes',
+                                       items=(('TIRE', 'Click: Tire', 'A click in the view makes a tire there'),
+                                              ('GEAR', 'Click: Gear', 'A click in the view makes a gear there')),
+                                       default='TIRE', description='What a click in the view makes')
     preset: bpy.props.EnumProperty(name='Preset', items=[(k, v[0], f'{v[0]} tire proportions')
                                                          for k, v in PRESETS.items()],
                                    default='CAR', update=_preset_update)
@@ -772,6 +777,7 @@ def draw(layout, context):
     st = _st(context)
     box = layout.box()
     box.label(text='Tire & Wheel')
+    box.row(align=True).prop(st, 'click_kind', expand=True)          # 0.24.320 what a click in the view makes
     c = box.column(align=True)
     c.prop(st, 'preset', text='')
     c.prop(st, 'diameter')
@@ -841,13 +847,12 @@ class MCH_TOOL_tire_gear(bpy.types.WorkSpaceTool):
     bl_context_mode = 'OBJECT'
     bl_idname = 'mecha.tire_gear'
     bl_label = 'Tire & Gear'
-    bl_description = ('Summon a tire, its wheel or a gear at the 3D cursor; select one and the sliders change it.\n'
+    bl_description = ('Click: a tire or a gear where you click (Click Makes); the buttons summon at the 3D cursor; '
+                      'select one and the sliders change it.\n'
                       'Draw a piece on it, Array Around repeats it round the axle')
     bl_icon = 'ops.generic.select'
     bl_widget = None
-    bl_keymap = (('view3d.select', {'type': 'LEFTMOUSE', 'value': 'CLICK'}, None),
-                 ('view3d.select', {'type': 'LEFTMOUSE', 'value': 'CLICK', 'shift': True},
-                  {'properties': [('toggle', True)]}))
+    bl_keymap = click_place.keymap('mch.tire_click')  # 0.24.320
 
     def draw_settings(context, layout, tool):
         region = getattr(context, 'region', None)
@@ -855,7 +860,24 @@ class MCH_TOOL_tire_gear(bpy.types.WorkSpaceTool):
             return
 
 
-CLASSES = (MCH_PG_Tire, MCH_OT_tire_add, MCH_OT_tire_array, MCH_OT_tire_array_apply, MCH_OT_tire_array_remove,
+class MCH_OT_tire_click(bpy.types.Operator):
+    """Click: a tire or a gear (Click Makes) there (on the surface hit, else on the ground); a click on a tire, wheel or gear selects it"""
+    bl_idname = 'mch.tire_click'
+    bl_label = 'Tire / Gear Where Clicked'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        from . import click_place
+        return click_place.poll(context)
+
+    def invoke(self, context, event):
+        from . import click_place
+        return click_place.click(self, context, event, lambda ob: kind_of(ob) in KINDS,
+                                 lambda: bpy.ops.mch.tire_add(kind=_st(context).click_kind))
+
+
+CLASSES = (MCH_PG_Tire, MCH_OT_tire_add, MCH_OT_tire_click, MCH_OT_tire_array, MCH_OT_tire_array_apply, MCH_OT_tire_array_remove,
            MCH_OT_tire_preset, MCH_OT_tire_style)
 
 
