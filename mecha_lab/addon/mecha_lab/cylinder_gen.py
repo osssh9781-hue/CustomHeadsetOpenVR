@@ -244,7 +244,7 @@ def build_stack(context, p, sid=None, base=None):
 
 def selected_stacks(context):
     sids = []
-    for o in list(context.selected_objects) + [getattr(context, 'active_object', None)]:
+    for o in context.selected_objects:               # (selected only: an active layer left unselected stays)
         s = stack_of(o)
         if s and s not in sids:
             sids.append(s)
@@ -318,6 +318,9 @@ class MCH_OT_cylinder_plain(bpy.types.Operator):
 
     def execute(self, context):
         sids = selected_stacks(context)
+        act = getattr(context, 'active_object', None)
+        if not sids and stack_of(act):
+            sids = [stack_of(act)]
         if not sids:
             self.report({'WARNING'}, 'Make Plain: select a layer of a cylinder')
             return {'CANCELLED'}
@@ -378,7 +381,7 @@ def draw(layout, context):
         r.prop(st, k)
     box.operator('mch.cylinder_add', icon='MESH_CYLINDER')
     act = getattr(context, 'active_object', None)
-    sid = stack_of(act)
+    sid = stack_of(act) if act is not None and act.select_get() else ''
     if sid:
         box.label(text=f'{sid}: live ({len(layers_of(context.scene, sid))} layers)', icon='INFO')
         r = box.row(align=True)

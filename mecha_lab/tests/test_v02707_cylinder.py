@@ -115,4 +115,12 @@ bpy.ops.mch.cylinder_plain()
 check('Make Plain: a plain mesh (no longer a cylinder stack)', not cy.stack_of(obs[0]))
 st.diameter = 2.0
 check('... the sliders leave it alone', abs(np.hypot(*world(obs[0])[:, :2].T).max() - 0.5) < 1e-3)
+# only selected cylinders change: an active layer left unselected stays
+st.diameter, st.layers, st.wall, st.gap = 1.0, 2, 0.0, 0.0
+bpy.ops.mch.cylinder_add()
+a_obs = cy.layers_of(S, cy.stack_of(C.active_object))
+for o in a_obs:
+    o.select_set(False)
+st.layers = 4
+check('an unselected cylinder (still the active object) stays as it was', len(cy.layers_of(S, cy.stack_of(a_obs[0]))) == 2)
 summary()
