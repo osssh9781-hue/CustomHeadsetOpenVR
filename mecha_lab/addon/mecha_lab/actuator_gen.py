@@ -27,14 +27,19 @@ SHAPES = (('ROUND', 'Round Body', 'A round barrel'), ('SQUARE', 'Square Body', '
 ROD_SHAPES = (('ROUND', 'Round Rod', 'A round rod'), ('SQUARE', 'Square Rod', 'A square rod'))
 MOUNTS = (('EYE', 'Eye Plate', 'One plate with a hole (a rod eye)'), ('CLEVIS', 'Clevis', 'A fork: two plates, the pin '
                                                                                    'through both'),
+          ('BALL', 'Ball Joint', 'A rod end with a ball bearing in its eye (it swivels a little)'),
           ('NONE', 'None', 'No mount: a flat end'))
+BSTYLES = (('PLATE', 'Base Plate', 'On a square base plate with bolts at its corners'),
+           ('ARM', 'Lever Arm', 'On a lever arm going out sideways (its end chamfered) - Arm Length / Thickness / Width / '
+                          'Turn'))
 
 
 def _st(context):
     return context.scene.mch_actuator
 
 
-END_KEYS = ('type', 'size', 'thick', 'hole', 'bolt', 'bracket', 'base', 'base_t')
+END_KEYS = ('type', 'size', 'thick', 'hole', 'bolt', 'bracket', 'base', 'base_t', 'bstyle', 'arm_len', 'arm_t',
+            'arm_w', 'arm_turn')
 MORE_KEYS = ('hinge_gap', 'bracket_bolts', 'spring', 'spring_coils', 'spring_wire', 'spring_size', 'spring_seat')
 
 
@@ -113,9 +118,30 @@ def end_span(p, end):
     Clevis bracket)."""
     t = p[f'{end}_thick']
     hg = p.get('hinge_gap', 0.005)
-    if p[f'{end}_type'] == 'EYE':
-        return (t + 2 * hg) + 2 * t if bracket_on(p, end) else t
+    if p[f'{end}_type'] in {'EYE', 'BALL'}:
+        w = ball_w(p, end) if p[f'{end}_type'] == 'BALL' else t
+        return (w + 2 * hg) + 2 * t if bracket_on(p, end) else w
     return 3 * t
+
+
+def ball_w(p, end):
+    """A ball joint's ball: as wide along the pin."""
+    return p[f'{end}_thick'] * 1.6
+
+
+def ball_r(p, end):
+    size = p[f'{end}_size']
+    hole = min(p[f'{end}_hole'], size * 0.8) / 2
+    return max(min(size * 0.36, hole * 2.4), hole * 1.3, ball_w(p, end) * 0.6)
+
+
+def prism(bm, pts, w0, w1, M, mat=0):
+    """A closed prism: the outline ``pts`` [(u, v)] pushed from w0 to w1, mapped by ``M``."""
+    a = [bm.verts.new(M @ Vector((u, v, w0))) for u, v in pts]
+    b = [bm.verts.new(M @ Vector((u, v, w1))) for u, v in pts]
+    n = len(pts)
+    for f in [list(reversed(a)), b] + [[a[i], a[(i + 1) % n], b[(i + 1) % n], b[i]] for i in range(n)]:
+        bm.faces.new(f).material_index = mat
 
 
 def mount(bm, p, end, z_pin, direction, segs):
@@ -133,6 +159,17 @@ def mount(bm, p, end, z_pin, direction, segs):
     M = Matrix(((0, 0, 1, 0), (1, 0, 0, 0), (0, direction, 0, z_pin), (0, 0, 0, 1)))
     if kind == 'EYE':
         tab(bm, size, neck + ov, t, hole, max(24, segs), M)
+    elif kind == 'BALL':                           # 0.24.310 a rod end: its eye round a ball bearing
+        rb = ball_r(p, end)
+        tab(bm, size, neck + ov, t, rb * 0.97, max(32, segs), M)
+        hw = min(ball_w(p, end) / 2, rb * 0.85)
+        prof = [(hole, -hw, 0.0, 'R')]
+        n = 10
+        for i in range(n + 1):
+            x = -hw + 2 * hw * i / n
+            prof.append((math.sqrt(max(rb * rb - x * x, 0.0)), x, 0.0, 'R'))
+        prof.append((hole, hw, 0.0, 'R'))
+        mr.revolve(bm, prof, max(32, segs), matrix=mr.frame(Vector((0, 0, z_pin)), Vector((1, 0, 0))), mat=1)
     else:
         gap = t
         for sgn in (-1, 1):
@@ -169,13 +206,32 @@ def build_bracket(me, p, end):
         nb = size * 0.75                                      # (the pin to the base plate)
         ov = size * 0.05
         span = end_span(p, end)
-        if p[f'{end}_type'] == 'EYE':                         # (a clevis round the eye)
-            gap = t + 2 * hg
+        if p[f'{end}_type'] in {'EYE', 'BALL'}:              # (a clevis round the eye / the ball)
+            gap = (ball_w(p, end) if p[f'{end}_type'] == 'BALL' else t) + 2 * hg
             for sgn in (-1, 1):
                 Mw = M @ Matrix.Translation(Vector((0, 0, sgn * (gap / 2 + t / 2))))
                 tab(bm, size, nb + ov, t, hole, segs, Mw)
         else:                                                 # (a tongue between the clevis' plates)
             tab(bm, size, nb + ov, max(t - 2 * hg, t * 0.3), hole, segs, M)
+        if p.get(f'{end}_bstyle', 'PLATE') == 'ARM':          # 0.24.310 (user's photo: a lever arm under it)
+            al = max(p.get(f'{end}_arm_len', size * 2.5), size * 0.8)
+            at = max(p.get(f'{end}_arm_t', size * 0.45), 1e-4)
+            aw = max(p.get(f'{end}_arm_w', size), span * 1.05)
+            Ma = M @ Matrix.Rotation(math.radians(p.get(f'{end}_arm_turn', 0.0)), 4, 'Y')
+            u0, u1 = -size * 0.6, al
+            ch = min(at * 0.7, (u1 - u0) * 0.3)
+            prism(bm, [(u0, nb), (u1, nb), (u1, nb + at - ch), (u1 - ch, nb + at), (u0, nb + at)], -aw / 2, aw / 2, Ma)
+            if p.get('bracket_bolts', True):                 # (socket heads on its top, past the joint)
+                hr, hh = min(at, aw) * 0.22, min(at, aw) * 0.16
+                up = (Ma.to_3x3() @ Vector((0, -1, 0))).normalized()
+                for u in (u1 - size * 0.45, u1 - size * 1.05):
+                    if u > size * 0.75:
+                        mr.revolve(bm, mr.bolt_profile(hr * 0.5, 0.0, 'SOCKET', hr, hh), 36,
+                                   matrix=mr.frame(Ma @ Vector((u, nb + hh * 0.15, 0.0)), up), mat=1)
+            mr.finish(bm)
+            bm.to_mesh(me)
+            me.update()
+            return
         B = max(p.get(f'{end}_base', size * 1.6), size * 1.3, span * 1.45)   # (its corner bolts clear of the fork)
         bt = max(p.get(f'{end}_base_t', size * 0.15), 1e-4)
         box(bm, (-B / 2, nb, -B / 2), (B / 2, nb + bt, B / 2), M)
@@ -502,6 +558,20 @@ def _end_props(end, label, size, thick, hole):
                                                description='The bracket\'s base plate across')
     d[f'{end}_base_t'] = bpy.props.FloatProperty(name=f'{label} Base Thickness', default=size * 0.15, min=0.0005,
                                                  soft_max=1.0, unit='LENGTH', update=_update)
+    d[f'{end}_bstyle'] = bpy.props.EnumProperty(name=f'{label} Bracket Style', items=BSTYLES, default='PLATE',
+                                                update=_update)
+    d[f'{end}_arm_len'] = bpy.props.FloatProperty(name=f'{label} Arm Length', default=size * 2.5, min=0.002,
+                                                  soft_max=5.0, unit='LENGTH', update=_update,
+                                                  description='How far the arm goes out from the joint')
+    d[f'{end}_arm_t'] = bpy.props.FloatProperty(name=f'{label} Arm Thickness', default=size * 0.45, min=0.0005,
+                                                soft_max=2.0, unit='LENGTH', update=_update)
+    d[f'{end}_arm_w'] = bpy.props.FloatProperty(name=f'{label} Arm Width', default=size * 1.0, min=0.0005,
+                                                soft_max=2.0, unit='LENGTH', update=_update,
+                                                description='The arm across (along the pin; at least the joint)')
+    d[f'{end}_arm_turn'] = bpy.props.FloatProperty(name=f'{label} Arm Turn', default=0.0, min=-180.0, max=180.0,
+                                                   update=_update,
+                                                   description='Which way the arm goes out, round the cylinder\'s '
+                                                               'axis (degrees)')
     return d
 
 
@@ -649,8 +719,16 @@ def draw(layout_, context):
             c = b.column(align=True)
             c.prop(st, f'{end}_bracket', text='Bracket (the other side of the hinge)')
             if getattr(st, f'{end}_bracket'):
-                c.prop(st, f'{end}_base', text='Base Plate')
-                c.prop(st, f'{end}_base_t', text='Plate Thickness')
+                b.row(align=True).prop(st, f'{end}_bstyle', expand=True)
+                c = b.column(align=True)
+                if getattr(st, f'{end}_bstyle') == 'ARM':
+                    c.prop(st, f'{end}_arm_len', text='Arm Length')
+                    c.prop(st, f'{end}_arm_t', text='Arm Thickness')
+                    c.prop(st, f'{end}_arm_w', text='Arm Width')
+                    c.prop(st, f'{end}_arm_turn', text='Arm Turn')
+                else:
+                    c.prop(st, f'{end}_base', text='Base Plate')
+                    c.prop(st, f'{end}_base_t', text='Plate Thickness')
     c = box_.column(align=True)
     c.prop(st, 'hinge_gap')
     c.prop(st, 'bracket_bolts')

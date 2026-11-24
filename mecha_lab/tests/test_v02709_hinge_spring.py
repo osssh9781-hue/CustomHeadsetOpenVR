@@ -96,4 +96,36 @@ check('Coils live', len(sp.data.polygons) > n0)
 st.spring = False
 check('Spring off: the coil and its empty gone', ag.parts_of(S, ag.act_of(rod)).get('SPRING') is None and
       ag.parts_of(S, ag.act_of(rod)).get('SPRING_END') is None)
+
+# 0.24.310 (user's photo: "이런 부분 말이야"): a Ball Joint end, an Arm bracket
+for o in C.selected_objects:
+    o.select_set(False)
+S.cursor.location = (5, 0, 0)
+st.rear_bracket = True
+st.front_type, st.front_bracket, st.front_bstyle = 'BALL', True, 'ARM'
+st.front_size, st.front_thick, st.front_hole = 0.26, 0.1, 0.08
+st.front_arm_len, st.front_arm_t, st.front_arm_w, st.front_arm_turn = 0.7, 0.12, 0.3, 0.0
+bpy.ops.mch.actuator_add()
+p2 = ag.parts_of(S, ag.act_of(C.active_object))
+rod2, bf2 = p2['ROD'], p2['BRACKET_FRONT']
+check('Ball Joint end + Arm bracket: closed meshes', open_edges(rod2) == 0 and open_edges(bf2) == 0)
+Wr2 = W(rod2)
+pin = Wr2[np.abs(Wr2[:, 2] - 2.4) < 0.15]
+rb = ag.ball_r(ag.numbers(st), 'front')
+check(f'... the ball in the eye ({rb:.3f} round, {ag.ball_w(ag.numbers(st), "front"):.2f} wide along the pin)',
+      np.any(np.abs(np.hypot(pin[:, 1], pin[:, 2] - 2.4) - rb) < rb * 0.05))
+Wb2 = W(bf2)
+check(f'the arm: out along Y Arm Length past the joint ({Wb2[:, 1].max() - 0.0:.3f})',
+      abs(Wb2[:, 1].max() - 0.7) < 1e-3 and abs(Wb2[:, 1].min() + 0.26 * 0.6) < 0.2)
+near2 = Wb2[(Wb2[:, 2] > 2.4 + 0.02) & (Wb2[:, 2] < 2.4 + 0.15)]
+check('... its clevis round the ball (the gap: the ball\'s width + the hinge gap twice)',
+      abs(np.ptp(near2[:, 0]) - max(0.3, (0.16 + 0.012) + 2 * 0.1 * 1.05)) < 0.02 or
+      abs(np.ptp(near2[:, 0]) - ((0.16 + 0.012) + 2 * 0.1)) < 1e-3, np.ptp(near2[:, 0]))
+for o in p2.values():
+    o.select_set(True)
+st.front_arm_turn = 90.0
+Wb2 = W(bf2)
+check('Arm Turn 90: the arm goes out along X instead', np.ptp(Wb2[:, 0]) > 0.7 and np.ptp(Wb2[:, 1]) < 0.4)
+st.front_bstyle = 'PLATE'
+check('Base Plate again: closed', open_edges(bf2) == 0)
 summary()
