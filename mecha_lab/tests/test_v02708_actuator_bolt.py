@@ -154,6 +154,21 @@ for e in ('CHAMFER', 'BEVEL'):
     rim = np.hypot(V[:, 0] - 10, V[:, 1])[np.abs(V[:, 2] - 1.0) < 1e-4]
     check(f'Rim {e}: the pocket\'s rim opened out by the rim size (0.18 -> 0.21 at the top)',
           abs(rim[rim < 0.5].max() - 0.21) < 3e-3, rim[rim < 0.5].max())
+bs.edge = 'PLAIN'
+bs.pocket_shape, bs.pocket_corner = 'SQUARE', 0.0
+V = ev_verts(part)
+top_ = V[np.abs(V[:, 2] - 1.0) < 1e-4]
+top_ = top_[np.hypot(top_[:, 0] - 10, top_[:, 1]) < 0.5]
+check(f'Square Pocket: a square (its corner out at 0.18 x 0.18 from the middle - a round one: 0.18 at most)',
+      abs(np.abs(top_[:, 0] - 10).max() - 0.18) < 3e-3 and np.hypot(top_[:, 0] - 10, top_[:, 1]).max() > 0.18 * 1.35,
+      np.hypot(top_[:, 0] - 10, top_[:, 1]).max())
+fl = V[np.abs(V[:, 2] - 0.85) < 1e-4]
+check('... as deep (its floor 0.15 down)', len(fl) > 3)
+bs.pocket_corner = 1.0
+V = ev_verts(part)
+top_ = V[np.abs(V[:, 2] - 1.0) < 1e-4]
+check('Pocket Corner 1: nearly round again', np.hypot(top_[:, 0] - 10, top_[:, 1])[np.hypot(top_[:, 0] - 10, top_[:, 1]) < 0.5].max() < 0.18 * 1.1)
+bs.pocket_shape = 'ROUND'
 bs.head = 'SOCKET'
 check('Socket head: closed', open_edges(b) == 0)
 bs.head = 'ROUND'

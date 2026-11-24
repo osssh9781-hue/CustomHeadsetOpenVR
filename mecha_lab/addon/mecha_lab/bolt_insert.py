@@ -26,6 +26,8 @@ _BUSY = [False]
 
 HEADS = (('HEX', 'Hex Head', 'A hexagon head'), ('ROUND', 'Round Head', 'A round (button) head'),
          ('SOCKET', 'Socket Head', 'A round cap, a hexagon hole in its top'))
+POCKETS = (('ROUND', 'Round Pocket', 'A round pocket'), ('SQUARE', 'Square Pocket', 'A square pocket (its corners as '
+                                                                                  'round as Corner Round)'))
 EDGES = (('PLAIN', 'Plain Cut', 'The pocket cut straight'), ('CHAMFER', 'Chamfer', 'Its rim chamfered'),
          ('BEVEL', 'Bevel', 'Its rim rounded'))
 
@@ -37,11 +39,13 @@ def _st(context):
 def numbers(st):
     return dict(head=st.head, size=st.size, head_h=st.head_height, shank_d=st.shank_d, shank_len=st.shank_len,
                 thread=bool(st.thread), pitch=st.pitch, cut=bool(st.cut), depth=st.depth, clear=st.clearance,
-                edge=st.edge, edge_size=st.edge_size)
+                edge=st.edge, edge_size=st.edge_size, pshape=st.pocket_shape, pcorner=st.pocket_corner)
 
 
 def _fix(p):
     q = dict(p)
+    q.setdefault('pshape', 'ROUND')                 # (a bolt from 0.24.308 before the square pocket)
+    q.setdefault('pcorner', 0.2)
     q['size'] = max(q['size'], 1e-4)
     q['shank_d'] = min(max(q['shank_d'], 1e-4), q['size'] * 0.95)
     q['depth'] = max(q['depth'], 0.0) if q['cut'] else 0.0
@@ -67,30 +71,36 @@ def bolt_mesh(me, p):
 
 def pocket_profile(q):
     """The cutter's section: a cylinder ``depth`` deep (the head's width and the clearance), its rim finished."""
-    rp = q['size'] / 2 + q['clear']
+    rp = q['size'] / 2 + q['clear']                 # (square: half its side)
     d = q['depth']
     top = max(d, q['size']) * 1.5
     e = q['edge_size']
-    P = [(0.0, -d, 0.0, 'R'), (rp, -d, 0.0, 'R')]
+    sh = 'S' if q['pshape'] == 'SQUARE' else 'R'
+    P = [(0.0, -d, 0.0, 'R'), (rp, -d, 0.0, sh)]
     if q['edge'] == 'CHAMFER' and e > 0:
-        P += [(rp, -e, 0.0, 'R'), (rp + e, 0.0, 0.0, 'R'), (rp + e, top, 0.0, 'R')]
+        P += [(rp, -e, 0.0, sh), (rp + e, 0.0, 0.0, sh), (rp + e, top, 0.0, sh)]
     elif q['edge'] == 'BEVEL' and e > 0:
         n = 8
         for i in range(n + 1):
             t = i / n * math.pi / 2
-            P.append((rp + e - e * math.cos(t), -e + e * math.sin(t), 0.0, 'R'))
-        P.append((rp + e, top, 0.0, 'R'))
+            P.append((rp + e - e * math.cos(t), -e + e * math.sin(t), 0.0, sh))
+        P.append((rp + e, top, 0.0, sh))
     else:
-        P.append((rp, top, 0.0, 'R'))
+        P.append((rp, top, 0.0, sh))
     P.append((0.0, top, 0.0, 'R'))
     return P
+
+
+def pocket_sq_p(q):
+    """How square (the superellipse power): Corner Round 0 - sharp, 1 - nearly round."""
+    return 2.0 + 38.0 * (1.0 - min(max(q.get('pcorner', 0.2), 0.0), 1.0)) ** 2
 
 
 def cutter_mesh(me, p):
     q = _fix(p)
     bm = bmesh.new()
     try:
-        mr.revolve(bm, pocket_profile(q), 48)
+        mr.revolve(bm, pocket_profile(q), 64, sq_p=pocket_sq_p(q))
         mr.finish(bm)
         bm.to_mesh(me)
     finally:
@@ -275,6 +285,10 @@ class MCH_PG_Bolt(bpy.types.PropertyGroup):
                                    update=_update, description='How deep the pocket (the head sits on its floor)')
     clearance: bpy.props.FloatProperty(name='Pocket Gap', default=0.01, min=0.0, soft_max=0.5, unit='LENGTH',
                                        update=_update, description='The pocket this much wider than the head')
+    pocket_shape: bpy.props.EnumProperty(name='Pocket', items=POCKETS, default='ROUND', update=_update)
+    pocket_corner: bpy.props.FloatProperty(name='Pocket Corner', default=0.2, min=0.0, max=1.0, subtype='FACTOR',
+                                           update=_update, description='Square pocket: how round its corners '
+                                                                       '(turn the bolt to turn the pocket)')
     edge: bpy.props.EnumProperty(name='Rim', items=EDGES, default='CHAMFER', update=_update)
     edge_size: bpy.props.FloatProperty(name='Rim Size', default=0.01, min=0.0, soft_max=0.5, unit='LENGTH',
                                        update=_update, description='The chamfer / bevel on the pocket\'s rim')
@@ -350,7 +364,7 @@ class MCH_OT_bolt_pick(bpy.types.Operator):
         st = _st(context)
         keys = dict(head='head', size='size', head_h='head_height', shank_d='shank_d', shank_len='shank_len',
                     thread='thread', pitch='pitch', cut='cut', depth='depth', clear='clearance', edge='edge',
-                    edge_size='edge_size')
+                    edge_size='edge_size', pshape='pocket_shape', pcorner='pocket_corner')
         _BUSY[0] = True
         try:
             for k, a in keys.items():
@@ -378,6 +392,9 @@ def draw(layout, context):
     b = box.box()
     b.prop(st, 'cut')
     if st.cut:
+        b.row(align=True).prop(st, 'pocket_shape', expand=True)
+        if st.pocket_shape == 'SQUARE':
+            b.prop(st, 'pocket_corner', slider=True)
         c = b.column(align=True)
         c.prop(st, 'depth')
         c.prop(st, 'clearance')

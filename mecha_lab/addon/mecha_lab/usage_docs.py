@@ -144,6 +144,7 @@ DOCS = {
         opts=[('Hex / Round / Socket', '육각 / 둥근 / 소켓 (육각 홈) 머리', 'hex / round / socket head'),
               ('Head Size / Height, Shank, Length', '머리 크기 · 높이, 나사 지름 · 길이', 'head and shank sizes'),
               ('Thread / Pitch', '나사산 유무 / 간격', 'thread on / off, pitch'),
+              ('Round / Square Pocket', '원형 / 사각으로 파기 (사각: 모서리 둥글기, 볼트를 돌리면 같이 돎)', 'round / square pocket'),
               ('Pocket Depth / Gap', '파는 깊이 / 머리보다 넓게', 'pocket depth / gap round the head'),
               ('Plain / Chamfer / Bevel', '파인 테두리 마감: 그냥 / 쳄퍼 / 둥글게 + 크기', 'the pocket rim')],
         tips=[('창 아래 Screw Stack: 나사로 결합되는 층 실린더 (0.24.307)', 'Below: Screw Stack - layers screwed together (0.24.307)')]),
