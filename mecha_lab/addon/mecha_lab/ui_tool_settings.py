@@ -1288,6 +1288,7 @@ DRAWERS = {
     'TIREGEN': _module_drawer('tire_gen'),
     'CYLGEN': _module_drawer('actuator_gen'),
     'BOLT': _module_drawer('bolt_insert'),
+    'WIRE': _module_drawer('wire_gen'),
     'ACUT': _module_drawer('array_cut'),
     'SDF': _module_drawer('sdf_builder'),
     'PLANAR': _module_drawer('clean_flat'),

@@ -242,6 +242,10 @@ TOOLS = (
     ('BOLT', 'Bolt Insert', 'Click a surface: a round pocket cut there (Plain / Chamfer / Bevel rim) and a bolt set in '
      'it (Hex / Round / Socket head, threaded shank) - live while selected; Alt + click removes. Also: Screw Stack',
      'bolt', 'MOD_BOOLEAN', 'mecha.bolt_insert', 'OK'),
+    # 0.24.313 (user: "점 두 개 찍으면 생기는 전선도 ... 넓은 전선, 얇은 거 한 개, 여러 개, 두꺼운 거에 얇은 거, 와이어 뭉쳐 있는 전선")
+    ('WIRE', 'Wire Harness', 'Click a surface, then another: a wire between them - Flat Ribbon, Single Wire, Thin Wires, '
+     'Thick + Thin, Wire Loom (tied); Length, Gravity, Twist, Bend Left / Right, Front / Back - live while selected',
+     'wire', 'OUTLINER_OB_CURVES', 'mecha.wire_gen', 'OK'),
     ('DRAW', 'Mesh Curve', 'Draw a curve and sweep a profile along it (or a panel-line cut); '
      'smooth/straight points, resolution, rotation, twist', 'panel', 'CURVE_BEZCURVE', None, 'OK'),
     ('POSE', 'Deform', 'Lattice Cage / Bend Curve: click control points and Move / Rotate / Scale them with '
@@ -311,7 +315,7 @@ TOOL_GROUPS = (
     ('Surface detail', ('GSCULPT', 'GREEBLE', 'PLATE', 'MPLATE', 'DETAIL', 'DETAIL2', 'DETAIL3', 'SDRAW', 'SCREW', 'BOLT', 'EXTRACT', 'FPOP', 'MHOLE', 'MOLDING', 'BELT')),
     ('Move', ('CMOVE', 'CPATH', 'SMOVE', 'SMART', 'POSE', 'RIG', 'REMESH')),   # 0.24.241 + Rig (beside Pose)
     ('Symmetry & repeat', ('MIRROR', 'RSYM', 'RADIAL', 'ARRAY', 'LARRAY')),
-    ('Curves', ('TUBE', 'TUBE_SAME', 'SCURVE', 'CABLE', 'SPRING', 'MMUSCLE', 'ALONG', 'LOFT')),
+    ('Curves', ('TUBE', 'TUBE_SAME', 'SCURVE', 'CABLE', 'WIRE', 'SPRING', 'MMUSCLE', 'ALONG', 'LOFT')),
     ('Creature', ('CPLATE', 'DETAIL4', 'CGREEBLE', 'FGREEBLE', 'SPIKE', 'SCALES', 'SBRUSH', 'BRIDGE', 'FLOWER', 'HAIR', 'FUR', 'WING', 'MEMBRANE', 'BODYKIT', 'MUSCLE')),
     ('Weathering', ('WDIRT', 'WDUST', 'WLEAF', 'WSNOW')),                  # 0.24.158 click a shape: dirt / dust / ...
     ('3D Print', ('PMEASURE', 'PCUT')),                                    # 0.24.164 measure; cut with connection pins
@@ -342,7 +346,7 @@ _ENUM_NUMBERS = {'CUT': 1, 'BOOLEAN': 2, 'FUSE': 3, 'MIRROR': 4, 'MASK': 5, 'DRA
                  'EXTRACT': 20, 'MOLDING': 21, 'HOLLOW': 22, 'ALONG': 23, 'CABLE': 24, 'PLATE': 25, 'WRINKLE': 26, 'TUBE': 27,
                  'HIDE': 28, 'DETAIL': 29, 'DETAIL2': 30, 'SCREW': 31, 'DETAIL3': 32, 'TUBE_SAME': 33,
                  'CBASE': 34, 'CPLATE': 35, 'BELT': 36, 'SPIKE': 37, 'SCALES': 38, 'FLOWER': 39, 'SCURVE': 40, 'SBRUSH': 41, 'BRIDGE': 42, 'CAPE': 43, 'HAIR': 44, 'GARMENT': 45, 'HOOD': 46, 'SCARF': 47, 'CMOVE': 48, 'CPATH': 50, 'PERF': 51, 'SDRAW': 52, 'SCAPE': 53, 'RSYM': 55, 'SMOVE': 56, 'WLINES': 57, 'CDRAPE': 58, 'ZONE': 59, 'PRESS': 60, 'SMART': 61, 'GSCULPT': 62, 'GREEBLE': 63, 'CGREEBLE': 64, 'FUR': 65, 'WDIRT': 66,
-                 'WDUST': 67, 'WLEAF': 68, 'WSNOW': 69, 'DETAIL4': 70, 'PMEASURE': 71, 'PCUT': 72, 'FGREEBLE': 73, 'WING': 74, 'MEMBRANE': 75, 'BBEVEL': 76, 'FPOP': 77, 'OMASS': 78, 'MUSCLE': 79, 'MMUSCLE': 80, 'MHOLE': 81, 'BODYKIT': 82, 'RIG': 83, 'LARRAY': 84, 'SDF': 85, 'PLANAR': 86, 'ECLEAR': 87, 'SPRING': 88, 'ACUT': 89, 'MBASE': 90, 'MPLATE': 91, 'TIREGEN': 92, 'CYLGEN': 93, 'BOLT': 94}   # 54: the removed Cloth Wrap (kept free)   # 49: the removed Jungle Gym prototype (0.24.31), kept free
+                 'WDUST': 67, 'WLEAF': 68, 'WSNOW': 69, 'DETAIL4': 70, 'PMEASURE': 71, 'PCUT': 72, 'FGREEBLE': 73, 'WING': 74, 'MEMBRANE': 75, 'BBEVEL': 76, 'FPOP': 77, 'OMASS': 78, 'MUSCLE': 79, 'MMUSCLE': 80, 'MHOLE': 81, 'BODYKIT': 82, 'RIG': 83, 'LARRAY': 84, 'SDF': 85, 'PLANAR': 86, 'ECLEAR': 87, 'SPRING': 88, 'ACUT': 89, 'MBASE': 90, 'MPLATE': 91, 'TIREGEN': 92, 'CYLGEN': 93, 'BOLT': 94, 'WIRE': 95}   # 54: the removed Cloth Wrap (kept free)   # 49: the removed Jungle Gym prototype (0.24.31), kept free
 TOOL_ENUM_ITEMS = [(t[0], t[1], t[2], t[4], _ENUM_NUMBERS[t[0]]) for t in TOOLS]
 
 SHAPES = (

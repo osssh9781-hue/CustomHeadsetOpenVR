@@ -142,6 +142,21 @@ DOCS = {
               ('브래킷은 따로 된 오브젝트 - 메카에 옮겨 붙이면 그 자리 유지', 'Brackets are objects of their own - moved onto the mech, they stay'),
               ('스프링은 로드를 빼면 같이 늘어남', 'The spring stretches as the rod moves out'),
               ('찍어서 만든 실린더는 값을 바꿔도 두 표면에 다시 붙음 (메카를 옮긴 뒤에도)', 'One clicked between two surfaces is glued to them again when a slider changes (after the mech moved too)')]),
+    # 0.24.313 Wire Harness
+    'WIRE': dict(
+        what=('점 두 개를 찍으면 그 사이에 전선 (넓은 리본 / 한 가닥 / 여러 가닥 / 굵은 선 + 얇은 선 / 묶인 와이어)',
+              'Click two points: a wire between them (ribbon / single / several / thick + thin / tied loom)'),
+        how=[('표면을 찍고 다른 표면을 찍는다 (각 표면에서 수직으로 나옴)', 'Click a surface, then another (it leaves each square to it)'),
+             ('선택된 전선은 슬라이더로 바로 바뀜', 'The selected wires change with the sliders'),
+             ('Make Plain 으로 일반 메쉬로 확정', 'Make Plain keeps them as plain meshes')],
+        keys=[('LMB', '표면: 끝 찍기 / 전선: 선택', 'a surface: an end / a wire: select it'), ('Esc', '첫 점 취소', 'forget the first point')],
+        opts=[('Style', '넓은 리본 · 한 가닥 · 여러 가닥 · 굵은 + 얇은 · 묶인 와이어', 'the kind of wire'),
+              ('Wires / Thickness', '가닥 수 / 굵기', 'how many / how thick'),
+              ('Length / Gravity', '길이 (늘리면 처짐) / 아래로 처짐', 'longer: it hangs / droop down'),
+              ('Twist', '꼬임 (끝에서 끝까지 감는 횟수)', 'turns from end to end'),
+              ('Bend Left / Right / Bend Front / Back', '좌우 / 앞뒤 휨', 'bend sideways / front-back'),
+              ('End Plugs', '양 끝 플러그', 'a plug at each end')],
+        tips=[('기존 Cable 도구는 그대로', 'The Cable tool stays as it was')]),
     # 0.24.308 Bolt Insert
     'BOLT': dict(
         what=('표면을 클릭하면 원기둥으로 파고 그 안에 볼트를 박는다', 'Click a surface: a round pocket cut and a bolt set in it'),
