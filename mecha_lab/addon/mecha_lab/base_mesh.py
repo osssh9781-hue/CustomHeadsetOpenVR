@@ -3373,6 +3373,9 @@ def perform_base(context, loops, projector, cutter=False, targets=None, attach=N
     is the section without changing the regular Base Mesh section setting.
     """
     defaults = scene_defaults(context)
+    if not ts.mold_on(context):                      # 0.24.305 the original Base Mesh: no moldings
+        from . import mold_cut as _mcm
+        defaults = _mcm.NoMold(defaults)
     if sweep_style is not None:
         if sweep_style not in {'CIRCLE', 'SQUARE', 'ALPHA'}:
             raise cg.CutError('Invalid line section style.')
@@ -3990,6 +3993,9 @@ def sketch_commit(context, cutter=False):
     frame = sketch_frame(data)
     groups = [([tuple(q) for q in o], [[tuple(q) for q in h] for h in hs]) for o, hs in groups]
     p = scene_defaults(context)
+    if not ts.mold_on(context):                      # 0.24.305 the original Base Mesh: no moldings
+        from . import mold_cut as _mcm
+        p = _mcm.NoMold(p)
     creature = p.profile in CREATURE_PROFILES
     like_cut = getattr(p, 'alt_mode', 'HEIGHT') == 'CUT'
     on_surface = p.profile in SURFACE_CARVE        # 0.24.38 Carve Height / Through follow the surface here too

@@ -45,6 +45,9 @@ class MCH_PG_MoldCut(bpy.types.PropertyGroup):
 
 def settings(context):
     """The scene's Mold Cut when it is on and does something, else None."""
+    from . import tool_state as ts
+    if not ts.mold_on(context):                  # 0.24.305 only in Mold Base Mesh / Mold Armor Plate
+        return None
     mc = getattr(getattr(context, 'scene', None), 'mch_moldcut', None)
     if mc is None or not mc.on:
         return None
@@ -66,6 +69,35 @@ class Over:
         if name == 'mold_count':
             return 0
         return getattr(self._base, name)
+
+
+MOLD_KEYS = KEYS + ('mold_count',)
+OFF = {'emold_top': False, 'emold_bottom': False, 'emold_dome': 0.0, 'mold_count': 0}
+
+
+class NoMold:
+    """0.24.305 Settings view with every molding off (the original Base Mesh / Armor Plate tools)."""
+
+    def __init__(self, base):
+        object.__setattr__(self, '_base', base)
+
+    def __getattr__(self, name):
+        if name in OFF:
+            return OFF[name]
+        return getattr(self._base, name)
+
+    def __setattr__(self, name, value):
+        setattr(self._base, name, value)
+
+
+def strip(pg):
+    """0.24.305 A made part's own settings: every molding off (a part made with an original tool)."""
+    changed = False
+    for k, v in OFF.items():
+        if hasattr(pg, k) and getattr(pg, k) != v:
+            setattr(pg, k, v)
+            changed = True
+    return changed
 
 
 def draw(layout, mc):

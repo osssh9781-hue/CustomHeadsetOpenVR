@@ -780,7 +780,7 @@ def draw_base(layout, context):
     col.prop(p, 'offset')
     if ob is not None and p.embed > 0:
         col.prop(p, 'embed')
-    if p.profile in {'FLAT', 'BEVEL', 'CHAMFER'} and hasattr(p, 'mold_count'):
+    if p.profile in {'FLAT', 'BEVEL', 'CHAMFER'} and hasattr(p, 'mold_count') and ts.mold_on(context):   # 0.24.305
         # 0.24.295 Side Molding: bands standing out round the side wall, along the drawn outline
         mold = target.box()
         mold.prop(p, 'mold_count')
@@ -1303,7 +1303,7 @@ DRAWERS = {
     'CUT': draw_cut, 'SPLIT': draw_split, 'BOOLEAN': draw_boolean, 'FUSE': draw_fuse,
     'MASK': draw_mask, 'DRAW': draw_draw, 'ARRAY': draw_array, 'EDIT': draw_edit,
     'LIBRARY': draw_library, 'REMESH': draw_remesh, 'POSE': draw_pose,
-    'BASE': draw_base, 'LOFT': draw_loft, 'ZBRUSH': draw_zbrush, 'SUBD': draw_subd,
+    'BASE': draw_base, 'MBASE': draw_base, 'MPLATE': draw_plate, 'LOFT': draw_loft, 'ZBRUSH': draw_zbrush, 'SUBD': draw_subd,
     'PRIMITIVE': draw_primitive, 'PLATE': draw_plate, 'WRINKLE': draw_wrinkle, 'CDRAPE': draw_cloth_drape, 'ZONE': draw_lasso_zone, 'WLINES': draw_wrinkle_lines, 'CBASE': draw_base,
     'CPLATE': draw_cplate, 'BELT': draw_belt, 'SPIKE': draw_spike,
     'SCALES': draw_scales, 'SBRUSH': draw_scale_brush, 'BRIDGE': draw_bridge, 'FLOWER': draw_flower, 'CAPE': draw_cape, 'SCAPE': draw_scarf_cape, 'HAIR': draw_hair, 'GARMENT': draw_clothing, 'HOOD': draw_hood, 'SCARF': draw_scarf, 'SCURVE': draw_surface_curve,

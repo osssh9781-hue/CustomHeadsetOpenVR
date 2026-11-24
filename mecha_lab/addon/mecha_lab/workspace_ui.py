@@ -853,6 +853,22 @@ class MCH_TOOL_base_mesh(bpy.types.WorkSpaceTool):
         _draw_tool_settings(context, layout, tool)
 
 
+class MCH_TOOL_mold_base(bpy.types.WorkSpaceTool):
+    """0.24.305 Mold Base Mesh"""
+    bl_space_type = 'VIEW_3D'
+    bl_context_mode = 'OBJECT'
+    bl_idname = 'mecha.mold_base'
+    bl_label = 'Mecha Mold Base Mesh'
+    bl_description = ('Base Mesh with moldings: Side / Top / Bottom Edge Molding, Lip Rim, Top Dome; Alt + draw carves '
+                      'with the Mold Cut.\nRMB: profiles, Esc: exit')
+    bl_icon = 'ops.mesh.primitive_cube_add_gizmo'
+    bl_widget = None
+    bl_keymap = _tool_keymap('BASE')
+
+    def draw_settings(context, layout, tool):
+        _draw_tool_settings(context, layout, tool)
+
+
 class MCH_TOOL_creature_base(bpy.types.WorkSpaceTool):
     bl_space_type = 'VIEW_3D'
     bl_context_mode = 'OBJECT'
@@ -1255,6 +1271,22 @@ class MCH_TOOL_armor_plate(bpy.types.WorkSpaceTool):
         _draw_tool_settings(context, layout, tool)
 
 
+class MCH_TOOL_mold_plate(bpy.types.WorkSpaceTool):
+    """0.24.305 Mold Armor Plate"""
+    bl_space_type = 'VIEW_3D'
+    bl_context_mode = 'OBJECT'
+    bl_idname = 'mecha.mold_plate'
+    bl_label = 'Mecha Mold Armor Plate'
+    bl_description = ('Armor Plate with moldings: Top / Bottom Edge Molding, Lip Rim, Top Dome; Alt + draw carves with '
+                      'the Mold Cut.\nMouse wheel while drawing: profile, RMB: shapes, Esc: exit')
+    bl_icon = 'ops.mesh.extrude_region_move'
+    bl_widget = None
+    bl_keymap = _tool_keymap('PLATE')
+
+    def draw_settings(context, layout, tool):
+        _draw_tool_settings(context, layout, tool)
+
+
 class MCH_TOOL_cloth_wrinkle(bpy.types.WorkSpaceTool):
     bl_space_type = 'VIEW_3D'
     bl_context_mode = 'OBJECT'
@@ -1288,6 +1320,7 @@ class MCH_TOOL_primitive(bpy.types.WorkSpaceTool):
 
 
 NATIVE_TOOLS = (MCH_TOOL_cut, MCH_TOOL_split, MCH_TOOL_press_cut, MCH_TOOL_base_mesh, MCH_TOOL_primitive, MCH_TOOL_armor_plate,
+                MCH_TOOL_mold_base, MCH_TOOL_mold_plate,
                 MCH_TOOL_cloth_wrinkle, MCH_TOOL_box_hide, MCH_TOOL_plate_detail, MCH_TOOL_plate_detail2, MCH_TOOL_plate_detail3, MCH_TOOL_plate_detail4,
                 MCH_TOOL_screw_stamp, MCH_TOOL_cloth_drape, MCH_TOOL_lasso_zone, MCH_TOOL_wrinkle_lines, MCH_TOOL_creature_base, MCH_TOOL_organic_mass, MCH_TOOL_mecha_holes, MCH_TOOL_clean_planar, MCH_TOOL_line_array, MCH_TOOL_spring, MCH_TOOL_array_cut, MCH_TOOL_creature_plate,
                 MCH_TOOL_belt_maker, MCH_TOOL_creature_spike, MCH_TOOL_creature_scales,
@@ -1344,6 +1377,8 @@ def register_native_tools():
     bpy.utils.register_tool(MCH_TOOL_wrinkle_lines, after={MCH_TOOL_cloth_drape.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_lasso_zone, after={MCH_TOOL_wrinkle_lines.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_creature_base, after={MCH_TOOL_base_mesh.bl_idname}, group=False)
+    bpy.utils.register_tool(MCH_TOOL_mold_base, after={MCH_TOOL_creature_base.bl_idname}, group=False)   # 0.24.305
+    bpy.utils.register_tool(MCH_TOOL_mold_plate, after={MCH_TOOL_armor_plate.bl_idname}, group=False)   # 0.24.305
     bpy.utils.register_tool(MCH_TOOL_organic_mass, after={MCH_TOOL_creature_base.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_mecha_holes, after={MCH_TOOL_organic_mass.bl_idname}, group=False)
     bpy.utils.register_tool(MCH_TOOL_line_array, after={MCH_TOOL_mecha_holes.bl_idname}, group=False)   # 0.24.279

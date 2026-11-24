@@ -14,6 +14,7 @@ mecha_lab.register()
 fresh()
 C = bpy.context
 S = C.scene
+S.mch_settings.mch_active_tool = 'MPLATE'          # 0.24.305 the Mold Cut lives in the Mold tools
 TOP = cg.OrthoProjector(Quaternion(), pixels_per_unit=100.0)
 LOOP = [(500 + 50 * math.cos(a), 500 + 50 * math.sin(a)) for a in (2 * math.pi * k / 64 for k in range(64))]
 
@@ -70,6 +71,7 @@ check('Armor Plate Alt: the plates\' Edge Molding alone does not change the carv
 S.mch_extract.emold_bottom = False
 
 # ---- Base Mesh Alt (Carve Height)
+S.mch_settings.mch_active_tool = 'MBASE'
 p = S.mch_base
 p.sketch = False
 p.profile = 'FLAT'

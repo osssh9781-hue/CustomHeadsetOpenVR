@@ -113,8 +113,8 @@ def groups(context, tool):
             extra.append(_cell('drop', '', action=('menu_enum',), data=ws, prop='sim_preset', width=110))
     if extra:
         out.append(('', extra))
-    if tool == 'PLATE':
-        # 0.24.298 Top / Bottom Edge Molding: the live plate's, else the next plates'
+    if tool == 'PLATE' and ts.mold_on(context):
+        # 0.24.298 Top / Bottom Edge Molding (0.24.305 Mold Armor Plate only): the live plate's, else the next plates'
         from . import armor_plate as ap_
         lp = ap_.pending_plate(context)
         pp = lp.mch_extract if lp is not None else getattr(scene, 'mch_extract', None)
@@ -133,7 +133,7 @@ def groups(context, tool):
         if array_cut.record(scene) is not None:
             cells.append(_cell('seg', 'Apply', action=('op', 'mch.array_cut_apply', {})))
         out.append(('Array', cells))
-    if tool == 'BASE':
+    if tool == 'BASE' and ts.mold_on(context):          # 0.24.305 (Mold Base Mesh only)
         # 0.24.295 (user: "만든 모양대로 옆면 쪽에 몰딩처럼 튀어나오게, 두께랑 개수 정할 수 있게") in the tool's own box (the
         # LASSO block keeps its size: its cells stay where they are for every tool)
         from . import base_mesh

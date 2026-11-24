@@ -89,6 +89,21 @@ DOCS = {
               ('Cloth Detail', '작을수록 촘촘 - 잔주름 (느려짐). 드레이프 마스크는 점 개수', 'less = finer: small wrinkles (slower). Drape Mask: Points'),
               ('Pins & Stitches', '천을 몸에 고정 · 박음질 선으로 모으기', 'pin it to the body · gather it along stitch lines')],
         tips=[('뒷면까지 감싼 마스크도 사각 격자로 고르게 주름짐', 'A mask round the body is a grid of quads too: even folds')]),
+    # 0.24.305 the Mold tools
+    'MBASE': dict(
+        what=('베이스 메쉬에 몰딩 (옆면 · 위아래 엣지 · 립 · 돔) 과 몰드 컷이 더해진 도구', 'Base Mesh with moldings (side, top / bottom edge, lip, dome) and the Mold Cut'),
+        how=[('그리면 몰딩이 붙은 덩어리가 생김 (설정은 툴 박스 / 툴 창)', 'Draw: a solid with its moldings (settings in the tool box / window)'),
+             ('Alt + 그리기: 몰드 컷을 켜면 그 몰딩으로 뒤집어 파냄', 'Alt + draw: with Mold Cut on, carved with its moldings the other way round')],
+        keys=[('Alt + 드래그', '파내기 (몰드 컷)', 'carve (Mold Cut)')],
+        opts=[('Height', '덩어리 높이', 'how tall')],
+        tips=[('원래 베이스 메쉬는 몰딩 없이 예전 그대로', 'The original Base Mesh stays as it was, without moldings')]),
+    'MPLATE': dict(
+        what=('아머 플레이트에 위아래 엣지 몰딩 · 립 · 돔과 몰드 컷이 더해진 도구', 'Armor Plate with top / bottom edge molding, lip, dome and the Mold Cut'),
+        how=[('메쉬 위에 그리면 몰딩이 붙은 판이 생김', 'Draw on a mesh: a plate with its moldings'),
+             ('Alt + 그리기: 몰드 컷을 켜면 그 몰딩으로 뒤집어 파냄', 'Alt + draw: with Mold Cut on, carved with its moldings the other way round')],
+        keys=[('Alt + 드래그', '파내기 (몰드 컷)', 'carve (Mold Cut)')],
+        opts=[('Alt Carve Depth', 'Alt 파내기 깊이', 'how deep Alt carves')],
+        tips=[('원래 아머 플레이트는 몰딩 없이 예전 그대로', 'The original Armor Plate stays as it was, without moldings')]),
     # 0.24.297 Array Cut
     'ACUT': dict(
         what=('그린 모양을 Shift + 그린 가이드 라인을 따라 여러 번 자른다', 'The drawn shape cut again and again along a Shift + drawn guide'),

@@ -507,6 +507,10 @@ def perform_plate(context, loops, projector, preset=None, spacing=None):
         part[SRC_KEY] = json.dumps({'loops': [[[float(x), float(y)] for x, y in lp] for lp in loops],
                                     'proj': frozen, 'spacing': face_px, 'size': local_size})
         recalled = recall_plate(part, local_size, preset)      # 0.20.2 last used profile / lines / rims
+        from . import tool_state as _ts_, mold_cut as _mcm
+        if not _ts_.mold_on(context) and _mcm.strip(part.mch_extract):   # 0.24.305 (a remembered molding: off here)
+            from . import face_extract as _fx
+            _fx.rebuild(part)
     scene.mch_extract_last = part
     if getattr(st, 'creature', False):
         from . import creature_shell
@@ -1219,6 +1223,9 @@ def create_plate(context, target, region, surround, preset, local_size, auto=Tru
             setattr(p, k, tuple(v) if isinstance(v, list) else v)
         except (TypeError, AttributeError, ValueError):
             pass
+    from . import tool_state as _ts_, mold_cut as _mcm
+    if not _ts_.mold_on(context):                # 0.24.305 the original Armor Plate: no moldings
+        _mcm.strip(p)
     p.resolution = 0                          # the patch is already dense and even
     part[BORN_KEY] = json.dumps(_settings_of(p))
     part[PRESET_KEY] = preset or ''
@@ -1855,7 +1862,7 @@ def draw(layout, context):
     box.prop(st, 'carve_depth')                       # 0.24.42 Alt + draw: the recess depth
     box.row(align=True).prop(st, 'carve_floor', expand=True)     # 0.24.291 the recess floor
     box.prop(st, 'carve_wall')                        # 0.24.295 slanted walls
-    if hasattr(context.scene, 'mch_moldcut'):         # 0.24.304 Mold Cut
+    if hasattr(context.scene, 'mch_moldcut') and ts.mold_on(context):   # 0.24.304 Mold Cut (0.24.305 Mold tool)
         from . import mold_cut
         mold_cut.draw(box.box(), context.scene.mch_moldcut)
     col_ = box.column(align=True)                     # 0.24.296 stepped floor
@@ -1864,7 +1871,7 @@ def draw(layout, context):
         col_.prop(st, 'step_inset', text='Step Inset (0: Auto)')
         col_.prop(st, 'step_depth', text='Step Depth (0: Auto)')
     ob = pending_plate(context)
-    if ob is None and hasattr(context.scene, 'mch_extract'):
+    if ob is None and hasattr(context.scene, 'mch_extract') and ts.mold_on(context):
         _draw_edge_molding(box.box(), context.scene.mch_extract, 'Edge Molding (next plates)')
     if ob is not None:
         p = ob.mch_extract
@@ -1900,7 +1907,8 @@ def draw(layout, context):
                 r = ln.row(align=True)
                 r.prop(p, 'facet_count')
                 r.prop(p, 'facet_seed')
-        _draw_edge_molding(sub, p)                    # 0.24.298
+        if ts.mold_on(context):
+            _draw_edge_molding(sub, p)                # 0.24.298 (0.24.305 Mold Armor Plate)
         r = sub.row(align=True)
         r.scale_y = 1.3
         r.operator('mch.plate_apply', text='Apply', icon='CHECKMARK')
