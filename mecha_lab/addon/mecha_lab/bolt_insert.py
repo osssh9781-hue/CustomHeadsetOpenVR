@@ -62,7 +62,7 @@ def bolt_mesh(me, p):
                             thread=q['thread'], pitch=max(q['pitch'], 1e-4))
         mr.revolve(bm, P, 36, depth=q['shank_d'] * 0.06 if q['thread'] else 0.0, pitch=max(q['pitch'], 1e-4),
                    matrix=Matrix.Translation((0, 0, -q['depth'])))
-        mr.finish(bm)
+        mr.finish(bm, flat=True)                    # (a hard part: flat faces, no shading star on the head)
         bm.to_mesh(me)
     finally:
         bm.free()
