@@ -19,7 +19,7 @@ from . import (core_geometry, tool_state, cut_engine, cut_tools, surface_conform
                creature_plate, belt_maker, creature_spike, creature_scales, flower_plate,
                surface_curve, scale_brush, bridge_patch, mech_ridge, cape_gen, creature_hair, creature_fur, skin_cover, insect_wing, organic_mass, muscle_gen, body_kit, body_whole, mecha_holes, creature_membrane, outline_mesh, creature_shapes, weathering, print3d, clothing_gen, hood_gen, scarf_gen, quad_cloth, concept_move, smart_move, geo_sculpt, greeble_line, perforate, surface_draw, radial_sym, brush_resize, ramp_edit, bg_jobs, quad_remesh, mesh_fix, tool_recent, actions_menu, key_legend, quick_hud, mecha_menu, symmetry, groups, ui_bars, safety_save, lasso_memory, armor_shell, paint_lab, bake_maps, res_parts, final_export, mech_shader,
                creature_shader, my_presets, decals, zones, my_materials, bake_material, color_pick,
-               random_shapes, material_overlay, tire_gen, work_scene, press_cut, name_fix, quick_render, fast_view,
+               random_shapes, material_overlay, tire_gen, cylinder_gen, work_scene, press_cut, name_fix, quick_render, fast_view,
                light_copies, bg_color, creature_light, render_panel, hdri_turn, hair_view_width, perf_view, line_array, spring_gen, array_cut, mold_cut, sdf_builder,
                res_panel, clean_flat, edge_clear)
 import os
@@ -2151,6 +2151,7 @@ def _register():
     color_pick.register()                              # 0.24.95 the swatch picker's Hue / Sat / Value, Pick
     random_shapes.register()                           # 0.24.95 the Shapes page: random base shapes, variations
     material_overlay.register()                        # 0.24.95 Over My Material (ours laid over the user's own)
+    cylinder_gen.register()                            # 0.24.307 Cylinder: layers screwed together
     tire_gen.register()                                # 0.24.95 Tire & Wheel: summon, draw, repeat round the axle
     work_scene.register()                              # 0.24.95 Work Scene: one group in a clean scene, live
     live_queue.register()
@@ -2312,6 +2313,7 @@ def _unregister_steps():
         ('live_queue', live_queue.unregister),
         ('work_scene', work_scene.unregister),
         ('tire_gen', tire_gen.unregister),
+        ('cylinder_gen', cylinder_gen.unregister),
         ('material_overlay', material_overlay.unregister),
         ('random_shapes', random_shapes.unregister),
         ('color_pick', color_pick.unregister),

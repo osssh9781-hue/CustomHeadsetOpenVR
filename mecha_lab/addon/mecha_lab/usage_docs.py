@@ -120,6 +120,22 @@ DOCS = {
               ('End Size', '마지막 크기 비율 (작으면 점점 작아짐)', 'the last cut\'s size (less: smaller and smaller)'),
               ('Align', '가이드 방향 따라 돌림', 'each cut turned with the guide')],
         tips=[('깊이 · 모서리 마감은 컷 툴 설정 그대로', 'Depth and edge finish: the Cut tool\'s settings')]),
+    # 0.24.307 Cylinder
+    'CYLGEN': dict(
+        what=('층으로 나뉜 실린더를 소환 - 층끼리는 나사로 결합 (아래 층 수나사 목, 위 층 암나사 구멍)',
+              'A cylinder in layers screwed together (the lower one a threaded neck, the upper one its hole)'),
+        how=[('Summon Cylinder 를 누른다 (3D 커서 위에 섬)', 'Press Summon Cylinder (it stands on the 3D cursor)'),
+             ('층 하나를 선택한 채로 슬라이더를 바꾸면 전체가 바로 바뀜', 'With a layer selected, the sliders change the whole stack'),
+             ('Gap 으로 층을 벌려 나사 부분 확인, Make Plain 으로 일반 메쉬로 확정', 'Gap pulls the layers apart; Make Plain keeps them as plain meshes')],
+        keys=[('LMB', '오브젝트 선택', 'select an object')],
+        opts=[('Diameter / Height', '지름 / 전체 높이', 'diameter / total height'),
+              ('Wall', '벽 두께 (0 = 꽉 찬 원기둥)', 'wall thickness (0: solid)'),
+              ('Layers / Split At', '층 수 / 두 층일 때 나뉘는 높이', 'layer count / where two layers part'),
+              ('Thread Size', '나사 목 지름', 'the threaded neck\'s diameter'),
+              ('Thread Length', '나사 길이 (구멍 깊이)', 'thread length (hole depth)'),
+              ('Pitch / Thread Depth', '나사 간격 / 나사산 높이', 'thread pitch / depth'),
+              ('Clearance', '구멍 여유 (3D 프린트 끼움 공차)', 'the hole\'s fit gap (3D print)')],
+        tips=[('Thread 끄면 나사 없는 단순 끼움 (핀 + 구멍)', 'Thread off: a plain peg in a hole')]),
     # 0.24.306 Tire & Gear
     'TIREGEN': dict(
         what=('타이어 · 휠 · 톱니바퀴(기어)를 3D 커서에 소환하고 슬라이더로 바로 바꾼다',
