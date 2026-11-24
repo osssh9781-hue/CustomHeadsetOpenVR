@@ -132,8 +132,13 @@ DOCS = {
               ('Length / Width', '핀에서 핀까지 길이 / 몸통 폭', 'pin to pin / body width'),
               ('Body / Rod / Caps / Cap Size', '몸통 비율 · 로드 굵기 · 끝캡 길이 · 끝캡 크기', 'proportions'),
               ('Rear / Rod End Mount', 'Eye (판 하나) / Clevis (두 판) / None', 'Eye / Clevis / None'),
-              ('Size / Thickness / Hole / Bolt', '마운트 크기 · 두께 · 구멍 · 볼트 유무', 'mount size, thickness, hole, bolt')],
-        tips=[('Body Bolts: 끝캡 모서리에 볼트 머리', 'Body Bolts: bolt heads at the caps\' corners')]),
+              ('Size / Thickness / Pin Hole / Bolt', '마운트 크기 · 두께 · 구멍 · 볼트 유무', 'mount size, thickness, hole, bolt'),
+              ('Bracket / Base Plate / Plate Thickness', '경첩 반대쪽 브래킷 (아이 → 클레비스, 클레비스 → 혀) + 바닥판', 'the hinge\'s other half on a base plate'),
+              ('Hinge Gap / Bracket Bolts', '끼움 여유 / 바닥판 모서리 볼트', 'fit gap / base plate bolts'),
+              ('Spring', '스프링 (켜면 감은 수 · 선 두께 · 지름 · 몸통 쪽 받침 위치)', 'a spring (on: coils, wire, size, seat)')],
+        tips=[('Body Bolts: 끝캡 모서리에 볼트 머리', 'Body Bolts: bolt heads at the caps\' corners'),
+              ('브래킷은 따로 된 오브젝트 - 메카에 옮겨 붙이면 그 자리 유지', 'Brackets are objects of their own - moved onto the mech, they stay'),
+              ('스프링은 로드를 빼면 같이 늘어남', 'The spring stretches as the rod moves out')]),
     # 0.24.308 Bolt Insert
     'BOLT': dict(
         what=('표면을 클릭하면 원기둥으로 파고 그 안에 볼트를 박는다', 'Click a surface: a round pocket cut and a bolt set in it'),

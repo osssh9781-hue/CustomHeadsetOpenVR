@@ -34,7 +34,8 @@ def _st(context):
     return context.scene.mch_actuator
 
 
-END_KEYS = ('type', 'size', 'thick', 'hole', 'bolt')
+END_KEYS = ('type', 'size', 'thick', 'hole', 'bolt', 'bracket', 'base', 'base_t')
+MORE_KEYS = ('hinge_gap', 'bracket_bolts', 'spring', 'spring_coils', 'spring_wire', 'spring_size', 'spring_seat')
 
 
 def numbers(st):
@@ -44,6 +45,8 @@ def numbers(st):
     for e in ('rear', 'front'):
         for k in END_KEYS:
             p[f'{e}_{k}'] = getattr(st, f'{e}_{k}')
+    for k in MORE_KEYS:                                     # 0.24.309 the brackets, the spring
+        p[k] = getattr(st, k)
     return p
 
 
@@ -101,6 +104,20 @@ def box(bm, lo, hi, M, mat=0):
         f.material_index = mat
 
 
+def bracket_on(p, end):
+    return bool(p.get(f'{end}_bracket', False)) and p[f'{end}_type'] != 'NONE'
+
+
+def end_span(p, end):
+    """How wide the hinge is along the pin (X): the end's plates, with the bracket's round them (an Eye end in a
+    Clevis bracket)."""
+    t = p[f'{end}_thick']
+    hg = p.get('hinge_gap', 0.005)
+    if p[f'{end}_type'] == 'EYE':
+        return (t + 2 * hg) + 2 * t if bracket_on(p, end) else t
+    return 3 * t
+
+
 def mount(bm, p, end, z_pin, direction, segs):
     """An end's mount at ``z_pin`` (``direction``: +1 its neck going up to the body, -1 down) and its bolt.
     Returns how far along Z (from the pin) the body / rod starts."""
@@ -116,14 +133,13 @@ def mount(bm, p, end, z_pin, direction, segs):
     M = Matrix(((0, 0, 1, 0), (1, 0, 0, 0), (0, direction, 0, z_pin), (0, 0, 0, 1)))
     if kind == 'EYE':
         tab(bm, size, neck + ov, t, hole, max(24, segs), M)
-        span = t
     else:
         gap = t
         for sgn in (-1, 1):
             Mw = M @ Matrix.Translation(Vector((0, 0, sgn * (gap / 2 + t / 2))))
             tab(bm, size, neck + ov, t, hole, max(24, segs), Mw)
         box(bm, (-size / 2, neck - t * 0.9, -(gap / 2 + t)), (size / 2, neck + ov, gap / 2 + t), M)
-        span = gap + 2 * t
+    span = end_span(p, end)                        # (the bolt through the bracket too)
     if p[f'{end}_bolt']:                           # (a hex bolt through, its nut on the other side)
         sr = hole * 0.96
         hr, hh = hole * 1.9, hole * 1.15
@@ -135,6 +151,69 @@ def mount(bm, p, end, z_pin, direction, segs):
         mr.revolve(bm, mr.nut_profile(sr * 1.0, hr, nh), seg6,
                    matrix=mr.frame(Vector((-span / 2, 0, z_pin)), Vector((-1, 0, 0))), mat=1)
     return neck
+
+
+def build_bracket(me, p, end):
+    """0.24.309 (user: "양 끝부분에 반대쪽에 달릴 부분도 만들어줘, 경첩인 거니깐"): the part the end hinges in - its
+    pin's centre at the origin, the other way from the end: a Clevis for an Eye end, a tongue (Eye) between a Clevis
+    end's plates; on a base plate (to fix on the mech) with a bolt head at each corner."""
+    bm = bmesh.new()
+    try:
+        segs = max(24, int(p['segs']))
+        size = p[f'{end}_size']
+        t = p[f'{end}_thick']
+        hg = p.get('hinge_gap', 0.005)
+        hole = min(p[f'{end}_hole'], size * 0.8) / 2
+        db = -1 if end == 'rear' else 1                       # (away from the cylinder)
+        M = Matrix(((0, 0, 1, 0), (1, 0, 0, 0), (0, db, 0, 0), (0, 0, 0, 1)))
+        nb = size * 0.75                                      # (the pin to the base plate)
+        ov = size * 0.05
+        span = end_span(p, end)
+        if p[f'{end}_type'] == 'EYE':                         # (a clevis round the eye)
+            gap = t + 2 * hg
+            for sgn in (-1, 1):
+                Mw = M @ Matrix.Translation(Vector((0, 0, sgn * (gap / 2 + t / 2))))
+                tab(bm, size, nb + ov, t, hole, segs, Mw)
+        else:                                                 # (a tongue between the clevis' plates)
+            tab(bm, size, nb + ov, max(t - 2 * hg, t * 0.3), hole, segs, M)
+        B = max(p.get(f'{end}_base', size * 1.6), size * 1.3, span * 1.45)   # (its corner bolts clear of the fork)
+        bt = max(p.get(f'{end}_base_t', size * 0.15), 1e-4)
+        box(bm, (-B / 2, nb, -B / 2), (B / 2, nb + bt, B / 2), M)
+        if p.get('bracket_bolts', True):                     # (socket heads at its corners, on the pin's side)
+            hr, hh = B * 0.07, B * 0.05
+            up = (M.to_3x3() @ Vector((0, -1, 0))).normalized()
+            for u in (-1, 1):
+                for w in (-1, 1):
+                    c = M @ Vector((u * B * 0.36, nb + hh * 0.15, w * B * 0.36))
+                    mr.revolve(bm, mr.bolt_profile(hr * 0.5, 0.0, 'SOCKET', hr, hh), 36, matrix=mr.frame(c, up),
+                               mat=1)
+        mr.finish(bm)
+        bm.to_mesh(me)
+    finally:
+        bm.free()
+    me.update()
+
+
+def spring_ns(p, length):
+    """The coil (spring_gen's numbers) round the cylinder."""
+    from types import SimpleNamespace
+    W = p['W']
+    return SimpleNamespace(wire=max(W * p.get('spring_wire', 0.07), 1e-5), end_coils=1.0,
+                           coils=max(1.0, float(p.get('spring_coils', 8))), width=W * p.get('spring_size', 1.5),
+                           end_width=1.0, profile='ROUND', sides=8, resolution=12, hand='RIGHT', caps=True)
+
+
+def spring_seats(p):
+    """(z of the seat on the body, z of the seat on the rod - rod at its pin L, the seats' height, outer radius)."""
+    g = layout(p)
+    W = p['W']
+    wire = W * p.get('spring_wire', 0.07)
+    hs = max(wire * 1.2, W * 0.03)
+    za = g['z0'] + g['Lb'] * min(max(p.get('spring_seat', 0.5), 0.1), 0.95)
+    c2 = min(W * 0.12, (g['zr1'] - g['z0']) * 0.1)
+    zb = g['zr1'] - c2 - hs
+    Rs = W * p.get('spring_size', 1.5) / 2 + wire * 0.6
+    return za, zb, hs, Rs
 
 
 def layout(p):
@@ -185,6 +264,11 @@ def build_body(me, p):
                         x, y = Rc * k * math.copysign(0.78, math.cos(ar)), Rc * k * math.copysign(0.78, math.sin(ar)) * ys
                     mr.revolve(bm, mr.bolt_profile(hr * 0.5, 0.0, 'SOCKET', hr, hh), 36,
                                matrix=mr.frame(Vector((x, y, zf - d * hh * 0.15)), Vector((0, 0, d))), mat=1)
+        if p.get('spring'):                                # (the spring's seat round the barrel)
+            za, _zb, hs, Rs = spring_seats(p)
+            ri = Rb * (0.9 if sh == 'S' else 0.97)
+            mr.revolve(bm, [(ri, za, 0.0, 'R'), (ri, za - hs, 0.0, 'R'), (Rs, za - hs, 0.0, 'R'), (Rs, za, 0.0, 'R')],
+                       segs, mat=1)
         mount(bm, p, 'rear', 0.0, 1, segs)
         mr.finish(bm)
         bm.to_mesh(me)
@@ -210,6 +294,11 @@ def build_rod(me, p):
         P = [(0.0, zr0, 0.0, rsh), (rr, zr0, 0.0, rsh), (rr, zr1 - c2, 0.0, rsh), (rr * 1.3, zr1 - c2, 0.0, rsh),
              (rr * 1.3, zr1 + p['front_size'] * 0.03, 0.0, rsh), (0.0, zr1 + p['front_size'] * 0.03, 0.0, rsh)]
         mr.revolve(bm, P, segs, sq_p=_sq_p(p['corner']), yscale=ys)
+        if p.get('spring'):                                # (the spring's seat on the rod, under its end)
+            _za, zb, hs, Rs = spring_seats(p)
+            ri = rr * 0.97
+            mr.revolve(bm, [(ri, zb + hs, 0.0, 'R'), (ri, zb, 0.0, 'R'), (Rs, zb, 0.0, 'R'), (Rs, zb + hs, 0.0, 'R')],
+                       segs, mat=1)
         mount(bm, p, 'front', g['L'], -1, segs)
         mr.finish(bm)
         bmesh.ops.translate(bm, verts=list(bm.verts), vec=Vector((0, 0, -g['L'])))
@@ -281,7 +370,96 @@ def build(context, p, aid=None):
             rod.parent = body
         rod.matrix_parent_inverse = Matrix.Identity(4)
         rod.matrix_basis = Matrix.Translation((0.0, 0.0, layout(p)['L'] + slide))
+    bw = body.matrix_basis.copy() if body.parent is None else body.matrix_world.copy()   # (the rear pin)
+    for end, part, pin in (('rear', 'BRACKET_REAR', bw),
+                           ('front', 'BRACKET_FRONT', bw @ rod.matrix_basis)):
+        ob = old.get(part)
+        if not bracket_on(p, end):
+            _drop(ob)
+            continue
+        new = ob is None
+        if new:
+            nm = f'MCH_{aid}_{"Rear" if end == "rear" else "Front"}Bracket'
+            ob = bpy.data.objects.new(nm, bpy.data.meshes.new(nm))
+            coll.objects.link(ob)
+        if ob.mode == 'EDIT':
+            out[part] = ob
+            continue
+        if ob.data.users > 1:
+            ob.data = ob.data.copy()
+        build_bracket(ob.data, p, end)
+        ob[TAG], ob[PART], ob[PARAMS] = aid, part, json.dumps(p)
+        auto = list(ob.get(AUTO, []))
+        here = [x for row in ob.matrix_basis for x in row]
+        if new or (len(auto) == 16 and max(abs(a - b) for a, b in zip(auto, here)) < 1e-5):
+            ob.matrix_basis = pin                          # (where its pin is - till you move it to the mech)
+            ob[AUTO] = [x for row in pin for x in row]
+        out[part] = ob
+    set_spring(context, p, aid, out, old, coll, slide)
     return aid, out
+
+
+AUTO = 'mch_act_auto'           # on a bracket: where it was put by itself (moved by you: it stays)
+
+
+def _drop(ob):
+    if ob is None:
+        return
+    me = ob.data if ob.type == 'MESH' else None
+    bpy.data.objects.remove(ob)
+    if me is not None and me.users == 0:
+        bpy.data.meshes.remove(me)
+
+
+def set_spring(context, p, aid, out, old, coll, slide):
+    """0.24.309 (user: "실린더에 스프링 옵션도"): a coil round it from the seat on the body to the seat on the rod -
+    a child of the body, stretched to an empty under the rod (Stretch To): extend the rod, the spring follows."""
+    sp, end = old.get('SPRING'), old.get('SPRING_END')
+    body, rod = out['BODY'], out['ROD']
+    if not p.get('spring'):
+        _drop(sp)
+        _drop(end)
+        return
+    za, zb, hs, Rs = spring_seats(p)
+    L = layout(p)['L']
+    rest = max((zb + slide) - za, 1e-4)
+    if end is None:
+        end = bpy.data.objects.new(f'MCH_{aid}_SpringEnd', None)
+        end.empty_display_size = p['W'] * 0.2
+        coll.objects.link(end)
+        end.hide_select = True
+    end.parent = rod
+    end.matrix_parent_inverse = Matrix.Identity(4)
+    end.matrix_basis = Matrix.Translation((0.0, 0.0, zb - L))
+    end[TAG], end[PART] = aid, 'SPRING_END'
+    try:
+        end.hide_set(True)
+    except RuntimeError:
+        pass
+    if sp is None:
+        nm = f'MCH_{aid}_Spring'
+        sp = bpy.data.objects.new(nm, bpy.data.meshes.new(nm))
+        coll.objects.link(sp)
+    from . import spring_gen
+    verts, faces = spring_gen.build([Vector((0, 0, 0)), Vector((0, rest, 0))], Vector((0, 0, 1)), spring_ns(p, rest))
+    me = sp.data
+    if me.users > 1:
+        me = sp.data = sp.data.copy()
+    me.clear_geometry()
+    me.from_pydata([tuple(v) for v in verts], [], faces)
+    for f in me.polygons:
+        f.use_smooth = True
+    me.update()
+    sp.parent = body
+    sp.matrix_parent_inverse = Matrix.Identity(4)
+    sp.matrix_basis = Matrix.Translation((0.0, 0.0, za)) @ Matrix.Rotation(math.radians(90), 4, 'X')
+    c = sp.constraints.get('MCH Spring Stretch') or sp.constraints.new('STRETCH_TO')
+    c.name = 'MCH Spring Stretch'
+    c.target = end
+    c.rest_length = rest
+    c.volume = 'NO_VOLUME'
+    sp[TAG], sp[PART], sp[PARAMS] = aid, 'SPRING', json.dumps(p)
+    out['SPRING'], out['SPRING_END'] = sp, end
 
 
 def selected_acts(context):
@@ -315,6 +493,15 @@ def _end_props(end, label, size, thick, hole):
                                                description='The hole (the bolt\'s diameter)')
     d[f'{end}_bolt'] = bpy.props.BoolProperty(name=f'{label} Bolt', default=True, update=_update,
                                               description='A hex bolt through it, its nut on the other side')
+    d[f'{end}_bracket'] = bpy.props.BoolProperty(
+        name=f'{label} Bracket', default=True, update=_update,
+        description='The part it hinges in (an object of its own, to fix on the mech): a Clevis round an Eye, a '
+                    'tongue between a Clevis\' plates, on a base plate')
+    d[f'{end}_base'] = bpy.props.FloatProperty(name=f'{label} Base Plate', default=size * 1.8, min=0.002,
+                                               soft_max=3.0, unit='LENGTH', update=_update,
+                                               description='The bracket\'s base plate across')
+    d[f'{end}_base_t'] = bpy.props.FloatProperty(name=f'{label} Base Thickness', default=size * 0.15, min=0.0005,
+                                                 soft_max=1.0, unit='LENGTH', update=_update)
     return d
 
 
@@ -342,6 +529,22 @@ class MCH_PG_Actuator(bpy.types.PropertyGroup):
         body_bolts=bpy.props.BoolProperty(name='Body Bolts', default=True, update=_update,
                                           description='Bolt heads at the end caps\' corners'),
         segments=bpy.props.IntProperty(name='Segments', default=48, min=12, max=256, update=_update),
+        hinge_gap=bpy.props.FloatProperty(name='Hinge Gap', default=0.005, min=0.0, soft_max=0.05, unit='LENGTH',
+                                          update=_update, description='Room between the end and its bracket\'s '
+                                                                      'plates (a print fit)'),
+        bracket_bolts=bpy.props.BoolProperty(name='Bracket Bolts', default=True, update=_update,
+                                             description='Bolt heads at the base plates\' corners'),
+        spring=bpy.props.BoolProperty(name='Spring', default=False, update=_update,
+                                      description='A coil spring round it, from a seat on the body to one under the '
+                                                  'rod end (it stretches as the rod moves out)'),
+        spring_coils=bpy.props.IntProperty(name='Coils', default=8, min=1, max=60, update=_update),
+        spring_wire=bpy.props.FloatProperty(name='Wire', default=0.07, min=0.01, max=0.3, subtype='FACTOR',
+                                            update=_update, description='The wire\'s thickness, of the width'),
+        spring_size=bpy.props.FloatProperty(name='Spring Size', default=1.5, min=0.5, max=4.0, update=_update,
+                                            description='The spring across, of the width'),
+        spring_seat=bpy.props.FloatProperty(name='Spring Seat', default=0.5, min=0.1, max=0.95, subtype='FACTOR',
+                                            update=_update,
+                                            description='Where on the body its lower seat is (of the body)'),
         **_end_props('rear', 'Rear', 0.34, 0.1, 0.1),
         **_end_props('front', 'Rod End', 0.26, 0.12, 0.08),
     )
@@ -385,6 +588,8 @@ class MCH_OT_actuator_pick(bpy.types.Operator):
         for e in ('rear', 'front'):
             for k in END_KEYS:
                 keys[f'{e}_{k}'] = f'{e}_{k}'
+        for k in MORE_KEYS:
+            keys[k] = k
         _BUSY[0] = True
         try:
             for k, a in keys.items():
@@ -441,6 +646,20 @@ def draw(layout_, context):
             for k in ('size', 'thick', 'hole'):
                 c.prop(st, f'{end}_{k}', text=('Size', 'Thickness', 'Pin Hole')[('size', 'thick', 'hole').index(k)])
             c.prop(st, f'{end}_bolt', text='Bolt')
+            c = b.column(align=True)
+            c.prop(st, f'{end}_bracket', text='Bracket (the other side of the hinge)')
+            if getattr(st, f'{end}_bracket'):
+                c.prop(st, f'{end}_base', text='Base Plate')
+                c.prop(st, f'{end}_base_t', text='Plate Thickness')
+    c = box_.column(align=True)
+    c.prop(st, 'hinge_gap')
+    c.prop(st, 'bracket_bolts')
+    b = box_.box()
+    b.prop(st, 'spring')
+    if st.spring:
+        c = b.column(align=True)
+        for k in ('spring_coils', 'spring_wire', 'spring_size', 'spring_seat'):
+            c.prop(st, k, slider=k != 'spring_coils')
     box_.prop(st, 'segments')
     box_.operator('mch.actuator_add', icon='MESH_CYLINDER')
     act = getattr(context, 'active_object', None)
