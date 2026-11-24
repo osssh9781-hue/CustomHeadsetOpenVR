@@ -26,7 +26,10 @@ PART = 'mch_joint_part'
 PARAMS = 'mch_joint_p'
 _BUSY = [False]
 
-STYLES = (('FORK', 'Fork', 'Clevis plates round a drum, the drum\'s cap through them'),
+STYLES = (('KNEE', 'Mech Knee', 'A detailed mech knee (after the user\'s photo): a khaki housing, an olive link plate, '
+                                 'a drum with a slotted cap in a chamfered housing, a shin with red cartridges and a tan '
+                                 'cover - bevelled edges'),
+          ('FORK', 'Fork', 'Clevis plates round a drum, the drum\'s cap through them'),
           ('PLATES', 'Side Plates', 'Two plates with lightening holes either side of the drum'),
           ('TUBE', 'Tube Frame', 'Bent tubes round the drum up to the upper link'),
           ('BALL', 'Ball Joint', 'A ball on the upper link in a socket on the lower one'),
@@ -183,6 +186,162 @@ def tube(bm, pts, r, mat=1, sides=12):
     wg.sweep(bm, pts, F, wg._round(r, sides), sides, mat)
 
 
+# --- 0.24.319 the Mech Knee (user: "일단 한번 최대한 비슷하게 만들어 봐, 하나만") -----------------------------------------
+# materials: 0 dark body, 1 olive plate, 2 metal, 3 red, 4 tan (khaki)
+
+def bevelled(bm, fn, off, segs=2):
+    """``fn(tmp)`` builds a part in a bmesh of its own; its sharp edges bevelled ``off``; then put into ``bm``."""
+    tmp = bmesh.new()
+    try:
+        fn(tmp)
+        bmesh.ops.recalc_face_normals(tmp, faces=list(tmp.faces))
+        tmp.normal_update()                                  # (else every edge reads 0 degrees: nothing bevelled)
+        if off > 0:
+            edges = [e for e in tmp.edges if len(e.link_faces) == 2 and e.calc_face_angle(0.0) > math.radians(30)]
+            if edges:
+                try:
+                    bmesh.ops.bevel(tmp, geom=edges, offset=off, segments=segs, profile=0.5, affect='EDGES',
+                                    clamp_overlap=True)
+                except (RuntimeError, ValueError, TypeError):
+                    pass
+        me = bpy.data.meshes.new('_mch_tmp')
+        tmp.to_mesh(me)
+    finally:
+        tmp.free()
+    bm.from_mesh(me)
+    bpy.data.meshes.remove(me)
+
+
+def cbox(bm, lo, hi, mat):
+    """An axis-aligned box from ``lo`` to ``hi`` (world X Y Z)."""
+    vs = [bm.verts.new((x, y, z)) for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])]
+    for q in ((0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)):
+        bm.faces.new([vs[i] for i in q]).material_index = mat
+
+
+def xplate(bm, outline, holes, x, t, mat):
+    """A plate square to X at ``x`` (``t`` thick): ``outline`` [(y, z)]."""
+    M = Matrix(((0, 0, 1, x), (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 0, 1)))
+    plate(bm, outline, holes, t, M, mat)
+
+
+def socket_bolt(bm, c, axis, r, mat=2):
+    mr.revolve(bm, mr.bolt_profile(r * 0.5, 0.0, 'SOCKET', r, r * 0.7), 24, matrix=mr.frame(c, axis), mat=mat)
+
+
+def knee_upper(bm, p):
+    R = p['size'] / 2
+    W = p['width'] / 2
+    D = p['arm_d'] / 2
+    Lu = max(p['upper_len'], p['size'] * 2)
+    t = p['width'] * 0.14
+    Lp = Lu * 0.62
+    xo = W + t * 1.6                                         # (the olive plate, outside the knee housing)
+    rp = R * 0.72
+    out = [(rp * math.cos(a), rp * math.sin(a)) for a in (math.radians(d) for d in range(200, 341, 14))]
+    out += [(R * 0.78, R * 0.25), (R * 0.62, R * 1.0), (R * 0.62, R * 1.6), (R * 0.95, R * 2.1), (R * 0.95, Lp - R * 0.25),
+            (R * 0.7, Lp), (-R * 0.75, Lp), (-R * 0.95, Lp - R * 0.3), (-R * 0.95, R * 1.7), (-R * 0.7, R * 1.15),
+            (-R * 0.72, R * 0.3)]
+    holes = [circle(0.0, 0.0, R * 0.36, 24, rev=True), circle(0.0, R * 1.85, R * 0.16, 16, rev=True)]
+    bevelled(bm, lambda b: xplate(b, out, holes, xo, t, 1), t * 0.25)
+    # (its pivot boss mid-way: a ring and a bolt)
+    mr.revolve(bm, [(R * 0.17, 0.0, 0.0, 'R'), (R * 0.3, 0.0, 0.0, 'R'), (R * 0.3, t * 0.9, 0.0, 'R'),
+                    (R * 0.17, t * 0.9, 0.0, 'R')], 28, matrix=mr.frame(Vector((xo + t / 2, 0, R * 1.85)), AXX), mat=2)
+    socket_bolt(bm, Vector((xo + t / 2 + t * 0.3, 0, R * 1.85)), AXX, R * 0.12)
+    for z in (Lp * 0.55, Lp * 0.8):                           # (bolt heads down the plate)
+        socket_bolt(bm, Vector((xo + t / 2, R * 0.55, z)), AXX, R * 0.07)
+    # (the other side: a plain dark plate)
+    out2 = [(rp * math.cos(a), rp * math.sin(a)) for a in (math.radians(d) for d in range(200, 341, 14))]
+    out2 += [(R * 0.78, R * 0.3), (R * 0.8, Lp), (-R * 0.8, Lp), (-R * 0.78, R * 0.3)]
+    bevelled(bm, lambda b: xplate(b, out2, [circle(0.0, 0.0, R * 0.36, 24, rev=True)], -xo, t, 0), t * 0.25)
+    # (the khaki housing on top: an angled block - its front cut back at the bottom - a dark rail under it, bolts at its
+    #  side corners, a groove across its front)
+    zb = Lp - R * 0.15
+    xb = xo + t * 0.9
+    H = Lu - zb
+    D1 = D * 1.6
+    prof = [(-D1 * 0.55, zb), (D1, zb), (D1, Lu - H * 0.1), (D1 * 0.85, Lu), (-D1 * 0.8, Lu), (-D1, Lu - H * 0.15),
+            (-D1, zb + H * 0.45)]
+    bevelled(bm, lambda b: xplate(b, prof, [], 0.0, 2 * xb, 4), R * 0.06, 3)
+    bevelled(bm, lambda b: cbox(b, (-(xo + t * 0.4), -D1 * 0.6, zb - R * 0.12), (xo + t * 0.4, D1 * 0.9, zb + R * 0.02), 0),
+             R * 0.03)
+    for sgn in (-1, 1):
+        for (yy, zz) in ((D1 * 0.7, Lu - H * 0.18), (-D1 * 0.55, Lu - H * 0.22), (D1 * 0.7, zb + H * 0.2)):
+            socket_bolt(bm, Vector((sgn * xb, yy, zz)), Vector((sgn, 0, 0)), R * 0.075)
+    bevelled(bm, lambda b: cbox(b, (-xb * 0.92, -D1 * 1.02, zb + H * 0.52), (xb * 0.92, -D1 * 0.9, zb + H * 0.58), 0),
+             R * 0.01, 1)
+    # (a dark round actuator on the housing's side, its axle along X)
+    mr.revolve(bm, [(0.0, 0.0, 0.0, 'R'), (R * 0.42, 0.0, 0.0, 'R'), (R * 0.45, R * 0.05, 0.0, 'R'), (R * 0.45, t * 2.2, 0.0, 'R'),
+                    (R * 0.25, t * 2.4, 0.0, 'R'), (R * 0.25, t * 2.9, 0.0, 'R'), (0.0, t * 2.9, 0.0, 'R')], 36,
+               matrix=mr.frame(Vector((xo + t * 0.9, D * 0.2, zb - R * 0.55)), AXX), mat=0)
+    # (an inner spine joining the plates, under the housing)
+    bevelled(bm, lambda b: cbox(b, (-xo, -D * 0.7, R * 1.2), (xo, D * 0.7, zb), 0), R * 0.05)
+
+
+def knee_lower(bm, p):
+    R = p['size'] / 2
+    W = p['width'] / 2
+    D = p['arm_d'] / 2
+    Ll = max(p['lower_len'], p['size'] * 2)
+    t = p['width'] * 0.14
+    segs = max(48, int(p['segs']))
+    # (the drum: a thick rim, a recessed disc, a slotted screw cap - on both sides)
+    mr.revolve(bm, [(0.0, -W, 0.0, 'R'), (R * 0.95, -W, 0.0, 'R'), (R, -W + R * 0.05, 0.0, 'R'), (R, W - R * 0.05, 0.0, 'R'),
+                    (R * 0.95, W, 0.0, 'R'), (0.0, W, 0.0, 'R')], segs, matrix=mr.frame(Vector(), AXX), mat=0)
+    for sgn in (-1, 1):
+        ax = Vector((sgn, 0, 0))
+        base = W - R * 0.02
+        h = t * 2.6 + R * 0.1
+        C = [(0.0, 0.0, 0.0, 'R'), (R * 0.92, 0.0, 0.0, 'R'), (R * 0.92, h - R * 0.06, 0.0, 'R'), (R * 0.86, h, 0.0, 'R'),
+             (R * 0.66, h, 0.0, 'R'), (R * 0.62, h - R * 0.08, 0.0, 'R'), (R * 0.42, h - R * 0.08, 0.0, 'R'),
+             (R * 0.4, h + R * 0.02, 0.0, 'R'), (0.0, h + R * 0.02, 0.0, 'R')]
+        mr.revolve(bm, C, segs, matrix=mr.frame(ax * base, ax), mat=0)
+        M = mr.frame(ax * (base + h + R * 0.02), ax)           # (the slot across the cap: a bar)
+        vs = [bm.verts.new(M @ Vector((x, y, z))) for x in (-R * 0.3, R * 0.3) for y in (-R * 0.045, R * 0.045)
+              for z in (0.0, R * 0.05)]
+        for q in ((0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)):
+            bm.faces.new([vs[i] for i in q]).material_index = 2
+        for k in range(3):                                    # (three lugs round the rim)
+            a = math.radians(30 + 120 * k)
+            c = ax * (base + h * 0.5) + Vector((0, math.cos(a), math.sin(a))) * R * 0.97
+            mr.revolve(bm, [(0.0, -h * 0.4, 0.0, 'R'), (R * 0.1, -h * 0.4, 0.0, 'R'), (R * 0.1, h * 0.4, 0.0, 'R'),
+                            (0.0, h * 0.4, 0.0, 'R')], 12, matrix=mr.frame(c, ax), mat=0)
+    # (the knee housing: a chamfered plate each side round the drum, open for its cap, bolts at its corners)
+    hr = R * 1.22
+    out = [(hr * 0.55, hr), (hr, hr * 0.5), (hr, -hr * 0.3), (R * 0.85, -R * 1.75), (-R * 0.85, -R * 1.75),
+           (-hr, -hr * 0.3), (-hr, hr * 0.35), (-hr * 0.6, hr)]
+    for sgn in (-1, 1):
+        x = sgn * (W + t * 0.5)
+        bevelled(bm, lambda b, x=x: xplate(b, out, [circle(0.0, 0.0, R * 0.94, 40, rev=True)], x, t, 0), t * 0.3)
+        for (yy, zz) in ((hr * 0.75, hr * 0.55), (-hr * 0.75, hr * 0.6), (hr * 0.78, -hr * 0.25), (-hr * 0.78, -hr * 0.25)):
+            socket_bolt(bm, Vector((x + sgn * t / 2, yy, zz)), Vector((sgn, 0, 0)), R * 0.07)
+    # (the front cover over the drum's lower front)
+    bevelled(bm, lambda b: cbox(b, (-W - t, -hr * 0.95, -R * 1.7), (W + t, -R * 0.55, -R * 0.75), 0), R * 0.06)
+    # (the shin: a chamfered housing, two red cartridges in front, their caps, a tan cover on the side, a collar)
+    zs0, zs1 = -R * 1.6, -Ll * 0.42
+    bevelled(bm, lambda b: cbox(b, (-W * 1.05, -D * 1.1, zs1), (W * 1.05, D * 1.1, zs0), 0), R * 0.08, 3)
+    zc0, zc1 = -Ll * 0.4, -Ll * 0.8
+    for xx in (-W * 0.52, W * 0.52):
+        bevelled(bm, lambda b, xx=xx: cbox(b, (xx - W * 0.42, -D * 1.6, zc1), (xx + W * 0.42, -D * 0.4, zc0), 3), R * 0.04)
+        bevelled(bm, lambda b, xx=xx: cbox(b, (xx - W * 0.3, -D * 1.75, zc0 - R * 0.35), (xx + W * 0.3, -D * 1.45,
+                                                                                         zc0 - R * 0.05), 3), R * 0.03)
+        bevelled(bm, lambda b, xx=xx: cbox(b, (xx - W * 0.36, -D * 1.55, zc0 - R * 0.02), (xx + W * 0.36, -D * 0.5,
+                                                                                         zc0 + R * 0.18), 3), R * 0.04)
+        for zz in (zc1 + (zc0 - zc1) * 0.25, zc1 + (zc0 - zc1) * 0.55):      # (ribs across each)
+            bevelled(bm, lambda b, xx=xx, zz=zz: cbox(b, (xx - W * 0.44, -D * 1.66, zz - R * 0.03),
+                                                     (xx + W * 0.44, -D * 0.45, zz + R * 0.03), 0), R * 0.01, 1)
+    bevelled(bm, lambda b: cbox(b, (-W * 0.12, -D * 1.4, zc1), (W * 0.12, D * 0.6, zc0), 0), R * 0.03)   # (between)
+    tc = [(D * 1.4, -R * 1.5), (D * 1.5, -Ll * 0.55), (D * 0.9, -Ll * 0.86), (-D * 0.6, -Ll * 0.86), (-D * 1.0, -Ll * 0.7),
+          (-D * 0.7, -Ll * 0.45), (-D * 0.2, -R * 1.5)]
+    bevelled(bm, lambda b: xplate(b, tc, [], W * 1.05 + t * 0.6, t * 1.1, 4), t * 0.3)
+    bevelled(bm, lambda b: cbox(b, (-W * 0.95, -D * 1.0, zc1 - R * 0.05), (W * 0.95, D * 1.0, -Ll * 0.85), 0), R * 0.05)
+    bevelled(bm, lambda b: cbox(b, (-W * 1.1, -D * 1.25, -Ll * 0.92), (W * 1.1, D * 1.25, -Ll * 0.85), 4), R * 0.04, 3)
+    bevelled(bm, lambda b: cbox(b, (-W * 0.8, -D * 0.9, -Ll), (W * 0.8, D * 0.9, -Ll * 0.92), 0), R * 0.04)
+
+
+AXX = Vector((1, 0, 0))
+
+
 # --- the parts -----------------------------------------------------------------------------------------------------
 
 def build_upper(me, p):
@@ -191,7 +350,9 @@ def build_upper(me, p):
         R = p['size'] / 2
         st = p['style']
         Lu = max(p['upper_len'], p['size'])
-        if st in {'FORK', 'PLATES'}:
+        if st == 'KNEE':
+            knee_upper(bm, p)
+        elif st in {'FORK', 'PLATES'}:
             Lp, half = side_plates(bm, p, holes=int(p['holes']) if st == 'PLATES' else 0)
             z0 = Lp - max(p['arm_d'] / 2, R * 0.6) * 0.9
             M = Matrix.Identity(4)
@@ -266,7 +427,9 @@ def build_lower(me, p):
         R = p['size'] / 2
         st = p['style']
         Ll = max(p['lower_len'], p['size'])
-        if st in {'FORK', 'PLATES', 'TUBE'}:
+        if st == 'KNEE':
+            knee_lower(bm, p)
+        elif st in {'FORK', 'PLATES', 'TUBE'}:
             drum(bm, p, mat=0)
             from .actuator_gen import box
             bx = p['width'] / 2 * 0.96                         # (a neck under the drum to the bar)
@@ -376,7 +539,9 @@ def _mats(me):
         return
     for name, col, metal, rough in (('MCH Joint Body', (0.32, 0.34, 0.3), 0.1, 0.5),
                                      ('MCH Joint Plate', (0.36, 0.42, 0.22), 0.1, 0.45),
-                                     ('MCH Joint Metal', (0.55, 0.56, 0.58), 0.9, 0.3)):
+                                     ('MCH Joint Metal', (0.55, 0.56, 0.58), 0.9, 0.3),
+                                     ('MCH Joint Red', (0.55, 0.08, 0.05), 0.1, 0.45),
+                                     ('MCH Joint Tan', (0.52, 0.45, 0.32), 0.1, 0.55)):
         m = bpy.data.materials.get(name)
         if m is None:
             m = bpy.data.materials.new(name)

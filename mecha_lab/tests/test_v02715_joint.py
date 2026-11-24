@@ -35,7 +35,7 @@ def W(ob):
 st = S.mch_joint
 st.size, st.width, st.upper_len, st.lower_len, st.bend = 0.5, 0.36, 1.2, 1.2, 0.0
 S.cursor.location = (0, 0, 0)
-for style in ('FORK', 'PLATES', 'TUBE', 'BALL', 'UNIVERSAL'):
+for style in ('KNEE', 'FORK', 'PLATES', 'TUBE', 'BALL', 'UNIVERSAL'):
     for o in C.selected_objects:
         o.select_set(False)
     st.style = style
