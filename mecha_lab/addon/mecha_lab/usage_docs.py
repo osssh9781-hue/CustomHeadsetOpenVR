@@ -120,6 +120,22 @@ DOCS = {
               ('End Size', '마지막 크기 비율 (작으면 점점 작아짐)', 'the last cut\'s size (less: smaller and smaller)'),
               ('Align', '가이드 방향 따라 돌림', 'each cut turned with the guide')],
         tips=[('깊이 · 모서리 마감은 컷 툴 설정 그대로', 'Depth and edge finish: the Cut tool\'s settings')]),
+    # 0.24.306 Tire & Gear
+    'TIREGEN': dict(
+        what=('타이어 · 휠 · 톱니바퀴(기어)를 3D 커서에 소환하고 슬라이더로 바로 바꾼다',
+              'Summon a tire, its wheel or a gear at the 3D cursor and shape it with sliders'),
+        how=[('Summon Tire / Summon Wheel / Summon Gear 를 누른다', 'Press Summon Tire / Summon Wheel / Summon Gear'),
+             ('선택된 채로 슬라이더를 바꾸면 바로 바뀐다', 'With it selected, the sliders change it at once'),
+             ('위에 조각을 그리고 선택한 뒤 Array Around 로 축 둘레에 반복', 'Draw a piece on it, select it, Array Around repeats it round the axle')],
+        keys=[('LMB', '오브젝트 선택', 'select an object')],
+        opts=[('Teeth', '톱니 개수', 'how many teeth'),
+              ('Gear Diameter', '톱니 끝 기준 지름', 'across the tooth tips'),
+              ('Thickness', '기어 두께', 'how thick'),
+              ('Tooth Depth', '톱니 깊이 (반지름 비율)', 'tooth depth (of the radius)'),
+              ('Tooth Width', '톱니 윗면 폭', 'tooth top width'),
+              ('Square / Trapezoid / Round / Saw', '톱니 모양', 'tooth shape'),
+              ('Hole', '가운데 축 구멍 (0 = 없음)', 'axle hole (0: none)')],
+        tips=[('기존 Shapes 페이지의 Tire & Wheel 도 그대로 있음', 'The Tire & Wheel section on the Shapes page stays as it was')]),
     # 0.24.294 Spring
     'SPRING': dict(
         what=('선을 그으면 그 선을 따라 코일 스프링이 생기고, 두께 · 폭은 나중에 정한다',

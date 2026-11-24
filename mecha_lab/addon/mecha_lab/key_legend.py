@@ -63,6 +63,7 @@ EXTRA = {
                 'Shift   the line straight;  click a part   along its edges (its rim, else its sharp edges)',
                 'The window   Profile, Width, Height, Offset, Chamfer, Bevel (live)'],
     'RIG': ['Make Rig in the window (Human / Quadruped / Mecha / Chain)   click a mecha part: its joint there   Edit Bones / Pose / Bind'],   # 0.24.241
+    'TIREGEN': ['Summon Tire / Wheel / Gear at the 3D cursor   select one: its sliders change it live   Array Around: a piece drawn on it, round the axle'],
     'BODYKIT': ['Click a part to pick it - on a one-piece body: the head, a forearm, a finger ... (Shift: more)   R: turn it at its joint   the window: Body Shape / Part sliders',
                 'Mirror Pose: the picked side onto the other   Join to One Mesh: one mesh as shaped'],
     'MUSCLE': ['Click the muscle\'s points in order (the window says which)   the last one makes it',

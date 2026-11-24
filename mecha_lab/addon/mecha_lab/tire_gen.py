@@ -46,6 +46,11 @@ PRESETS = {
 PRESET_IDS = tuple(PRESETS)
 STYLES = (('BARREL', 'Barrel', 'An open rim and a hub: draw a spoke from the hub to the rim, then Array Around'),
           ('DISC', 'Disc', 'A dished disc wheel: draw on its face, then Array Around'))
+GEAR_SHAPES = (('SQUARE', 'Square', 'Straight-sided teeth'),
+               ('TRAPEZOID', 'Trapezoid', 'Teeth wider at the root (a spur gear)'),
+               ('ROUND', 'Round', 'Rounded teeth'),
+               ('SAW', 'Saw', 'Teeth leaning one way (a ratchet)'))
+KINDS = {'TIRE', 'WHEEL', 'GEAR'}  # 0.24.306 + Gear: what Array Around goes round
 _BUSY = [False]
 
 
@@ -60,6 +65,11 @@ def _st(context):
 def _numbers(st):
     return dict(D=st.diameter, w=st.width, rr=st.rim, s=st.shoulder, segs=int(st.segments),
                 lines=int(st.tread_lines), style=st.wheel_style)
+
+
+def gear_numbers(st):
+    return dict(D=st.gear_diameter, teeth=int(st.gear_teeth), T=st.gear_thick, depth=st.gear_depth,
+                tip=st.gear_tip, shape=st.gear_shape, hole=st.gear_hole, segs=int(st.segments))
 
 
 # --- the shapes --------------------------------------------------------------------------------------------------
@@ -137,16 +147,85 @@ def _revolve(bm, prof, segs, closed):
                 bm.faces.new((a[j], a[k], b[k], b[j]))
 
 
+def gear_outline(p):
+    """0.24.306 (user: "타이어 제네레이터 ... 거기에 톱니도 추가해줘"): a gear's outline round the axle [(angle,
+    radius)] - ``teeth`` teeth of ``shape``, ``depth`` of the radius deep, ``tip`` of a tooth's step wide at the top."""
+    n = max(3, int(p['teeth']))
+    R = max(1e-3, p['D'] / 2)
+    d = max(0.01, min(0.6, p['depth'])) * R
+    rr = R - d
+    tip = max(0.05, min(0.9, p['tip']))
+    step = 2 * math.pi / n
+    shape = p.get('shape', 'TRAPEZOID')
+    # a tooth from u = 0 to 1 of its step (its middle at 0.5): [(u, 0 root .. 1 tip)]
+    if shape == 'SQUARE':
+        a, b = 0.5 - tip / 2, 0.5 + tip / 2
+        tooth = [(a, 0.0), (a + 1e-3, 1.0), (b - 1e-3, 1.0), (b, 0.0)]
+    elif shape == 'ROUND':
+        w = min(0.95, tip + 0.25)
+        m = 9
+        tooth = [(0.5 - w / 2 + w * i / (m - 1), math.sin(math.pi * i / (m - 1)) ** 0.55) for i in range(m)]
+    elif shape == 'SAW':
+        w = min(0.95, tip + 0.4)
+        a = 0.5 - w / 2
+        tooth = [(a, 0.0), (a + w * 0.82, 1.0), (a + w * 0.82 + 0.04 * w, 1.0), (a + w, 0.0)]
+    else:
+        base = min(0.95, tip + 0.3)
+        tooth = [(0.5 - base / 2, 0.0), (0.5 - tip / 2, 1.0), (0.5 + tip / 2, 1.0), (0.5 + base / 2, 0.0)]
+    gap = (1.0 - tooth[-1][0]) + tooth[0][0]            # (the root between two teeth, of a step)
+    nr = max(0, int(gap * step / (2 * math.pi / 96)))   # (the root follows its circle)
+    out = []
+    for k in range(n):
+        for u, h in tooth:
+            out.append(((k + u) * step, rr + d * h))
+        u0, u1 = tooth[-1][0], 1.0 + tooth[0][0]
+        for i in range(1, nr + 1):
+            out.append(((k + u0 + (u1 - u0) * i / (nr + 1)) * step, rr))
+    return out
+
+
+def _gear(bm, p):
+    """The gear: its outline pushed ``T`` along the axle (X), a round hole (``hole`` of the diameter) through it."""
+    ol = gear_outline(p)
+    T = max(1e-4, p['T'])
+    R = p['D'] / 2
+    rh = max(0.0, min(0.9, p['hole'])) * R * (1.0 - max(0.01, min(0.6, p['depth'])))
+    rings = {}
+    for side, x in (('a', -T / 2), ('b', T / 2)):
+        rings[side] = [bm.verts.new((x, r * math.cos(a), r * math.sin(a))) for a, r in ol]
+        if rh > 1e-6:
+            rings[side + 'h'] = [bm.verts.new((x, rh * math.cos(a), rh * math.sin(a))) for a, _r in ol]
+    m = len(ol)
+    A, B = rings['a'], rings['b']
+    for j in range(m):
+        k = (j + 1) % m
+        bm.faces.new((A[j], A[k], B[k], B[j]))           # (the teeth all round)
+    if rh > 1e-6:
+        Ah, Bh = rings['ah'], rings['bh']
+        for j in range(m):
+            k = (j + 1) % m
+            bm.faces.new((Bh[j], Bh[k], Ah[k], Ah[j]))   # (the hole's wall)
+            bm.faces.new((A[k], A[j], Ah[j], Ah[k]))     # (its two faces)
+            bm.faces.new((B[j], B[k], Bh[k], Bh[j]))
+    else:
+        bm.faces.new(list(reversed(A)))
+        bm.faces.new(B)
+
+
 def build_mesh(me, kind, p):
     """The mesh ``me`` made the tire / wheel of numbers ``p`` (its old geometry replaced)."""
     bm = bmesh.new()
     try:
         if kind == 'TIRE':
             _revolve(bm, tire_profile(p), p['segs'], True)
+        elif kind == 'GEAR':
+            _gear(bm, p)
         else:
             for closed, prof in wheel_profiles(p):
                 _revolve(bm, prof, p['segs'], closed)
         bmesh.ops.remove_doubles(bm, verts=list(bm.verts), dist=1e-7)
+        if kind == 'GEAR':                                   # (the hole's merged points: no empty faces left)
+            bmesh.ops.dissolve_degenerate(bm, dist=1e-7, edges=list(bm.edges))
         bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
         bm.normal_update()
         for f in bm.faces:
@@ -171,7 +250,7 @@ def _new(context, kind, p, name):
 
 
 def rebuild(ob, p):
-    if kind_of(ob) not in {'TIRE', 'WHEEL'}:
+    if kind_of(ob) not in KINDS:
         return
     if ob.mode == 'EDIT':
         return
@@ -197,12 +276,12 @@ def axle(target):
 def target_for(context, pieces):
     """The tire / wheel the pieces go round: the active one, a selected one, else the nearest to them."""
     act = getattr(context, 'active_object', None)
-    if kind_of(act) in {'TIRE', 'WHEEL'}:
+    if kind_of(act) in KINDS:
         return act
-    sel = [o for o in context.selected_objects if kind_of(o) in {'TIRE', 'WHEEL'}]
+    sel = [o for o in context.selected_objects if kind_of(o) in KINDS]
     if sel:
         return sel[0]
-    cands = [o for o in context.scene.objects if kind_of(o) in {'TIRE', 'WHEEL'}]
+    cands = [o for o in context.scene.objects if kind_of(o) in KINDS]
     if not cands or not pieces:
         return None
     pc = sum((p.matrix_world @ (sum((Vector(c) for c in p.bound_box), Vector()) / 8) for p in pieces),
@@ -451,7 +530,7 @@ def arrayed(context):
     if sel:
         return sel
     act = getattr(context, 'active_object', None)
-    if kind_of(act) in {'TIRE', 'WHEEL'}:
+    if kind_of(act) in KINDS:
         return [o for o in act.children if o.get(ARR) == act.name]
     return []
 
@@ -469,6 +548,15 @@ def _shape_update(self, context):
     for ob in context.selected_objects:
         k = kind_of(ob)
         if k in {'TIRE', 'WHEEL'}:
+            rebuild(ob, p)
+
+
+def _gear_update(self, context):
+    if _BUSY[0]:
+        return
+    p = gear_numbers(self)
+    for ob in context.selected_objects:
+        if kind_of(ob) == 'GEAR':
             rebuild(ob, p)
 
 
@@ -531,6 +619,20 @@ class MCH_PG_Tire(bpy.types.PropertyGroup):
                                      update=_stagger_update,
                                      description='Mirror Across: the other half turned round the axle by this much '
                                                  'of a step - 0 side by side, 0.5 in between (left / right alternating)')
+    # 0.24.306 Gear (the selected gear changes at once)
+    gear_teeth: bpy.props.IntProperty(name='Teeth', default=20, min=3, max=300, update=_gear_update,
+                                      description='How many teeth round it')
+    gear_diameter: bpy.props.FloatProperty(name='Gear Diameter', default=0.5, min=0.005, soft_max=3.0, unit='LENGTH',
+                                           update=_gear_update, description='Across the tips of its teeth')
+    gear_thick: bpy.props.FloatProperty(name='Thickness', default=0.08, min=0.001, soft_max=1.0, unit='LENGTH',
+                                        update=_gear_update, description='How thick it is (along its axle)')
+    gear_depth: bpy.props.FloatProperty(name='Tooth Depth', default=0.12, min=0.01, max=0.6, update=_gear_update,
+                                        description='How deep the teeth are, of the radius')
+    gear_tip: bpy.props.FloatProperty(name='Tooth Width', default=0.4, min=0.05, max=0.9, update=_gear_update,
+                                      description='How wide a tooth is at its top, of a tooth\'s step')
+    gear_shape: bpy.props.EnumProperty(name='Teeth', items=GEAR_SHAPES, default='TRAPEZOID', update=_gear_update)
+    gear_hole: bpy.props.FloatProperty(name='Hole', default=0.25, min=0.0, max=0.9, update=_gear_update,
+                                       description='The hole for the axle, of the gear (0: none)')
 
 
 # --- operators ----------------------------------------------------------------------------------------------------
@@ -541,13 +643,23 @@ class MCH_OT_tire_add(bpy.types.Operator):
     bl_idname = 'mch.tire_add'
     bl_label = 'Summon Tire'
     bl_options = {'REGISTER', 'UNDO'}
-    kind: bpy.props.EnumProperty(items=(('TIRE', 'Tire', ''), ('WHEEL', 'Wheel', '')), default='TIRE')
+    kind: bpy.props.EnumProperty(items=(('TIRE', 'Tire', ''), ('WHEEL', 'Wheel', ''), ('GEAR', 'Gear', '')),
+                                 default='TIRE')
 
     def execute(self, context):
         if context.mode != 'OBJECT':
             self.report({'WARNING'}, 'Tire: Object Mode only')
             return {'CANCELLED'}
         st = _st(context)
+        if self.kind == 'GEAR':                            # 0.24.306 a gear at the 3D cursor, its axle along X
+            ob = _new(context, 'GEAR', gear_numbers(st), 'MCH_Gear')
+            ob.location = context.scene.cursor.location
+            for o in context.selected_objects:
+                o.select_set(False)
+            ob.select_set(True)
+            context.view_layer.objects.active = ob
+            self.report({'INFO'}, f'{ob.name}: the Gear sliders change it while it is selected')
+            return {'FINISHED'}
         p = _numbers(st)
         act = getattr(context, 'active_object', None)
         tire = act if self.kind == 'WHEEL' and kind_of(act) == 'TIRE' else None
@@ -579,7 +691,7 @@ class MCH_OT_tire_array(bpy.types.Operator):
         if context.mode != 'OBJECT':
             self.report({'WARNING'}, 'Array Around: Object Mode only')
             return {'CANCELLED'}
-        pieces = [o for o in context.selected_objects if o.type == 'MESH' and kind_of(o) not in {'TIRE', 'WHEEL'}]
+        pieces = [o for o in context.selected_objects if o.type == 'MESH' and kind_of(o) not in KINDS]
         target = target_for(context, pieces)
         if not pieces or target is None:
             self.report({'WARNING'}, 'Array Around: select the piece(s) you drew (and the tire / wheel)')
@@ -679,6 +791,22 @@ def draw(layout, context):
     r = box.row(align=True)
     r.operator('mch.tire_array_apply', text='Apply')
     r.operator('mch.tire_array_remove', text='Remove')
+    draw_gear(layout, context)
+
+
+def draw_gear(layout, context):
+    """0.24.306 the Gear box (the Tire & Gear tool)."""
+    st = _st(context)
+    box = layout.box()
+    box.label(text='Gear')
+    box.row(align=True).prop(st, 'gear_shape', expand=True)
+    c = box.column(align=True)
+    for k in ('gear_teeth', 'gear_diameter', 'gear_thick', 'gear_depth', 'gear_tip', 'gear_hole'):
+        c.prop(st, k)
+    box.operator('mch.tire_add', text='Summon Gear', icon='PREFERENCES').kind = 'GEAR'
+    act = getattr(context, 'active_object', None)
+    box.label(text=f'{act.name}: live' if kind_of(act) == 'GEAR' else 'Select a gear: the sliders change it',
+              icon='INFO')
 
 
 class MCH_OT_tire_preset(bpy.types.Operator):
@@ -707,6 +835,26 @@ class MCH_OT_tire_style(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_TOOL_tire_gear(bpy.types.WorkSpaceTool):
+    """0.24.306 Tire & Gear: its own tool (the window: Tire & Wheel, Gear)"""
+    bl_space_type = 'VIEW_3D'
+    bl_context_mode = 'OBJECT'
+    bl_idname = 'mecha.tire_gear'
+    bl_label = 'Tire & Gear'
+    bl_description = ('Summon a tire, its wheel or a gear at the 3D cursor; select one and the sliders change it.\n'
+                      'Draw a piece on it, Array Around repeats it round the axle')
+    bl_icon = 'ops.generic.select'
+    bl_widget = None
+    bl_keymap = (('view3d.select', {'type': 'LEFTMOUSE', 'value': 'CLICK'}, None),
+                 ('view3d.select', {'type': 'LEFTMOUSE', 'value': 'CLICK', 'shift': True},
+                  {'properties': [('toggle', True)]}))
+
+    def draw_settings(context, layout, tool):
+        region = getattr(context, 'region', None)
+        if region is not None and region.type == 'TOOL_HEADER':
+            return
+
+
 CLASSES = (MCH_PG_Tire, MCH_OT_tire_add, MCH_OT_tire_array, MCH_OT_tire_array_apply, MCH_OT_tire_array_remove,
            MCH_OT_tire_preset, MCH_OT_tire_style)
 
@@ -715,9 +863,17 @@ def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
     bpy.types.Scene.mch_tire = bpy.props.PointerProperty(type=MCH_PG_Tire)
+    try:
+        bpy.utils.register_tool(MCH_TOOL_tire_gear, separator=False, group=False)
+    except (ValueError, RuntimeError, KeyError):
+        pass
 
 
 def unregister():
+    try:
+        bpy.utils.unregister_tool(MCH_TOOL_tire_gear)
+    except (ValueError, RuntimeError, KeyError):
+        pass
     try:
         del bpy.types.Scene.mch_tire
     except AttributeError:

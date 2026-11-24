@@ -50,35 +50,37 @@ MY_CORE, MY_CAP, MY_ALL = 'mecha_core', 'mecha_cap', 'mecha_muscle'
 #   points to the third), SHEET (a membrane over the points)
 PRESETS = (
     ('SPINDLE', 'Muscle', ('where it starts', 'where it ends'), 'LINE',
-     dict(strands=1, twist=0.0, thickness=1.0, width=1.0, belly=0.5, tendon=0.15, segments=0)),
+     dict(strands=1, twist=0.0, thickness=1.0, width=1.0, belly=0.5, tendon=0.15, segments=0, ends=0.0)),
     ('DOUBLE', 'Two Strands', ('where it starts', 'where it ends'), 'LINE',
-     dict(strands=2, twist=0.0, thickness=0.9, width=0.85, belly=0.5, tendon=0.15, segments=0)),
+     dict(strands=2, twist=0.0, thickness=0.9, width=0.85, belly=0.5, tendon=0.15, segments=0, ends=0.0)),
     ('BICEPS', 'Biceps', ('shoulder (front)', 'elbow (inside)'), 'LINE',
-     dict(strands=2, twist=0.15, thickness=1.15, width=0.95, belly=0.55, tendon=0.2, segments=0)),
+     dict(strands=2, twist=0.15, thickness=1.15, width=0.95, belly=0.55, tendon=0.2, segments=0, ends=0.0)),
     ('TRICEPS', 'Triceps', ('shoulder (back)', 'elbow (back)'), 'LINE',
-     dict(strands=3, twist=0.0, thickness=0.85, width=1.05, belly=0.4, tendon=0.28, segments=0)),
+     dict(strands=3, twist=0.0, thickness=0.85, width=1.05, belly=0.4, tendon=0.28, segments=0, ends=0.0)),
     ('QUAD', 'Thigh Front', ('hip (front)', 'knee'), 'LINE',
-     dict(strands=3, twist=0.0, thickness=0.85, width=1.15, belly=0.48, tendon=0.14, segments=0)),
+     dict(strands=3, twist=0.0, thickness=0.85, width=1.15, belly=0.48, tendon=0.14, segments=0, ends=0.0)),
     ('HAMSTRING', 'Thigh Back', ('hip (back)', 'knee (back)'), 'LINE',
-     dict(strands=2, twist=0.0, thickness=0.85, width=1.0, belly=0.45, tendon=0.2, segments=0)),
+     dict(strands=2, twist=0.0, thickness=0.85, width=1.0, belly=0.45, tendon=0.2, segments=0, ends=0.0)),
     ('CALF', 'Calf', ('knee (back)', 'heel'), 'LINE',
-     dict(strands=2, twist=0.0, thickness=1.2, width=1.1, belly=0.3, tendon=0.38, segments=0)),
+     dict(strands=2, twist=0.0, thickness=1.2, width=1.1, belly=0.3, tendon=0.38, segments=0, ends=0.0)),
     ('FOREARM', 'Forearm', ('elbow', 'wrist'), 'LINE',
-     dict(strands=2, twist=0.1, thickness=0.9, width=0.9, belly=0.3, tendon=0.3, segments=0)),
+     dict(strands=2, twist=0.1, thickness=0.9, width=0.9, belly=0.3, tendon=0.3, segments=0, ends=0.0)),
     ('NECK', 'Neck', ('behind the ear', 'collarbone (middle)'), 'LINE',
-     dict(strands=1, twist=0.0, thickness=0.8, width=0.7, belly=0.5, tendon=0.12, segments=0)),
+     dict(strands=1, twist=0.0, thickness=0.8, width=0.7, belly=0.5, tendon=0.12, segments=0, ends=0.0)),
     ('ABS', 'Abs', ('ribs (bottom, middle)', 'pelvis (middle)'), 'LINE',
-     dict(strands=2, twist=0.0, thickness=0.45, width=1.3, belly=0.5, tendon=0.04, segments=4)),
+     dict(strands=2, twist=0.0, thickness=0.45, width=1.3, belly=0.5, tendon=0.04, segments=4, ends=0.0)),
     ('DELTOID', 'Shoulder', ('collarbone (front)', 'shoulder blade (back)', 'arm (where it ends)'), 'FAN',
-     dict(strands=3, twist=0.0, thickness=1.1, width=1.0, belly=0.38, tendon=0.2, segments=0)),
+     dict(strands=3, twist=0.0, thickness=1.1, width=1.0, belly=0.38, tendon=0.2, segments=0, ends=0.0)),
     ('PEC', 'Chest', ('where it starts (breastbone, top)', 'how far down (its thickness)', 'arm (where it ends)'),
-     'FAN', dict(strands=3, twist=1.0, thickness=0.75, width=1.0, belly=0.35, tendon=0.15, segments=0)),
+     'FAN', dict(strands=3, twist=1.0, thickness=0.75, width=1.0, belly=0.35, tendon=0.15, segments=0, ends=0.0)),
     ('LAT', 'Back (Lat)', ('lower back', 'mid back (spine)', 'armpit (where it ends)'), 'FAN',
-     dict(strands=4, twist=0.3, thickness=0.5, width=1.0, belly=0.4, tendon=0.15, segments=0)),
+     dict(strands=4, twist=0.3, thickness=0.5, width=1.0, belly=0.4, tendon=0.15, segments=0, ends=0.0)),
     ('TRAP', 'Trapezius', ('skull (back)', 'mid back (spine)', 'shoulder (where it ends)'), 'FAN',
-     dict(strands=3, twist=0.0, thickness=0.55, width=1.0, belly=0.45, tendon=0.1, segments=0)),
+     dict(strands=3, twist=0.0, thickness=0.55, width=1.0, belly=0.45, tendon=0.1, segments=0, ends=0.0)),
     ('GLUTE', 'Glute', ('hip (top)', 'tailbone', 'thigh (where it ends)'), 'FAN',
-     dict(strands=3, twist=0.0, thickness=1.1, width=1.0, belly=0.4, tendon=0.15, segments=0)),
+     dict(strands=3, twist=0.0, thickness=1.1, width=1.0, belly=0.4, tendon=0.15, segments=0, ends=0.0)),
+    ('FLESH', 'Flesh (Thick Ends)', ('where it starts', 'where it ends'), 'LINE',
+     dict(strands=1, twist=0.0, thickness=1.1, width=1.15, belly=0.5, tendon=0.0, segments=0, ends=1.0)),
     ('MEMBRANE', 'Membrane', None, 'SHEET', dict()),
 )
 PRESET = {p[0]: p for p in PRESETS}
@@ -289,8 +291,30 @@ def strand_ends(kind, pts, nrms, strands, twist, spread, bvh):
 
 # ---- shapes -------------------------------------------------------------------------------------------------------------
 
-def profile(t, belly, tendon, fan=False, segments=0):
-    """A strand's size along it (0 .. 1): tendons at the ends (the far one longer), the belly where Belly says."""
+def flesh_profile(t, waist=0.55):
+    """0.24.306 (user: "양끝이 더 두꺼운 크리쳐 살점 모양"): a lump of flesh - a round bulb at each end, a thinner waist
+    between (``waist``: its size), rounded shut at the very ends."""
+    t = np.clip(np.asarray(t, float), 0.0, 1.0)
+    c = 0.2
+    b1 = np.sqrt(np.clip(1.0 - ((t - c) / c) ** 2, 0.0, 1.0))
+    b2 = np.sqrt(np.clip(1.0 - ((t - 1.0 + c) / c) ** 2, 0.0, 1.0))
+    mid = waist * np.sqrt(np.clip(1.0 - ((t - 0.5) / 0.5) ** 2, 0.0, 1.0))
+    p = 4.0
+    r = (b1 ** p + b2 ** p + mid ** p) ** (1.0 / p)
+    return np.maximum(r / max(float(r.max()), 1e-9), 0.06)
+
+
+def profile(t, belly, tendon, fan=False, segments=0, ends=0.0):
+    """A strand's size along it (0 .. 1): tendons at the ends (the far one longer), the belly where Belly says
+    (``ends`` > 0: blended toward a lump thick at both ends, see flesh_profile)."""
+    r = _profile(t, belly, tendon, fan, segments)
+    if ends > 0.0 and not fan:
+        a = min(float(ends), 1.0)
+        r = (1.0 - a) * r + a * flesh_profile(t)
+    return r
+
+
+def _profile(t, belly, tendon, fan=False, segments=0):
     t = np.asarray(t, float)
     t0, t1 = tendon * 0.45, 1.0 - tendon
     u = np.clip((t - t0) / max(t1 - t0, 1e-6), 0.0, 1.0)
@@ -1555,7 +1579,7 @@ def build_mesh(context, ob):
         t = np.linspace(0.0, 1.0, K)
         L = L0 * float(pg.length)
         fan = kind == 'FAN'
-        r = profile(t, pg.belly, pg.tendon, fan=fan, segments=int(pg.segments))
+        r = profile(t, pg.belly, pg.tendon, fan=fan, segments=int(pg.segments), ends=float(pg.ends))
         vol = float(pg.volume)
         if fan:                                       # (a fan's strands overlap into one sheet)
             base_w = w * L0 * 1.45
@@ -1568,11 +1592,11 @@ def build_mesh(context, ob):
             C, Nn = _resample(P, N, s0, s1, K2)
             T, nrm, side = _frames(C, Nn)
             t2 = np.linspace(0.0, 1.0, K2)
-            r2 = profile(t2, pg.belly, pg.tendon, fan=fan, segments=int(pg.segments))
+            r2 = profile(t2, pg.belly, pg.tendon, fan=fan, segments=int(pg.segments), ends=float(pg.ends))
             W2 = base_w * float(pg.width) * vol * r2
             H2 = base_w * 0.62 * float(pg.thickness) * vol * r2 * (0.6 if fan else 1.0)
             ctr = C + nrm * (H2 * (1.0 - float(pg.sink)))[:, None]
-            tend = np.clip(1.0 - (r2 - 0.16) / 0.5, 0.0, 1.0)
+            tend = np.clip(1.0 - (r2 - 0.16) / 0.5, 0.0, 1.0) * (1.0 - min(float(pg.ends), 1.0))   # (flesh: no tendon)
             tube(mesh, ctr, side, nrm, W2, H2, 0, tend=tend, flat=0.55, sides=18)
         elif style == 'BAND':
             # 0.24.185 (user's reference - a synthetic musculature of flat woven sheets): each strand a thin wide band,
@@ -1920,7 +1944,7 @@ def _collection(context):
 
 
 LIVE = ('preset', 'shape', 'sculpt', 'my_shape', 'style', 'strands', 'twist', 'spread', 'thickness', 'width', 'volume', 'length', 'belly', 'tendon',
-        'segments', 'sink', 'fibers', 'fiber_scale', 'smooth', 'resolution', 'remesh', 'color', 'tendon_color', 'core',
+        'segments', 'ends', 'sink', 'fibers', 'fiber_scale', 'smooth', 'resolution', 'remesh', 'color', 'tendon_color', 'core',
         'core_count', 'core_size', 'core_color', 'holes', 'hole_size', 'hole_cells', 'sleeve_thick', 'sleeve_color',
         'cap', 'cap_size', 'cap_length', 'cap_color', 'cable_radius', 'cable_count', 'cable_ties', 'cable_twist', 'cable_spread',
         'band_surface', 'band_rim', 'band_rim_width', 'band_parts', 'band_part', 'my_part',
@@ -2367,6 +2391,8 @@ class MCH_PG_Muscle(bpy.types.PropertyGroup):
                           description='How long the thin tendons at its ends are')
     segments: IntProperty(name='Segments', default=0, min=0, max=8, update=_upd,
                           description='Grooves across it (the abs: 4)')
+    ends: FloatProperty(name='Thick Ends', default=0.0, min=0.0, max=1.0, update=_upd,
+                        description='A lump of flesh thicker at both ends, thinner between (1: fully; 0: a muscle)')
     sink: FloatProperty(name='Sink', default=0.35, min=0.0, max=1.0, update=_upd,
                         description='How far into the bone it sits')
     fibers: FloatProperty(name='Fibres', default=0.5, min=0.0, max=2.0, update=_upd,
@@ -2941,9 +2967,9 @@ def draw(layout, context, tool='MUSCLE'):
     col.label(text='Shape')
     keys = (('thickness', 'volume', 'width', 'length', 'strands', 'sink') if sculpted else
             ('thickness', 'volume', 'width', 'length', 'strands', 'twist', 'spread', 'belly', 'tendon', 'segments',
-             'sink'))
+             'ends', 'sink'))
     for k in keys:
-        col.prop(pg, k, slider=k in {'twist', 'belly', 'tendon', 'sink'})
+        col.prop(pg, k, slider=k in {'twist', 'belly', 'tendon', 'ends', 'sink'})
     if style == 'CREATURE':
         col = layout.column(align=True)
         col.label(text='Surface')
