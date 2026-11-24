@@ -142,6 +142,19 @@ DOCS = {
               ('브래킷은 따로 된 오브젝트 - 메카에 옮겨 붙이면 그 자리 유지', 'Brackets are objects of their own - moved onto the mech, they stay'),
               ('스프링은 로드를 빼면 같이 늘어남', 'The spring stretches as the rod moves out'),
               ('찍어서 만든 실린더는 값을 바꿔도 두 표면에 다시 붙음 (메카를 옮긴 뒤에도)', 'One clicked between two surfaces is glued to them again when a slider changes (after the mech moved too)')]),
+    # 0.24.317 Turbine
+    'TURBINE': dict(
+        what=('터빈 생성: 팬 · 모터 · 노즐 · 엔진 (축은 X)', 'A turbine: fan, motor, nozzle or engine (its axis along X)'),
+        how=[('Summon Turbine (3D 커서에)', 'Summon Turbine (on the 3D cursor)'),
+             ('선택한 채로 슬라이더를 바꾸면 바로 바뀜, Spin 은 로터만 돌림', 'With it selected the sliders change it; Spin turns the rotor')],
+        keys=[('LMB', '오브젝트 선택', 'select an object')],
+        opts=[('Style', '팬 · 모터 · 노즐 · 엔진', 'fan / motor / nozzle / engine'),
+              ('Diameter', '지름', 'how big across'),
+              ('Blade Count / Twist Root / Twist Tip / Sweep', '날개 수 · 뿌리 / 끝 비틀림 · 휘어짐', 'blades, their twist and sweep'),
+              ('Blade Width / Blade Thickness / Hub', '날개 폭 · 두께 · 허브 크기', 'blade width, thickness, hub'),
+              ('Spinner / Stator Vanes / Casing', '앞 콘 · 뒤 고정 날개 · 바깥 링', 'spinner cone, stator vanes, casing'),
+              ('Spin', '로터 회전 (바로)', 'the rotor turned (live)')],
+        tips=[('모터: Coils, 노즐: Petals · Petal Angle · Spokes, 엔진: Body Rings 도 있음', 'Motor: Coils; Nozzle: Petals, Petal Angle, Spokes; Engine: Body Rings')]),
     # 0.24.315 Joint Generator
     'JOINT': dict(
         what=('관절 생성: 위 링크 · 관절 · 아래 링크 (Fork / Side Plates / Tube Frame / Ball Joint / Universal)',

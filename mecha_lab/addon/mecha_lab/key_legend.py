@@ -64,6 +64,7 @@ EXTRA = {
                 'The window   Profile, Width, Height, Offset, Chamfer, Bevel (live)'],
     'RIG': ['Make Rig in the window (Human / Quadruped / Mecha / Chain)   click a mecha part: its joint there   Edit Bones / Pose / Bind'],   # 0.24.241
     'CYLGEN': ['Click a surface, then another: a cylinder between them (its brackets on them)   Esc: start over   a click on a cylinder: select it   the sliders change it'],
+    'TURBINE': ['Summon Turbine at the 3D cursor   select it: the sliders change it   Spin: turns its rotor'],
     'JOINT': ['Summon Joint at the 3D cursor   select it: the sliders change it   Bend: live'],
     'WIRE': ['Click a surface, then another: a wire between them   Esc: start over   a click on a wire: select it   the sliders change it'],
     'BOLT': ['Click a surface: a bolt in a pocket   Alt + click: remove   the sliders change the selected bolts'],
