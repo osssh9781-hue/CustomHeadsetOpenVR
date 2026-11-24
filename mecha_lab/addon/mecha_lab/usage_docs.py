@@ -142,6 +142,20 @@ DOCS = {
               ('브래킷은 따로 된 오브젝트 - 메카에 옮겨 붙이면 그 자리 유지', 'Brackets are objects of their own - moved onto the mech, they stay'),
               ('스프링은 로드를 빼면 같이 늘어남', 'The spring stretches as the rod moves out'),
               ('찍어서 만든 실린더는 값을 바꿔도 두 표면에 다시 붙음 (메카를 옮긴 뒤에도)', 'One clicked between two surfaces is glued to them again when a slider changes (after the mech moved too)')]),
+    # 0.24.315 Joint Generator
+    'JOINT': dict(
+        what=('관절 생성: 위 링크 · 관절 · 아래 링크 (Fork / Side Plates / Tube Frame / Ball Joint / Universal)',
+              'A joint: upper link, hinge, lower link (Fork / Side Plates / Tube Frame / Ball Joint / Universal)'),
+        how=[('Summon Joint (3D 커서에)', 'Summon Joint (on the 3D cursor)'),
+             ('선택한 채로 슬라이더를 바꾸면 바로 바뀜, Bend 는 아래 링크만 돌림 (바로)', 'With it selected the sliders change it; Bend turns the lower link at once')],
+        keys=[('LMB', '오브젝트 선택', 'select an object')],
+        opts=[('Style', '포크 · 양쪽 판 · 파이프 프레임 · 볼 조인트 · 2 축', 'the kind of joint'),
+              ('Joint Size / Joint Width', '관절 드럼 지름 / 폭', 'the drum across / its width'),
+              ('Upper Length / Lower Length / Link Width / Link Depth', '위 · 아래 링크 길이, 굵기', 'the links'),
+              ('Cap / Cap Bolts / Holes', '캡 모양 · 볼트 수 · 판 경량 구멍', 'cap, bolts, plate holes'),
+              ('Bend', '굽힘 각도 (Universal: Side 도)', 'the bend (Universal: Side too)'),
+              ('Piston', '링크 사이 피스톤 (굽히면 따라감)', 'a piston between the links (follows the bend)')],
+        tips=[('기존 Real Parts 의 관절 부품은 그대로', 'The Real Parts joints stay as they were')]),
     # 0.24.313 Wire Harness
     'WIRE': dict(
         what=('점 두 개를 찍으면 그 사이에 전선 (넓은 리본 / 한 가닥 / 여러 가닥 / 굵은 선 + 얇은 선 / 묶인 와이어)',
