@@ -357,8 +357,8 @@ def build(context, p, tid=None):
             ob.data = ob.data.copy()
     if body.mode != 'EDIT' and rotor.mode != 'EDIT':
         build_parts(body.data, rotor.data, p)
-    for ob in (body, rotor):
-        _mats(ob.data)
+    # 0.24.318 (user: "터빈은 다 재질 없음으로 해 줘, 내가 알아서 넣을게"): no materials made or given - the parts
+    # keep their slot numbers (0 metal, 1 blades, 2 copper, 3 glow, 4 dark) for slots you add
     rotor.parent = body
     rotor.matrix_parent_inverse = Matrix.Identity(4)
     body[PARAMS] = json.dumps(p)

@@ -68,8 +68,9 @@ st.stators = False
 check('Casing / Stator Vanes off: the body empty of them', len(b.data.polygons) == 0)
 st.casing = True
 check('... casing on again', len(b.data.polygons) > 0 and open_edges(b) == 0)
-check('materials: metal, blade, copper, glow, dark', len(r.data.materials) == 5 and
-      r.data.materials[3].node_tree.nodes['Principled BSDF'].inputs['Emission Strength'].default_value > 1)
+check('no materials (0.24.318: the user puts them in) - none made, none on the parts',
+      len(r.data.materials) == 0 and len(b.data.materials) == 0 and
+      not any(m.name.startswith('MCH Turbine') for m in bpy.data.materials))
 bpy.ops.mch.turbine_plain()
 check('Make Plain', not tg.turbine_of(b))
 summary()
