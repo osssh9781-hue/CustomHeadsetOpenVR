@@ -1,4 +1,5 @@
-"""0.24.300 (user: "왜 컷할 때는 림이랑 몰드가 적용이 안 돼?" / "당연히 빠지는 걸로" / "바텀 몰딩은 우리 기준 표면 쪽이 계단처럼
+"""0.24.304: the carve's moldings are the Mold Cut (scene.mch_moldcut), apart from Edge Molding.
+0.24.300 (user: "왜 컷할 때는 림이랑 몰드가 적용이 안 돼?" / "당연히 빠지는 걸로" / "바텀 몰딩은 우리 기준 표면 쪽이 계단처럼
 파이는 게 좋겠지"): Alt carve with Edge Molding / Top Dome - the shape turned the other way: the bottom flange a step at
 the opening (the surface side), the Dome a bowl floor."""
 import math
@@ -30,8 +31,10 @@ def cube():
     return C.active_object
 
 
-# ---- Armor Plate Alt carve
-ex = S.mch_extract
+# ---- Armor Plate Alt carve (0.24.304: Mold Cut)
+ex = S.mch_moldcut
+ex.on = True
+ex.emold_bottom = False
 S.mch_plate.preset = 'FLAT'
 c = cube()
 ap.perform_plate_carve(C, [LOOP], TOP, live=False)
@@ -58,6 +61,13 @@ ex.emold_dome = 0.0
 c = cube()
 ap.perform_plate_carve(C, [LOOP], TOP, live=False)
 check('molding off: the carve as before', abs(depth(0.0) - plain_mid) < 1e-3)
+S.mch_extract.emold_bottom = True
+S.mch_extract.emold_out = 0.06
+c = cube()
+ap.perform_plate_carve(C, [LOOP], TOP, live=False)
+check('Armor Plate Alt: the plates\' Edge Molding alone does not change the carve (Mold Cut does)',
+      abs(depth(0.0) - plain_mid) < 1e-3 and abs(depth(0.53)) < 1e-4, (depth(0.0), depth(0.53)))
+S.mch_extract.emold_bottom = False
 
 # ---- Base Mesh Alt (Carve Height)
 p = S.mch_base
@@ -68,17 +78,30 @@ p.alt_mode = 'HEIGHT'
 c = cube()
 bm_.perform_base(C, [LOOP], TOP, cutter=True)
 b_plain = depth(0.0)
+# Edge Molding alone (the solid's) no longer changes the carve
 p.emold_bottom = True
 p.emold_out = 0.06
 p.emold_band = 0.03
+c = cube()
+bm_.perform_base(C, [LOOP], TOP, cutter=True)
+check('Base Mesh Alt: the solid\'s Edge Molding alone does not change the carve (Mold Cut off): no step at the opening',
+      abs(depth(0.0) - b_plain) < 1e-3 and abs(depth(0.53)) < 1e-4, (depth(0.0), depth(0.53)))
+p.emold_bottom = False
+mc = S.mch_moldcut
+mc.on = True
+mc.emold_top = False
+mc.emold_bottom = True
+mc.emold_out = 0.06
+mc.emold_band = 0.03
+mc.emold_dome = 0.0
 c = cube()
 msg = bm_.perform_base(C, [LOOP], TOP, cutter=True)
 check('Base Mesh Alt + Bottom molding: carved 0.2 deep, a 0.03 step at the opening (0.53), closed, no solid left',
       abs(depth(0.0) - 0.2) < 0.01 and abs(depth(0.53) - 0.03) < 0.01 and abs(depth(0.62)) < 1e-4
       and non_manifold(c) == 0 and len([o for o in bpy.data.objects if o.type == 'MESH']) == 1,
       (b_plain, depth(0.0), depth(0.53), msg))
-p.emold_bottom = False
-p.emold_dome = 0.05
+mc.emold_bottom = False
+mc.emold_dome = 0.05
 c = cube()
 bm_.perform_base(C, [LOOP], TOP, cutter=True)
 check('Base Mesh Alt + Top Dome: a bowl 0.25 in the middle, closed', abs(depth(0.0) - 0.25) < 0.01 and non_manifold(c) == 0,
@@ -94,9 +117,9 @@ for combo in (dict(emold_top=True, emold_bottom=False, emold_out=0.08, emold_ban
         bpy.data.objects.remove(o)
     bpy.ops.mesh.primitive_cylinder_add(radius=1.5, depth=2.0, vertices=96)
     cyl = C.active_object
-    p.emold_shape = 'SQUARE'
+    mc.emold_shape = 'SQUARE'
     for k, v in combo.items():
-        setattr(p, k, v)
+        setattr(mc, k, v)
     p.height = 0.25
     p.surface_align = True
     msg = bm_.perform_base(C, [[(500 + 45 * math.cos(a), 500 + 45 * math.sin(a)) for a in (2 * math.pi * k / 64 for k in range(64))]],
@@ -107,7 +130,8 @@ for combo in (dict(emold_top=True, emold_bottom=False, emold_out=0.08, emold_ban
     check(f'on a cylinder\'s side {combo}: a clean pocket (closed mesh, one part), about Height deep in the middle',
           non_manifold(cyl) == 0 and len([o for o in bpy.data.objects if o.type == 'MESH']) == 1 and d is not None
           and 0.15 < d < 0.45, (non_manifold(cyl), d, msg[:80]))
-p.emold_top = p.emold_bottom = False
-p.emold_dome = 0.0
-p.emold_shape = 'SQUARE'
+mc.emold_top = mc.emold_bottom = False
+mc.emold_dome = 0.0
+mc.emold_shape = 'SQUARE'
+mc.on = False
 summary()

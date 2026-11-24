@@ -776,8 +776,9 @@ def _plate_carve(context, loops, projector, preset, target, groups):
     st = scene.mch_plate
     cg.check_target(target)
     preset = preset or st.preset
-    ex_ = getattr(scene, 'mch_extract', None)
-    molded_ = ex_ is not None and (ex_.emold_top or ex_.emold_bottom or ex_.emold_dome > 0.0)
+    from . import mold_cut as _mc
+    mcs_ = _mc.settings(context)                     # 0.24.304 Mold Cut (the carve's own moldings)
+    molded_ = mcs_ is not None
     if preset in {'RIDGE', 'MRIDGE'} or (molded_ and preset != 'MRIDGE'):
         # 0.24.300 (user: "왜 컷할 때는 림이랑 몰드가 적용이 안 돼?" / "당연히 빠지는 걸로") a plate with Edge Molding / a
         # Top Dome is carved the same way: the plate turned the other way - its flange a wide step at the opening,
@@ -803,6 +804,13 @@ def _plate_carve(context, loops, projector, preset, target, groups):
             _densify(region)
             part = create_plate(context, target, region, surround, preset, local_size, st.auto_size)
             remove = fx._remove_part
+            pe_ = part.mch_extract                   # 0.24.304 the Mold Cut's molding, not the plates' Edge Molding
+            for k_ in _mc.KEYS:
+                setattr(pe_, k_, getattr(mcs_, k_) if mcs_ is not None else (False if k_ in {'emold_top', 'emold_bottom'}
+                                                                             else getattr(pe_, k_)))
+            if mcs_ is None:
+                pe_.emold_dome = 0.0
+            fx.rebuild(part)
         deep = _carve_mirror(context, target, part, remove, st)
         for o in context.selected_objects:
             o.select_set(False)
@@ -1847,6 +1855,9 @@ def draw(layout, context):
     box.prop(st, 'carve_depth')                       # 0.24.42 Alt + draw: the recess depth
     box.row(align=True).prop(st, 'carve_floor', expand=True)     # 0.24.291 the recess floor
     box.prop(st, 'carve_wall')                        # 0.24.295 slanted walls
+    if hasattr(context.scene, 'mch_moldcut'):         # 0.24.304 Mold Cut
+        from . import mold_cut
+        mold_cut.draw(box.box(), context.scene.mch_moldcut)
     col_ = box.column(align=True)                     # 0.24.296 stepped floor
     col_.prop(st, 'carve_steps')
     if st.carve_steps > 0:

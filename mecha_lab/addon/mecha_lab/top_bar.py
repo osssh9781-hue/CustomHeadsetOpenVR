@@ -120,6 +120,8 @@ def groups(context, tool):
         pp = lp.mch_extract if lp is not None else getattr(scene, 'mch_extract', None)
         if pp is not None and hasattr(pp, 'emold_top'):
             out.append(edge_molding_group(pp))
+        if hasattr(scene, 'mch_moldcut'):
+            out.append(mold_cut_group(scene.mch_moldcut))         # 0.24.304
     if tool == 'ACUT' and hasattr(scene, 'mch_acut'):
         # 0.24.297 Array Cut: the guide (Shift + draw) and the array - live after the cut
         from . import array_cut
@@ -145,6 +147,8 @@ def groups(context, tool):
                                                        ('ROUND', 'Round')))
             out.append(('Side Molding', cells))
             out.append(edge_molding_group(bp))                    # 0.24.298
+        if hasattr(scene, 'mch_moldcut'):
+            out.append(mold_cut_group(scene.mch_moldcut))         # 0.24.304
     pst = getattr(scene, 'mch_plate', None)
     if tool == 'PLATE' and pst is not None and hasattr(pst, 'carve_floor'):
         # 0.24.291 (user: "옆에 세팅에 플렛 팔로우 레벨 버튼 만들면 되것네") Alt + draw (the carve): floor and depth
@@ -232,6 +236,20 @@ def groups(context, tool):
                      _cell('seg', LANG_LABEL, i18n.lang() == 'KO', ('op', 'mch.toggle_language', {}))]))
     return out
 
+
+
+def mold_cut_group(mc):
+    """0.24.304 ('Mold Cut', cells): on / off, and with it on: Bottom, Top, Out, Height, Lip Rim, Dome, the shape."""
+    cells = [_seg('Mold Cut', mc, 'on')]
+    if mc.on:
+        cells += [_seg('Bottom', mc, 'emold_bottom'), _seg('Top', mc, 'emold_top'), _mini('Out', mc, 'emold_out', 110),
+                  _mini('Height', mc, 'emold_band', 130)]
+        if mc.emold_top:
+            cells.append(_mini('Lip Rim', mc, 'emold_lip', 130))
+        cells.append(_mini('Dome', mc, 'emold_dome', 110))
+        cells += _enum_segs(mc, 'emold_shape', (('SQUARE', 'Square'), ('CHAMFER', 'Chamfer'), ('ROUND', 'Round'),
+                                                ('SLOPE', 'Slope')))
+    return ('Mold Cut', cells)
 
 
 def edge_molding_group(p):

@@ -3383,8 +3383,11 @@ def perform_base(context, loops, projector, cutter=False, targets=None, attach=N
         return _create_section_sweep(context, loops, projector, path, defaults, attach)
     if cutter and not creature and getattr(defaults, 'alt_mode', 'HEIGHT') == 'CUT':
         return cut_like_cut_tool(context, loops, projector, targets)
-    if cutter and not creature and molded(defaults) and getattr(defaults, 'alt_mode', 'HEIGHT') == 'HEIGHT':
-        return carve_molded(context, loops, projector, defaults, targets)     # 0.24.300 the moldings carved in too
+    from . import mold_cut as _mc
+    _mcs = _mc.settings(context)
+    if cutter and not creature and _mcs is not None and getattr(defaults, 'alt_mode', 'HEIGHT') == 'HEIGHT':
+        # 0.24.304 (user: "그 컷을 분리해 주라, 몰드 컷으로") the carve's own moldings (Mold Cut), not the solid's
+        return carve_molded(context, loops, projector, _mc.Over(defaults, _mcs), targets)
     if cutter and not creature and defaults.profile in SURFACE_CARVE:
         return carve_surface(context, loops, projector, defaults, targets)
     groups, frame, screen_groups, embed = _local_groups(context, loops, projector, allow_invert=not cutter)
