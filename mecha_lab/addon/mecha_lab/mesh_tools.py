@@ -81,7 +81,8 @@ def run_one(context, ob, zb, action):
         if bg:
             return bg
         msg = qf.remesh_object(ob, max(1, int(round(zb.qr_target * 1000))), all_quads=zb.qr_mode == 'ALL',
-                               crease_deg=math.degrees(zb.qr_angle), flow=zb.qr_flow)
+                               crease_deg=math.degrees(zb.qr_angle), flow=zb.qr_flow,
+                               detail=float(getattr(zb, 'qr_detail', 0.0)))
         zs.shade_result(ob, zb)
         return msg
     if action == 'EDGE_MESH':
@@ -182,6 +183,17 @@ def qf_options(layout, zb, ob):
     col = layout.column(align=True)
     col.prop(zb, 'qr_angle', text='Hard Edges')
     col.prop(zb, 'qr_flow', slider=True)
+    col.prop(zb, 'qr_detail', slider=True)                      # 0.24.321 more quads where the detail is
+    r = col.row(align=True)
+    r.operator('mch.quad_detail_area', text='Mark Detail Area', icon='SELECT_SET').clear = False
+    r.operator('mch.quad_detail_area', text='', icon='X').clear = True
+    try:
+        from . import quad_detail
+        n = quad_detail.area_count(ob.data) if ob is not None and ob.type == 'MESH' else 0
+    except (AttributeError, ReferenceError):
+        n = 0
+    if n:
+        col.label(text=f'Detail Area: {n:,} points', icon='INFO')
 
 
 class MCH_OT_quad_subdiv(bpy.types.Operator):
@@ -295,7 +307,45 @@ class MCH_PT_mesh_tools(bpy.types.Panel):
         draw(self.layout, context)
 
 
-CLASSES = (MCH_OT_mesh_tool, MCH_OT_bake_copy_toggle, MCH_PT_mesh_tools, MCH_OT_quad_subdiv)
+class MCH_OT_quad_detail_area(bpy.types.Operator):
+    """Mark Detail Area: the points you selected in Edit Mode (lasso, circle ...) get finer quads at the next Quad
+    Remesh (3 x 3 there, quads round it).  X clears the whole area"""
+    bl_idname = 'mch.quad_detail_area'
+    bl_label = 'Mark Detail Area'
+    bl_options = {'REGISTER', 'UNDO'}
+    clear: bpy.props.BoolProperty(default=False, options={'SKIP_SAVE'})
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.active_object
+        return ob is not None and ob.type == 'MESH'
+
+    def execute(self, context):
+        from . import quad_detail
+        ob = context.active_object
+        mode = context.mode
+        if mode == 'EDIT_MESH':
+            bpy.ops.object.mode_set(mode='OBJECT')            # (the selection written to the mesh)
+        me = ob.data
+        try:
+            if self.clear:
+                a = me.attributes.get(quad_detail.ATTR)
+                if a is not None:
+                    me.attributes.remove(a)
+                self.report({'INFO'}, 'Detail Area cleared')
+                return {'FINISHED'}
+            if mode != 'EDIT_MESH' and not any(v.select for v in me.vertices):
+                self.report({'WARNING'}, 'Detail Area: select the area in Edit Mode first (lasso / circle select)')
+                return {'CANCELLED'}
+            n = quad_detail.mark_area(me)
+            self.report({'INFO'}, f'Detail Area: {n:,} points marked - Quad Remesh makes finer quads there')
+            return {'FINISHED'}
+        finally:
+            if mode == 'EDIT_MESH':
+                bpy.ops.object.mode_set(mode='EDIT')
+
+
+CLASSES = (MCH_OT_mesh_tool, MCH_OT_bake_copy_toggle, MCH_PT_mesh_tools, MCH_OT_quad_subdiv, MCH_OT_quad_detail_area)
 
 
 def register():

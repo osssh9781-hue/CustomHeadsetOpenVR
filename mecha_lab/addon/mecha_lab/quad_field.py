@@ -639,7 +639,7 @@ def set_subdiv(ob, levels):
     return f', Subdivision {levels}'
 
 
-def remesh_object(ob, target, all_quads=False, crease_deg=30.0, nthreads=None, flow=0.0):
+def remesh_object(ob, target, all_quads=False, crease_deg=30.0, nthreads=None, flow=0.0, detail=0.0):
     """Quad remesh mesh object ``ob`` (Object Mode) to about ``target`` polygons.  Returns a message."""
     me = ob.data
     if me.shape_keys is not None:
@@ -661,13 +661,13 @@ def remesh_object(ob, target, all_quads=False, crease_deg=30.0, nthreads=None, f
             bpy.data.meshes.remove(fixed)
             fixed = fixst = None
     try:
-        return _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nthreads, flow)
+        return _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nthreads, flow, detail)
     finally:
         if fixed is not None and fixed.users == 0:
             bpy.data.meshes.remove(fixed)
 
 
-def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nthreads, flow=0.0):
+def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nthreads, flow=0.0, detail=0.0):
     me.calc_loop_triangles()
     nt = len(me.loop_triangles)
     if nt < 4:
@@ -774,7 +774,8 @@ def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nth
         if tries < VOLUME_TRIES and target * 2 <= QUAD_MAX_FACES:
             _st_tries[id(ob)] = tries + 1
             try:
-                return _remesh_object(ob, me, polys0, t0, fixst, target * 2, all_quads, crease_deg, nthreads, flow)
+                return _remesh_object(ob, me, polys0, t0, fixst, target * 2, all_quads, crease_deg, nthreads, flow,
+                                      detail)
             finally:
                 _st_tries.pop(id(ob), None)
         why = (f'{open_new} sides would stay open' if open_new > max(OPEN_OK_MIN, OPEN_OK * max(1, n_new))
@@ -783,6 +784,17 @@ def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nth
                if twisted else f'the quads lost {100 - vol1 / max(vol0, 1e-12) * 100:.0f} % of its volume')
         return (f'Quad Remesh{got_note}: the part is thinner than a quad at this count ({polys0:,} faces kept as '
                 f'they are - {why}): ask for more faces')
+    boost = ''
+    if detail > 0.0 or new.attributes.get('mch_detail') is not None:
+        # 0.24.321 Detail Boost: the quads that miss the original (or lie on a marked Detail Area) split 3 x 3, with
+        # transition quads round them, the new points on the original surface
+        from . import quad_detail
+        h = float(st.get('h') or st.get('scale') or math.sqrt(max(sum(p.area for p in me.polygons), 1e-12) /
+                                                               max(1, target)))
+        b0, b1, nsplit = quad_detail.refine(new, V, T, h, detail)
+        if nsplit:
+            sizes = np.array([len(p.vertices) for p in new.polygons])
+            boost = f', Detail Boost: {nsplit:,} faces split (+{b1 - b0:,})'
     fd.swap_mesh(ob, new)
     ob.show_wire = ob.show_all_edges = True               # 0.24.76 the new quads are shown
     if len(st['hard']):
@@ -803,5 +815,5 @@ def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nth
     if fixst is not None:
         fixed = fixst['open_before'] + fixst['multi_before'] - fixst['open_after'] - fixst['multi_after']
         how += f' (Fix Mesh first: {fixed:,} broken edges repaired)'
-    return (f'Quad Remesh{how}: {polys0:,} > {len(sizes):,} polygons, {quads / len(sizes) * 100:.0f} % quads{edges} '
-            f'in {dt:.1f} s')
+    return (f'Quad Remesh{how}: {polys0:,} > {len(sizes):,} polygons, {quads / len(sizes) * 100:.0f} % quads{edges}'
+            f'{boost} in {dt:.1f} s')

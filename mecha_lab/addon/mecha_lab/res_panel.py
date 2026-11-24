@@ -117,7 +117,7 @@ def fields(context, key):
         out.append(('enum', sc, 'mch_res_quad_engine', 'Engine'))
         if sc.mch_res_quad_engine == 'NEW' and zb is not None:
             out += [('num', zb, 'qr_target', 'Target (k)'), ('enum', zb, 'qr_mode', ''),
-                    ('num', zb, 'qr_angle', 'Hard Edges'), ('num', zb, 'qr_flow', '')]
+                    ('num', zb, 'qr_angle', 'Hard Edges'), ('num', zb, 'qr_flow', ''), ('num', zb, 'qr_detail', '')]
         else:
             st = sc.mch_quadremesh
             out += [('enum', st, 'method', ''), ('num', st, 'faces', ''), ('num', st, 'edge_angle', ''),

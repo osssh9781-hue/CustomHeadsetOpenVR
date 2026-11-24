@@ -229,16 +229,26 @@ def _on_update(self, context):
         turn_off(context)
 
 
+def local_width(ob, r):
+    """0.24.321 (user: "노말 베벨 두께만큼 리얼 메쉬로 변환했을 때 그 두께로 안 나와, 되게 얇게 나와") the Bevel shader's
+    Radius is in world space, the Bevel modifier's Width in the object's own: a part scaled 0.01 (an FBX in cm) got a
+    bevel 100 x thinner.  ``r`` (world) in ``ob``'s space."""
+    sc = ob.matrix_world.to_scale()
+    k = (abs(sc.x) + abs(sc.y) + abs(sc.z)) / 3.0
+    return r / k if k > 1e-12 else r
+
+
 def _radius_update(self, context):
     r = float(self.mch_bevel_normal_radius)
     set_radius(context, r)
     for ob in context.scene.objects:                 # 0.24.236 the made-real bevels follow the slider too (until applied)
         mod = ob.modifiers.get(REAL) if ob.type == 'MESH' else None
         if mod is not None:
-            mod.width = r
+            w = local_width(ob, r)                   # 0.24.321 in the object's own space
+            mod.width = w
             weld = ob.modifiers.get(WELD)
             if weld is not None:
-                weld.merge_threshold = max(1e-5, r * 0.01)
+                weld.merge_threshold = max(1e-5, w * 0.01)
 
 
 @bpy.app.handlers.persistent
@@ -470,7 +480,8 @@ class MCH_OT_bevel_normal_real(bpy.types.Operator):
             if nb:
                 failed.append(f'{ob.name} ({nb} broken points in the mesh itself - Fix Mesh first)')
                 continue
-            (done if make_real(ob, r, self.segments, context) is not None else failed).append(ob.name)
+            (done if make_real(ob, local_width(ob, r), self.segments, context) is not None
+             else failed).append(ob.name)
         msg = f'Bevel made real on {len(done)} mesh(es)'
         if skipped:
             msg += f'; {len(skipped)} helper(s) skipped (cutters / wire)'

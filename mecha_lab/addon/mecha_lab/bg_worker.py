@@ -41,7 +41,7 @@ def main():
     kind = job['kind']
     if kind == 'QUAD_REMESH':
         msg = qf.remesh_object(ob, int(p.target), all_quads=bool(p.all_quads), crease_deg=float(p.crease_deg),
-                               flow=float(getattr(p, 'flow', 0.0)))
+                               flow=float(getattr(p, 'flow', 0.0)), detail=float(getattr(p, 'detail', 0.0)))
         zs.shade_result(ob, p)
     elif kind == 'REFIX':
         try:
