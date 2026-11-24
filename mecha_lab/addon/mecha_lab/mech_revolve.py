@@ -20,6 +20,10 @@ def shape_r(shape, r, a, sq_p=8.0):
     if shape == 'H':                                  # (a hexagon: corners at 0, 60, ... degrees)
         k = (a % (math.pi / 3)) - math.pi / 6
         return r * math.cos(math.pi / 6) / math.cos(k)
+    if shape == 'C':                                  # 0.24.311 castellated: ``sq_p`` teeth, the gaps 12 % in
+        teeth = max(2, int(round(sq_p)))
+        f = (a * teeth / (2 * math.pi)) % 1.0
+        return r if f < 0.5 else r * 0.88
     if shape == 'S':                                  # (a superellipse: p 2 a circle, more - squarer)
         c, s = abs(math.cos(a)), abs(math.sin(a))
         return r / max((c ** sq_p + s ** sq_p) ** (1.0 / sq_p), 1e-9)

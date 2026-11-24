@@ -128,4 +128,40 @@ Wb2 = W(bf2)
 check('Arm Turn 90: the arm goes out along X instead', np.ptp(Wb2[:, 0]) > 0.7 and np.ptp(Wb2[:, 1]) < 0.4)
 st.front_bstyle = 'PLATE'
 check('Base Plate again: closed', open_edges(bf2) == 0)
+
+# 0.24.311 (user's reference photo: a spring round the rod, toothed seats, a cage of posts)
+for o in C.selected_objects:
+    o.select_set(False)
+S.cursor.location = (10, 0, 0)
+st.front_type, st.front_bstyle = 'EYE', 'PLATE'
+st.spring, st.spring_place, st.spring_size, st.spring_wire, st.spring_coils = True, 'ROD', 0.9, 0.08, 5
+st.seat_style, st.seat_teeth, st.cage_posts = 'CASTLE', 10, 0
+bpy.ops.mch.actuator_add()
+p3 = ag.parts_of(S, ag.act_of(C.active_object))
+body3, rod3, sp3 = p3['BODY'], p3['ROD'], p3['SPRING']
+g = ag.layout(ag.numbers(st))
+Ws3 = W(sp3)
+check(f'Round the Rod: the spring starts on the gland ({g["z1"]:.3f}), round the rod only',
+      abs(Ws3[:, 2].min() - g['z1'] - ag.spring_seats(ag.numbers(st))[2]) < 0.02 and
+      np.hypot(Ws3[:, 0] - 10, Ws3[:, 1]).max() < 0.36 * 0.9 / 2 + 0.03)
+check('... closed meshes (toothed seats)', open_edges(body3) == 0 and open_edges(rod3) == 0)
+Wb3 = W(body3)
+ring = Wb3[np.abs(Wb3[:, 2] - g['z1']) < 0.05]
+rr_ = np.hypot(ring[:, 0] - 10, ring[:, 1])
+outer = rr_[rr_ > rr_.max() * 0.8]
+check(f'Toothed Seat: its rim in and out ({outer.min():.3f} .. {outer.max():.3f}: the gaps 12 % in)',
+      abs(outer.min() / outer.max() - 0.88) < 0.02)
+for o in p3.values():
+    o.select_set(True)
+st.seat_style = 'CUP'
+check('Cup Seat: closed', open_edges(body3) == 0 and open_edges(rod3) == 0)
+n0 = len(body3.data.polygons)
+st.cage_posts, st.cage_len = 4, 0.15
+check('Cage Posts 4: posts and a ring under the lower seat', len(body3.data.polygons) > n0 + 40 and
+      open_edges(body3) == 0)
+za_ = ag.spring_seats(ag.numbers(st))[0]
+check(f'... round the rod: the seat raised over the cage (the cage from the gland up to it, not into the body)',
+      abs(za_ - (g['z1'] + 2 * ag.spring_seats(ag.numbers(st))[2] + 0.15)) < 1e-4 and abs(W(sp3)[:, 2].min() - za_) < 0.03)
+st.spring_place = 'BODY'
+check('Round the Body again: the seat on the body', abs(W(sp3)[:, 2].min() - ag.spring_seats(ag.numbers(st))[0]) < 0.03)
 summary()

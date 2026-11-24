@@ -40,7 +40,13 @@ def _st(context):
 
 END_KEYS = ('type', 'size', 'thick', 'hole', 'bolt', 'bracket', 'base', 'base_t', 'bstyle', 'arm_len', 'arm_t',
             'arm_w', 'arm_turn')
-MORE_KEYS = ('hinge_gap', 'bracket_bolts', 'spring', 'spring_coils', 'spring_wire', 'spring_size', 'spring_seat')
+MORE_KEYS = ('hinge_gap', 'bracket_bolts', 'spring', 'spring_coils', 'spring_wire', 'spring_size', 'spring_seat',
+             'spring_place', 'seat_style', 'seat_teeth', 'cage_posts', 'cage_len')
+SPRING_PLACES = (('BODY', 'Round the Body', 'From a seat on the body to one under the rod end'),
+                 ('ROD', 'Round the Rod', 'From a seat on the gland (the body\'s top) to one under the rod end - '
+                                          'round the rod only'))
+SEAT_STYLES = (('FLAT', 'Flat Seat', 'Flat rings'), ('CASTLE', 'Toothed Seat', 'Rings with teeth round their rims'),
+               ('CUP', 'Cup Seat', 'Rings with a lip round the coil\'s ends'))
 
 
 def numbers(st):
@@ -266,10 +272,52 @@ def spring_seats(p):
     wire = W * p.get('spring_wire', 0.07)
     hs = max(wire * 1.2, W * 0.03)
     za = g['z0'] + g['Lb'] * min(max(p.get('spring_seat', 0.5), 0.1), 0.95)
+    if p.get('spring_place', 'BODY') == 'ROD':          # 0.24.311 (user's reference): round the rod, from the gland
+        za = g['z1'] + hs
+        if int(p.get('cage_posts', 0)) > 0:             # (the cage between the gland and the seat, as in it)
+            za += max(p.get('cage_len', W * 0.5), hs) + hs
     c2 = min(W * 0.12, (g['zr1'] - g['z0']) * 0.1)
     zb = g['zr1'] - c2 - hs
     Rs = W * p.get('spring_size', 1.5) / 2 + wire * 0.6
     return za, zb, hs, Rs
+
+
+def seat(bm, p, z, up, ri, segs):
+    """A spring seat: a ring from ``ri`` out to past the coil, at ``z`` (its face toward the coil: ``up`` +1 above,
+    -1 below) - Flat, Toothed (teeth round its rim) or Cup (a lip round the coil's end); and the Cage's posts under
+    the lower seat."""
+    _za, _zb, hs, Rs = spring_seats(p)
+    W = p['W']
+    wire = W * p.get('spring_wire', 0.07)
+    style = p.get('seat_style', 'FLAT')
+    sh = 'C' if style == 'CASTLE' else 'R'
+    teeth = float(p.get('seat_teeth', 10))
+    Ro = Rs + (wire * 0.9 if style == 'CASTLE' else 0.0)
+    a, b = z - up * hs, z                               # (its back, its face)
+    if style == 'CUP':
+        lip, lh = wire * 0.5, wire * 1.4
+        P = [(ri, b, 0.0, 'R'), (ri, a, 0.0, 'R'), (Rs + lip, a, 0.0, 'R'), (Rs + lip, b + up * lh, 0.0, 'R'),
+             (Rs, b + up * lh, 0.0, 'R'), (Rs, b, 0.0, 'R')]
+    else:
+        P = [(ri, b, 0.0, 'R'), (ri, a, 0.0, 'R'), (Ro, a, 0.0, sh), (Ro, b, 0.0, sh)]
+    if up < 0:
+        P = list(reversed(P))
+    seg_ = max(segs, int(teeth) * 8) if sh == 'C' else segs
+    if sh == 'C':
+        seg_ = int(math.ceil(seg_ / (2 * teeth)) * 2 * teeth)
+    mr.revolve(bm, P, seg_, sq_p=teeth, mat=1)
+    n = int(p.get('cage_posts', 0))
+    if up > 0 and n > 0:                                # (a cage under the lower seat: posts and a ring)
+        Lc = max(p.get('cage_len', W * 0.5), hs)
+        pr = max(wire * 0.55, W * 0.025)
+        rc = (ri + Rs) / 2 if (Rs - ri) > pr * 3 else Rs - pr * 1.5
+        for k in range(n):
+            ang = 2 * math.pi * (k + 0.5) / n
+            c = Vector((rc * math.cos(ang), rc * math.sin(ang), a))
+            mr.revolve(bm, [(0.0, 0.0, 0.0, 'R'), (pr, 0.0, 0.0, 'R'), (pr, Lc, 0.0, 'R'), (0.0, Lc, 0.0, 'R')], 12,
+                       matrix=mr.frame(c, Vector((0, 0, -1))), mat=1)
+        mr.revolve(bm, [(ri, a - Lc, 0.0, 'R'), (ri, a - Lc - hs, 0.0, 'R'), (Rs, a - Lc - hs, 0.0, 'R'),
+                        (Rs, a - Lc, 0.0, 'R')], segs, mat=1)
 
 
 def layout(p):
@@ -322,9 +370,11 @@ def build_body(me, p):
                                matrix=mr.frame(Vector((x, y, zf - d * hh * 0.15)), Vector((0, 0, d))), mat=1)
         if p.get('spring'):                                # (the spring's seat round the barrel)
             za, _zb, hs, Rs = spring_seats(p)
-            ri = Rb * (0.9 if sh == 'S' else 0.97)
-            mr.revolve(bm, [(ri, za, 0.0, 'R'), (ri, za - hs, 0.0, 'R'), (Rs, za - hs, 0.0, 'R'), (Rs, za, 0.0, 'R')],
-                       segs, mat=1)
+            if p.get('spring_place', 'BODY') == 'ROD':       # (on the gland, round the rod)
+                ri = Rb * min(max(p['rod'], 0.05), 0.95) * 1.08
+            else:
+                ri = Rb * (0.9 if sh == 'S' else 0.97)
+            seat(bm, p, za, 1, ri, segs)
         mount(bm, p, 'rear', 0.0, 1, segs)
         mr.finish(bm)
         bm.to_mesh(me)
@@ -352,9 +402,7 @@ def build_rod(me, p):
         mr.revolve(bm, P, segs, sq_p=_sq_p(p['corner']), yscale=ys)
         if p.get('spring'):                                # (the spring's seat on the rod, under its end)
             _za, zb, hs, Rs = spring_seats(p)
-            ri = rr * 0.97
-            mr.revolve(bm, [(ri, zb + hs, 0.0, 'R'), (ri, zb, 0.0, 'R'), (Rs, zb, 0.0, 'R'), (Rs, zb + hs, 0.0, 'R')],
-                       segs, mat=1)
+            seat(bm, p, zb, -1, rr * 0.97, segs)
         mount(bm, p, 'front', g['L'], -1, segs)
         mr.finish(bm)
         bmesh.ops.translate(bm, verts=list(bm.verts), vec=Vector((0, 0, -g['L'])))
@@ -615,6 +663,14 @@ class MCH_PG_Actuator(bpy.types.PropertyGroup):
         spring_seat=bpy.props.FloatProperty(name='Spring Seat', default=0.5, min=0.1, max=0.95, subtype='FACTOR',
                                             update=_update,
                                             description='Where on the body its lower seat is (of the body)'),
+        spring_place=bpy.props.EnumProperty(name='Spring On', items=SPRING_PLACES, default='BODY', update=_update),
+        seat_style=bpy.props.EnumProperty(name='Seats', items=SEAT_STYLES, default='FLAT', update=_update),
+        seat_teeth=bpy.props.IntProperty(name='Teeth', default=10, min=3, max=40, update=_update,
+                                         description='Toothed Seat: teeth round its rim'),
+        cage_posts=bpy.props.IntProperty(name='Cage Posts', default=0, min=0, max=12, update=_update,
+                                         description='Posts under the lower seat down to a ring (a cage; 0: none)'),
+        cage_len=bpy.props.FloatProperty(name='Cage Length', default=0.18, min=0.001, soft_max=2.0, unit='LENGTH',
+                                         update=_update, description='How long the cage\'s posts'),
         **_end_props('rear', 'Rear', 0.34, 0.1, 0.1),
         **_end_props('front', 'Rod End', 0.26, 0.12, 0.08),
     )
@@ -736,8 +792,19 @@ def draw(layout_, context):
     b.prop(st, 'spring')
     if st.spring:
         c = b.column(align=True)
-        for k in ('spring_coils', 'spring_wire', 'spring_size', 'spring_seat'):
+        b.row(align=True).prop(st, 'spring_place', expand=True)
+        c = b.column(align=True)
+        for k in ('spring_coils', 'spring_wire', 'spring_size'):
             c.prop(st, k, slider=k != 'spring_coils')
+        if st.spring_place == 'BODY':
+            c.prop(st, 'spring_seat', slider=True)
+        b.row(align=True).prop(st, 'seat_style', expand=True)
+        c = b.column(align=True)
+        if st.seat_style == 'CASTLE':
+            c.prop(st, 'seat_teeth')
+        c.prop(st, 'cage_posts')
+        if st.cage_posts:
+            c.prop(st, 'cage_len')
     box_.prop(st, 'segments')
     box_.operator('mch.actuator_add', icon='MESH_CYLINDER')
     act = getattr(context, 'active_object', None)

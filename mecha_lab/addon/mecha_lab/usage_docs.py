@@ -135,7 +135,7 @@ DOCS = {
               ('Size / Thickness / Pin Hole / Bolt', '마운트 크기 · 두께 · 구멍 · 볼트 유무', 'mount size, thickness, hole, bolt'),
               ('Bracket / Base Plate / Plate Thickness', '경첩 반대쪽 브래킷 (아이 → 클레비스, 클레비스 → 혀) + 바닥판 또는 Arm (레버 암: 길이 · 두께 · 폭 · 방향)', 'the hinge\'s other half on a base plate or an arm'),
               ('Hinge Gap / Bracket Bolts', '끼움 여유 / 바닥판 모서리 볼트', 'fit gap / base plate bolts'),
-              ('Spring', '스프링 (켜면 감은 수 · 선 두께 · 지름 · 몸통 쪽 받침 위치)', 'a spring (on: coils, wire, size, seat)')],
+              ('Spring', '스프링 (켜면 몸통 / 로드 둘레, 감은 수 · 선 두께 · 지름, 받침 평평 / 톱니 / 컵, 케이지 기둥)', 'a spring (on: body / rod, coils, wire, size, flat / toothed / cup seats, cage posts)')],
         tips=[('Body Bolts: 끝캡 모서리에 볼트 머리', 'Body Bolts: bolt heads at the caps\' corners'),
               ('브래킷은 따로 된 오브젝트 - 메카에 옮겨 붙이면 그 자리 유지', 'Brackets are objects of their own - moved onto the mech, they stay'),
               ('스프링은 로드를 빼면 같이 늘어남', 'The spring stretches as the rod moves out')]),
