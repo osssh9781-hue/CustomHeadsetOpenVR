@@ -443,6 +443,16 @@ def build(context, p, aid=None):
             k += 1
         aid = f'Act{k}'
     body = old.get('BODY')
+    glued = None
+    if body is not None and body.get(GLUE):                # 0.24.312 clicked between two surfaces: glue it again
+        try:
+            pts = _glue_points(context, json.loads(body[GLUE]))
+            fr = glue_frame(p, pts[0], pts[1])
+            if fr is not None:
+                p = dict(p, L=(fr[1] - fr[0]).length)
+                glued = (pts, fr)
+        except (TypeError, ValueError, KeyError, IndexError):
+            glued = None
     rod0 = old.get('ROD')
     base = body.matrix_world.copy() if body is not None else Matrix.Translation(scene.cursor.location)
     slide = 0.0                                            # (how far the user slid the rod out: kept)
@@ -500,6 +510,8 @@ def build(context, p, aid=None):
             ob[AUTO] = [x for row in pin for x in row]
         out[part] = ob
     set_spring(context, p, aid, out, old, coll, slide)
+    if glued is not None:
+        apply_glue(out, glued[0][0], glued[0][1], glued[1])
     return aid, out
 
 
@@ -806,6 +818,11 @@ def draw(layout_, context):
         if st.cage_posts:
             c.prop(st, 'cage_len')
     box_.prop(st, 'segments')
+    box_.label(text='Click a surface, then another: a cylinder between them', icon='MOUSE_LMB')
+    if PENDING['a'] is not None:
+        r = box_.row(align=True)
+        r.label(text='1st point picked: click the other end', icon='CHECKMARK')
+        r.operator('mch.actuator_cancel', text='', icon='X')
     box_.operator('mch.actuator_add', icon='MESH_CYLINDER')
     act = getattr(context, 'active_object', None)
     if act is not None and act.select_get() and act_of(act):
@@ -817,19 +834,231 @@ def draw(layout_, context):
         box_.label(text='Select a cylinder: the sliders change it', icon='INFO')
 
 
+# --- 0.24.312 two clicks: a cylinder between two surfaces, its brackets on them ------------------------------------
+# (user: "이 실린더도 내가 근육 만든 거처럼 양 끝 찍으면 저 경첩 바닥면이 붙어서 나오면 편하겠네")
+
+PENDING = {'a': None}           # the first click: (location, normal, the mesh's name)
+
+
+def reach(p, end):
+    """From the pin to the outside of its bracket's base plate / arm (what lies on the surface)."""
+    if p[f'{end}_type'] == 'NONE':
+        return 0.0
+    size = p[f'{end}_size']
+    if not bracket_on(p, end):
+        return size * 0.5
+    nb = size * 0.75
+    if p.get(f'{end}_bstyle', 'PLATE') == 'ARM':
+        return nb + max(p.get(f'{end}_arm_t', size * 0.45), 1e-4)
+    return nb + max(p.get(f'{end}_base_t', size * 0.15), 1e-4)
+
+
+def _frame(origin, x, z):
+    x = Vector(x).normalized()
+    z = Vector(z).normalized()
+    y = z.cross(x).normalized()
+    x = y.cross(z).normalized()
+    return Matrix(((x.x, y.x, z.x, origin.x), (x.y, y.y, z.y, origin.y), (x.z, y.z, z.z, origin.z), (0, 0, 0, 1)))
+
+
+GLUE = 'mch_act_glue'           # on the body: the two surface points it was clicked between (in their meshes' space)
+
+
+def _glue_points(context, glue):
+    """The glue's points now (world): [(location, normal, mesh or None)] x 2 - they follow their meshes."""
+    out = []
+    for key in ('a', 'b'):
+        name, loc, nrm = glue[key]
+        t = context.scene.objects.get(name) if name else None
+        if t is not None:
+            mw = t.matrix_world
+            out.append((mw @ Vector(loc), (mw.to_3x3().inverted_safe().transposed() @ Vector(nrm)).normalized(), t))
+        else:
+            out.append((Vector(loc), Vector(nrm).normalized(), None))
+    return out
+
+
+def glue_frame(p, a, b):
+    """Where the pins go between the surface points ``a``, ``b`` and the pin axis: (pa, pb, x, z) or None."""
+    la, na = Vector(a[0]), Vector(a[1]).normalized()
+    lb, nb_ = Vector(b[0]), Vector(b[1]).normalized()
+    pa = la + na * reach(p, 'rear')
+    pb = lb + nb_ * reach(p, 'front')
+    d = pb - pa
+    if d.length < 1e-5:
+        return None
+    z = d.normalized()
+    xa, xb = na.cross(z), nb_.cross(z)
+    if xa.length < 1e-6 and xb.length < 1e-6:
+        x = z.orthogonal()
+    else:
+        if xa.dot(xb) < 0:
+            xb = -xb
+        x = xa + xb
+        if x.length < 1e-6:
+            x = xa if xa.length > xb.length else xb
+    x = (x - z * x.dot(z)).normalized()
+    return pa, pb, x, z
+
+
+def apply_glue(out, a, b, fr):
+    """The body at the rear pin along the cylinder, each bracket turned flat onto its surface (a child of it)."""
+    pa, pb, x, z = fr
+    body = out['BODY']
+    body.matrix_world = _frame(pa, x, z)
+    for end, part, (loc, n, tgt), pin in (('rear', 'BRACKET_REAR', a, pa), ('front', 'BRACKET_FRONT', b, pb)):
+        br = out.get(part)
+        if br is None or br.mode == 'EDIT':
+            continue
+        n = Vector(n)
+        n2 = (n - x * n.dot(x))
+        n2 = n2.normalized() if n2.length > 1e-6 else (-z if end == 'rear' else z)
+        mw = _frame(pin, x, n2 if end == 'rear' else -n2)  # (its away side - the plate - onto the surface)
+        if tgt is not None and br.parent is not tgt:
+            br.parent = tgt
+        if tgt is not None:                                 # (a scaled / turned mesh: its inverse in the parent
+            br.matrix_parent_inverse = tgt.matrix_world.inverted_safe()    # inverse - no shear in the bracket)
+            br.matrix_basis = mw
+        else:
+            br.parent = None
+            br.matrix_basis = mw
+        br[AUTO] = []                                       # (placed on the mech)
+
+
+def place_between(context, a, b, p=None):
+    """0.24.312 a cylinder from the surface point ``a`` to ``b`` (each (location, normal, mesh or None)): its pins off
+    the surfaces by its brackets' height, its pin axis square to the cylinder and both normals, each bracket turned to
+    lie flat on its surface (a child of that mesh).  Remembered: a slider change glues it again (a bracket higher or
+    lower - the pins move, the plates stay on the surfaces).  Returns the actuator's id and parts."""
+    st = _st(context)
+    p = dict(p or numbers(st))
+    fr = glue_frame(p, a, b)
+    if fr is None:
+        return None, {}
+    p['L'] = (fr[1] - fr[0]).length
+    _BUSY[0] = True
+    try:
+        st.length = p['L']                                 # (the window shows its length)
+    finally:
+        _BUSY[0] = False
+    aid, out = build(context, p)
+    glue = {}
+    for key, (loc, n, t) in (('a', a), ('b', b)):
+        if t is not None:
+            mi = t.matrix_world.inverted_safe()
+            glue[key] = [t.name, list(mi @ Vector(loc)), list((t.matrix_world.to_3x3().transposed() @ Vector(n)).normalized())]
+        else:
+            glue[key] = ['', list(Vector(loc)), list(Vector(n).normalized())]
+    out['BODY'][GLUE] = json.dumps(glue)
+    apply_glue(out, a, b, fr)
+    return aid, out
+
+
+def _ray(context, event):
+    from bpy_extras import view3d_utils
+    xy = (event.mouse_region_x, event.mouse_region_y)
+    o = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, xy)
+    d = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, xy)
+    dg = context.evaluated_depsgraph_get()
+    hit, loc, nrm, _i, hob, _m = context.scene.ray_cast(dg, o, d)
+    if not hit or hob is None:
+        return None, None, None, d
+    real = bpy.data.objects.get(hob.name)
+    if nrm.dot(d) > 0:
+        nrm = -nrm
+    return real, loc, nrm.normalized(), d
+
+
+class MCH_OT_actuator_click(bpy.types.Operator):
+    """Click a surface, then another: a cylinder between them, its brackets on them.  A click on a cylinder selects
+    it (Shift: add to the selection)"""
+    bl_idname = 'mch.actuator_click'
+    bl_label = 'Cylinder Between Two Points'
+    bl_options = {'REGISTER', 'UNDO'}
+    extend: bpy.props.BoolProperty(default=False, options={'SKIP_SAVE'})
+
+    @classmethod
+    def poll(cls, context):
+        return context.area is not None and context.area.type == 'VIEW_3D' and context.mode == 'OBJECT'
+
+    def invoke(self, context, event):
+        ob, loc, nrm, _d = _ray(context, event)
+        part = act_of(ob) or (ob is not None and ob.get(PART))
+        if ob is None or part:                              # (a cylinder: select it; nothing: deselect)
+            if not self.extend:
+                for o in context.selected_objects:
+                    o.select_set(False)
+            if ob is not None:
+                aid = act_of(ob)
+                for o in (parts_of(context.scene, aid).values() if aid and not self.extend else [ob]):
+                    if o.type == 'MESH':
+                        o.select_set(True)
+                context.view_layer.objects.active = ob
+            PENDING['a'] = None
+            _header(context, None)
+            return {'FINISHED'}
+        try:
+            from . import screw_stamp
+            nrm = screw_stamp.area_normal(context, ob, loc, nrm, _st(context).width * 0.5)
+        except (ImportError, AttributeError, RuntimeError):
+            pass
+        if PENDING['a'] is None:
+            PENDING['a'] = (tuple(loc), tuple(nrm), ob.name)
+            _header(context, 'Cylinder: now click where its other end goes (Esc: start over)')
+            return {'FINISHED'}
+        a = PENDING['a']
+        PENDING['a'] = None
+        _header(context, None)
+        ta = context.scene.objects.get(a[2])
+        aid, out = place_between(context, (a[0], a[1], ta), (loc, nrm, ob))
+        if not out:
+            self.report({'WARNING'}, 'Cylinder: the two points are too close')
+            return {'CANCELLED'}
+        for o in context.selected_objects:
+            o.select_set(False)
+        for o in out.values():
+            if o.type == 'MESH':
+                o.select_set(True)
+        context.view_layer.objects.active = out['BODY']
+        self.report({'INFO'}, f'{aid}: between the two points - the sliders change it while selected')
+        return {'FINISHED'}
+
+
+class MCH_OT_actuator_cancel(bpy.types.Operator):
+    """Forget the first point clicked"""
+    bl_idname = 'mch.actuator_cancel'
+    bl_label = 'Start Over'
+    bl_options = {'INTERNAL'}
+
+    def execute(self, context):
+        PENDING['a'] = None
+        _header(context, None)
+        return {'FINISHED'}
+
+
+def _header(context, text):
+    try:
+        if context.area is not None:
+            context.area.header_text_set(text)
+    except (AttributeError, RuntimeError, TypeError):
+        pass
+
+
 class MCH_TOOL_actuator(bpy.types.WorkSpaceTool):
     """0.24.308 Cylinder (actuator): its own tool"""
     bl_space_type = 'VIEW_3D'
     bl_context_mode = 'OBJECT'
     bl_idname = 'mecha.cylinder_gen'
     bl_label = 'Cylinder'
-    bl_description = ('Summon a cylinder (round or square body, a rod, a mount and bolt at each end) - select it and '
-                      'the sliders change it; move its Rod along Z to extend it')
+    bl_description = ('Click a surface, then another: a cylinder between them, its brackets on them (or Summon '
+                      'Cylinder at the 3D cursor) - select it and the sliders change it; move its Rod along Z to '
+                      'extend it')
     bl_icon = 'ops.generic.select'
     bl_widget = None
-    bl_keymap = (('view3d.select', {'type': 'LEFTMOUSE', 'value': 'CLICK'}, None),
-                 ('view3d.select', {'type': 'LEFTMOUSE', 'value': 'CLICK', 'shift': True},
-                  {'properties': [('toggle', True)]}))
+    bl_keymap = (('mch.actuator_click', {'type': 'LEFTMOUSE', 'value': 'CLICK'}, None),      # 0.24.312 two clicks
+                 ('mch.actuator_click', {'type': 'LEFTMOUSE', 'value': 'CLICK', 'shift': True},
+                  {'properties': [('extend', True)]}),
+                 ('mch.actuator_cancel', {'type': 'ESC', 'value': 'PRESS'}, None))
 
     def draw_settings(context, layout, tool):
         region = getattr(context, 'region', None)
@@ -837,7 +1066,8 @@ class MCH_TOOL_actuator(bpy.types.WorkSpaceTool):
             return
 
 
-CLASSES = (MCH_PG_Actuator, MCH_OT_actuator_add, MCH_OT_actuator_pick, MCH_OT_actuator_plain)
+CLASSES = (MCH_PG_Actuator, MCH_OT_actuator_add, MCH_OT_actuator_pick, MCH_OT_actuator_plain, MCH_OT_actuator_click,
+           MCH_OT_actuator_cancel)
 
 
 def register():

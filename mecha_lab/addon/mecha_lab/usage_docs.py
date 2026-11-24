@@ -124,10 +124,12 @@ DOCS = {
     'CYLGEN': dict(
         what=('실린더 (액추에이터) 소환: 원형 / 사각 몸통 + 로드, 양 끝에 메카와 연결되는 마운트와 볼트',
               'A cylinder (actuator): a round / square body and a rod, a mount and its bolt at each end'),
-        how=[('Summon Cylinder 를 누른다 (3D 커서에서 Z 방향으로 섬)', 'Press Summon Cylinder (along Z from the 3D cursor)'),
+        how=[('표면 한 곳을 찍고 다른 표면을 찍으면 그 사이에 실린더 - 양 끝 브래킷이 각 표면에 붙음 (그 메쉬의 자식)', 'Click a surface, then another: a cylinder between them, each bracket on its surface (a child of that mesh)'),
+             ('또는 Summon Cylinder (3D 커서에서 Z 방향으로 섬)', 'Or Summon Cylinder (along Z from the 3D cursor)'),
              ('선택한 채로 슬라이더를 바꾸면 바로 바뀜', 'With it selected, the sliders change it at once'),
              ('Rod 오브젝트를 Z 로 움직이면 늘어남 (값을 바꿔도 그 위치 유지)', 'Move the Rod object along Z to extend it (kept when the sliders change)')],
-        keys=[('LMB', '오브젝트 선택', 'select an object')],
+        keys=[('LMB', '표면: 끝 찍기 / 실린더: 선택', 'a surface: an end / a cylinder: select it'),
+              ('Shift + LMB', '추가 선택', 'add to the selection'), ('Esc', '첫 점 취소', 'forget the first point')],
         opts=[('Round / Square', '원형 / 사각 몸통 (사각: Depth, Corner Round)', 'round / square body'),
               ('Length / Width', '핀에서 핀까지 길이 / 몸통 폭', 'pin to pin / body width'),
               ('Body / Rod / Caps / Cap Size', '몸통 비율 · 로드 굵기 · 끝캡 길이 · 끝캡 크기', 'proportions'),
@@ -138,7 +140,8 @@ DOCS = {
               ('Spring', '스프링 (켜면 몸통 / 로드 둘레, 감은 수 · 선 두께 · 지름, 받침 평평 / 톱니 / 컵, 케이지 기둥)', 'a spring (on: body / rod, coils, wire, size, flat / toothed / cup seats, cage posts)')],
         tips=[('Body Bolts: 끝캡 모서리에 볼트 머리', 'Body Bolts: bolt heads at the caps\' corners'),
               ('브래킷은 따로 된 오브젝트 - 메카에 옮겨 붙이면 그 자리 유지', 'Brackets are objects of their own - moved onto the mech, they stay'),
-              ('스프링은 로드를 빼면 같이 늘어남', 'The spring stretches as the rod moves out')]),
+              ('스프링은 로드를 빼면 같이 늘어남', 'The spring stretches as the rod moves out'),
+              ('찍어서 만든 실린더는 값을 바꿔도 두 표면에 다시 붙음 (메카를 옮긴 뒤에도)', 'One clicked between two surfaces is glued to them again when a slider changes (after the mech moved too)')]),
     # 0.24.308 Bolt Insert
     'BOLT': dict(
         what=('표면을 클릭하면 원기둥으로 파고 그 안에 볼트를 박는다', 'Click a surface: a round pocket cut and a bolt set in it'),
