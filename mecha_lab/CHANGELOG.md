@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## 0.24.325 — Bake Maps: 하이폴리 없이 굽기, Emission 맵 / Bake High Poly 크래시 수정 (2026-11-25)
+
+- (사용자: "베이크 하이폴리 안 하고는 못 해?") Bake Maps 에 No High Poly: 선택한 메쉬의 자기 머티리얼을 자기 UV 에 굽기
+  (UV 없으면 Smart UV) - Normal (셰이더의 범프 / 베벨), Base Color, Roughness, Metallic, Emission, AO. Height / Curvature 는 하이가
+  필요해서 빠짐 (메시지로 알려 줌). 구운 머티리얼로 바뀌어도 원래 머티리얼은 파일에 남음 (가짜 사용자). 기본 꺼짐 (전과 같음).
+  Base Color 는 셰이더의 Base Color 를 그대로 굽기 (Cycles 의 Diffuse 색 패스는 금속 부분이 검게 나와서).
+- (사용자: "노말이랑 베이스 컬러, 러프니스, 범프, 메탈릭, 에미션 필요해") Emission 맵 추가 (sRGB, 구운 머티리얼의 Emission 에 연결).
+  범프는 Height 맵 (하이가 있을 때).
+- (사용자의 GUNGUN.blend) Bake High Poly 가 Blender 를 꺼뜨리던 것: 같은 점에 앞뒤로 겹친 면 두 개가 있으면 BMesh 의 격자
+  subdivide 가 죽음 - 나누기 전에 겹친 면은 하나만 남김.
+- 사용자의 총 (26,544 면, UV 없음, 메카 셰이더 4 개) 을 No High Poly 로 2048 굽기: 원본 셰이더 렌더와 구운 텍스처 렌더가 거의 같음
+  (이 컨테이너 CPU 로 57 분 - GPU 면 훨씬 빠름). AO 는 안쪽에 겹친 껍질이 있는 곳이 어둡게 나옴.
+- 확인 (5.3): test_v02727_bake_own 12/12, test_v02726_bakehp_twin_faces 4/4, test_v02725_bake_emission 4/4, Bake 관련 기존 테스트
+  v02495_bake_maps 24/24, v02495_bake_highpoly 45/45, v02641_retopo_bake 35/35, test_ui_draw / test_v02633 전과 같음.
+
 ## 0.24.324 — 실린더: 양 끝 연동, 전체 크기, 판 없는 브래킷 (Ears Only) (2026-11-25)
 
 - (사용자: "실린더 메뉴 위 아래 판 홀 크기 사이즈 이런 거 각 쌍끼리 동시에 조절되게 해 줘") Link Ends 토글: 켜면 위 (Rear) 와
