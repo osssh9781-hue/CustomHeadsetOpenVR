@@ -35,9 +35,9 @@ import numpy as np
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
 from .light_copies import full as _lc_full  # 0.24.136 a part's own geometry, never its light copy
 
-MAPS = ('NORMAL', 'AO', 'COLOR', 'ROUGH', 'METAL', 'CURV', 'HEIGHT')
+MAPS = ('NORMAL', 'AO', 'COLOR', 'ROUGH', 'METAL', 'CURV', 'HEIGHT', 'EMIT')
 SUFFIX = {'NORMAL': 'Normal', 'AO': 'AO', 'COLOR': 'Color', 'ROUGH': 'Roughness', 'METAL': 'Metallic',
-          'CURV': 'Curvature', 'HEIGHT': 'Height'}
+          'CURV': 'Curvature', 'HEIGHT': 'Height', 'EMIT': 'Emission'}
 UV_NAME = 'MCH_Bake'
 MAT_SUFFIX = '_Baked'
 TARGET_MAT = '.MCH Bake Target'
@@ -60,6 +60,9 @@ class MCH_PG_BakeMaps(bpy.types.PropertyGroup):
     metal: BoolProperty(name='Metallic', default=False, description='The high\'s material metallic (0 / 1)')
     curv: BoolProperty(name='Curvature', default=False,
                        description='Convex edges light, crevices dark, flat 50 % grey (for edge wear / dirt masks)')
+    # 0.24.325 (user: "노말이랑 베이스 컬러, 러프니스, 범프, 메탈릭, 에미션 필요해")
+    emit: BoolProperty(name='Emission', default=False,
+                       description='The high\'s glow (its materials\' Emission colour x strength; black where none)')
     height: BoolProperty(name='Height', default=False,
                          description='How far the high stands out of (light) or sinks into (dark) the low, flat 50 % grey')
     ray: FloatProperty(name='Ray Distance', default=2.0, min=0.05, max=20.0, precision=2, subtype='PERCENTAGE',
@@ -274,7 +277,7 @@ def image_for(low, kind, res):
         img.scale(res, res)
     if img is None:
         img = bpy.data.images.new(name, res, res, alpha=False, float_buffer=False)
-    img.colorspace_settings.name = 'sRGB' if kind == 'COLOR' else 'Non-Color'
+    img.colorspace_settings.name = 'sRGB' if kind in {'COLOR', 'EMIT'} else 'Non-Color'
     img[IMG_KEY] = f'{low.name}|{kind}'
     return img
 
@@ -374,6 +377,9 @@ def baked_material(low, images, base, green='OPENGL', uv_name=''):
         nt.links.new(tex(images['ROUGH'], 600).outputs['Color'], bsdf.inputs['Roughness'])
     if images.get('METAL') is not None:
         nt.links.new(tex(images['METAL'], 900).outputs['Color'], bsdf.inputs['Metallic'])
+    if images.get('EMIT') is not None:              # 0.24.325
+        nt.links.new(tex(images['EMIT'], 1200).outputs['Color'], bsdf.inputs['Emission Color'])
+        bsdf.inputs['Emission Strength'].default_value = 1.0
     bump = None
     if images.get('HEIGHT') is not None:
         bump = nt.nodes.new('ShaderNodeBump')
@@ -671,9 +677,10 @@ def bake_pair_steps(context, low, highs, st, keep_state=None):
     t0 = time.time()
     kinds = [k for k, on in (('NORMAL', st.normal), ('AO', st.ao), ('COLOR', st.color),
                              ('ROUGH', getattr(st, 'rough', False)), ('METAL', getattr(st, 'metal', False)),
-                             ('CURV', getattr(st, 'curv', False)), ('HEIGHT', getattr(st, 'height', False))) if on]
+                             ('CURV', getattr(st, 'curv', False)), ('HEIGHT', getattr(st, 'height', False)),
+                             ('EMIT', getattr(st, 'emit', False))) if on]
     if not kinds:
-        raise RuntimeError('no map chosen (Normal / AO / Color / Roughness / Metallic / Curvature / Height)')
+        raise RuntimeError('no map chosen (Normal / AO / Color / Roughness / Metallic / Curvature / Height / Emission)')
     if not highs:
         raise RuntimeError('no high poly')
     for o in [low] + list(highs):
@@ -743,6 +750,9 @@ def bake_pair_steps(context, low, highs, st, keep_state=None):
             elif kind == 'ROUGH':
                 S.cycles.samples = 1
                 r = bpy.ops.object.bake(type='ROUGHNESS', **common)
+            elif kind == 'EMIT':                    # 0.24.325 the high's own emission, as it is
+                S.cycles.samples = 1
+                r = bpy.ops.object.bake(type='EMIT', **common)
             else:                                   # 0.24.243 Metallic / Curvature / Height: from copies that glow it
                 S.cycles.samples = 1
                 if srcs is None:
@@ -894,6 +904,7 @@ def draw(layout, context):
     r.prop(st, 'metal', toggle=True)
     r.prop(st, 'curv', toggle=True)
     r.prop(st, 'height', toggle=True)
+    r.prop(st, 'emit', toggle=True)                  # 0.24.325
     col = box.column(align=True)
     col.prop(st, 'ray', slider=True)
     r = col.row(align=True)

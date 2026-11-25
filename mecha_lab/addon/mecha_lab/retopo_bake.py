@@ -928,6 +928,7 @@ def draw(layout, context, colour=None):
     r.prop(st, 'metal', toggle=True)
     r.prop(st, 'curv', toggle=True)
     r.prop(st, 'height', toggle=True)
+    r.prop(st, 'emit', toggle=True)                  # 0.24.325
     r = pc.primary(box.row(align=True))
     r.scale_y = 1.3
     r.enabled = n_low > 0

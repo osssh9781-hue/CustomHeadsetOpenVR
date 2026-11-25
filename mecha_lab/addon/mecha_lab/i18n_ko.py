@@ -8790,6 +8790,7 @@ KO = {
     'The height grows back, away from you (into the mesh) from where you draw, instead of toward you': '높이가 그리는 곳에서 당신 쪽이 아니라 반대로 (메쉬 안으로) 자랍니다',
     'The height of the tubes (Crease: how deep the groove is)': '튜브 높이 (크리스: 홈의 깊이)',
     "The high's base colour (its material / polypaint)": '하이의 기본 색 (재질 / 폴리페인트)',
+    "The high's glow (its materials' Emission colour x strength; black where none)": '하이의 발광 (머티리얼의 Emission 색 x 세기, 없는 곳은 검정)',
     "The hole (the bolt's diameter)": '구멍 (볼트 지름)',
     'The hole for the axle, of the gear (0: none)': '가운데 축 구멍 (기어 비율, 0 = 없음)',
     'The hole this much wider (and deeper) than the neck - a fit for 3D printing (0: exactly the neck)': '구멍을 나사 목보다 이만큼 넓고 깊게 - 3D 프린트 끼움 공차 (0 = 딱 맞게)',
