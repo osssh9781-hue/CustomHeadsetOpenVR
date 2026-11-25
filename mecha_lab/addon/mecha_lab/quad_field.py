@@ -21,7 +21,7 @@ import bpy
 
 from . import fast_decimate as fd
 
-VERSION = 3                     # mquad API this module talks to (2: guide lines, hard edges out; 3: flow)
+VERSION = 4                     # mquad API this module talks to (2: guide lines, hard edges out; 3: flow; 4: sizes)
 MAXLEV = 8
 LENGTH_WEIGHT = 0.1             # Fast Decimate even spacing for the levels
 LEVELS = (16.0, 4.0, 1.0, 0.25)  # level triangles per quad, fine to coarse
@@ -40,7 +40,7 @@ class _Opts(ctypes.Structure):
     _fields_ = [('scale', ctypes.c_float), ('crease_deg', ctypes.c_float), ('min_chain', ctypes.c_float),
                 ('all_quads', ctypes.c_int), ('threads', ctypes.c_int), ('seed', ctypes.c_int),
                 ('iters_orient', ctypes.c_int * MAXLEV), ('iters_pos', ctypes.c_int * MAXLEV),
-                ('crease_tol', ctypes.c_float), ('flow', ctypes.c_float)]
+                ('crease_tol', ctypes.c_float), ('flow', ctypes.c_float), ('sizes', ctypes.POINTER(ctypes.c_float))]
 
 
 class _Out(ctypes.Structure):
@@ -299,7 +299,8 @@ def is_cut_mesh(me, target):
     return 0 < nt <= GUIDE_RATIO * max(int(target), 1)
 
 
-def remesh_cut(me, target, all_quads=False, crease_deg=30.0, nthreads=None, extra=None, flow=0.0):
+def remesh_cut(me, target, all_quads=False, crease_deg=30.0, nthreads=None, extra=None, flow=0.0, adapt=0.0,
+               marks=None):
     """Quad Remesh of a low-poly part (see ``is_cut_mesh``).  Returns (points, faces, polygon under each face,
     part's point nearest each point, stats with 'tries' = how much finer it had to go, 'open' = sides left open)."""
     area = sum(p.area for p in me.polygons)
@@ -308,7 +309,8 @@ def remesh_cut(me, target, all_quads=False, crease_deg=30.0, nthreads=None, extr
         h = math.sqrt(2.0 * area / max(1, 6 * target * k))
         V, T, tpoly, near = even_triangles(me, h)
         P, Fq, tsrc, psrc, st = remesh_arrays(V, T, target * k, all_quads=all_quads, crease_deg=crease_deg,
-                                              nthreads=nthreads, guide=True, extra=extra, flow=flow)
+                                              nthreads=nthreads, guide=True, extra=extra, flow=flow, adapt=adapt,
+                                              marks=None if marks is None else np.asarray(marks)[near])
         bad = len(holes(P, open_edges(Fq), border_tree(me, 0.25 * h), 0.5 * h))   # (an open plate's border stays)
         if best is not None and bad >= best[0]:
             break                                    # 0.24.76 finer did not help: no use going finer still
@@ -487,8 +489,64 @@ def level_iters(wanted, got):
     return out
 
 
+DETAIL_MODE = 'ENGINE'          # 0.24.322 Detail: the engine's own quad sizes ('SPLIT': 0.24.321's split afterwards)
+ADAPT_MIN = 0.3                 # 0.24.322 Detail at 1: the smallest quad 0.3 x the even size (about 11 x as many there)
+ADAPT_SAMPLE = 0.6              # ... the fine level sampled finer by this share of what the smallest quad would need
+ADAPT_ERR = 0.012               # the bulge (of the quad size) a quad may leave on a curve before it gets smaller
+ADAPT_GRADE = 0.35              # how fast the size may grow away from a small spot (per quad length)
+
+
+def size_field(P, F, h, adapt, marks=None):
+    """0.24.322 the quad size at each point of the fine level (P, F triangles) as a share of the even size ``h``:
+    smaller where the surface bends sharply for its size (a curve a quad of size h would cut across - claws, fingers,
+    a groove) and on a marked Detail Area, growing slowly away from them; then all scaled so the count stays about
+    what was asked (the flat, gentle parts get a little bigger).  ``adapt`` 0..1: how small it may go."""
+    P = np.asarray(P, np.float64)
+    F = np.asarray(F, np.int64).reshape(-1, 3)
+    n = len(P)
+    fmin = 1.0 / (1.0 + (1.0 / ADAPT_MIN - 1.0) * max(0.0, min(1.0, adapt)))
+    e1, e2 = P[F[:, 1]] - P[F[:, 0]], P[F[:, 2]] - P[F[:, 0]]
+    fn = np.cross(e1, e2)
+    fa = 0.5 * np.linalg.norm(fn, axis=1)
+    vn = np.zeros((n, 3))
+    for k in range(3):
+        np.add.at(vn, F[:, k], fn)
+    vn /= np.maximum(np.linalg.norm(vn, axis=1), 1e-30)[:, None]
+    va = np.zeros(n)
+    for k in range(3):
+        np.add.at(va, F[:, k], fa / 3.0)
+    E = np.concatenate([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]])
+    E = np.unique(np.sort(E, axis=1), axis=0)
+    a, b = E[:, 0], E[:, 1]
+    ln = np.maximum(np.linalg.norm(P[a] - P[b], axis=1), 1e-30)
+    kap = np.linalg.norm(vn[a] - vn[b], axis=1) / ln            # how fast the surface turns along the edge
+    kv = np.zeros(n)
+    np.maximum.at(kv, a, kap)
+    np.maximum.at(kv, b, kap)
+    deg = np.bincount(np.concatenate([a, b]), minlength=n).astype(np.float64)
+    for _ in range(2):                                          # (the sampling's noise off)
+        s_ = np.zeros(n)
+        np.add.at(s_, a, kv[b])
+        np.add.at(s_, b, kv[a])
+        kv = 0.5 * kv + 0.5 * s_ / np.maximum(deg, 1)
+    if adapt > 0.0:
+        f = np.sqrt(8.0 * ADAPT_ERR * h / np.maximum(kv, 1e-30)) / h    # a quad of this size bulges ADAPT_ERR x h
+        f = np.clip(f, fmin, 1.0)
+    else:
+        f = np.ones(n)
+    if marks is not None:                                       # a marked Detail Area: the smallest Detail 1 makes
+        f = np.where(np.asarray(marks) > 0.5, np.minimum(f, ADAPT_MIN), f)
+    for _ in range(12):                                         # grows by ADAPT_GRADE x its size per step at most
+        lim = np.full(n, np.inf)
+        np.minimum.at(lim, a, f[b] + ADAPT_GRADE * ln / h)
+        np.minimum.at(lim, b, f[a] + ADAPT_GRADE * ln / h)
+        f = np.minimum(f, lim)
+    k = math.sqrt(float((va / f ** 2).sum()) / max(float(va.sum()), 1e-30))   # the count kept
+    return (f * k).astype(np.float32), fmin
+
+
 def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None, seed=0, guide='auto', extra=None,
-                  flow=0.0):
+                  flow=0.0, adapt=0.0, marks=None):
     """Quad remesh triangles T over points V to about ``target`` faces.
 
     guide: 'auto' - a coarse input (a decimated part: at most GUIDE_RATIO triangles per wanted face) is followed edge
@@ -519,6 +577,10 @@ def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None,
         segs = np.concatenate([segs, np.asarray(extra, np.float32).reshape(-1, 2, 3)])
     counts = [int(n_ext * m) for m in LEVELS]
     counts = [c for k, c in enumerate(counts) if k == 0 or c >= 100]
+    use_sizes = adapt > 0.0 or (marks is not None and bool((np.asarray(marks) > 0.5).any()))
+    if use_sizes:                                   # 0.24.322 the fine level fine enough for the smallest quads
+        fmin0 = 1.0 / (1.0 + (1.0 / ADAPT_MIN - 1.0) * max(0.0, min(1.0, adapt))) if adapt > 0.0 else ADAPT_MIN
+        counts[0] = int(counts[0] * max(1.0, ADAPT_SAMPLE / (fmin0 * fmin0)))
     # the fine level needs small, even triangles: subdivide a coarse mesh first, then sample it evenly
     tsrc = np.arange(len(T), dtype=np.int64)
     vsrc = np.arange(len(V), dtype=np.int64)
@@ -558,6 +620,15 @@ def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None,
     o.seed = seed
     o.crease_tol = 0.02 * h
     o.flow = max(0.0, min(1.0, float(flow)))          # 0.24.281 follow the softer folds (0: as before)
+    sizes = None
+    if use_sizes:                                     # 0.24.322 a quad size per fine point (Detail / Detail Area)
+        fV, fF = levels[0]
+        mk = None
+        if marks is not None:
+            mk = np.asarray(marks, np.float32)[np.clip(vsrc, 0, len(marks) - 1)] if len(vsrc) == len(fV) else None
+        sizes, _fmin = size_field(fV, fF, h, adapt, mk)
+        sizes = np.ascontiguousarray(sizes, np.float32)
+        o.sizes = sizes.ctypes.data_as(_FP)
     for k, (io, ip) in enumerate(level_iters(counts, [len(lv[1]) for lv in levels])):
         o.iters_orient[k], o.iters_pos[k] = io, ip
     nv = (ctypes.c_int * n)(*[len(lv[0]) for lv in levels])
@@ -681,15 +752,24 @@ def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nth
     cut = is_cut_mesh(me, target)
     asked, got_note = target, ''
     memo = remembered_lines(me)                            # 0.24.95 Edge Memory: fixed lines + marked again after
+    marks = None                                           # 0.24.322 Mark Detail Area: the engine's quad sizes
+    ma = me.attributes.get('mch_detail')
+    if ma is not None and ma.domain == 'POINT' and len(me.vertices):
+        marks = np.empty(len(me.vertices), np.float32)
+        ma.data.foreach_get('value', marks)
 
     def one(target, all_q):
         if cut:
             # 0.24.75 a low-poly part (Cut / Base Mesh / decimated): even triangles, its own edges as fixed lines
+            eng = DETAIL_MODE == 'ENGINE'
             P, Fq, fpoly, pvert, st = remesh_cut(me, target, all_quads=all_q, crease_deg=crease_deg,
-                                                 nthreads=nthreads, extra=memo, flow=flow)
+                                                 nthreads=nthreads, extra=memo, flow=flow,
+                                                 adapt=detail if eng else 0.0, marks=marks if eng else None)
         else:
+            eng = DETAIL_MODE == 'ENGINE'
             P, Fq, tsrc, psrc, st = remesh_arrays(V, T.reshape(-1, 3), target, all_quads=all_q,
-                                                  crease_deg=crease_deg, nthreads=nthreads, extra=memo, flow=flow)
+                                                  crease_deg=crease_deg, nthreads=nthreads, extra=memo, flow=flow,
+                                                  adapt=detail if eng else 0.0, marks=marks if eng else None)
             fpoly, pvert = tpoly[tsrc], psrc
         return P, Fq, fpoly, pvert, st
     try:
@@ -785,7 +865,10 @@ def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nth
         return (f'Quad Remesh{got_note}: the part is thinner than a quad at this count ({polys0:,} faces kept as '
                 f'they are - {why}): ask for more faces')
     boost = ''
-    if detail > 0.0 or new.attributes.get('mch_detail') is not None:
+    if DETAIL_MODE == 'ENGINE' and (detail > 0.0 or (marks is not None and bool((marks > 0.5).any()))):
+        boost = ', Detail: smaller quads where it bends' + (' and on the Detail Area' if marks is not None and
+                                                              bool((marks > 0.5).any()) else '')
+    if DETAIL_MODE == 'SPLIT' and (detail > 0.0 or new.attributes.get('mch_detail') is not None):
         # 0.24.321 Detail Boost: the quads that miss the original (or lie on a marked Detail Area) split 3 x 3, with
         # transition quads round them, the new points on the original surface
         from . import quad_detail

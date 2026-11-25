@@ -1422,10 +1422,10 @@ class MCH_PG_ZBrush(bpy.types.PropertyGroup):
                                        'flat areas hardly at all.  0: as before 0.24.281')
     # 0.24.321 (user: "세밀한 면은 좀 더 면을 분배 가능하게") Detail Boost
     qr_detail: FloatProperty(name='Detail Boost', default=0.0, min=0.0, max=1.0, subtype='FACTOR',
-                             description='Quad Remesh: where the quads miss the original\'s detail (a groove, a thin '
-                                         'chamfer) they are split 3 x 3 with quads round them, the new points on the '
-                                         'original surface - more quads only there.  Higher = smaller misses count.  '
-                                         '0: off (a marked Detail Area still gets them)')
+                             description='Quad Remesh: the quads get smaller where the surface bends sharply (fingers, '
+                                         'claws, a groove) and bigger on the gentle parts - the count stays about '
+                                         'Target.  Higher = smaller quads there (1: down to 0.3 x).  0: off, as before '
+                                         '(a marked Detail Area still gets them)')
     qr_subd: IntProperty(name='Subdivision', default=2, min=0, max=4,     # 0.24.286 its own button (not in Quad)
                          description='Subdivision: the levels the Subdivision button puts on the selected parts (a '
                                      'Subdivision Surface; creased edges stay sharp; 0: off)')

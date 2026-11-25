@@ -308,8 +308,8 @@ class MCH_PT_mesh_tools(bpy.types.Panel):
 
 
 class MCH_OT_quad_detail_area(bpy.types.Operator):
-    """Mark Detail Area: the points you selected in Edit Mode (lasso, circle ...) get finer quads at the next Quad
-    Remesh (3 x 3 there, quads round it).  X clears the whole area"""
+    """Mark Detail Area: the points you selected in Edit Mode (lasso, circle ...) get smaller quads at the next Quad
+    Remesh (the count stays about Target).  X clears the whole area"""
     bl_idname = 'mch.quad_detail_area'
     bl_label = 'Mark Detail Area'
     bl_options = {'REGISTER', 'UNDO'}

@@ -49,6 +49,7 @@ typedef struct {
   int iters_pos[MAXLEV];
   float crease_tol;          /* v2 guide: an edge whose ends and middle are this close to a guide line is on it */
   float flow;                /* v3 0..1: how much the quads follow the softer folds below crease_deg (0: as v2) */
+  const float *sizes;        /* v4 per point of the fine level: its quad size as a share of scale (NULL: all 1) */
 } MquadOpts;
 
 typedef struct {
@@ -227,6 +228,7 @@ typedef struct {
   double flow;   /* v3 opt->flow */
   double *fd;    /* v3 the folds' direction at the point (tangent; NULL: no flow) */
   double *fw;    /* v3 how much it counts (0 .. 1) */
+  double *S;     /* v4 the quad size at each point (all = scale without sizes) */
 } Level;
 
 static int uf_find(int *par, int x) {
@@ -518,23 +520,23 @@ static void middle_point(const double *p0, const double *n0, const double *p1, c
 
 /* the lattice points of o0 and o1 nearest each other round the middle of the edge; returns the squared gap */
 static double compat_pos(const double *p0, const double *n0, const double *q0, const double *o0, const double *p1,
-                         const double *n1, const double *q1, const double *o1, double h, double *a, double *b,
-                         int *i0, int *i1) {
+                         const double *n1, const double *q1, const double *o1, double h, double h1, double *a,
+                         double *b, int *i0, int *i1) {
   double t0[3], t1[3], mid[3], d0[3], d1[3];
   cross3(n0, q0, t0);
   cross3(n1, q1, t1);
   middle_point(p0, n0, p1, n1, mid);
   sub3(mid, o0, d0);
   sub3(mid, o1, d1);
-  double inv = 1.0 / h;
+  double inv = 1.0 / h, inv1 = 1.0 / h1; /* v4 each side's own size (the same h for both: as v3) */
   double a0 = floor(dot3(q0, d0) * inv), b0 = floor(dot3(t0, d0) * inv);
-  double a1 = floor(dot3(q1, d1) * inv), b1 = floor(dot3(t1, d1) * inv);
+  double a1 = floor(dot3(q1, d1) * inv1), b1 = floor(dot3(t1, d1) * inv1);
   double A[4][3], B[4][3];
   for (int k = 0; k < 4; k++) {
     double ca = a0 + (k & 1), cb = b0 + (k >> 1), da = a1 + (k & 1), db = b1 + (k >> 1);
     for (int d = 0; d < 3; d++) {
       A[k][d] = o0[d] + (q0[d] * ca + t0[d] * cb) * h;
-      B[k][d] = o1[d] + (q1[d] * da + t1[d] * db) * h;
+      B[k][d] = o1[d] + (q1[d] * da + t1[d] * db) * h1;
     }
   }
   double best = HUGE_VAL;
@@ -699,13 +701,15 @@ static void orient_point(Level *L, int i) {
 }
 
 static void pos_point(Level *L, int i, double h) {
+  if (L->S) h = L->S[i];
   const double *n = &L->N[3 * i], *p = &L->P[3 * i], *q = &L->Q[3 * i];
   double s[3], a[3], b[3];
   memcpy(s, &L->O[3 * i], sizeof(s));
   double ws = 0.0;
   for (int k = L->as[i]; k < L->as[i + 1]; k++) {
     int j = L->aj[k];
-    compat_pos(p, n, q, s, &L->P[3 * j], &L->N[3 * j], &L->Q[3 * j], &L->O[3 * j], h, a, b, NULL, NULL);
+    compat_pos(p, n, q, s, &L->P[3 * j], &L->N[3 * j], &L->Q[3 * j], &L->O[3 * j], h, L->S ? L->S[j] : h, a, b, NULL,
+               NULL);
     for (int d = 0; d < 3; d++) s[d] = (a[d] * ws + b[d]) / (ws + 1.0);
     ws += 1.0;
     double off = n[0] * (s[0] - p[0]) + n[1] * (s[1] - p[1]) + n[2] * (s[2] - p[2]);
@@ -1077,6 +1081,7 @@ typedef struct {
   int nc, cap;
   double *pos, *nrm;
   int *kind; /* 0 surface, 1 hard edge, 2 corner */
+  double *scl; /* v4 the quad size round each point */
   IL *adj;
   /* walk */
   int **used;
@@ -1168,6 +1173,7 @@ static void fill_loop(Mem *m, Faces *FS, const double *P, int *vs, int n) {
 
 static void extract(Mem *m, Level *L, double h, Graph *G, int *st) {
   int nv = L->nv, ne = L->ne;
+  const double *S = L->S; /* v4 sizes (NULL: uniform, as v3) */
   const double *P = L->P, *N = L->N, *Q = L->Q, *O = L->O;
   IL *adj = (IL *)xcalloc(m, nv, sizeof(IL));
   Col *col = (Col *)xmalloc(m, sizeof(Col) * (ne + 1));
@@ -1177,8 +1183,8 @@ static void extract(Mem *m, Level *L, double h, Graph *G, int *st) {
     double qa[3], qb[3];
     int s0[2], s1[2];
     compat_orient(&Q[3 * i], &N[3 * i], &Q[3 * j], &N[3 * j], qa, qb);
-    double err = compat_pos(&P[3 * i], &N[3 * i], qa, &O[3 * i], &P[3 * j], &N[3 * j], qb, &O[3 * j], h, NULL, NULL,
-                            s0, s1);
+    double err = compat_pos(&P[3 * i], &N[3 * i], qa, &O[3 * i], &P[3 * j], &N[3 * j], qb, &O[3 * j],
+                            S ? S[i] : h, S ? S[j] : h, NULL, NULL, s0, s1);
     int da = abs(s0[0] - s1[0]), db = abs(s0[1] - s1[1]);
     if (da > 1 || db > 1 || (da == 1 && db == 1)) continue; /* farther, or a diagonal */
     if (da + db == 0) {
@@ -1233,16 +1239,18 @@ static void extract(Mem *m, Level *L, double h, Graph *G, int *st) {
   for (int i = 0; i < nv; i++)
     if (uf_find(par, i) == i) {
       nroot++;
-      tot += nco[i];
+      tot += S ? nco[i] * (h / S[i]) * (h / S[i]) : nco[i]; /* v4 members per cluster grow with its size squared */
     }
   double cut = nroot ? tot / nroot / 10.0 : 0.0;
   int *cid = (int *)xmalloc(m, sizeof(int) * nv);
   int nc = 0;
-  for (int i = 0; i < nv; i++) cid[i] = (uf_find(par, i) == i && nco[i] > cut) ? nc++ : -1;
+  for (int i = 0; i < nv; i++)
+    cid[i] = (uf_find(par, i) == i && (S ? nco[i] * (h / S[i]) * (h / S[i]) : nco[i]) > cut) ? nc++ : -1;
   G->nc = nc;
   G->pos = (double *)xcalloc(m, 3 * (size_t)nc + 3, sizeof(double));
   G->nrm = (double *)xcalloc(m, 3 * (size_t)nc + 3, sizeof(double));
   G->kind = (int *)xcalloc(m, nc + 1, sizeof(int));
+  G->scl = (double *)xcalloc(m, nc + 1, sizeof(double));
   double *ws = (double *)xcalloc(m, nc + 1, sizeof(double));
   double *ps = (double *)xcalloc(m, 3 * (size_t)nc + 3, sizeof(double));
   int *cnt = (int *)xcalloc(m, nc + 1, sizeof(int));
@@ -1251,7 +1259,9 @@ static void extract(Mem *m, Level *L, double h, Graph *G, int *st) {
     if (c < 0) continue;
     double d[3];
     sub3(&O[3 * i], &P[3 * i], d);
-    double w = exp(-dot3(d, d) / (h * h) * 9.0);
+    double hi = S ? S[i] : h;
+    double w = exp(-dot3(d, d) / (hi * hi) * 9.0);
+    G->scl[c] += hi;
     for (int k = 0; k < 3; k++) {
       G->pos[3 * c + k] += O[3 * i + k] * w;
       G->nrm[3 * c + k] += N[3 * i + k] * w;
@@ -1265,6 +1275,7 @@ static void extract(Mem *m, Level *L, double h, Graph *G, int *st) {
   for (int c = 0; c < nc; c++) {
     for (int k = 0; k < 3; k++)
       G->pos[3 * c + k] = ws[c] > 1e-300 ? G->pos[3 * c + k] / ws[c] : ps[3 * c + k] / (cnt[c] ? cnt[c] : 1);
+    G->scl[c] = cnt[c] ? G->scl[c] / cnt[c] : h;
     if (norm3(&G->nrm[3 * c]) < 1e-30) G->nrm[3 * c + 2] = 1.0;
     normalize3(&G->nrm[3 * c]);
   }
@@ -1304,7 +1315,7 @@ static void extract(Mem *m, Level *L, double h, Graph *G, int *st) {
           if (a <= (b > c ? b : c)) continue;
           double s = 0.5 * (a + b + c), ar = s * (s - a) * (s - b) * (s - c);
           double ht = 2.0 * sqrt(ar > 0 ? ar : 0.0) / (a > 1e-30 ? a : 1e-30);
-          if (ht >= 0.3 * h) continue;
+          if (ht >= 0.3 * G->scl[i]) continue;
           if (ncand == cap) {
             Cand *nn = (Cand *)xmalloc(m, sizeof(Cand) * cap * 2);
             memcpy(nn, cand, sizeof(Cand) * cap);
@@ -1582,13 +1593,15 @@ static void cleanup(Mem *m, Faces *F, const double *pos, const int *kind, int np
 /* ---------- run ---------- */
 
 /* hard-edge points onto the nearest hard edge (when one is that close), the rest onto the surface */
-static void snap_points(Hash *tri, Hash *seg, double *pos, const int *kind, int from, int to, double reach) {
+static void snap_points(Hash *tri, Hash *seg, double *pos, const int *kind, int from, int to, double reach,
+                        const double *scl, double h) {
   double q[3], d[3];
   for (int c = from; c < to; c++) {
     if (kind[c] == 2) continue;
     if (kind[c] == 1 && seg->nprim > 0 && hash_nearest(seg, &pos[3 * c], q) >= 0) {
       sub3(q, &pos[3 * c], d);
-      if (dot3(d, d) <= reach * reach) {
+      double r = scl ? reach * scl[c] / h : reach; /* v4 within its own quad size */
+      if (dot3(d, d) <= r * r) {
         memcpy(&pos[3 * c], q, sizeof(q));
         continue;
       }
@@ -1597,7 +1610,7 @@ static void snap_points(Hash *tri, Hash *seg, double *pos, const int *kind, int 
   }
 }
 
-EXPORT int mquad_version(void) { return 3; }
+EXPORT int mquad_version(void) { return 4; }
 
 EXPORT void mquad_free(MquadOut *out) {
   if (!out) return;
@@ -1684,6 +1697,24 @@ EXPORT int mquad_run(int nlevels, const int *nv, const int *nf, const float *V, 
   for (int k = 0; k + 1 < nlevels; k++) {
     prolong_map(&mem, &lv[k], nv[k + 1], src + so);
     so += nv[k + 1];
+  }
+  if (opt->sizes) { /* v4 the quad size at each point: the fine level's as given, a coarser point's from its source */
+    for (int i = 0; i < nv[0]; i++)
+      if (!isfinite(opt->sizes[i]) || !(opt->sizes[i] > 0.0f)) {
+        mem_free(&mem);
+        return 5;
+      }
+    lv[0].S = (double *)xmalloc(&mem, sizeof(double) * nv[0]);
+    for (int i = 0; i < nv[0]; i++) lv[0].S[i] = h * opt->sizes[i];
+    so = 0;
+    for (int k = 0; k + 1 < nlevels; k++) {
+      lv[k + 1].S = (double *)xmalloc(&mem, sizeof(double) * nv[k + 1]);
+      for (int j = 0; j < nv[k + 1]; j++) {
+        int v = src[so + j];
+        lv[k + 1].S[j] = (v >= 0 && v < nv[k]) ? lv[k].S[v] : h;
+      }
+      so += nv[k + 1];
+    }
   }
   int threads = opt->threads > 1 ? opt->threads : 1;
   if (opt->flow > 0.0f) { /* v3 flow on every level from its own edges */
@@ -1783,7 +1814,7 @@ EXPORT int mquad_run(int nlevels, const int *nv, const int *nf, const float *V, 
       nseg++;
     }
   hash_build(&mem, &seg, L0->P, L0->nv, segi, nseg, 1, h);
-  snap_points(&tri, &seg, G.pos, G.kind, 0, G.nc, h);
+  snap_points(&tri, &seg, G.pos, G.kind, 0, G.nc, h, opt->sizes ? G.scl : NULL, h);
   int cst[2];
   cleanup(&mem, &G.faces, G.pos, G.kind, G.nc, L0->nbound == 0, cst);
   out->stats[3] += cst[1];
@@ -1847,7 +1878,7 @@ EXPORT int mquad_run(int nlevels, const int *nv, const int *nf, const float *V, 
       for (int k = 0; k < s; k++)
         faces_add(&mem, &split, FF->f[f].v[k], emid[4 * f + k], c, emid[4 * f + (k + s - 1) % s]);
     }
-    snap_points(&tri, &seg, np2, nk, npts, total, 0.5 * h);
+    snap_points(&tri, &seg, np2, nk, npts, total, 0.5 * h, NULL, h);
     pos = np2;
     kind = nk;
     npts = total;
