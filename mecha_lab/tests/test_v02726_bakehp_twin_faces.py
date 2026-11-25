@@ -12,13 +12,12 @@ C = bpy.context
 
 bpy.ops.mesh.primitive_cube_add(size=2.0)
 ob = C.active_object
-bm = bmesh.new()
-bm.from_mesh(ob.data)
-bm.faces.ensure_lookup_table()
-f = bm.faces[0]
-bm.faces.new(list(reversed(f.verts)))                  # (its twin, back to back - as in the user's part)
-bm.to_mesh(ob.data)
-bm.free()
+vs = [v.co[:] for v in ob.data.vertices]
+fs = [list(p.vertices) for p in ob.data.polygons]
+fs.append(list(reversed(fs[0])))                       # (its twin, back to back - as in the user's part)
+me = bpy.data.meshes.new('Twin')
+me.from_pydata(vs, [], fs)                             # (no validate: the twin stays, as it was in the file)
+ob.data = me
 check('setup: a cube with one face doubled (7 faces)', len(ob.data.polygons) == 7)
 b2 = bmesh.new()
 b2.from_mesh(ob.data)

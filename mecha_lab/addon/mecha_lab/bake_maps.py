@@ -61,6 +61,11 @@ class MCH_PG_BakeMaps(bpy.types.PropertyGroup):
     curv: BoolProperty(name='Curvature', default=False,
                        description='Convex edges light, crevices dark, flat 50 % grey (for edge wear / dirt masks)')
     # 0.24.325 (user: "노말이랑 베이스 컬러, 러프니스, 범프, 메탈릭, 에미션 필요해")
+    # 0.24.325 (user: "베이크 하이폴리 안 하고는 못 해?") the low's own material onto its own UVs, no high
+    own: BoolProperty(name='No High Poly', default=False,
+                      description='Bake each selected mesh\'s own material onto its own UVs - no high poly: Normal '
+                                  '(its shader\'s bump / bevel), Color, Roughness, Metallic, Emission, AO.  Height / '
+                                  'Curvature need a high (left out).  Its materials are kept in the file')
     emit: BoolProperty(name='Emission', default=False,
                        description='The high\'s glow (its materials\' Emission colour x strength; black where none)')
     height: BoolProperty(name='Height', default=False,
@@ -125,6 +130,12 @@ def pairs(context):
     sel = [o for o in context.selected_objects if o.type == 'MESH']
     if not sel and act is not None and act.type == 'MESH':
         sel = [act]
+    st_ = getattr(context.scene, 'mch_bake', None)
+    if st_ is not None and getattr(st_, 'own', False):     # 0.24.325 No High Poly: each mesh onto itself
+        own = [o for o in sel if not bk.is_bake(o)]
+        if not own:
+            raise RuntimeError('No High Poly: select the meshes to bake')
+        return [(o, []) for o in own]
     out, unpaired = {}, []
     for o in sel:
         if bk.is_bake(o):
@@ -681,6 +692,8 @@ def bake_pair_steps(context, low, highs, st, keep_state=None):
                              ('EMIT', getattr(st, 'emit', False))) if on]
     if not kinds:
         raise RuntimeError('no map chosen (Normal / AO / Color / Roughness / Metallic / Curvature / Height / Emission)')
+    if not highs and getattr(st, 'own', False):
+        return (yield from bake_self_steps(context, low, st, kinds, keep_state))
     if not highs:
         raise RuntimeError('no high poly')
     for o in [low] + list(highs):
@@ -802,11 +815,165 @@ def bake_pair_steps(context, low, highs, st, keep_state=None):
     return info
 
 
+SELF_KINDS = ('NORMAL', 'AO', 'COLOR', 'ROUGH', 'METAL', 'EMIT')
+
+
+def _own_mats(low):
+    """The low's own node materials (each once)."""
+    out = []
+    for s in low.material_slots:
+        m = s.material
+        if m is not None and m.use_nodes and m.node_tree and m not in out:
+            out.append(m)
+    return out
+
+
+def _metal_glow(mats, inp='Metallic'):
+    """Each material's surface -> an Emission of its Principled's ``inp`` (Metallic / Base Color; put back by the
+    returned function).  (Base Color so: Cycles' Diffuse Color pass is black where the surface is metal.)"""
+    undo = []
+    for m in mats:
+        nt = m.node_tree
+        outn = next((n for n in nt.nodes if n.type == 'OUTPUT_MATERIAL' and n.is_active_output), None) or \
+            next((n for n in nt.nodes if n.type == 'OUTPUT_MATERIAL'), None)
+        if outn is None:
+            continue
+        prev = outn.inputs['Surface'].links[0].from_socket if outn.inputs['Surface'].is_linked else None
+        b = next((n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED'), None)
+        em = nt.nodes.new('ShaderNodeEmission')
+        em.name = '.MCH Bake Glow'
+        if b is not None and b.inputs[inp].is_linked:
+            nt.links.new(b.inputs[inp].links[0].from_socket, em.inputs['Color'])
+        elif b is not None:
+            v = b.inputs[inp].default_value
+            em.inputs['Color'].default_value = tuple(v) if hasattr(v, '__len__') else (v, v, v, 1.0)
+        else:
+            em.inputs['Color'].default_value = (0.0, 0.0, 0.0, 1.0) if inp == 'Metallic' else (0.8, 0.8, 0.8, 1.0)
+        nt.links.new(em.outputs['Emission'], outn.inputs['Surface'])
+        undo.append((nt, em, outn, prev))
+
+    def back():
+        for nt, em, outn, prev in undo:
+            nt.nodes.remove(em)
+            if prev is not None:
+                nt.links.new(prev, outn.inputs['Surface'])
+    return back
+
+
+def bake_self_steps(context, low, st, kinds, keep_state=None):
+    """0.24.325 (user: "베이크 하이폴리 안 하고는 못 해?") No High Poly: ``low``'s own materials baked onto its own UVs
+    (Cycles, not Selected to Active): Normal = its shader's normal (bump / bevel nodes), Color, Roughness, Metallic (its
+    Metallic glowed), Emission, AO.  Height / Curvature need a high: left out.  Its materials are kept (fake user)."""
+    S = context.scene
+    t0 = time.time()
+    skipped = [k for k in kinds if k not in SELF_KINDS]
+    kinds = [k for k in kinds if k in SELF_KINDS]
+    if not kinds:
+        raise RuntimeError('No High Poly bakes Normal / AO / Color / Roughness / Metallic / Emission (Height / '
+                           'Curvature need a high poly)')
+    if len(low.data.polygons) == 0:
+        raise RuntimeError(f'{low.name} has no faces')
+    mats = _own_mats(low)
+    if not mats:
+        raise RuntimeError(f'{low.name} has no node material to bake')
+    res = int(st.res)
+    yield (0.02, 'UVs')
+    uv = ensure_uv(context, low, new=st.new_uv, res=res)
+    sharp = smooth_low(low, st.sharp_angle) if st.smooth else None
+    uv_name = low.data.uv_layers.active.name if low.data.uv_layers.active else ''
+    keep = keep_state or _Keep(context, [low])
+    images = {}
+    nodes = []
+    try:
+        low.hide_viewport = False
+        low.hide_render = False
+        low.hide_set(False)
+        for o in list(context.selected_objects):
+            o.select_set(False)
+        low.select_set(True)
+        context.view_layer.objects.active = low
+        S.render.engine = 'CYCLES'
+        common = dict(use_selected_to_active=False, margin=int(st.margin), margin_type='EXTEND', use_clear=True,
+                      target='IMAGE_TEXTURES', save_mode='INTERNAL')
+        for ki, kind in enumerate(kinds):
+            yield (0.08 + 0.9 * ki / len(kinds), f'Baking {SUFFIX[kind]} ({ki + 1} / {len(kinds)})')
+            img = image_for(low, kind, res)
+            images[kind] = img
+            for nt, n in nodes:
+                nt.nodes.remove(n)
+            nodes = []
+            for m in mats:                          # (the image the bake writes: the active node of every material)
+                n = m.node_tree.nodes.new('ShaderNodeTexImage')
+                n.name = '.MCH Bake Target'
+                n.image = img
+                m.node_tree.nodes.active = n
+                nodes.append((m.node_tree, n))
+            back = None
+            if kind == 'NORMAL':
+                S.cycles.samples = 4
+                g = 'NEG_Y' if st.green == 'DIRECTX' else 'POS_Y'
+                r = bpy.ops.object.bake(type='NORMAL', normal_space='TANGENT', normal_r='POS_X', normal_g=g,
+                                        normal_b='POS_Z', **common)
+            elif kind == 'AO':
+                S.cycles.samples = int(st.ao_samples)
+                if S.world is None:
+                    keep.temp_world = bpy.data.worlds.new('.MCH Bake World')
+                    S.world = keep.temp_world
+                S.world.light_settings.distance = size_of(low) * float(st.ao_distance) / 100.0
+                r = bpy.ops.object.bake(type='AO', **common)
+            elif kind == 'COLOR':                   # (its Base Color glowed: the Diffuse pass is black on metal)
+                S.cycles.samples = 16
+                back = _metal_glow(mats, 'Base Color')
+                try:
+                    r = bpy.ops.object.bake(type='EMIT', **common)
+                finally:
+                    back()
+            elif kind == 'ROUGH':
+                S.cycles.samples = 16
+                r = bpy.ops.object.bake(type='ROUGHNESS', **common)
+            elif kind == 'EMIT':
+                S.cycles.samples = 16
+                r = bpy.ops.object.bake(type='EMIT', **common)
+            else:                                   # METAL: its Metallic glowed for the bake
+                S.cycles.samples = 16
+                back = _metal_glow(mats)
+                try:
+                    r = bpy.ops.object.bake(type='EMIT', **common)
+                finally:
+                    back()
+            if 'FINISHED' not in r:
+                raise RuntimeError(f'the {SUFFIX[kind]} bake did not finish')
+    finally:
+        for nt, n in nodes:
+            try:
+                nt.nodes.remove(n)
+            except (ReferenceError, RuntimeError):
+                pass
+        if keep_state is None:
+            keep.restore(context)
+    stored = {k: _store_image(img, st) for k, img in images.items()}
+    mat = None
+    if st.use_on_low:
+        for m in mats:                              # (its own materials stay in the file)
+            m.use_fake_user = True
+        mat = baked_material(low, images, _base_colour([s.material for s in low.material_slots]), st.green, uv_name)
+        for s in low.material_slots:
+            s.material = mat
+    info = dict(low=low.name, highs=[], maps=kinds, res=res, uv=uv, sharp=sharp, ray=0.0, stored=stored,
+                material=mat.name if mat else None, seconds=time.time() - t0, own=True, skipped=skipped)
+    LAST.clear()
+    LAST.update(info)
+    return info
+
+
 def describe(info):
     where = next(iter(info['stored'].values()), '')
     where = 'packed in the .blend' if where == 'packed' else f'saved to {os.path.dirname(where)}'
-    return (f'Bake Maps: {", ".join(SUFFIX[k] for k in info["maps"])} {info["res"]} px  {"+".join(info["highs"])} -> '
+    src = 'its own material' if info.get('own') else "+".join(info["highs"])
+    return (f'Bake Maps: {", ".join(SUFFIX[k] for k in info["maps"])} {info["res"]} px  {src} -> '
             f'{info["low"]}' + (' (Smart UV made)' if info['uv'] == 'smart' else '')
+            + (f' ({", ".join(SUFFIX[k] for k in info["skipped"])}: needs a high poly, left out)'
+               if info.get('skipped') else '')
             + (f', {info["sharp"]:,} sharp edges' if info.get('sharp') is not None else '')
             + f', {where}' + (f', material {info["material"]}' if info.get('material') else '') + f', {info["seconds"]:.1f} s')
 
@@ -895,6 +1062,7 @@ def draw(layout, context):
     r.scale_y = 1.2
     r.operator('mch.bake_maps', text='Bake Maps', icon='RENDER_STILL')
     r.prop(st, 'res', text='')
+    col.prop(st, 'own', toggle=True, icon='MATERIAL')    # 0.24.325 no high poly: its own material
     r = col.row(align=True)
     r.prop(st, 'normal', toggle=True)
     r.prop(st, 'ao', toggle=True)
@@ -933,10 +1101,13 @@ def draw(layout, context):
     sub.prop(st, 'folder', text='')
     try:
         found = pairs(context)
-        txt = ', '.join(f'{"+".join(h.name for h in hs)} -> {lo.name}' for lo, hs in found[:2]) + (' ...' if len(found) > 2 else '')
+        txt = ', '.join(f'{"+".join(h.name for h in hs) if hs else "its own material"} -> {lo.name}'
+                        for lo, hs in found[:2]) + (' ...' if len(found) > 2 else '')
         box.label(text=txt, icon='CHECKMARK')
     except RuntimeError:
         box.label(text='Select a part + its BakeHP copy, or low (active) + high', icon='INFO')
+    if st.own and (st.height or st.curv):
+        box.label(text='No High Poly: Height / Curvature need a high (left out)', icon='INFO')
     from . import retopo_bake                        # 0.24.241 Retopo + Bake (0.24.243 last: the sections above keep
     retopo_bake.draw(layout, context)                # their colours)
 
