@@ -791,7 +791,7 @@ def draw_base(layout, context):
             mold.row(align=True).prop(p, 'mold_shape', expand=True)
         if hasattr(context.scene, 'mch_moldcut'):     # 0.24.304 Mold Cut (the Alt carve's own moldings)
             from . import mold_cut
-            mold_cut.draw(target.box(), context.scene.mch_moldcut)
+            mold_cut.draw(target.box(), context.scene.mch_moldcut, context)
         if hasattr(p, 'emold_top'):                   # 0.24.298 Top / Bottom Edge Molding
             em = target.box()
             em.label(text='Edge Molding')

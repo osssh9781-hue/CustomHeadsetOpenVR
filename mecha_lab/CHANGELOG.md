@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 0.24.323 — Mold Cut: Alt 가 Carve Height 가 아니면 알려 줌 (2026-11-25)
+
+- (사용자: "왜 다른 메쉬에는 몰드로 자르는 게 안 돼? 그냥 플랫하게 잘리는데" - "아 카브 하이트가 꺼져 있었어" - "그래")
+  몰드 컷은 Alt: Carve Height 에서만 깎임 (Through / Ramp / Inside / Like Cut 은 원래대로 평평하게). Mold Base Mesh 에서 몰드 컷이
+  켜져 있는데 Alt 가 다른 모드면: 몰드 컷 상자에 빨간 안내 ("Mold Cut works only with Alt: Carve Height" + 지금 모드) 와
+  Use Carve Height 버튼, 위쪽 바의 Mold Cut 줄에 "Alt is not Carve Height: Use It" 버튼 - 누르면 Alt 가 Carve Height 로.
+- 깎는 방식 자체는 그대로 (Carve Height 일 때만 몰드, 다른 모드는 전과 같음). Mold Armor Plate 는 Alt 모드가 없어 안내 없음.
+- 확인 (5.3): test_v02723_mold_alt_hint 11/11 (안내 / 버튼 / 패널 그리기), test_v02705_mold_tools 10/10,
+  test_v02700_molded_carve 11/11, test_ui_draw / test_v02633 전과 같음.  실제 창에서 눈으로는 확인 못 함 (패널 그리는 코드로 확인).
+
 ## 0.24.322 — Quad Remesh Detail: 엔진 안에서 부위별 사각면 크기 (2026-11-25)
 
 - (사용자: "1.3 해줘" - 엔진 안에서) 엔진 (mquad v4) 이 점마다 다른 사각면 크기를 받음: Detail Boost 를 올리면 표면이 급하게

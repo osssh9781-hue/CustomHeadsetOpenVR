@@ -100,12 +100,48 @@ def strip(pg):
     return changed
 
 
-def draw(layout, mc):
+def wrong_alt(context, mc):
+    """0.24.323 (user: "왜 다른 메쉬에는 몰드로 자르는 게 안 돼? 그냥 플랫하게 잘리는데" - "아 카브 하이트가 꺼져 있었어") the
+    Base Mesh's Alt mode when the Mold Cut is on but would not be used (it carves only with Alt: Carve Height), else ''."""
+    if mc is None or not mc.on:
+        return ''
+    try:
+        from . import base_mesh
+        p = base_mesh.scene_defaults(context)
+    except Exception:
+        return ''
+    mode = getattr(p, 'alt_mode', 'HEIGHT')
+    return '' if mode == 'HEIGHT' else mode
+
+
+ALT_NAMES = {'THROUGH': 'Through', 'RAMP': 'Ramp', 'INSIDE': 'Inside', 'CUT': 'Like Cut'}
+
+
+class MCH_OT_mold_cut_height(bpy.types.Operator):
+    """Set Alt to Carve Height - the Mold Cut carves only with it"""
+    bl_idname = 'mch.mold_cut_height'
+    bl_label = 'Use Carve Height'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        from . import base_mesh
+        base_mesh.scene_defaults(context).alt_mode = 'HEIGHT'
+        return {'FINISHED'}
+
+
+def draw(layout, mc, context=None):
     """The Mold Cut box (Base Mesh / Armor Plate panels)."""
     col = layout.column(align=True)
     col.prop(mc, 'on', toggle=True, icon='MOD_BOOLEAN')
     if not mc.on:
         return
+    bad = wrong_alt(context, mc) if context is not None else ''
+    if bad:                                  # 0.24.323 it would carve flat: say why, one click to fix
+        box = col.box()
+        box.alert = True
+        box.label(text='Mold Cut works only with Alt: Carve Height', icon='ERROR')
+        box.label(text='Alt: ' + ALT_NAMES.get(bad, bad))
+        box.operator('mch.mold_cut_height', icon='CHECKMARK')
     row = col.row(align=True)
     row.prop(mc, 'emold_bottom', toggle=True)
     row.prop(mc, 'emold_top', toggle=True)
@@ -119,13 +155,15 @@ def draw(layout, mc):
 
 def register():
     bpy.utils.register_class(MCH_PG_MoldCut)
+    bpy.utils.register_class(MCH_OT_mold_cut_height)
     bpy.types.Scene.mch_moldcut = bpy.props.PointerProperty(type=MCH_PG_MoldCut)
 
 
 def unregister():
     if hasattr(bpy.types.Scene, 'mch_moldcut'):
         del bpy.types.Scene.mch_moldcut
-    try:
-        bpy.utils.unregister_class(MCH_PG_MoldCut)
-    except RuntimeError:
-        pass
+    for c in (MCH_OT_mold_cut_height, MCH_PG_MoldCut):
+        try:
+            bpy.utils.unregister_class(c)
+        except RuntimeError:
+            pass
