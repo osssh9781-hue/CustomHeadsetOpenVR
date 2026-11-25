@@ -47,7 +47,7 @@ def pts(o):
     return np.array([v.co for v in o.data.vertices], np.float32)
 
 
-check('engine v3 loaded (flow)', qf.available() and qf.VERSION == 3)
+check('engine v3+ loaded (flow; 0.24.322 v4 adds per-point sizes)', qf.available() and qf.VERSION >= 3)
 o = cyl()
 qf.remesh_object(o, 2500)
 p_default = pts(o)
