@@ -31,7 +31,14 @@ MOUNTS = (('EYE', 'Eye Plate', 'One plate with a hole (a rod eye)'), ('CLEVIS', 
           ('NONE', 'None', 'No mount: a flat end'))
 BSTYLES = (('PLATE', 'Base Plate', 'On a square base plate with bolts at its corners'),
            ('ARM', 'Lever Arm', 'On a lever arm going out sideways (its end chamfered) - Arm Length / Thickness / Width / '
-                          'Turn'))
+                          'Turn'),
+           ('BARE', 'Ears Only', 'No base plate: just the ears round the pin (a clevis\' two joined at their foot), '
+                                 'their foot on the surface'))      # 0.24.324
+LINK_KEYS = ('size', 'thick', 'hole', 'bolt', 'bracket', 'base', 'base_t', 'bstyle', 'arm_len', 'arm_t', 'arm_w',
+             'arm_turn')      # 0.24.324 Link Ends: the pairs that change together (not the mount type)
+SCALED = ('L', 'W', 'hinge_gap', 'cage_len') + tuple(f'{e}_{k}' for e in ('rear', 'front')
+                                                    for k in ('size', 'thick', 'hole', 'base', 'base_t', 'arm_len',
+                                                              'arm_t', 'arm_w'))
 
 
 def _st(context):
@@ -58,6 +65,10 @@ def numbers(st):
             p[f'{e}_{k}'] = getattr(st, f'{e}_{k}')
     for k in MORE_KEYS:                                     # 0.24.309 the brackets, the spring
         p[k] = getattr(st, k)
+    f = float(getattr(st, 'overall', 1.0))                  # 0.24.324 Overall Size: every length at once
+    if f != 1.0:
+        for k in SCALED:
+            p[k] = p[k] * f
     return p
 
 
@@ -219,6 +230,15 @@ def build_bracket(me, p, end):
                 tab(bm, size, nb + ov, t, hole, segs, Mw)
         else:                                                 # (a tongue between the clevis' plates)
             tab(bm, size, nb + ov, max(t - 2 * hg, t * 0.3), hole, segs, M)
+        if p.get(f'{end}_bstyle', 'PLATE') == 'BARE':         # 0.24.324 (user: "바닥 판 없이 깔끔하게 홀까지만")
+            if p[f'{end}_type'] in {'EYE', 'BALL'}:          # (the clevis' two ears joined by a slim foot)
+                gap = (ball_w(p, end) if p[f'{end}_type'] == 'BALL' else t) + 2 * hg
+                fb = max(t * 0.6, size * 0.08)
+                box(bm, (-size / 2, nb + ov - fb, -(gap / 2 + t)), (size / 2, nb + ov, gap / 2 + t), M)
+            mr.finish(bm)
+            bm.to_mesh(me)
+            me.update()
+            return
         if p.get(f'{end}_bstyle', 'PLATE') == 'ARM':          # 0.24.310 (user's photo: a lever arm under it)
             al = max(p.get(f'{end}_arm_len', size * 2.5), size * 0.8)
             at = max(p.get(f'{end}_arm_t', size * 0.45), 1e-4)
@@ -595,41 +615,74 @@ def _update(self, context):
         build(context, p, aid)
 
 
+_LINKING = [False]
+
+
+def _linked(key):
+    """0.24.324 (user: "위아래 판 홀 크기 사이즈 이런 거 각 쌍끼리 동시에 조절되게") with Link Ends on, the other end's
+    same setting follows; one rebuild."""
+    end, k = key.split('_', 1)
+    other = 'front' if end == 'rear' else 'rear'
+
+    def upd(self, context):
+        if getattr(self, 'link_ends', False) and not _BUSY[0]:
+            _BUSY[0] = True
+            try:
+                if getattr(self, f'{other}_{k}') != getattr(self, key):
+                    setattr(self, f'{other}_{k}', getattr(self, key))
+            finally:
+                _BUSY[0] = False
+        _update(self, context)
+    return upd
+
+
+def _link_on(self, context):
+    """Link Ends turned on: the Rod End takes the Rear's settings (they match from here)."""
+    if self.link_ends:
+        _BUSY[0] = True
+        try:
+            for k in LINK_KEYS:
+                setattr(self, f'front_{k}', getattr(self, f'rear_{k}'))
+        finally:
+            _BUSY[0] = False
+    _update(self, context)
+
+
 def _end_props(end, label, size, thick, hole):
     d = {}
     d[f'{end}_type'] = bpy.props.EnumProperty(name=f'{label} Mount', items=MOUNTS, default='CLEVIS' if end == 'rear'
                                               else 'EYE', update=_update)
     d[f'{end}_size'] = bpy.props.FloatProperty(name=f'{label} Size', default=size, min=0.002, soft_max=3.0,
-                                               unit='LENGTH', update=_update,
+                                               unit='LENGTH', update=_linked(f'{end}_size'),
                                                description='The mount\'s plate across (round its hole)')
     d[f'{end}_thick'] = bpy.props.FloatProperty(name=f'{label} Thickness', default=thick, min=0.001, soft_max=1.0,
-                                                unit='LENGTH', update=_update, description='The plate\'s thickness')
+                                                unit='LENGTH', update=_linked(f'{end}_thick'), description='The plate\'s thickness')
     d[f'{end}_hole'] = bpy.props.FloatProperty(name=f'{label} Pin Hole', default=hole, min=0.001, soft_max=1.0,
-                                               unit='LENGTH', update=_update,
+                                               unit='LENGTH', update=_linked(f'{end}_hole'),
                                                description='The hole (the bolt\'s diameter)')
-    d[f'{end}_bolt'] = bpy.props.BoolProperty(name=f'{label} Bolt', default=True, update=_update,
+    d[f'{end}_bolt'] = bpy.props.BoolProperty(name=f'{label} Bolt', default=True, update=_linked(f'{end}_bolt'),
                                               description='A hex bolt through it, its nut on the other side')
     d[f'{end}_bracket'] = bpy.props.BoolProperty(
-        name=f'{label} Bracket', default=True, update=_update,
+        name=f'{label} Bracket', default=True, update=_linked(f'{end}_bracket'),
         description='The part it hinges in (an object of its own, to fix on the mech): a Clevis round an Eye, a '
                     'tongue between a Clevis\' plates, on a base plate')
     d[f'{end}_base'] = bpy.props.FloatProperty(name=f'{label} Base Plate', default=size * 1.8, min=0.002,
-                                               soft_max=3.0, unit='LENGTH', update=_update,
+                                               soft_max=3.0, unit='LENGTH', update=_linked(f'{end}_base'),
                                                description='The bracket\'s base plate across')
     d[f'{end}_base_t'] = bpy.props.FloatProperty(name=f'{label} Base Thickness', default=size * 0.15, min=0.0005,
-                                                 soft_max=1.0, unit='LENGTH', update=_update)
+                                                 soft_max=1.0, unit='LENGTH', update=_linked(f'{end}_base_t'))
     d[f'{end}_bstyle'] = bpy.props.EnumProperty(name=f'{label} Bracket Style', items=BSTYLES, default='PLATE',
-                                                update=_update)
+                                                update=_linked(f'{end}_bstyle'))
     d[f'{end}_arm_len'] = bpy.props.FloatProperty(name=f'{label} Arm Length', default=size * 2.5, min=0.002,
-                                                  soft_max=5.0, unit='LENGTH', update=_update,
+                                                  soft_max=5.0, unit='LENGTH', update=_linked(f'{end}_arm_len'),
                                                   description='How far the arm goes out from the joint')
     d[f'{end}_arm_t'] = bpy.props.FloatProperty(name=f'{label} Arm Thickness', default=size * 0.45, min=0.0005,
-                                                soft_max=2.0, unit='LENGTH', update=_update)
+                                                soft_max=2.0, unit='LENGTH', update=_linked(f'{end}_arm_t'))
     d[f'{end}_arm_w'] = bpy.props.FloatProperty(name=f'{label} Arm Width', default=size * 1.0, min=0.0005,
-                                                soft_max=2.0, unit='LENGTH', update=_update,
+                                                soft_max=2.0, unit='LENGTH', update=_linked(f'{end}_arm_w'),
                                                 description='The arm across (along the pin; at least the joint)')
     d[f'{end}_arm_turn'] = bpy.props.FloatProperty(name=f'{label} Arm Turn', default=0.0, min=-180.0, max=180.0,
-                                                   update=_update,
+                                                   update=_linked(f'{end}_arm_turn'),
                                                    description='Which way the arm goes out, round the cylinder\'s '
                                                                'axis (degrees)')
     return d
@@ -638,6 +691,13 @@ def _end_props(end, label, size, thick, hole):
 class MCH_PG_Actuator(bpy.types.PropertyGroup):
     __annotations__ = dict(
         shape=bpy.props.EnumProperty(name='Shape', items=SHAPES, default='ROUND', update=_update),
+        overall=bpy.props.FloatProperty(name='Overall Size', default=1.0, min=0.01, soft_max=5.0, update=_update,
+                                        description='Every length of the cylinder at once (its mounts and brackets '
+                                                    'too); a cylinder clicked between two surfaces keeps its length'),
+        link_ends=bpy.props.BoolProperty(name='Link Ends', default=False, update=_link_on,
+                                         description='Both mounts change together (size, thickness, pin hole, bolt, '
+                                                     'bracket, plate, arm - not the mount type); on: the Rod End takes '
+                                                     'the Rear\'s'),
         length=bpy.props.FloatProperty(name='Length', default=2.0, min=0.01, soft_max=20.0, unit='LENGTH',
                                        update=_update, description='Pin to pin'),
         width=bpy.props.FloatProperty(name='Width', default=0.36, min=0.002, soft_max=5.0, unit='LENGTH',
@@ -762,6 +822,7 @@ def draw(layout_, context):
     box_ = layout_.box()
     box_.label(text='Cylinder')
     box_.row(align=True).prop(st, 'shape', expand=True)
+    box_.prop(st, 'overall', slider=False)                 # 0.24.324 every length at once
     c = box_.column(align=True)
     for k in ('length', 'width'):
         c.prop(st, k)
@@ -775,9 +836,13 @@ def draw(layout_, context):
     r = box_.row(align=True)
     r.prop(st, 'rod_shape', expand=True)
     box_.prop(st, 'body_bolts')
+    box_.prop(st, 'link_ends', toggle=True, icon='LINKED' if st.link_ends else 'UNLINKED')   # 0.24.324
     for end, label in (('rear', 'Rear Mount'), ('front', 'Rod End Mount')):
         b = box_.box()
-        b.label(text=label)
+        r_ = b.row()
+        r_.label(text=label)
+        if st.link_ends:
+            r_.label(text='', icon='LINKED')
         b.row(align=True).prop(st, f'{end}_type', expand=True)
         if getattr(st, f'{end}_type') != 'NONE':
             c = b.column(align=True)
@@ -848,6 +913,8 @@ def reach(p, end):
     if not bracket_on(p, end):
         return size * 0.5
     nb = size * 0.75
+    if p.get(f'{end}_bstyle', 'PLATE') == 'BARE':           # 0.24.324 the ears' foot (their neck's end)
+        return nb + size * 0.05
     if p.get(f'{end}_bstyle', 'PLATE') == 'ARM':
         return nb + max(p.get(f'{end}_arm_t', size * 0.45), 1e-4)
     return nb + max(p.get(f'{end}_base_t', size * 0.15), 1e-4)
