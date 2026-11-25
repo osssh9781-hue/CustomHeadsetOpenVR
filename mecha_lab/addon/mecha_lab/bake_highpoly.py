@@ -944,10 +944,27 @@ def _subd_round(me, hard, levels):
     return int(sharp.sum())
 
 
+def drop_twin_faces(bm):
+    """0.24.325 (user's GUNGUN.blend: Bake High Poly closed Blender) faces on the same points as another (a face doubled
+    back to back) go but one - BMesh's grid-fill subdivision crashes on them.  Returns how many went."""
+    bm.verts.index_update()
+    seen, kill = set(), []
+    for f in bm.faces:
+        k = frozenset(v.index for v in f.verts)
+        if k in seen:
+            kill.append(f)
+        else:
+            seen.add(k)
+    if kill:
+        bmesh.ops.delete(bm, geom=kill, context='FACES_ONLY')
+    return len(kill)
+
+
 def _subdivide(me):
     bm = bmesh.new()
     try:
         bm.from_mesh(me)
+        drop_twin_faces(bm)
         bmesh.ops.subdivide_edges(bm, edges=bm.edges[:], cuts=1, use_grid_fill=True)
         bm.to_mesh(me)
     finally:
