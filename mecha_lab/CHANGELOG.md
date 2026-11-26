@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 0.24.327 — No High Poly 베이크: 섞인 셰이더 그대로, AO 이중 어둡게 없앰, GPU 로 굽기 (2026-11-26)
+
+- (사용자의 WALL_BAKE.blend: "결과가 달라 보여, 왼쪽 흰 벽이랑 똑같아야 되는데") 벽 머티리얼은 Mix Shader 가 Principled BSDF 두 개를
+  모서리 마스크 (Edges 그룹) 로 섞는 구조 - Base Color / Metallic 을 첫 Principled 하나에서만 가져와서 섞임이 빠졌음. 이제 모든 BSDF 를
+  각각 발광으로 바꾸고 Mix / Add Shader 는 그대로 둬서 섞인 값 그대로 굽기 (Roughness 도 같은 방식). 끝나면 원래대로.
+- 구운 머티리얼이 AO 를 Base Color 에 곱해서 원래 셰이더의 AO 효과와 겹쳐 두 번 어두워지던 것 (위가 튀어나온 벽의 윗부분) - No High Poly
+  에서는 곱하지 않음 (AO 맵 파일은 따로 저장).
+- (사용자: "베이크가 왜 이렇게 느려?") Blender 씬 기본이 CPU 라 GPU 가 있어도 CPU 로 굽던 것 - 환경설정에 GPU 가 켜져 있으면 굽는 동안만
+  씬을 GPU 로 (끝나면 원래대로, 환경설정은 안 바꿈). GPU 가 꺼져 있으면 메시지로 알려 줌. (하이폴리 베이크도 같음)
+- 사용자 벽 (오브젝트 25 개, 1024, Normal / Color / Roughness / Metallic) 굽기: 이 컨테이너 CPU 로 6.4 분. 원본 셰이더 렌더와 비교해 흰 패널
+  밝기가 같아짐 (화면 평균 차이 2.8 / 255). 조명 판의 빛은 Emission 을 켜야 나옴.
+- 확인 (5.3): test_v02727_bake_own 20/20 (섞인 셰이더 색 / 러프니스 / 메탈릭, AO 안 곱함, 장치 복원), test_v02495_bake_maps 24/24,
+  test_v02725 4/4, test_v02641 35/35, test_ui_draw / test_v02633 전과 같음. GPU 로 굽기는 이 컨테이너에 GPU 가 없어 확인 못 함.
+
 ## 0.24.326 — Remesh 창 Retopo + Bake 에도 No High Poly (2026-11-26)
 
 - (사용자: Remesh 창 Retopo + Bake 상자 사진 - "어디 있어?") No High Poly 버튼이 Mesh Tools 의 Bake Maps 에만 있었음 - Remesh 창
