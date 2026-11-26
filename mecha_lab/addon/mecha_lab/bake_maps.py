@@ -630,6 +630,7 @@ class _Keep:
         S = context.scene
         self.engine = S.render.engine
         self.samples = S.cycles.samples if hasattr(S, 'cycles') else None
+        self.device = S.cycles.device if hasattr(S, 'cycles') else None      # 0.24.327 (the bake may switch it to GPU)
         self.world = S.world
         self.ao_dist = S.world.light_settings.distance if S.world is not None else None
         self.active = context.view_layer.objects.active
@@ -643,6 +644,11 @@ class _Keep:
         S.render.engine = self.engine
         if self.samples is not None:
             S.cycles.samples = self.samples
+        if self.device is not None:
+            try:
+                S.cycles.device = self.device
+            except (TypeError, AttributeError):
+                pass
         if self.temp_world is not None:
             S.world = self.world
             bpy.data.worlds.remove(self.temp_world)
@@ -673,6 +679,20 @@ class _Keep:
             context.view_layer.objects.active = self.active
         except (RuntimeError, ReferenceError):
             pass
+
+
+def use_gpu(context):
+    """0.24.327 (user: "베이크가 왜 이렇게 느려?") the scene's Cycles device -> GPU for the bake when Blender's Preferences
+    have a GPU on (the Preferences are not changed; the scene's device is put back after).  True when on the GPU."""
+    S = context.scene
+    try:
+        from . import quick_render
+        if quick_render.gpu_ready(context):
+            S.cycles.device = 'GPU'
+            return True
+    except (ImportError, AttributeError, TypeError, RuntimeError):
+        pass
+    return False
 
 
 def bake_pair(context, low, highs, st, keep_state=None):
@@ -724,6 +744,7 @@ def bake_pair_steps(context, low, highs, st, keep_state=None):
         low.select_set(True)
         context.view_layer.objects.active = low
         S.render.engine = 'CYCLES'
+        gpu = use_gpu(context)                       # 0.24.327
         ext = size * float(st.ray) / 100.0
         cage = make_cage(context, low, ext)
         common = dict(use_selected_to_active=True, use_cage=True, cage_object=cage.name, cage_extrusion=0.0,
@@ -809,7 +830,7 @@ def bake_pair_steps(context, low, highs, st, keep_state=None):
                 s.material = mat
     info = dict(low=low.name, highs=[h.name for h in highs], maps=kinds, res=res, uv=uv, sharp=sharp,
                 ray=size * float(st.ray) / 100.0, stored=stored, material=mat.name if mat else None,
-                seconds=time.time() - t0)
+                seconds=time.time() - t0, gpu=gpu)
     LAST.clear()
     LAST.update(info)
     return info
@@ -828,35 +849,51 @@ def _own_mats(low):
     return out
 
 
+GLOW_INPUTS = {'Base Color': ('Base Color', 'Color'), 'Metallic': ('Metallic',), 'Roughness': ('Roughness',)}
+GLOW_DEFAULT = {'Base Color': (0.8, 0.8, 0.8, 1.0), 'Metallic': (0.0, 0.0, 0.0, 1.0), 'Roughness': (0.5, 0.5, 0.5, 1.0)}
+
+
 def _metal_glow(mats, inp='Metallic'):
-    """Each material's surface -> an Emission of its Principled's ``inp`` (Metallic / Base Color; put back by the
-    returned function).  (Base Color so: Cycles' Diffuse Color pass is black where the surface is metal.)"""
+    """Each material's BSDFs -> Emissions of their ``inp`` (Base Color / Metallic / Roughness), in place: the Mix /
+    Add Shaders round them stay, so a mix of two surfaces bakes as the same mix (0.24.327, the user's wall: a Mix
+    Shader of two Principled BSDFs by an edge mask - only the first one had been baked).  Put back by the returned
+    function.  (Base Color so: Cycles' Diffuse Color pass is black where the surface is metal.)"""
     undo = []
     for m in mats:
         nt = m.node_tree
-        outn = next((n for n in nt.nodes if n.type == 'OUTPUT_MATERIAL' and n.is_active_output), None) or \
-            next((n for n in nt.nodes if n.type == 'OUTPUT_MATERIAL'), None)
-        if outn is None:
-            continue
-        prev = outn.inputs['Surface'].links[0].from_socket if outn.inputs['Surface'].is_linked else None
-        b = next((n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED'), None)
-        em = nt.nodes.new('ShaderNodeEmission')
-        em.name = '.MCH Bake Glow'
-        if b is not None and b.inputs[inp].is_linked:
-            nt.links.new(b.inputs[inp].links[0].from_socket, em.inputs['Color'])
-        elif b is not None:
-            v = b.inputs[inp].default_value
-            em.inputs['Color'].default_value = tuple(v) if hasattr(v, '__len__') else (v, v, v, 1.0)
-        else:
-            em.inputs['Color'].default_value = (0.0, 0.0, 0.0, 1.0) if inp == 'Metallic' else (0.8, 0.8, 0.8, 1.0)
-        nt.links.new(em.outputs['Emission'], outn.inputs['Surface'])
-        undo.append((nt, em, outn, prev))
+        for b in [n for n in nt.nodes if n.type.startswith('BSDF_') or n.type == 'SUBSURFACE_SCATTERING']:
+            out = b.outputs[0] if b.outputs else None
+            if out is None or not out.is_linked:
+                continue
+            em = nt.nodes.new('ShaderNodeEmission')
+            em.name = '.MCH Bake Glow'
+            src = next((b.inputs[k] for k in GLOW_INPUTS[inp] if b.inputs.get(k) is not None), None)
+            if src is not None and src.is_linked:
+                nt.links.new(src.links[0].from_socket, em.inputs['Color'])
+            elif src is not None:
+                v = src.default_value
+                em.inputs['Color'].default_value = tuple(v) if hasattr(v, '__len__') else (v, v, v, 1.0)
+            else:
+                em.inputs['Color'].default_value = GLOW_DEFAULT[inp]
+            em.inputs['Strength'].default_value = 1.0
+            tos = [lk.to_socket for lk in out.links]
+            for t in tos:
+                nt.links.new(em.outputs['Emission'], t)
+            undo.append((nt, em, out, tos))
+        for e in [n for n in nt.nodes if n.type == 'EMISSION' and not n.name.startswith('.MCH Bake')]:
+            st_ = e.inputs['Strength']                   # (its own glow off while its colours are baked)
+            if not st_.is_linked:
+                undo.append((nt, None, st_, st_.default_value))
+                st_.default_value = 0.0
 
     def back():
-        for nt, em, outn, prev in undo:
+        for nt, em, out, tos in reversed(undo):
+            if em is None:
+                out.default_value = tos
+                continue
+            for t in tos:
+                nt.links.new(out, t)
             nt.nodes.remove(em)
-            if prev is not None:
-                nt.links.new(prev, outn.inputs['Surface'])
     return back
 
 
@@ -893,6 +930,7 @@ def bake_self_steps(context, low, st, kinds, keep_state=None):
         low.select_set(True)
         context.view_layer.objects.active = low
         S.render.engine = 'CYCLES'
+        gpu = use_gpu(context)                       # 0.24.327
         common = dict(use_selected_to_active=False, margin=int(st.margin), margin_type='EXTEND', use_clear=True,
                       target='IMAGE_TEXTURES', save_mode='INTERNAL')
         for ki, kind in enumerate(kinds):
@@ -928,9 +966,13 @@ def bake_self_steps(context, low, st, kinds, keep_state=None):
                     r = bpy.ops.object.bake(type='EMIT', **common)
                 finally:
                     back()
-            elif kind == 'ROUGH':
+            elif kind == 'ROUGH':                   # (its Roughness glowed, through its Mix Shaders)
                 S.cycles.samples = 16
-                r = bpy.ops.object.bake(type='ROUGHNESS', **common)
+                back = _metal_glow(mats, 'Roughness')
+                try:
+                    r = bpy.ops.object.bake(type='EMIT', **common)
+                finally:
+                    back()
             elif kind == 'EMIT':
                 S.cycles.samples = 16
                 r = bpy.ops.object.bake(type='EMIT', **common)
@@ -956,11 +998,14 @@ def bake_self_steps(context, low, st, kinds, keep_state=None):
     if st.use_on_low:
         for m in mats:                              # (its own materials stay in the file)
             m.use_fake_user = True
-        mat = baked_material(low, images, _base_colour([s.material for s in low.material_slots]), st.green, uv_name)
+        # 0.24.327 (user: "결과가 달라 보여, 왼쪽 흰 벽이랑 똑같아야 되는데") its own shader has its AO look in its colour
+        # already: the AO map is not multiplied in again (it stays a map of its own, for the engine)
+        mat = baked_material(low, {k: v for k, v in images.items() if k != 'AO'},
+                             _base_colour([s.material for s in low.material_slots]), st.green, uv_name)
         for s in low.material_slots:
             s.material = mat
     info = dict(low=low.name, highs=[], maps=kinds, res=res, uv=uv, sharp=sharp, ray=0.0, stored=stored,
-                material=mat.name if mat else None, seconds=time.time() - t0, own=True, skipped=skipped)
+                material=mat.name if mat else None, seconds=time.time() - t0, own=True, skipped=skipped, gpu=gpu)
     LAST.clear()
     LAST.update(info)
     return info
@@ -975,7 +1020,9 @@ def describe(info):
             + (f' ({", ".join(SUFFIX[k] for k in info["skipped"])}: needs a high poly, left out)'
                if info.get('skipped') else '')
             + (f', {info["sharp"]:,} sharp edges' if info.get('sharp') is not None else '')
-            + f', {where}' + (f', material {info["material"]}' if info.get('material') else '') + f', {info["seconds"]:.1f} s')
+            + f', {where}' + (f', material {info["material"]}' if info.get('material') else '') + f', {info["seconds"]:.1f} s'
+            + ('' if info.get('gpu', True) else ' on the CPU (turn the GPU on: Quick Render\'s GPU button / Preferences '
+                                                 '> System - much faster)'))
 
 
 def run(context, st=None):

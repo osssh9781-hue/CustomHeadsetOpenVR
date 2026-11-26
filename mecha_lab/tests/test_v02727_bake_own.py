@@ -84,6 +84,13 @@ check('Normal: its shader\'s bump shows (not all flat blue)', np.ptp(nrm[:, 0]) 
 check('the material in its slot: the baked one; the original kept in the file (fake user)',
       ob.material_slots[0].material.name == 'Gun_Baked' and bpy.data.materials.get('Proc') is not None
       and bpy.data.materials['Proc'].use_fake_user)
+bmat = ob.material_slots[0].material
+imgs = {n.image.name for n in bmat.node_tree.nodes if n.type == 'TEX_IMAGE' and n.image}
+check('0.24.327 its own look: the AO map NOT multiplied into the colour (its shader has its AO look already); the AO map '
+      'still baked and kept', 'Gun_AO' not in imgs and 'Gun_Color' in imgs and bpy.data.images.get('Gun_AO') is not None,
+      sorted(imgs))
+check('0.24.327 the scene\'s Cycles device put back after (this machine: no GPU -> said so)', S.cycles.device == 'CPU'
+      and (info.get('gpu') or 'on the CPU' in msg))
 check('... no bake node left in the original', not any(n.name.startswith('.MCH Bake') for n in m.node_tree.nodes))
 
 # 0.24.326 (user, the Remesh window's Retopo + Bake box: "어디 있어?") the same there: No High Poly + 2 Bake
@@ -104,6 +111,49 @@ r = bpy.ops.mch.retopo_bake('EXEC_DEFAULT')
 img2 = bpy.data.images.get('Gun2_Color')
 check('... 2 Bake: its own material baked onto it', r == {'FINISHED'} and img2 is not None and
       ob2.material_slots[0].material.name == 'Gun2_Baked')
+
+# 0.24.327 (user's wall: a Mix Shader of two Principled BSDFs) the mix bakes as the mix
+bpy.ops.mesh.primitive_cube_add(size=2.0, location=(10, 0, 0))
+ob3 = C.active_object
+ob3.name = 'Wall'
+mm = bpy.data.materials.new('MixMat')
+mm.use_nodes = True
+nt3 = mm.node_tree
+p1 = nt3.nodes['Principled BSDF']
+p1.inputs['Base Color'].default_value = (1.0, 0.0, 0.0, 1.0)
+p1.inputs['Roughness'].default_value = 0.2
+p2 = nt3.nodes.new('ShaderNodeBsdfPrincipled')
+p2.inputs['Base Color'].default_value = (0.0, 0.0, 1.0, 1.0)
+p2.inputs['Roughness'].default_value = 0.8
+p2.inputs['Metallic'].default_value = 1.0
+mix = nt3.nodes.new('ShaderNodeMixShader')
+mix.inputs['Fac'].default_value = 0.5
+nt3.links.new(p1.outputs[0], mix.inputs[1])
+nt3.links.new(p2.outputs[0], mix.inputs[2])
+nt3.links.new(mix.outputs[0], nt3.nodes['Material Output'].inputs['Surface'])
+ob3.data.materials.append(mm)
+for o in C.selected_objects:
+    o.select_set(False)
+ob3.select_set(True)
+C.view_layer.objects.active = ob3
+st.color = st.rough = st.metal = True
+st.normal = st.ao = st.emit = False
+bm.run(C)
+
+
+def cov(kind):
+    a = np.array(bpy.data.images[f'Wall_{bm.SUFFIX[kind]}'].pixels[:]).reshape(-1, 4)[:, :3]
+    return a[a.sum(1) > 0.02]
+
+
+cc, rr, mt = cov('COLOR'), cov('ROUGH'), cov('METAL')
+check(f'a Mix Shader of a red and a blue surface (half each): Color the mix ({np.round(cc.mean(0), 2)})',
+      abs(cc[:, 0].mean() - cc[:, 2].mean()) < 0.05 and cc[:, 0].mean() > 0.5 and cc[:, 1].mean() < 0.05)
+check(f'... Roughness the mix 0.5 ({rr[:, 0].mean():.2f}), Metallic the mix 0.5 ({mt[:, 0].mean():.2f})',
+      abs(rr[:, 0].mean() - 0.5) < 0.03 and abs(mt[:, 0].mean() - 0.5) < 0.03)
+check('... the material put back as it was (no bake node, the mix linked again)',
+      not any(n.name.startswith('.MCH Bake') for n in nt3.nodes) and mix.outputs[0].is_linked
+      and p1.outputs[0].links[0].to_node == mix and p2.outputs[0].links[0].to_node == mix)
 st.own = False
 check('No High Poly off: nothing to bake there without a low (as before)', rb.own_meshes(C) == [])
 summary()
