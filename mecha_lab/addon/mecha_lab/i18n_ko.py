@@ -5611,6 +5611,7 @@ KO = {
     'No HDRI in the world: Add HDRI picks one': '월드에 HDRI 없음: HDRI 추가로 고르세요',
     'No High Poly': '하이폴리 없이',
     'No High Poly: Height / Curvature need a high (left out)': '하이폴리 없이: Height / Curvature 는 하이가 필요해서 빠짐',
+    'No High Poly: select the mesh(es), then 2 Bake': '하이폴리 없이: 메쉬를 선택하고 2 Bake',
     "No Mecha Lab copy was made in that session. Blender's own: File > Recover > Auto Save.": '그 세션에서 만든 Mecha Lab 복사본이 없습니다. Blender 자체: 파일 > 복구 > 자동 저장.',
     'No PNG shapes yet': 'PNG 모양 아직 없음',
     'No Render (': '렌더 안 함 (',

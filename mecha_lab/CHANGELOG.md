@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.24.326 — Remesh 창 Retopo + Bake 에도 No High Poly (2026-11-26)
+
+- (사용자: Remesh 창 Retopo + Bake 상자 사진 - "어디 있어?") No High Poly 버튼이 Mesh Tools 의 Bake Maps 에만 있었음 - Remesh 창
+  Retopo + Bake 상자에도 (2048 / Normal 줄 위). 켜면 1 Retopo 없이 선택한 메쉬를 바로 2 Bake: 자기 머티리얼을 자기 UV 에
+  (여러 개면 하나씩, 진행 카드). 꺼 두면 전과 같음.
+- 확인 (5.3): test_v02727_bake_own 15/15 (Retopo + Bake 상자의 2 Bake 포함), test_v02641_retopo_bake 35/35, test_ui_draw 전과 같음.
+
 ## 0.24.325 — Bake Maps: 하이폴리 없이 굽기, Emission 맵 / Bake High Poly 크래시 수정 (2026-11-25)
 
 - (사용자: "베이크 하이폴리 안 하고는 못 해?") Bake Maps 에 No High Poly: 선택한 메쉬의 자기 머티리얼을 자기 UV 에 굽기

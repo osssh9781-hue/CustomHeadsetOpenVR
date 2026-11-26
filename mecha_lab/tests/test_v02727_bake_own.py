@@ -85,5 +85,25 @@ check('the material in its slot: the baked one; the original kept in the file (f
       ob.material_slots[0].material.name == 'Gun_Baked' and bpy.data.materials.get('Proc') is not None
       and bpy.data.materials['Proc'].use_fake_user)
 check('... no bake node left in the original', not any(n.name.startswith('.MCH Bake') for n in m.node_tree.nodes))
+
+# 0.24.326 (user, the Remesh window's Retopo + Bake box: "어디 있어?") the same there: No High Poly + 2 Bake
+from mecha_lab import retopo_bake as rb
+bpy.ops.mesh.primitive_cube_add(size=2.0, location=(5, 0, 0))
+ob2 = C.active_object
+ob2.name = 'Gun2'
+ob2.data.materials.append(m)
+for o in C.selected_objects:
+    o.select_set(False)
+ob2.select_set(True)
+C.view_layer.objects.active = ob2
+st.normal = st.ao = st.rough = st.metal = st.emit = st.height = False
+st.color = True
+check('Retopo + Bake box: No High Poly on -> the selected mesh is ready for 2 Bake (no Retopo)',
+      rb.own_meshes(C) == [ob2] and bpy.ops.mch.retopo_bake.poll())
+r = bpy.ops.mch.retopo_bake('EXEC_DEFAULT')
+img2 = bpy.data.images.get('Gun2_Color')
+check('... 2 Bake: its own material baked onto it', r == {'FINISHED'} and img2 is not None and
+      ob2.material_slots[0].material.name == 'Gun2_Baked')
 st.own = False
+check('No High Poly off: nothing to bake there without a low (as before)', rb.own_meshes(C) == [])
 summary()

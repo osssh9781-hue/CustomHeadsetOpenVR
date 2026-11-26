@@ -843,6 +843,8 @@ class MCH_OT_retopo_bake(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
+        if own_meshes(context):
+            return True
         return any(lo is not None for _h, lo in selected_pairs(context)) or own_pair(context) is not None
 
     def invoke(self, context, event):
@@ -854,6 +856,9 @@ class MCH_OT_retopo_bake(bpy.types.Operator):
     def _go(self, context):
         if context.mode != 'OBJECT':
             bpy.ops.object.mode_set(mode='OBJECT')
+        mine = own_meshes(context)
+        if mine:                                     # 0.24.326 No High Poly: each mesh's own material onto itself
+            return _own_go(self, context, mine)
         link_own(context)                            # 0.24.251 the user's own low + its high
         items = [(h, lo) for h, lo in selected_pairs(context) if lo is not None]
         from . import bake_maps as bm, progress
@@ -888,6 +893,54 @@ class MCH_OT_retopo_bake(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def own_meshes(context):
+    """0.24.326 (user, the Remesh window: "어디 있어?") No High Poly on: the selected meshes to bake onto themselves."""
+    from . import bake_maps as bm, bake_highpoly as bk
+    st = bm.settings(context)
+    if st is None or not getattr(st, 'own', False):
+        return []
+    return [o for o in context.selected_objects if o.type == 'MESH' and not bk.is_bake(o)]
+
+
+def _own_job(context, ob):
+    from . import bake_maps as bm
+    st = bm.settings(context)
+    keep = bm._Keep(context, [ob])
+    try:
+        info = yield from bm.bake_pair_steps(context, ob, [], st, keep_state=keep)
+    finally:
+        keep.restore(context)
+    return info
+
+
+def _own_go(self, context, mine):
+    from . import bake_maps as bm, progress
+
+    def done(res):
+        ok = [(it, r) for it, r in res if not isinstance(r, Exception)]
+        bad = [(it[0].name, str(r)) for it, r in res if isinstance(r, Exception)]
+        for o in list(context.selected_objects):
+            o.select_set(False)
+        for (o, _x), _r in ok:
+            o.hide_set(False)
+            o.select_set(True)
+        if ok:
+            context.view_layer.objects.active = ok[-1][0][0]
+        msg = 'Bake (No High Poly): ' + (ok[0][0][0].name if len(ok) == 1 else f'{len(ok)} meshes')
+        if ok:
+            msg += ' | ' + bm.describe(ok[-1][1])
+        if bad:
+            msg += ' | failed: ' + '; '.join(f'{n}: {e}' for n, e in bad[:3])
+        return msg
+    items = [(o, o) for o in mine]
+    gen = _many(items, lambda it: _own_job(context, it[0]))
+    title = f'Bake: {mine[0].name} (its own material)' if len(mine) == 1 else f'Bake: {len(mine)} meshes (own materials)'
+    res = progress.start(context, title, gen, done)
+    if res != 'RUNNING':
+        self.report({'INFO'}, done(res))
+    return {'FINISHED'}
+
+
 def draw(layout, context, colour=None):
     """The two-step box (Remesh tool window, Bake Maps).  ``colour``: its title's own strip colour ('07')."""
     from . import bake_maps as bm, panel_capture as pc
@@ -900,6 +953,9 @@ def draw(layout, context, colour=None):
     items = selected_pairs(context)
     own = own_pair(context)
     n_low = sum(1 for _h, lo in items if lo is not None) or (1 if own is not None else 0)
+    mine = own_meshes(context)                       # 0.24.326 No High Poly
+    if getattr(st, 'own', False):
+        n_low = len(mine)
     box = layout.box()
     box.label(text='RETOPO + BAKE', icon=f'STRIP_COLOR_{colour}' if colour else 'MOD_REMESH')
     box.row(align=True).prop(S, 'mch_rb_method', expand=True)
@@ -918,6 +974,7 @@ def draw(layout, context, colour=None):
                                         f'1  Retopo {len(items)} Meshes' if many else
                                         '1  Retopo Again' if low is not None else '1  Retopo'), icon='MOD_REMESH')
     col = box.column(align=True)
+    col.prop(st, 'own', toggle=True, icon='MATERIAL')    # 0.24.326 no high poly: its own material (no step 1)
     r = col.row(align=True)
     r.prop(st, 'res', text='')
     r.prop(st, 'normal', toggle=True)
@@ -933,7 +990,12 @@ def draw(layout, context, colour=None):
     r.scale_y = 1.3
     r.enabled = n_low > 0
     r.operator('mch.retopo_bake', text=f'2  Bake {n_low} Meshes' if n_low > 1 else '2  Bake', icon='RENDER_STILL')
-    if one:
+    if getattr(st, 'own', False):
+        box.label(text=(f'{len(mine)} mesh(es): own material -> own UVs (no Retopo needed)' if mine else
+                        'No High Poly: select the mesh(es), then 2 Bake'), icon='CHECKMARK' if mine else 'INFO')
+        if st.height or st.curv:
+            box.label(text='No High Poly: Height / Curvature need a high (left out)', icon='INFO')
+    elif one:
         box.label(text=f'{len(parts)} meshes -> one low, baked from all of them', icon='CHECKMARK')
     elif own is not None:
         box.label(text=(f'Your own low: {own[0].name} -> {own[1].name}  (2 Bake)' if len(own[2]) == 1 else
