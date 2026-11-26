@@ -22,11 +22,24 @@ PROPS = ('shape', 'circle_segments', 'curve_resolution', 'curve_smoothness', 'ou
          'outline_segments', 'stroke_smooth', 'stroke_spacing', 'stroke_simplify', 'mask_brush_radius',
          'custom_size', 'custom_rotation', 'custom_drag_rotate', 'line_open', 'line_mode', 'line_width', 'line_caps',
          'line_taper_on', 'line_taper', 'line_pressure', 'line_area', 'stab_enable', 'stab_strength', 'stab_radius',
-         'stab_guide')
+         'stab_guide', 'sketch_first')
+# 0.24.328 (user: "몰드 도구랑 컷 스플릿이 같이 연동돼, 분리해 줘") + Sketch (it was one for every tool); a tool kept before
+# it has no Sketch of its own yet: off (its default) when it comes back
+DEFAULTS = {'sketch_first': False}
 TICK = 0.2
 
 _STORE = {}         # scene name -> {tool: {prop: value}}  (names: an undo can give the scene a new address)
 _LAST = {}          # scene name -> the tool the brush holds the settings of
+
+
+class _Draw:
+    """The drawing tools whose lasso settings are kept: ts.DRAW_TOOLS and the Mold tools (0.24.328)."""
+
+    def __contains__(self, t):
+        return t in ts.DRAW_TOOLS or ts.ALIAS.get(t) in ts.DRAW_TOOLS
+
+
+DRAW = _Draw()
 
 
 def enabled():
@@ -34,8 +47,17 @@ def enabled():
     return bool(pref('lasso_per_tool', True))
 
 
-def values(brush):
+SCENE_PROPS = (('mch_base', 'sketch', 'base_sketch', ('BASE', 'MBASE')),)   # 0.24.328 Base Mesh's Sketch First: Base / Mold Base apart
+
+
+def values(brush, scene=None, tool=None):
     out = {}
+    for pg, p, key, tools in SCENE_PROPS if scene is not None else ():
+        if tool not in tools:
+            continue
+        v = getattr(getattr(scene, pg, None), p, None)
+        if isinstance(v, (bool, int, float, str)):
+            out[key] = v
     for p in PROPS:
         try:
             v = getattr(brush, p)
@@ -45,7 +67,16 @@ def values(brush):
     return {p: v for p, v in out.items() if v is not None}
 
 
-def apply(brush, vals):
+def apply(brush, vals, scene=None):
+    vals = dict(DEFAULTS, **vals)
+    for pg, p, key, _tools in SCENE_PROPS if scene is not None else ():
+        data = getattr(scene, pg, None)
+        if key in vals and data is not None:
+            try:
+                if getattr(data, p) != vals[key]:
+                    setattr(data, p, vals[key])
+            except (AttributeError, TypeError, ValueError):
+                pass
     for p, v in vals.items():
         if p not in PROPS:
             continue
@@ -80,7 +111,7 @@ def sync(context=None):
     if brush is None or not enabled():
         return False
     try:
-        tool = ts.effective_tool(context)
+        tool = ts._raw_tool(context)               # 0.24.328 the Mold tools keep their own (not their original's)
     except (AttributeError, KeyError, TypeError, ReferenceError):
         return False
     key = scene.name_full
@@ -92,19 +123,19 @@ def sync(context=None):
     if last is None:                          # first look (a file opened, the add-on started)
         owner = scene.get(OWNER, '')
         if owner and owner != tool:           # the brush is still the tool's it was saved with
-            if owner in ts.DRAW_TOOLS:
-                st[owner] = values(brush)
-        elif tool in ts.DRAW_TOOLS:          # ... the tool in use (or nothing saved yet)
-            st[tool] = values(brush)
+            if owner in DRAW:
+                st[owner] = values(brush, scene, owner)
+        elif tool in DRAW:          # ... the tool in use (or nothing saved yet)
+            st[tool] = values(brush, scene, tool)
             return False
-        if tool in ts.DRAW_TOOLS and tool in st:
-            apply(brush, st[tool])
+        if tool in DRAW and tool in st:
+            apply(brush, st[tool], scene)
             return True
         return False
-    if last in ts.DRAW_TOOLS:
-        st[last] = values(brush)
-    if tool in ts.DRAW_TOOLS and tool in st:
-        apply(brush, st[tool])
+    if last in DRAW:
+        st[last] = values(brush, scene, last)
+    if tool in DRAW and tool in st:
+        apply(brush, st[tool], scene)
         return True
     return False
 
@@ -144,8 +175,8 @@ def _on_save_pre(*_args):
         brush = getattr(scene, 'mch_brush', None)
         st = store(scene)
         last = _LAST.get(key)
-        if brush is not None and last in ts.DRAW_TOOLS:
-            st[last] = values(brush)
+        if brush is not None and last in DRAW:
+            st[last] = values(brush, scene, last)
         try:
             scene[KEY] = json.dumps(st)
             if last:

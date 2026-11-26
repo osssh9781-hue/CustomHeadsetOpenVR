@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 0.24.328 — 도구별 라쏘 설정: Sketch 도 따로, Mold 도구도 따로 (2026-11-26)
+
+- (사용자: "브러시마다 라인이나 스케치 설정 다르게 저장되던 게 갑자기 다 통일됐어" / "몰드 도구랑 컷 스플릿이 같이 연동돼, 분리해 줘")
+  도구마다 따로 저장되는 라쏘 설정 (모양, 코너, Line ...) 에 Sketch 가 빠져 있었음 - Mold 도구에서 Sketch 를 켜면 Cut / Split 등
+  모든 도구에 같이 켜졌음. 이제 Sketch 도 도구마다 따로 (예전에 저장된 도구는 처음 돌아올 때 Sketch 꺼짐).
+- Mold Base Mesh / Mold Armor Plate 가 Base Mesh / Armor Plate 와 같은 칸에 저장되던 것 - 이제 각자 따로. Base Mesh 의 Sketch First
+  도 Base Mesh 와 Mold Base Mesh 따로.
+- 도구가 바뀔 때 설정을 되돌려 주는 타이머가 어떤 오류에도 멈추지 않게 (Blender 는 오류가 난 타이머를 조용히 꺼 버려서, 그 뒤로는 모든
+  도구가 한 설정을 쓰게 됐음).
+- 확인 (5.3): test_v02728_sketch_per_tool 8/8, 라쏘 / 몰드 기존 테스트 v02490_lassobar 38/38, v02501 10/10, v02522 19/19,
+  v02705 10/10, 실제 창에서 툴바로 도구 바꾸기 (Cut / Base Mesh / Armor Plate 각자 모양 유지), test_ui_draw / test_v02633 전과 같음.
+
 ## 0.24.327 — No High Poly 베이크: 섞인 셰이더 그대로, AO 이중 어둡게 없앰, GPU 로 굽기 (2026-11-26)
 
 - (사용자의 WALL_BAKE.blend: "결과가 달라 보여, 왼쪽 흰 벽이랑 똑같아야 되는데") 벽 머티리얼은 Mix Shader 가 Principled BSDF 두 개를
