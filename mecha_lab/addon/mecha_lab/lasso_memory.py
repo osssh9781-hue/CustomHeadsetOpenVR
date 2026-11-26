@@ -120,14 +120,19 @@ def forget(scene=None):
 
 
 def _tick():
+    # 0.24.328 (user: "브러시마다 라인이나 스케치 설정 다르게 저장되던 게 갑자기 다 통일됐어") any error here must not stop
+    # the timer - Blender drops a timer whose function raises, and from then on every tool shared one set
     try:
         if sync() and bpy.context.screen is not None:
             for area in bpy.context.screen.areas:
                 if area.type == 'VIEW_3D':
                     area.tag_redraw()
-    except (AttributeError, RuntimeError, ReferenceError, TypeError):
-        pass
+    except Exception as ex:                  # noqa: BLE001 (kept running whatever happened)
+        _ERR[0] = repr(ex)[:200]
     return TICK
+
+
+_ERR = ['']                         # the last error the timer swallowed (tests / a bug report)
 
 
 @persistent
