@@ -2156,6 +2156,27 @@ SPIKE_ANGLE = math.radians(4.0)  # ... and every face at it is this thin there
 SPIKE_MAX_VERTS = 60000         # (the scan is Python per point)
 
 
+def _spike_prepass(b):
+    """bool per point (by index): could be a spike (see _spike_verts); None when it cannot be worked out."""
+    try:
+        nv = len(b.verts)
+        if nv == 0 or len(b.edges) == 0:
+            return None
+        b.verts.index_update()
+        co = np.array([v.co[:] for v in b.verts], np.float64)
+        ev = np.array([(e.verts[0].index, e.verts[1].index) for e in b.edges], np.int64)
+        ln = np.linalg.norm(co[ev[:, 0]] - co[ev[:, 1]], axis=1)
+        vmin = np.full(nv, np.inf)
+        np.minimum.at(vmin, ev[:, 0], ln)
+        np.minimum.at(vmin, ev[:, 1], ln)
+        nb = np.full(nv, np.inf)
+        np.minimum.at(nb, ev[:, 0], vmin[ev[:, 1]])
+        np.minimum.at(nb, ev[:, 1], vmin[ev[:, 0]])
+        return ~(vmin <= SPIKE_RATIO * nb)
+    except (MemoryError, ValueError, ReferenceError):
+        return None
+
+
 def _spike_verts(b, lay=None):
     """0.24.83 Points a bevel / GN edge left sticking out as a fan of needle faces: every edge at the point is far
     longer than the edges round its neighbours and every face is needle-thin there (the fuzz's spike rule).
@@ -2167,6 +2188,10 @@ def _spike_verts(b, lay=None):
         return []
     out = []
     seen = 0
+    # 0.24.348 an exact pre-pass (numpy): a point is a spike only if its shortest edge is over SPIKE_RATIO x the
+    # middle of its neighbours' other edges - which is never under the shortest edge any neighbour has.  Points
+    # whose shortest edge is not over SPIKE_RATIO x that are skipped without the Python walk (the same answer)
+    maybe = _spike_prepass(b)
     for v in b.verts:
         if lay is not None:
             if not v[lay]:
@@ -2174,6 +2199,8 @@ def _spike_verts(b, lay=None):
             seen += 1
             if seen > SPIKE_MAX_VERTS:
                 break
+        if maybe is not None and not maybe[v.index]:
+            continue
         if len(v.link_edges) < 2 or not v.link_faces:
             continue
         mine = min(e.calc_length() for e in v.link_edges)

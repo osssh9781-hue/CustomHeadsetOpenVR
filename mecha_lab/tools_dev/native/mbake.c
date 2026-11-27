@@ -397,7 +397,7 @@ static void margin_fill(float *out, int ch, const unsigned char *mask, int w, in
   free(ring); free(m);
 }
 
-EXPORT int mbake_version(void) { return 9; }
+EXPORT int mbake_version(void) { return 10; }
 
 /* v2: the Normal map and, in the same rays, the Height (hit distance along the low's normal, world units; NULL: not
  * wanted) and a value of the high's points (hA, e.g. its curvature, between the hit triangle's corners; NULL: not
@@ -1053,5 +1053,21 @@ EXPORT void mbake_scene_export(void *p, float *nodes, float *tris) {
       o[c * 4] = v[0]; o[c * 4 + 1] = v[1]; o[c * 4 + 2] = v[2]; o[c * 4 + 3] = 0.f;
     }
     o[3] = (float)t;
+  }
+}
+
+
+/* v10 (0.24.348): the triangles' corner normals in leaf order (12 floats a triangle: 3 x xyz + 0) - the GPU Bevel */
+EXPORT void mbake_scene_export_normals(void *p, float *nrm) {
+  Scene *s = (Scene *)p;
+  if (!s) return;
+  const BVH *b = &s->b;
+  for (int k = 0; k < b->nt; k++) {
+    int t = b->idx[k];
+    float *o = nrm + k * 12;
+    for (int c = 0; c < 3; c++) {
+      o[c * 4] = s->N[t * 9 + c * 3]; o[c * 4 + 1] = s->N[t * 9 + c * 3 + 1]; o[c * 4 + 2] = s->N[t * 9 + c * 3 + 2];
+      o[c * 4 + 3] = 0.f;
+    }
   }
 }

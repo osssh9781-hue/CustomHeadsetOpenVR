@@ -1235,8 +1235,19 @@ class Eval:
         out = np.empty((g.n, 3), np.float32)
         if self.local and float(np.max(R)) > 0:
             ns = min(256, max(1, int(round(max(n.samples, 1) * BEVEL_MULT * self.ray_quality))))
-            L.mbake_bevel(self.local, int(g.n), _ptr(_c(g.P)), _ptr(_c(g.N)), _ptr(_c(g.Ng)), _ptr(_c(R)),
-                          _ptr(self.seeds, _UIP), int(ns), _ptr(out), _threads())
+            r = None
+            if USE_GPU[0]:                                # (0.24.348 on the graphics card when it is on)
+                try:
+                    from . import gpu_bake as gb
+                    r = gb.bevel(L, self.local, g.P, g.N, g.Ng, R, self.seeds, int(ns))
+                except Exception:
+                    r = None
+            if r is not None:
+                out[:] = r
+                GPU_RAYS[0] += int(g.n) * int(ns)
+            else:
+                L.mbake_bevel(self.local, int(g.n), _ptr(_c(g.P)), _ptr(_c(g.N)), _ptr(_c(g.Ng)), _ptr(_c(R)),
+                              _ptr(self.seeds, _UIP), int(ns), _ptr(out), _threads())
         else:
             out[:] = g.N
         if n.inputs['Normal'].is_linked:                  # (Cycles: the input normal kept, the bevel's turn added)
