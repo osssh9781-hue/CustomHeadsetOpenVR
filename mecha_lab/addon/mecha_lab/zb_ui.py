@@ -920,6 +920,7 @@ def corner_box(context, region_w, region_h, k):
         rows += 1                                                      # 0.24.79 + NAV ZBrush | Blender
     if not _goz_in_dock(context):
         rows += 1                                                      # 0.24.198 + GOZ Send | Import
+    rows += 1                                                          # 0.24.347 + POLY (the selection's faces)
     w, h = CORNER_W * k, rows * ROW * k + (rows - 1) * GAP * k + 2 * PAD * k
     gizmo = 0.0
     try:
@@ -945,6 +946,45 @@ def corner_reserve(context, region_w, region_h, k):
     """How much of the top right the card (and the gizmo beside it) takes - the top bars keep clear."""
     x, _y, _w, _h = corner_box(context, region_w, region_h, k)
     return region_w - x + 8 * k
+
+
+def poly_counts(context):
+    """(objects, faces, points) of the selected meshes as they are shown (modifiers on - the depsgraph's own
+    meshes, nothing evaluated here); the active one when nothing is selected."""
+    obs = [o for o in getattr(context, 'selected_objects', ()) or () if o.type == 'MESH']
+    act = getattr(context, 'active_object', None)
+    if not obs and act is not None and act.type == 'MESH':
+        obs = [act]
+    dg = getattr(context.view_layer, 'depsgraph', None) if getattr(context, 'view_layer', None) else None
+    faces = tris = 0
+    for o in obs:
+        me = o.data
+        try:
+            ev = o.evaluated_get(dg) if dg is not None else None
+            if ev is not None and ev.type == 'MESH' and ev.data is not None:
+                me = ev.data
+        except (ReferenceError, RuntimeError, TypeError):
+            pass
+        faces += len(me.polygons)              # (counts only - nothing triangulated / read per point: no lag)
+        tris += len(me.vertices)
+    return len(obs), faces, tris
+
+
+def _n(v):
+    return f'{v / 1e6:.2f}M' if v >= 1e6 else f'{v:,}'
+
+
+def poly_text(context):
+    try:
+        n, faces, tris = poly_counts(context)
+    except Exception:
+        return '-'
+    if n == 0:
+        return 'nothing selected'
+    txt = f'{_n(faces)} faces · {_n(tris)} verts'
+    if n > 1:
+        txt += f' · {n} obj'
+    return txt
 
 
 def corner_items(context, region_w, region_h, k=1.0):
@@ -1003,6 +1043,11 @@ def corner_items(context, region_w, region_h, k=1.0):
                         ('op', 'mch.ndof_parts', {'on': False})))
         out.append(Item('seg', x0 + PAD * k + lw3 + 2 * GAP * k + s3, y, s3, ROW * k, 'Parts', '', parts, True,
                         ('op', 'mch.ndof_parts', {'on': True})))
+    # 0.24.347 (user: "지브러시로 바꾸는 탭 있는 쪽 아래에 선택한 오브젝트 폴리곤 수 좀 써 줘"): the selection's faces
+    y -= ROW * k + GAP * k
+    out.append(Item('glabel', x0 + PAD * k, y, lw, ROW * k, 'POLY'))
+    out.append(Item('glabel', x0 + PAD * k + lw + GAP * k, y, w - 2 * PAD * k - lw - GAP * k, ROW * k,
+                    poly_text(context), 'value'))
     # 0.24.198 (user: "여기다가만 고즈 버튼 넣어 주라, 고즈 센드 임포트"): GoZ on the card, every screen
     if _goz_in_dock(context):                 # 0.24.229 (user: "고즈 버튼 여기로 옮겨 줘"): in the bottom bar's end
         return out

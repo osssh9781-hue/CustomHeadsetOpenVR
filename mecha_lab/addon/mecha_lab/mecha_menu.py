@@ -907,6 +907,9 @@ def _draw_new(it, hot, S, white, dim):
     if k == 'glabel' and it.icon in {'block', 'block_s'}:     # 0.24.224 the top bar's LASSO block: its name
         G.text(x, y + h / 2, it.label, 15 * S, G.TEXT)
         return None
+    if k == 'glabel' and it.icon == 'value':              # 0.24.347 a value read out (the card's POLY count)
+        G.text(x + 2 * S, y + h / 2, it.label, 11 * S, G.TEXT)
+        return None
     if k == 'glabel':
         G.text(x + 2 * S, y + h / 2, it.label, 10 * S, G.TEXT_DIM)
     return None

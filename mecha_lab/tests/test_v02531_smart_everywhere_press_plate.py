@@ -262,11 +262,11 @@ check('the corner card op sets it', WM.mch_ndof_parts)
 bpy.ops.mch.ndof_parts(on=False)
 K = ui_factor(CTX, CTX.region)
 its = zu.corner_items(CTX, W, H, K)
-labels = [i.label for i in its if i.kind == 'glabel']
+labels = [i.label for i in its if i.kind == 'glabel' and i.icon != 'value']   # (0.24.347 + POLY's count)
 seg = {(i.label, i.action[1] if i.action else ''): i for i in its if i.kind == 'seg'}
 cx, cy, cw, ch = zu.corner_box(CTX, W, H, K)
 check('corner card (MECHA LAB): a 3D MOUSE row View | Parts under VIEW, View on; the card holds all rows',
-      labels[-3:] == ['VIEW', '3D MOUSE', 'GOZ'] and seg[('Send', 'mch.goz_send')].action[0] == 'op'
+      labels[-4:] == ['VIEW', '3D MOUSE', 'POLY', 'GOZ'] and seg[('Send', 'mch.goz_send')].action[0] == 'op'
       and seg[('Import', 'mch.goz_import')].action[0] == 'op' and seg[('View', 'mch.ndof_parts')].on and not seg[('Parts', 'mch.ndof_parts')].on
       and seg[('Parts', 'mch.ndof_parts')].action[2] == {'on': True}
       and all(cy - 0.5 <= i.y and i.y + i.h <= cy + ch + 0.5 for i in its if i.kind != 'card'), labels)
