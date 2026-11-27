@@ -229,6 +229,26 @@ def _on_update(self, context):
         turn_off(context)
 
 
+def even_scale(ob, tol=0.02):
+    """0.24.330 (user's cop_for_rig.blend: "베벨 메이크 리얼 누르면 적용이 안 돼" - parts scaled (0.55, 0.39, 0.017)) the
+    Bevel modifier's width is in the object's own space: on a part scaled unevenly a bevel 4 cm across its face was
+    0.13 mm along its thin side - it looked like nothing.  An uneven scale is put into the mesh first (the part looks
+    the same; its scale reads 1, 1, 1).  A mesh other objects share gets its own copy.  Returns True when done."""
+    sc = ob.scale
+    a = [abs(sc.x), abs(sc.y), abs(sc.z)]
+    if min(a) <= 0.0 or max(a) / min(a) <= 1.0 + tol:
+        return False
+    if ob.data.users > 1:
+        ob.data = ob.data.copy()
+    from mathutils import Matrix
+    ob.data.transform(Matrix.Diagonal((sc.x, sc.y, sc.z, 1.0)))
+    ob.scale = (1.0, 1.0, 1.0)
+    ob.data.update()
+    for ch in ob.children:                       # (children stay where they were)
+        ch.matrix_parent_inverse = Matrix.Diagonal((sc.x, sc.y, sc.z, 1.0)) @ ch.matrix_parent_inverse
+    return True
+
+
 def local_width(ob, r):
     """0.24.321 (user: "노말 베벨 두께만큼 리얼 메쉬로 변환했을 때 그 두께로 안 나와, 되게 얇게 나와") the Bevel shader's
     Radius is in world space, the Bevel modifier's Width in the object's own: a part scaled 0.01 (an FBX in cm) got a
@@ -471,7 +491,7 @@ class MCH_OT_bevel_normal_real(bpy.types.Operator):
             self.report({'WARNING'}, 'Make Real: select the meshes first')
             return {'CANCELLED'}
         r = float(context.scene.mch_bevel_normal_radius)
-        done, skipped, failed = [], [], []
+        done, skipped, failed, evened = [], [], [], []
         for ob in obs:
             if helper(ob, context):                  # 0.24.238 cutters / wire helpers: left alone
                 skipped.append(ob.name)
@@ -480,9 +500,14 @@ class MCH_OT_bevel_normal_real(bpy.types.Operator):
             if nb:
                 failed.append(f'{ob.name} ({nb} broken points in the mesh itself - Fix Mesh first)')
                 continue
+            if even_scale(ob):                       # 0.24.330 an uneven scale into the mesh first
+                evened.append(ob.name)
+                context.view_layer.update()
             (done if make_real(ob, local_width(ob, r), self.segments, context) is not None
              else failed).append(ob.name)
         msg = f'Bevel made real on {len(done)} mesh(es)'
+        if evened:
+            msg += f'; {len(evened)} had an uneven scale - put into the mesh first (they look the same, scale 1)'
         if skipped:
             msg += f'; {len(skipped)} helper(s) skipped (cutters / wire)'
         if failed:

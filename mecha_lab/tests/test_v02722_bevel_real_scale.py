@@ -41,4 +41,31 @@ for sc in (1.0, 0.01, 2.0, 100.0):
         check(f'... Radius 0.02 afterwards: follows in world size ({width(ob):.4f})', abs(width(ob) - 0.02) < 1e-3)
         S.mch_bevel_normal_radius = 0.05
     bpy.data.objects.remove(ob)
+
+# 0.24.330 (user's cop_for_rig.blend: parts scaled unevenly - (0.55, 0.39, 0.017)) the scale into the mesh first, then
+# the bevel is the same width every way
+bpy.ops.mesh.primitive_cube_add(size=2.0)
+ob = C.active_object
+ob.scale = (2.0, 1.0, 0.05)
+C.view_layer.update()
+before = [(ob.matrix_world @ v.co)[:] for v in ob.data.vertices]
+for o in C.selected_objects:
+    o.select_set(False)
+ob.select_set(True)
+C.view_layer.objects.active = ob
+S.mch_bevel_normal_radius = 0.02
+bpy.ops.mch.bevel_normal_real()
+C.view_layer.update()
+after = [(ob.matrix_world @ v.co)[:] for v in ob.data.vertices]
+check('an uneven scale (2, 1, 0.05): put into the mesh (scale 1), the part where it was',
+      tuple(ob.scale) == (1.0, 1.0, 1.0) and np.abs(np.array(sorted(before)) - np.array(sorted(after))).max() < 1e-6)
+ev = ob.evaluated_get(C.evaluated_depsgraph_get()).to_mesh()
+co = np.array([(ob.matrix_world @ v.co)[:] for v in ev.vertices])
+ob.evaluated_get(C.evaluated_depsgraph_get()).to_mesh_clear()
+top = co[np.abs(co[:, 2] - co[:, 2].max()) < 1e-6]
+side = co[np.abs(co[:, 0] - co[:, 0].max()) < 1e-6]
+wx = co[:, 0].max() - top[:, 0].max()           # (in from the side on the top)
+wz = co[:, 2].max() - side[:, 2].max()          # (down from the top on the side)
+check(f'... the bevel the same width both ways ({wx:.4f} across, {wz:.4f} down; Radius 0.02)',
+      abs(wx - 0.02) < 2e-3 and abs(wz - 0.02) < 2e-3)
 summary()
