@@ -332,6 +332,7 @@ TRIES = (dict(miter_outer='MITER_ARC', weld=False),              # (0.24.238 a r
          dict(miter_outer='MITER_SHARP', weld=True),
          dict(miter_outer='MITER_SHARP', weld=True, segments=1))
 WELD = 'MCH Bevel Weld'
+KEPT = 'mch_bevel_kept'               # 0.24.331 (edges beveled, edges left sharp) of the last Make Real
 
 
 def helper(ob, context=None):
@@ -433,14 +434,278 @@ def broken_points(ob, ctx=None):
     return int(((~np.isfinite(co)).any(1) | (np.abs(co) > 1e6).any(1)).sum())
 
 
-def make_real(ob, width, segments=3, context=None):
+FACE_N = 'mch_bevel_face_n'           # 0.24.331 (while checking) each face's own normal, carried through the bevel
+EDGE_ATTR = 'mch_bevel_real'          # 0.24.331 the edges Make Real bevels (1) - its own attribute, not Bevel Weight
+SHARP = 0.5236                         # (30°, as the Angle limit was)
+SPIKE = 1.5                            # a point farther off the surface than this x width is a spike
+FOLD_DOT = -0.2                        # a face whose normal is this much against the surface's is folded over
+FOLD_AREA = 0.05                       # x width²: folded area let through (specks)
+HALVE_AFTER = 12                       # rounds of folds left by their nearest edge; then halving finds the cause
+ROUNDS = 60                            # find-and-leave-sharp rounds at most
+MAX_TESTS = 300                        # bevel evaluations at most when hunting the edges that spike
+
+
+class _Check:
+    """The part's own surface (without the made-real bevel) once, then: does the bevel as it is now spike?"""
+
+    def __init__(self, ob, width, ctx):
+        import bmesh
+        from mathutils.bvhtree import BVHTree
+        self.ob, self.width, self.ctx, self.n = ob, width, ctx, 0
+        self.spiked, self.folds = False, []
+        mod = ob.modifiers.get(REAL)
+        mod.show_viewport = False
+        ctx.view_layer.update()
+        bm = bmesh.new()
+        try:
+            bm.from_object(ob, ctx.evaluated_depsgraph_get())
+            self.tree = BVHTree.FromBMesh(bm)
+        finally:
+            bm.free()
+        self.lo, self.hi = _box(ob, ctx)
+        me = ob.evaluated_get(ctx.evaluated_depsgraph_get()).data
+        self.same = set(map(tuple, self._faces(me)[0]))        # (faces the bevel leaves as they are)
+        mod.show_viewport = True
+        ctx.view_layer.update()
+
+    @staticmethod
+    def _faces(me):
+        import numpy as np
+        n = len(me.polygons)
+        c = np.empty(n * 3)
+        me.polygons.foreach_get('center', c)
+        nn = np.empty(n * 3)
+        me.polygons.foreach_get('normal', nn)
+        a = np.empty(n)
+        me.polygons.foreach_get('area', a)
+        return np.round(c.reshape(-1, 3), 6), nn.reshape(-1, 3), a, c.reshape(-1, 3)
+
+    def _flipped(self, me, skip=None):
+        """(area, centres) of ``me``'s faces turned against the part's surface where they are AND against the face
+        they came from (a fold; a face already the wrong way round in the part itself is not one)."""
+        import numpy as np
+        key, nn, a, c = self._faces(me)
+        src = me.attributes.get(FACE_N)
+        if src is not None and src.domain == 'FACE' and len(src.data) == len(a):
+            was = np.empty(len(a) * 3)
+            src.data.foreach_get('vector', was)
+            was = was.reshape(-1, 3)
+            turned = (nn * was).sum(1) < FOLD_DOT
+        else:
+            turned = np.ones(len(a), bool)
+        near = self.tree.find_nearest
+        out, at = 0.0, []
+        for i in np.nonzero(turned)[0]:
+            if skip is not None and tuple(key[i]) in skip:
+                continue
+            n = near(c[i])[1]
+            if n is not None and nn[i].dot(n) < FOLD_DOT:
+                out += a[i]
+                at.append(c[i])
+        return out, at
+
+    def bad(self):
+        """0.24.331 a spike (a point off the surface), or a fold (beveled faces turned inside out - fan triangles
+        the bevel slid over each other)."""
+        import numpy as np
+        self.n += 1
+        self.ctx.view_layer.update()
+        me = self.ob.evaluated_get(self.ctx.evaluated_depsgraph_get()).data
+        co = np.empty(len(me.vertices) * 3)
+        me.vertices.foreach_get('co', co)
+        co = co.reshape(-1, 3)
+        self.spiked = out_of_box(co, self.lo, self.hi, self.width)
+        if not self.spiked:
+            lim = self.width * SPIKE + 1e-6
+            near = self.tree.find_nearest
+            for v in co:
+                d = near(v)[3]
+                if d is None or d > lim:
+                    self.spiked = True
+                    break
+        area, self.folds = self._flipped(me, self.same)
+        if area <= FOLD_AREA * self.width ** 2:
+            self.folds = []
+        return self.spiked or bool(self.folds)
+
+
+def sharp_edges(me):
+    """Indices of ``me``'s manifold edges sharper than 30°."""
+    import bmesh
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+        bm.normal_update()
+        return [e.index for e in bm.edges if e.is_manifold and e.calc_face_angle(0.0) > SHARP]
+    finally:
+        bm.free()
+
+
+def _put_weights(me, on):
+    import numpy as np
+    w = np.zeros(len(me.edges), np.float32)
+    w[list(on)] = 1.0
+    at = me.attributes.get(EDGE_ATTR)
+    if at is None or at.domain != 'EDGE' or at.data_type != 'FLOAT':
+        if at is not None:
+            me.attributes.remove(at)
+        at = me.attributes.new(EDGE_ATTR, 'FLOAT', 'EDGE')
+    at.data.foreach_set('value', w)
+    me.update()
+
+
+def weighted_real(ob, mod, width, ctx):
+    """0.24.331 (user, cop_for_rig: "안되잖아" - Make Real left no bevel at all): Blender's Clamp Overlap shrinks the
+    whole bevel to the narrowest spot - on these fan-triangulated parts to nothing; without it some corners spike.  So
+    no clamp, and only the sharp edges get the bevel (an edge weight, our own attribute); when the result spikes, the
+    edges that cause it are found by halving (edges sorted along the part) and left sharp, the rest beveled; a fold
+    (fan triangles the bevel slid over each other, faces turned inside out) leaves the edge next to it sharp.  Returns
+    (edges beveled, edges left sharp), or None (no sharp edge kept)."""
+    me = ob.data
+    edges = sharp_edges(me)
+    if not edges:
+        return None
+    mod.limit_method = 'WEIGHT'
+    mod.edge_weight = EDGE_ATTR
+    mod.use_clamp_overlap = False
+    _put_weights(me, edges)
+    with _face_normals(ob):
+        return _weighted(ob, me, edges, width, ctx)
+
+
+class _face_normals:
+    """(while checking) each face's own normal as a face attribute, carried through the bevel - a face of the part
+    already the wrong way round is then not taken for a fold."""
+
+    def __init__(self, ob):
+        self.ob = ob
+
+    def __enter__(self):
+        import numpy as np
+        me = self.ob.data
+        fn = np.empty(len(me.polygons) * 3, np.float32)
+        me.polygons.foreach_get('normal', fn)
+        at = me.attributes.get(FACE_N)
+        if at is not None:
+            me.attributes.remove(at)
+        me.attributes.new(FACE_N, 'FLOAT_VECTOR', 'FACE').data.foreach_set('vector', fn)
+        self.ob.update_tag()
+        return self
+
+    def __exit__(self, *_exc):
+        me = self.ob.data
+        at = me.attributes.get(FACE_N)
+        if at is not None:
+            me.attributes.remove(at)
+        me.update()
+        self.ob.update_tag()
+        return False
+
+
+def clean(ob, width, context=None):
+    """Is the made-real bevel on ``ob`` free of spikes and folds?"""
+    ctx = context or bpy.context
+    if ob.modifiers.get(REAL) is None:
+        return True
+    with _face_normals(ob):
+        return not _Check(ob, width, ctx).bad()
+
+
+def _weighted(ob, me, edges, width, ctx):
+    import numpy as np
+    chk = _Check(ob, width, ctx)
+    co = np.empty(len(me.vertices) * 3)
+    me.vertices.foreach_get('co', co)
+    co = co.reshape(-1, 3)
+    ev = np.empty(len(me.edges) * 2, np.int64)
+    me.edges.foreach_get('vertices', ev)
+    ev = ev.reshape(-1, 2)
+    idx = np.array(edges, np.int64)
+    mid = (co[ev[idx, 0]] + co[ev[idx, 1]]) * 0.5
+    ax = int(np.argmax(mid.max(0) - mid.min(0)))
+    order = idx[np.argsort(mid[:, ax], kind='stable')]
+
+    def bad_with(sub):
+        _put_weights(me, sub)
+        ob.update_tag()
+        return chk.bad()
+
+    def spikes_with(sub):
+        return bad_with(sub) and chk.spiked
+
+    def culprits(sub, test):
+        """The edges of ``sub`` (known bad by ``test``) that make it so: halved till found."""
+        if len(sub) <= 2 or chk.n >= MAX_TESTS:      # (out of tests: what is still suspect stays sharp)
+            return list(sub)
+        h = len(sub) // 2
+        found = [i for part in (sub[:h], sub[h:]) if test(part) for i in culprits(part, test)]
+        if found:
+            return found
+        if len(sub) <= 8:                            # (only together: the lot)
+            return list(sub)
+        mid_ = sub[h // 2:h + h // 2]
+        return culprits(mid_, test) if test(mid_) else list(sub)
+
+    a_, b_ = co[ev[:, 0]], co[ev[:, 1]]
+
+    def near_folds(sub, pts):
+        """The beveled edge nearest each folded face (a fold stays where it is made)."""
+        sub = np.asarray(sub, np.int64)
+        a, d = a_[sub], b_[sub] - a_[sub]
+        dd = np.maximum((d * d).sum(1), 1e-20)
+        out = set()
+        for p in pts:
+            t = np.clip(((p - a) * d).sum(1) / dd, 0.0, 1.0)
+            out.add(int(sub[int(np.argmin(np.linalg.norm(a + t[:, None] * d - p, axis=1)))]))
+        return out
+
+    keep = list(order)
+    for _round in range(ROUNDS):
+        if not keep or chk.n >= MAX_TESTS or not bad_with(keep):
+            break
+        if chk.spiked:                               # spikes: the edges found by halving
+            drop = set(culprits(np.array(keep, np.int64), spikes_with))
+        elif _round < HALVE_AFTER:                   # folds only: the edge right by each
+            drop = near_folds(keep, chk.folds)
+        else:                                        # (a fold that stays: found by halving too)
+            drop = set(culprits(np.array(keep, np.int64), bad_with))
+        keep = [i for i in keep if i not in drop]
+    _put_weights(me, keep)
+    ob.update_tag()
+    if not keep or chk.bad():
+        return None
+    return len(keep), len(edges) - len(keep)
+
+
+def make_real(ob, width, segments=3, context=None, weighted=True):
     """0.24.236 (user: "이렇게 베벨로 바뀐 메쉬를 진짜 그런 형태로 바꿀 수는 없나?") the rounded look made real geometry:
     a live Bevel modifier on ``ob`` (Angle 30°, Width as the look's Radius, Segments, Harden Normals, no overlap) at
     the end of its stack - editable, and baked by Apply Modifiers like any other; the shading bevel goes off on it (no
     double rounding).
     0.24.238 (user, a render with long spikes): the result is checked - no point may end up farther off the part's
     surface than the width; if one does, safer settings are tried (sharp miters, doubled points welded first, one
-    segment); if none is clean the modifier is taken off again.  Returns the modifier, or None."""
+    segment); if none is clean the modifier is taken off again.  Returns the modifier, or None.
+    0.24.331 first the sharp edges only, no clamp, the edges that spike left sharp (``weighted_real``); the old
+    settings (clamped, all edges over 30°) only when that keeps nothing.  ``ob[KEPT]`` = (beveled, left sharp)."""
+    ctx = context or bpy.context
+    if weighted:
+        w = ob.modifiers.get(WELD)
+        if w is not None:
+            ob.modifiers.remove(w)
+        mod = ob.modifiers.get(REAL) or ob.modifiers.new(REAL, 'BEVEL')
+        mod.width = width
+        mod.segments = segments
+        mod.profile = 0.5
+        mod.harden_normals = True
+        mod.miter_outer = 'MITER_ARC'
+        got = weighted_real(ob, mod, width, ctx)
+        if got is not None:
+            ob[PROP] = 0.0
+            ob[KEPT] = list(got)
+            return mod
+        at = ob.data.attributes.get(EDGE_ATTR)         # (nothing kept: the old way, our weights out again)
+        if at is not None:
+            ob.data.attributes.remove(at)
     for t in TRIES:
         mod = ob.modifiers.get(REAL)
         if mod is None:
@@ -455,6 +720,7 @@ def make_real(ob, width, segments=3, context=None):
         mod.width = width
         mod.segments = t.get('segments', segments)
         mod.limit_method = 'ANGLE'
+        mod.edge_weight = ''
         mod.angle_limit = 0.5236
         mod.profile = 0.5
         mod.use_clamp_overlap = True
@@ -463,6 +729,8 @@ def make_real(ob, width, segments=3, context=None):
         ob.update_tag()
         if sticks_out(ob, width, context) <= width * 1.5 + 1e-6:
             ob[PROP] = 0.0
+            if KEPT in ob:
+                del ob[KEPT]
             return mod
     for name in (REAL, WELD):                          # (none clean: as it was)
         m = ob.modifiers.get(name)
@@ -506,6 +774,10 @@ class MCH_OT_bevel_normal_real(bpy.types.Operator):
             (done if make_real(ob, local_width(ob, r), self.segments, context) is not None
              else failed).append(ob.name)
         msg = f'Bevel made real on {len(done)} mesh(es)'
+        sharp = sum(int(bpy.data.objects[n].get(KEPT, (0, 0))[1]) for n in done)
+        if sharp:
+            msg += (f'; {sharp} edge(s) in tight spots left sharp (a bevel there would stick out - lower Radius to '
+                    f'round them too)')
         if evened:
             msg += f'; {len(evened)} had an uneven scale - put into the mesh first (they look the same, scale 1)'
         if skipped:

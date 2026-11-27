@@ -113,7 +113,7 @@ check(f'0.24.237 Make Real: nothing selected - it does nothing (selected only); 
       not none_ok and b.modifiers.get(bn.REAL) is None and c.modifiers.get(bn.REAL) is None)
 check(f'Make Real: a live Bevel modifier on the selected (faces {f0} -> {f1}), Radius wide, the slider moves it, its '
       f'shading bevel off; the base mesh unchanged',
-      mod is not None and mod.limit_method == 'ANGLE' and f1 > f0 and abs(mod.width - 0.08) < 1e-6 and a[bn.PROP] == 0.0
+      mod is not None and mod.limit_method in {'ANGLE', 'WEIGHT'} and f1 > f0 and abs(mod.width - 0.08) < 1e-6 and a[bn.PROP] == 0.0
       and np.allclose(mio.read_co(a.data), co0[a.name]))
 # 0.24.238 (user: Make Real made long spikes): helpers left alone, the result checked, safer settings tried
 real_so = bn.sticks_out
@@ -137,11 +137,11 @@ bpy.data.objects.remove(cut)
 bpy.data.meshes.remove(cme)          # (its mesh would still hold the base material)
 seen = []
 bn.sticks_out = lambda ob, w, ctx=None: (seen.append(ob.modifiers[bn.REAL].miter_outer) or (1.0 if len(seen) == 1 else 0.0))
-mod = bn.make_real(a, 0.08)
+mod = bn.make_real(a, 0.08, weighted=False)
 check(f'spikes with the first settings: the next ones are used ({seen})', mod is not None and mod.miter_outer == 'MITER_SHARP'
       and len(seen) == 2)
 bn.sticks_out = lambda ob, w, ctx=None: 1.0
-mod = bn.make_real(a, 0.08)
+mod = bn.make_real(a, 0.08, weighted=False)
 check('spikes whatever the settings: the bevel is taken off again, the part as it was',
       mod is None and a.modifiers.get(bn.REAL) is None and a.modifiers.get(bn.WELD) is None)
 bn.sticks_out = real_so
