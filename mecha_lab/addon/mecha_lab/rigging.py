@@ -38,6 +38,9 @@ SPRING_KEY = 'mch_spring'      # on the armature: {chain root bone: [stiffness, 
 KINDS = [('BODY', 'Human', 'A standing body (feet on the ground, facing -Y): spine, arms, legs, IK'),
          ('QUAD', 'Quadruped', 'A four-legged body (head toward -Y): spine, neck, head, four legs, tail, IK'),
          ('MECHA', 'Mecha', 'Rigid parts: one bone per selected part, the parts ride their bones'),
+         ('NAMED', 'Mecha Names', 'Mecha parts named Pelvis, Torso, Head, UpperArm.L, Forearm.L, Hand.L, Thigh.R ... '
+                                  '(or 골반 몸통 머리 위팔 ...): bones by the names, joints where they meet, IK on '
+                                  'the arms and legs'),
          ('CHAIN', 'Chain', 'A tail / tentacle / hair lock: bones along it, Jiggle'),
          ('AUTO', 'Auto Creature', 'Any creature: its legs found where it touches the ground (any number), its tails, '
                                    'arms and tentacles as swaying chains - no template'),
@@ -1644,6 +1647,14 @@ class MCH_OT_rig_make(bpy.types.Operator):
                        f'{info["lips"]} lip bones, {info["fingers"]} fingers, {info["bones"]} bones'
                        + (f', {body.name} bound ({"automatic" if how == "auto" else "nearest-bone"} weights)' if how else ''))
                 _show(context, arm)
+            elif st.kind == 'NAMED':                   # 0.24.336 by the parts' names
+                from . import mecha_named
+                arm, rep = mecha_named.build(context, [o for o in (sel or [act]) if o.type == 'MESH'])
+                msg = (f'{arm.name}: {len(rep["bones"])} bones by name ({", ".join(rep["bones"])})'
+                       + (f', IK on {", ".join(rep["ik"])}' if rep['ik'] else ', no IK (an arm / leg needs its '
+                          'upper, lower and end part)')
+                       + (f'; {len(rep["rode"])} unnamed part(s) on the nearest bone' if rep['rode'] else ''))
+                _show(context, arm)
             elif st.kind == 'MECHA':
                 arm = build_mecha(context, sel or [act], st.auto_joints)
                 nl = len(json.loads(arm.get('mch_legs', '[]')))
@@ -2178,6 +2189,10 @@ def draw(layout, context):
     elif st.kind == 'MECHA':
         col.row(align=True).prop(st, 'auto_joints', toggle=True)
         box.label(text='Select the parts; then click a part: its joint', icon='INFO')
+    elif st.kind == 'NAMED':                         # 0.24.336
+        from . import mecha_named
+        mecha_named.draw_help(box)
+        box.label(text='Select all the parts, then Make Rig', icon='INFO')
     elif st.kind == 'AUTO':
         r = col.row(align=True)
         r.prop(st, 'bind', toggle=True)
