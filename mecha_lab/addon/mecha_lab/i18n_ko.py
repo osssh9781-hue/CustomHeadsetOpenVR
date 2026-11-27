@@ -952,6 +952,7 @@ KO = {
     'Arctic White': '북극 흰색',
     'Area': '영역',
     'Area #': '영역 #',
+    'Area Fill': '영역 채우기',
     'Areas (each its own tilt, curl, clump, tip gather - pick one)': '영역 (각각 기울기, 컬, 뭉침, 끝 모임 설정 - 하나 고르기)',
     'Arm': '팔',
     'Arm Length': '암 길이',

@@ -766,6 +766,354 @@ def make(context, scene, cuts=1):
     return quads, others
 
 
+def _inside(poly, pts):
+    """Which of the points ``pts`` (n, 2) lie inside the closed polygon ``poly`` (m, 2)."""
+    x, y = pts[:, 0][:, None], pts[:, 1][:, None]
+    a, b = poly, np.roll(poly, -1, axis=0)
+    cross = ((a[:, 1] <= y) != (b[:, 1] <= y))
+    t = (y - a[:, 1]) / np.where(np.abs(b[:, 1] - a[:, 1]) > 1e-12, b[:, 1] - a[:, 1], 1e-12)
+    xs = a[:, 0] + t * (b[:, 0] - a[:, 0])
+    return ((cross & (x < xs)).sum(1) % 2) == 1
+
+
+def holes(low):
+    """The low's holes: [[vertex index ...] (a closed border loop)] - every border loop but the longest of its piece
+    (that one is the piece's outside)."""
+    import bmesh
+    bm = bmesh.new()
+    bm.from_mesh(low.data)
+    bm.verts.ensure_lookup_table()
+    edges = [e for e in bm.edges if e.is_boundary]
+    nxt = {}
+    for e in edges:
+        a, b = e.verts
+        nxt.setdefault(a.index, []).append(b.index)
+        nxt.setdefault(b.index, []).append(a.index)
+    seen, loops = set(), []
+    for start in list(nxt):
+        if start in seen or len(nxt[start]) != 2:
+            continue
+        loop, prev, cur = [start], None, start
+        seen.add(start)
+        while True:
+            options = [v for v in nxt[cur] if v != prev]
+            if not options:
+                break
+            prev, cur = cur, options[0]
+            if cur == start:
+                break
+            if cur in seen or len(nxt.get(cur, ())) != 2:
+                loop = None
+                break
+            seen.add(cur)
+            loop.append(cur)
+        if loop and len(loop) >= 3:
+            loops.append(loop)
+    # the piece each loop is on (faces linked), its outside = its longest loop
+    piece, k = {}, 0
+    for f in bm.faces:
+        if f.index in piece:
+            continue
+        stack = [f]
+        piece[f.index] = k
+        while stack:
+            g = stack.pop()
+            for e in g.edges:
+                for h in e.link_faces:
+                    if h.index not in piece:
+                        piece[h.index] = k
+                        stack.append(h)
+        k += 1
+    co = [v.co.copy() for v in bm.verts]
+    of_loop = []
+    for loop in loops:
+        f = next(iter(bm.verts[loop[0]].link_faces), None)
+        length = sum((co[loop[i]] - co[loop[i - 1]]).length for i in range(len(loop)))
+        of_loop.append((piece.get(f.index, -1) if f is not None else -1, length))
+    bm.free()
+    longest = {}
+    for i, (pc, ln) in enumerate(of_loop):
+        if pc not in longest or ln > of_loop[longest[pc]][1]:
+            longest[pc] = i
+    return [loop for i, loop in enumerate(loops) if longest.get(of_loop[i][0]) != i]
+
+
+def fill_holes(context, scene, poly, view):
+    """0.24.334 (user: "중앙에 난 빵꾸는 내가 라쏘로 동그라미 치면 메꿔지게") the low's holes inside the lasso ``poly``
+    (pixels on the screen ``view``) filled: 4 points a quad, an even ring a grid, else filled and made quads where it
+    can; the new points put on the model.  Returns the holes filled."""
+    low = low_of(scene)
+    if low is None or not len(low.data.polygons):
+        return 0
+    poly = np.asarray(poly, float)
+    M = low.matrix_world
+    co = np.array([M @ v.co for v in low.data.vertices])
+    xy, w = _screen(co, view)
+    chosen = [loop for loop in holes(low) if (w[loop] > 0).all() and _inside(poly, xy[loop]).all()]
+    if not chosen:
+        return 0
+    lay = context.view_layer
+    if lay.objects.active != low:
+        if context.mode != 'OBJECT':
+            bpy.ops.object.mode_set(mode='OBJECT')
+        for o in context.selected_objects:
+            o.select_set(False)
+        low.select_set(True)
+        lay.objects.active = low
+    was_edit = low.mode == 'EDIT'
+    if not was_edit:
+        bpy.ops.object.mode_set(mode='EDIT')
+    import bmesh
+    n0 = len(low.data.vertices)
+    done = 0
+    for loop in chosen:
+        bm = bmesh.from_edit_mesh(low.data)
+        bm.verts.ensure_lookup_table()
+        for v in bm.verts:
+            v.select_set(False)
+        bm.select_flush(False)
+        vs = [bm.verts[i] for i in loop]
+        for v in vs:
+            v.select_set(True)
+        bm.select_flush(True)
+        bmesh.update_edit_mesh(low.data)
+        try:
+            if len(loop) <= 4:
+                bpy.ops.mesh.edge_face_add()
+            else:
+                try:
+                    bpy.ops.mesh.fill_grid(span=max(1, len(loop) // 4), offset=0, use_interp_simple=False)
+                except RuntimeError:
+                    bpy.ops.mesh.fill(use_beauty=True)
+                    bpy.ops.mesh.tris_convert_to_quads()
+            bpy.ops.mesh.normals_make_consistent(inside=False)
+            done += 1
+        except RuntimeError:
+            continue
+    bpy.ops.mesh.select_all(action='DESELECT')
+    bpy.ops.object.mode_set(mode='OBJECT')
+    if len(low.data.vertices) > n0:              # (the new inside points onto the model)
+        for v in low.data.vertices:
+            v.select = v.index >= n0
+        snap_low(context, scene, only_selected=True)
+        for v in low.data.vertices:
+            v.select = False
+    if was_edit:
+        bpy.ops.object.mode_set(mode='EDIT')
+    return done
+
+
+def ray_lift(scene, view, pts2d):
+    """The model's surface under each screen point (pixels on ``view``): (n, 3), NaN where nothing is there."""
+    ref = ref_of(scene)
+    tree = _ref_tree(ref)
+    Mr, Mri = ref.matrix_world, ref.matrix_world.inverted()
+    Minv = np.linalg.inv(np.array(view['m'], float).reshape(4, 4))
+    out = np.full((len(pts2d), 3), np.nan)
+    for i, (x, y) in enumerate(pts2d):
+        ndc = (x / view['w'] * 2 - 1, y / view['h'] * 2 - 1)
+        a = Minv @ np.r_[ndc[0], ndc[1], -1.0, 1.0]
+        b = Minv @ np.r_[ndc[0], ndc[1], 1.0, 1.0]
+        a, b = a[:3] / a[3], b[:3] / b[3]
+        hit = tree.ray_cast(Mri @ Vector(a), (Mri.to_3x3() @ Vector(b - a)).normalized())
+        if hit[0] is not None:
+            out[i] = np.array(Mr @ hit[0])
+    return out
+
+
+_TREES = {}
+
+
+def _ref_tree(ref):
+    from mathutils.bvhtree import BVHTree
+    key = (ref.name, len(ref.data.vertices), len(ref.data.polygons))
+    if _TREES.get('key') != key:
+        me = ref.data
+        _TREES['key'] = key
+        _TREES['tree'] = BVHTree.FromPolygons([v.co for v in me.vertices], [p.vertices for p in me.polygons])
+    return _TREES['tree']
+
+
+def _grid_ring(P2, step):
+    """The closed outline ``P2`` (pixels) as a ring for a grid fill: its four corners found (the points nearest the
+    corners of its own box, turned to its long side), each side cut every ``step`` pixels - opposite sides the same
+    count, so the quads follow the shape (a long strip: long rows, not a twist).  Returns (ring (n, 2), span)."""
+    P = np.asarray(P2, float)
+    if len(P) > 2 and np.linalg.norm(P[0] - P[-1]) < 1e-6:
+        P = P[:-1]
+    area = 0.5 * float(np.sum(P[:, 0] * np.roll(P[:, 1], -1) - np.roll(P[:, 0], -1) * P[:, 1]))
+    if area < 0:
+        P = P[::-1]
+    # dense, even spacing first (the corners picked from it)
+    Q = np.vstack([P, P[:1]])
+    s = _arc(np.c_[Q, np.zeros(len(Q))])
+    m = max(64, int(s[-1] / 2))
+    u = np.linspace(0, s[-1], m + 1)[:-1]
+    D = np.c_[np.interp(u, s, Q[:, 0]), np.interp(u, s, Q[:, 1])]
+    c = D.mean(0)
+    w_, V = np.linalg.eigh(np.cov((D - c).T))
+    ax = V[:, ::-1]                              # (long side first)
+    loc = (D - c) @ ax
+    lo, hi = loc.min(0), loc.max(0)
+    corners = [np.array([lo[0], lo[1]]), np.array([hi[0], lo[1]]), np.array([hi[0], hi[1]]), np.array([lo[0], hi[1]])]
+    idx = sorted({int(np.argmin(np.linalg.norm(loc - k, axis=1))) for k in corners})
+    if len(idx) < 4:
+        idx = [int(round(i * m / 4)) for i in range(4)]
+    sides, L = [], []
+    for k in range(4):
+        a, b = idx[k], idx[(k + 1) % 4]
+        seg = np.vstack([D[a:], D[:b + 1]]) if b <= a else D[a:b + 1]
+        sides.append(seg)
+        L.append(float(np.sum(np.linalg.norm(np.diff(seg, axis=0), axis=1))))
+    na = max(1, int(round((L[0] + L[2]) / 2 / max(step, 2.0))))
+    nb = max(1, int(round((L[1] + L[3]) / 2 / max(step, 2.0))))
+    ring = []
+    for k, n in zip(range(4), (na, nb, na, nb)):
+        seg = sides[k]
+        ss = _arc(np.c_[seg, np.zeros(len(seg))])
+        uu = np.linspace(0, ss[-1], n + 1)[:-1]
+        ring.extend(np.c_[np.interp(uu, ss, seg[:, 0]), np.interp(uu, ss, seg[:, 1])])
+    return np.array(ring), na
+
+
+def area_fill(context, scene, poly, view, size_px=40, tol=None):
+    """0.24.334 (user: "그냥 내가 영역을 그리면 거기 내부를 쿼드로 채워 주는 모드도") the outline ``poly`` (pixels on
+    ``view``) filled with quads about ``size_px`` across: its edge ring every Size pixels, filled as a grid (else
+    filled and made quads), the inside points put on the model and evened out; points of the outline by the low's
+    points become them.  Returns the faces made (0: nothing under the outline)."""
+    import bmesh
+    low = low_of(scene)
+    if low is None:
+        return 0
+    ring2, span = _grid_ring(poly, size_px)
+    ring = ray_lift(scene, view, ring2)
+    ok = ~np.isnan(ring).any(1)
+    if ok.sum() < len(ring) * 0.6:
+        return 0
+    if not ok.all():                             # (a point off the model: as deep as its neighbours)
+        idx = np.nonzero(ok)[0]
+        for i in np.nonzero(~ok)[0]:
+            j = idx[np.argmin(np.abs(idx - i))]
+            ring[i] = ring[j]
+    lay = context.view_layer
+    if context.mode != 'OBJECT':
+        bpy.ops.object.mode_set(mode='OBJECT')
+    if lay.objects.active != low:
+        for o in context.selected_objects:
+            o.select_set(False)
+        low.select_set(True)
+        lay.objects.active = low
+    me = low.data
+    Mi = low.matrix_world.inverted()
+    n0, f0 = len(me.vertices), len(me.polygons)
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    for v in bm.verts:
+        v.select_set(False)
+    for e in bm.edges:
+        e.select_set(False)
+    for f in bm.faces:
+        f.select_set(False)
+    vs = [bm.verts.new(Mi @ Vector(p)) for p in ring]
+    for v in vs:
+        v.select_set(True)
+    for a, b in zip(vs, vs[1:] + vs[:1]):
+        bm.edges.new((a, b)).select_set(True)
+    bm.to_mesh(me)
+    bm.free()
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_mode(type='VERT')
+    try:                                         # (the ring's own four sides)
+        bpy.ops.mesh.fill_grid(span=span, offset=0, use_interp_simple=False)
+    except RuntimeError:
+        pass
+    bpy.ops.object.mode_set(mode='OBJECT')
+    if len(low.data.polygons) == f0:            # (no grid: filled, then the triangles made quads)
+        bpy.ops.object.mode_set(mode='EDIT')
+        try:
+            bpy.ops.mesh.fill(use_beauty=True)
+            bpy.ops.mesh.tris_convert_to_quads()
+        except RuntimeError:
+            pass
+        bpy.ops.object.mode_set(mode='OBJECT')
+    me = low.data
+    if len(me.polygons) == f0:
+        bm = bmesh.new()                         # (nothing filled: the ring taken out again)
+        bm.from_mesh(me)
+        bm.verts.ensure_lookup_table()
+        bmesh.ops.delete(bm, geom=[bm.verts[i] for i in range(n0, len(bm.verts))], context='VERTS')
+        bm.to_mesh(me)
+        bm.free()
+        return 0
+    # the inside points: on the model (along the line of sight), evened out a few times
+    M = low.matrix_world
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.verts.ensure_lookup_table()
+    ring_ids = set(range(n0, n0 + len(ring)))
+    inner = [v for v in bm.verts[n0:] if v.index not in ring_ids]
+    for _it in range(4):
+        if not inner:
+            break
+        pts = np.array([M @ v.co for v in inner])
+        q2, _w = _screen(pts, view)
+        lifted = ray_lift(scene, view, q2)
+        for v, p in zip(inner, lifted):
+            if not np.isnan(p).any():
+                v.co = Mi @ Vector(p)
+        if _it < 3:
+            new_co = {}
+            for v in inner:
+                nb = [e.other_vert(v).co for e in v.link_edges]
+                if nb:
+                    new_co[v] = v.co * 0.5 + (sum(nb, Vector()) / len(nb)) * 0.5
+            for v, c in new_co.items():
+                v.co = c
+    # faces toward the eye
+    Minv = np.linalg.inv(np.array(view['m'], float).reshape(4, 4))
+    eye = Minv @ np.array([0.0, 0.0, -1.0, 1.0])
+    eye = Vector(eye[:3] / eye[3])
+    new_faces = [f for f in bm.faces if f.index >= f0]
+    flip = 0
+    for f in new_faces:
+        c = M @ f.calc_center_median()
+        n = (M.to_3x3() @ f.normal)
+        if n.dot(c - eye) > 0:
+            flip += 1
+    if flip > len(new_faces) / 2:
+        for f in new_faces:
+            f.normal_flip()
+    # the outline by the low's own points: on them
+    if n0:
+        from mathutils.kdtree import KDTree
+        kd = KDTree(n0)
+        for v in bm.verts[:n0]:
+            kd.insert(v.co, v.index)
+        kd.balance()
+        wtol = tol if tol is not None else float(np.median(np.linalg.norm(np.diff(ring, axis=0), axis=1))) * 0.35
+        weld = {}
+        for i in ring_ids:
+            v = bm.verts[i]
+            _c, j, d = kd.find(v.co)
+            if j is not None and d < wtol:
+                weld[v] = bm.verts[j]
+        if weld:
+            bmesh.ops.weld_verts(bm, targetmap=weld)
+    bm.normal_update()
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    return len(me.polygons) - f0
+
+
+def is_lasso(P2):
+    """Is the stroke ``P2`` (pixels) a closed loop - its end back by its start, and round something?"""
+    if len(P2) < 8:
+        return False
+    span = P2.max(0) - P2.min(0)
+    return bool(np.linalg.norm(P2[-1] - P2[0]) < PICK_PX * 2.5 and span.min() > PICK_PX * 3)
+
+
 def snap_low(context, scene, only_selected=False):
     """The low's points onto the reference (nearest)."""
     from mathutils.bvhtree import BVHTree
@@ -817,6 +1165,11 @@ class MCH_PG_mretopo(bpy.types.PropertyGroup):
                                 description='Each drawn cell divided into Cuts x Cuts quads (1: as drawn)')
     mirror: bpy.props.BoolProperty(name='X Mirror', default=False, update=_mirror_update,
                                    description='Draw one side: the other side made by a live Mirror (X)')
+    mode: bpy.props.EnumProperty(name='Draw', default='GRID',
+                                 items=[('GRID', 'Grid Lines', 'Lines one way and across: every closed cell a face'),
+                                        ('AREA', 'Area Fill', 'Draw round an area: its inside filled with quads')])
+    area_size: bpy.props.IntProperty(name='Quad Size', default=40, min=10, max=300, subtype='PIXEL',
+                                     description='Area Fill: the quads about this many pixels across on the screen')
 
 
 # --- the Grid Draw mode -------------------------------------------------------------------------------------------
@@ -836,10 +1189,13 @@ def _draw_view():
 
 class MCH_OT_mretopo_draw(bpy.types.Operator):
     """Grid Draw: drag lines over the reference - lines one way and lines across them; every closed cell becomes a
-    face.  Enter: make the faces, Ctrl+Z: last line off, Shift+click: that line off, Esc: leave (lines kept)"""
+    face.  A loop drawn round a hole in the low fills it.  Enter: make the faces, Ctrl+Z: last line off, Shift+click: that line off, Esc: leave (lines kept)"""
     bl_idname = 'mch.mretopo_draw'
     bl_label = 'Grid Draw'
     bl_options = {'REGISTER', 'UNDO'}
+
+    mode: bpy.props.EnumProperty(items=[('KEEP', 'As Set', ''), ('GRID', 'Grid Lines', ''), ('AREA', 'Area Fill', '')],
+                                 default='KEEP', options={'SKIP_SAVE'})
 
     @classmethod
     def poll(cls, context):
@@ -847,6 +1203,9 @@ class MCH_OT_mretopo_draw(bpy.types.Operator):
 
     def invoke(self, context, event):
         from mathutils.bvhtree import BVHTree
+        self.cur_xy = []
+        if self.mode != 'KEEP':
+            context.scene.mch_mretopo.mode = self.mode
         self.ref = ref_of(context.scene)
         if self.ref is None:
             return {'CANCELLED'}
@@ -862,11 +1221,20 @@ class MCH_OT_mretopo_draw(bpy.types.Operator):
         if _DRAW['handle'] is None:
             _DRAW['handle'] = bpy.types.SpaceView3D.draw_handler_add(_draw_view, (), 'WINDOW', 'POST_VIEW')
         context.window_manager.modal_handler_add(self)
-        context.workspace.status_text_set('Grid Draw: drag lines over the model (one way, then across)   '
-                                          'Enter: make faces   Ctrl+Z: last line off   Shift+click: a line off   '
-                                          'Esc: leave   right click: Retopo menu')
+        self._status(context)
+
         context.area.tag_redraw()
         return {'RUNNING_MODAL'}
+
+    def _status(self, context):
+        if context.scene.mch_mretopo.mode == 'AREA':
+            t = ('Area Fill: draw round an area - its inside filled with quads (Quad Size)   a loop round a hole: '
+                 'filled   Tab: Grid Lines   Esc: leave   right click: Retopo menu')
+        else:
+            t = ('Grid Lines: drag lines over the model (one way, then across)   a loop round a hole: filled   '
+                 'Enter: make faces   Ctrl+Z: last line off   Shift+click: a line off   Tab: Area Fill   Esc: leave   '
+                 'right click: Retopo menu')
+        context.workspace.status_text_set(t)
 
     # (surface hits)
     def hit(self, context, xy):
@@ -967,14 +1335,34 @@ class MCH_OT_mretopo_draw(bpy.types.Operator):
         if self.cur is not None:
             if event.type == 'MOUSEMOVE':
                 if math.hypot(xy[0] - self.last_xy[0], xy[1] - self.last_xy[1]) >= STEP_PX:
+                    self.cur_xy.append(xy)
+                    self.last_xy = xy
                     w, tol = self.hit(context, xy)
                     if w is not None:
                         self.cur.append(tuple(w))
                         self.tols.append(tol or 0.0)
-                        self.last_xy = xy
-                        context.area.tag_redraw()
+                    context.area.tag_redraw()
                 return {'RUNNING_MODAL'}
             if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+                P2 = np.array(self.cur_xy + [xy], float)
+                if is_lasso(P2):                     # 0.24.334 a closed loop round a hole: the hole filled (no hole
+                    n = fill_holes(context, context.scene, P2,                  # inside: an ordinary line - a ring
+                                   view_of(context.region, context.region_data))  # of the grid)
+                    if n:
+                        self.cur = None
+                        self._preview(context)
+                        context.area.tag_redraw()
+                        self.report({'INFO'}, f'{n} hole(s) filled')
+                        return {'RUNNING_MODAL'}
+                if context.scene.mch_mretopo.mode == 'AREA' and len(P2) >= 8:
+                    self.cur = None                  # 0.24.334 Area Fill: the outline's inside, quads
+                    n = area_fill(context, context.scene, P2, view_of(context.region, context.region_data),
+                                  context.scene.mch_mretopo.area_size)
+                    self._preview(context)
+                    context.area.tag_redraw()
+                    self.report({'INFO'} if n else {'WARNING'},
+                                f'Area Fill: {n} face(s)' if n else 'Area Fill: draw round an area of the model')
+                    return {'RUNNING_MODAL'}
                 if len(self.cur) >= 2:
                     tol = float(np.median([t for t in self.tols if t] or [0.0]))
                     self.L.append((tol, np.array(self.cur), view_of(context.region, context.region_data)))
@@ -992,10 +1380,14 @@ class MCH_OT_mretopo_draw(bpy.types.Operator):
                     self.L.pop(k)
                     self._save(context)
                 return {'RUNNING_MODAL'}
-            w, tol = self.hit(context, xy)
-            if w is None:
-                return {'RUNNING_MODAL'}
-            self.cur, self.tols, self.last_xy = [tuple(w)], [tol or 0.0], xy
+            w, tol = self.hit(context, xy)                # (off the model too: a loop round a hole may start there)
+            self.cur, self.tols, self.last_xy = ([tuple(w)], [tol or 0.0], xy) if w is not None else ([], [], xy)
+            self.cur_xy = [xy]
+            return {'RUNNING_MODAL'}
+        if event.type == 'TAB' and event.value == 'PRESS':     # 0.24.334 Grid Lines <-> Area Fill
+            st = context.scene.mch_mretopo
+            st.mode = 'AREA' if st.mode == 'GRID' else 'GRID'
+            self._status(context)
             return {'RUNNING_MODAL'}
         if event.type == 'Z' and event.value == 'PRESS' and (event.ctrl or event.oskey):
             if self.L:
@@ -1199,9 +1591,12 @@ def draw_menu(layout, context):
     col.label(text='RETOPO', icon='MOD_REMESH')
     r = col.row(align=True)
     r.scale_y = 1.4
-    r.operator('mch.mretopo_draw', text='Grid Draw', icon='GREASEPENCIL')
+    r.operator('mch.mretopo_draw', text='Grid Draw', icon='GREASEPENCIL').mode = 'GRID'
+    r.operator('mch.mretopo_draw', text='Area Fill', icon='MESH_GRID').mode = 'AREA'
     r = col.row(align=True)
     r.prop(st, 'cuts')
+    r.prop(st, 'area_size')
+    r = col.row(align=True)
     r.prop(st, 'mirror', toggle=True)
     nl = len(lines(S))
     if nl:

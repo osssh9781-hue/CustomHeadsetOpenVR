@@ -120,6 +120,127 @@ check(f'lines meeting the border NEAR its points (a little off, as a hand draws)
       f'points only ({g3}; {len(sm.vertices) - nv} new points)', g3 == (1, 0) and len(sm.vertices) - nv == 2)
 low.data = keep_me
 bpy.data.objects.remove(tmp2)
+# 0.24.334 (user: "중앙에 난 빵꾸는 내가 라쏘로 동그라미 치면 메꿔지게") a loop drawn round a hole fills it
+import bmesh  # noqa: E402
+keep_me2 = low.data
+low.data = bpy.data.meshes.new('hole_low')
+ks = [-0.9 + 0.3 * i for i in range(7)]
+mr.set_lines(ws, [line((-0.95, y), (0.95, y), 60) + (TOP,) for y in ks] + [line((x, -0.95), (x, 0.95), 60) + (TOP,) for x in ks])
+gh = mr.make(C, ws, cuts=1)
+hm = low.data
+bm_ = bmesh.new()
+bm_.from_mesh(hm)
+gone = [f for f in bm_.faces if (-0.6 < f.calc_center_median().x < -0.3 and -0.6 < f.calc_center_median().y < -0.3)
+        or (0 < f.calc_center_median().x < 0.6 and 0 < f.calc_center_median().y < 0.6)]
+bmesh.ops.delete(bm_, geom=gone, context='FACES_ONLY')
+bm_.to_mesh(hm)
+bm_.free()
+nh = len(mr.holes(low))
+
+
+def circle(cx, cy, r, n=40):
+    return np.array([(cx + r * math.cos(t), cy + r * math.sin(t)) for t in np.linspace(0, 2 * math.pi, n)])
+
+
+px = lambda v: (v + 2) * 200                                          # noqa: E731  (TOP: world -> pixels)
+check(f'a closed loop is a lasso, an open stroke is a line ({mr.is_lasso(circle(300, 300, 50))}, '
+      f'{mr.is_lasso(np.array([(100 + 10 * i, 300) for i in range(30)], float))})',
+      mr.is_lasso(circle(300, 300, 50)) and not mr.is_lasso(np.array([(100 + 10 * i, 300) for i in range(30)], float)))
+
+
+def punch():
+    bm_ = bmesh.new()
+    bm_.from_mesh(low.data)
+    gone = [f for f in bm_.faces if (-0.6 < f.calc_center_median().x < -0.3 and -0.6 < f.calc_center_median().y < -0.3)
+            or (0 < f.calc_center_median().x < 0.6 and 0 < f.calc_center_median().y < 0.6)]
+    bmesh.ops.delete(bm_, geom=gone, context='FACES_ONLY')
+    bm_.to_mesh(low.data)
+    bm_.free()
+
+
+with C.temp_override(scene=ws, view_layer=ws.view_layers[0], active_object=low, object=low, selected_objects=[low]):
+    nf_before = len(low.data.polygons)
+    f1 = mr.fill_holes(C, ws, circle(px(-0.45), px(-0.45), 45), TOP)
+    nf1 = len(low.data.polygons)
+    f2 = mr.fill_holes(C, ws, circle(px(0.3), px(0.3), 90), TOP)
+hm = low.data
+off = max(abs(v.co.z - surf(v.co.x, v.co.y)[2]) for v in hm.vertices)
+check(f'holes in the middle: a 1-cell hole (4 points) and a 2x2 hole (8 points) found, the outside border is not a '
+      f'hole ({gh}; {nh} holes)', gh == (36, 0) and nh == 2)
+check(f'a lasso round the 1-cell hole: one quad fills it; round the 2x2 hole: filled with a grid of quads; all quads, '
+      f'no hole left, the new points on the model ({f1}, {f2}: {nf_before} -> {nf1} -> {len(hm.polygons)} faces, '
+      f'{len(mr.holes(low))} holes, {off:.4f} off)',
+      f1 == 1 and f2 == 1 and nf1 == nf_before + 1 and len(hm.polygons) >= nf1 + 4
+      and all(len(p_.vertices) == 4 for p_ in hm.polygons) and not mr.holes(low) and off < 0.01)
+punch()
+nb = sum(1 for e in low.data.edges) 
+with C.temp_override(scene=ws, view_layer=ws.view_layers[0], active_object=low, object=low, selected_objects=[low]):
+    f_all = mr.fill_holes(C, ws, circle(px(0), px(0), 395), TOP)
+import bmesh as _b  # noqa: E402
+bm_ = _b.new()
+bm_.from_mesh(low.data)
+border = sum(1 for e in bm_.edges if e.is_boundary)
+bm_.free()
+check(f'a lasso round everything: both holes inside filled, the outside border left open ({f_all}; {border} border '
+      f'edges = the 24 round the outside)', f_all == 2 and border == 24)
+low.data = keep_me2
+# 0.24.334 (user: "그냥 내가 영역을 그리면 거기 내부를 쿼드로 채워 주는 모드도") Area Fill
+keep_me3 = low.data
+low.data = bpy.data.meshes.new('area_low')
+with C.temp_override(scene=ws, view_layer=ws.view_layers[0], active_object=low, object=low, selected_objects=[low]):
+    na = mr.area_fill(C, ws, circle(px(-0.3), px(0.0), 120), TOP, 40)
+am = low.data
+quads_a = sum(1 for p_ in am.polygons if len(p_.vertices) == 4)
+off_a = max(abs(v.co.z - surf(v.co.x, v.co.y)[2]) for v in am.vertices)
+up = sum(1 for p_ in am.polygons if p_.normal.z > 0)
+
+
+def aspect(me):
+    worst = 1.0
+    for p_ in me.polygons:
+        if len(p_.vertices) != 4:
+            continue
+        c = [me.vertices[i].co for i in p_.vertices]
+        L_ = [(c[i] - c[(i + 1) % 4]).length for i in range(4)]
+        worst = max(worst, max(L_) / max(min(L_), 1e-9))
+    return worst
+
+
+asp = aspect(am)
+check(f'Area Fill: a round outline filled with quads ({na} faces, {quads_a} quads, worst side ratio {asp:.1f}), every '
+      f'point on the model ({off_a:.4f} off), facing the eye ({up}/{len(am.polygons)})',
+      na >= 16 and asp < 4 and quads_a == len(am.polygons) and off_a < 0.01 and up == len(am.polygons))
+nv_a = len(am.vertices)
+sq = np.array([(px(0.15), px(-0.45)), (px(0.75), px(-0.45)), (px(0.75), px(0.45)), (px(0.15), px(0.45))])
+sq = np.concatenate([np.linspace(sq[i], sq[(i + 1) % 4], 12, endpoint=False) for i in range(4)])
+with C.temp_override(scene=ws, view_layer=ws.view_layers[0], active_object=low, object=low, selected_objects=[low]):
+    nb_ = mr.area_fill(C, ws, sq, TOP, 40)
+quads_b = sum(1 for p_ in am.polygons if len(p_.vertices) == 4)
+check(f'Area Fill again (a square beside it): its own quads ({nb_} faces, {quads_b}/{len(am.polygons)} quads overall)',
+      nb_ >= 9 and quads_b >= len(am.polygons) * 0.9)
+f_s = len(am.polygons)
+strip = np.array([(px(-0.9), px(0.55)), (px(0.9), px(0.55)), (px(0.9), px(0.8)), (px(-0.9), px(0.8))])
+strip = np.concatenate([np.linspace(strip[i], strip[(i + 1) % 4], 15, endpoint=False) for i in range(4)])
+with C.temp_override(scene=ws, view_layer=ws.view_layers[0], active_object=low, object=low, selected_objects=[low]):
+    ns_ = mr.area_fill(C, ws, strip, TOP, 40)
+tmp_me = bpy.data.meshes.new('strip_only')
+tmp_me.from_pydata([v.co[:] for v in am.vertices], [], [list(p_.vertices) for p_ in am.polygons[f_s:]])
+asp_s = aspect(tmp_me)
+check(f'Area Fill on a long strip: rows of quads along it, not a twist ({ns_} faces - about 9 x 1 at 40 px; worst side ratio '
+      f'{asp_s:.1f})', 8 <= ns_ <= 12 and asp_s < 2.5)
+Lsh = np.array([(px(-0.8), px(-0.9)), (px(-0.2), px(-0.9)), (px(-0.2), px(-0.7)), (px(-0.6), px(-0.7)),
+                (px(-0.6), px(-0.3)), (px(-0.8), px(-0.3))])
+Lsh = np.concatenate([np.linspace(Lsh[i], Lsh[(i + 1) % 6], 10, endpoint=False) for i in range(6)])
+f_before = len(am.polygons)
+with C.temp_override(scene=ws, view_layer=ws.view_layers[0], active_object=low, object=low, selected_objects=[low]):
+    nl_ = mr.area_fill(C, ws, Lsh, TOP, 30)
+new_q = sum(1 for p_ in am.polygons[f_before:] if len(p_.vertices) == 4)
+check(f'Area Fill on an L shape (not a simple grid): filled, mostly quads ({nl_} faces, {new_q} quads)',
+      nl_ > 0 and new_q >= nl_ * 0.6)
+with C.temp_override(scene=ws, view_layer=ws.view_layers[0], active_object=low, object=low, selected_objects=[low]):
+    n_off = mr.area_fill(C, ws, circle(px(5), px(5), 60), TOP, 40)
+check(f'Area Fill off the model: nothing made ({n_off})', n_off == 0)
+low.data = keep_me3
 # a triangle cell (3 lines): counted apart
 mr.set_lines(ws, [line((-0.9, -0.9), (-0.3, -0.9)), line((-0.85, -0.95), (-0.5, -0.4)), line((-0.35, -0.95), (-0.65, -0.35))])
 got3 = mr.make(C, ws, cuts=1)
