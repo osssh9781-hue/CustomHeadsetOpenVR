@@ -987,6 +987,12 @@ def draw(layout, context, colour=None):
     r.operator('mch.retopo_make', text=(f'1  Retopo {len(parts)} as One' if one else
                                         f'1  Retopo {len(items)} Meshes' if many else
                                         '1  Retopo Again' if low is not None else '1  Retopo'), icon='MOD_REMESH')
+    try:                                             # 0.24.342 the retopo snapped onto the original's surface
+        from . import retopo_project as rp
+        if rp.targets(context):
+            box.operator('mch.retopo_project', text='Project to Original', icon='SNAP_FACE')
+    except (ImportError, RuntimeError, AttributeError):
+        pass
     col = box.column(align=True)
     r_ = col.row(align=True)
     r_.prop(st, 'own', toggle=True, icon='MATERIAL')     # 0.24.326 no high poly: its own material (no step 1)
