@@ -17,7 +17,7 @@ import time
 import bpy
 import numpy as np
 
-VERSION = 3
+VERSION = 4
 _FP = ctypes.POINTER(ctypes.c_float)
 _IP = ctypes.POINTER(ctypes.c_int)
 _UP = ctypes.POINTER(ctypes.c_ubyte)

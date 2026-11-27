@@ -991,10 +991,7 @@ def draw(layout, context, colour=None):
     r.prop(st, 'curv', toggle=True)
     r.prop(st, 'height', toggle=True)
     r.prop(st, 'emit', toggle=True)                  # 0.24.325
-    r = col.row(align=True)                          # 0.24.340 our own baker (0.24.341 shown greyed with No High Poly)
-    r.active = not getattr(st, 'own', False)
-    r.prop(st, 'fast', toggle=True, icon='SORTTIME',
-           text='Fast Bake (needs a High Poly)' if getattr(st, 'own', False) else 'Fast Bake')
+    col.prop(st, 'fast', toggle=True, icon='SORTTIME')    # 0.24.340 our own baker (0.24.341 No High Poly too)
     r = pc.primary(box.row(align=True))
     r.scale_y = 1.3
     r.enabled = n_low > 0

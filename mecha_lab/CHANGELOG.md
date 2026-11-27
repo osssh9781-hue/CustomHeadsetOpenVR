@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## 0.24.341 — 빠른 베이크: 노하이폴리(자기 머티리얼)도 자체 엔진으로 + 하이폴리 AO (2026-11-27)
+
+- (사용자: "노하이폴리도 느려서 만들라는거야") **No High Poly** 베이크도 Fast Bake 로. 예전엔 맵마다 Cycles 렌더를 한 번씩
+  (컬러 · 러프니스/메탈릭 · 노멀 · AO · 이미션) - 메카 셰이더처럼 노드가 수백 개 + Bevel/AO 노드가 있으면 아주 느렸음.
+  이제 머티리얼 노드 트리를 텍셀마다 직접 계산 (numpy 로 전 텍셀 한 번에) - 이미지 조회, Bevel·AO 노드 레이는 자체 엔진
+  (C, 멀티스레드, Cycles 의 svm_bevel / svm_ao 와 같은 방식). 맵마다 Cycles 를 다시 돌리지 않고, 샘플 노이즈도 없음.
+- 지원 노드: 이미지 텍스처 (Flat / Box 투영, sRGB·Non-Color), Math, Vector Math, Mix (모든 블렌드), Map Range, Clamp,
+  Hue/Saturation, Bright/Contrast, Invert, Gamma, RGB to BW, Color Ramp, Separate/Combine XYZ·Color, Texture
+  Coordinate (Generated / Normal / UV / Object), UV Map, Geometry, Attribute, Color Attribute, Vector Transform,
+  Mapping, Bevel, Ambient Occlusion, Bump, Normal Map, 노드 그룹, Reroute, 뮤트 노드; 셰이더는 Principled / 그 밖의 BSDF,
+  Mix / Add Shader, Emission. **모르는 노드 (Noise · Voronoi 텍스처, Light Path 등) 가 들어간 맵만 Cycles 로** - 나머지
+  맵은 그대로 빠르게. 머티리얼은 전혀 안 건드림.
+- 측정 (이 컨테이너, CPU 4코어; 메카 셰이더 Battle Worn, 패널 큐브): 512px 5장 (노멀·AO·컬러·러프·메탈) Cycles 30.8초 →
+  3.0초. Cycles 와의 상관: 노멀 0.993, AO 0.989, 컬러 0.990, 러프 0.987, 메탈릭 0.960 (메탈릭은 얇은 칩 가장자리라
+  Cycles 쪽 노이즈 차이). 범프 세기 평균 기울기 0.0185 vs 0.0186. 일반 머티리얼 (UV 이미지 + 노멀맵 노드 + Mix Shader +
+  Emission) 은 상관 1.000.
+- 하이폴리 Fast Bake 에 **AO** 추가 (Others Shade AO 를 끈 경우): 노멀·높이·곡률과 같은 레이로 맞은 하이폴 점에서 코사인
+  반구 레이 (AO Samples 개, AO Distance) - Cycles AO 베이크 대신.
+- Retopo + Bake 의 Fast Bake 토글이 No High Poly 에서도 보임 (예전엔 숨어 있었음).
+
 ## 0.24.340 — 빠른 베이크 (Fast Bake): 노멀·높이·곡률을 자체 엔진으로 (2026-11-27)
 
 - (사용자: "베이크를 좀 더 빠르게 ... 4번으로 가자 빠르게 해 줘 최대한") Mecha Lab 자체 베이커 (C, 멀티스레드 - 기존 엔진

@@ -105,8 +105,9 @@ class MCH_PG_BakeMaps(bpy.types.PropertyGroup):
                            description='Where the PNGs go (// = next to the .blend)')
     show: BoolProperty(name='Show Low', default=True, description='After baking show the low (the high hidden)')
     fast: BoolProperty(name='Fast Bake', default=True,
-                       description='Normal, Height, Curvature and AO by Mecha Lab\'s own baker (all from the same '
-                       'rays - several times faster than Cycles, the same result); off: Cycles bakes them')
+                       description='Bake with Mecha Lab\'s own engine instead of Cycles - with a High Poly: Normal, '
+                       'Height, Curvature, AO; No High Poly: the material\'s nodes worked out directly (a node it does '
+                       'not know: that map by Cycles).  Several times faster; off: Cycles bakes them all')
 
 
 def settings(context):
@@ -1055,6 +1056,7 @@ def bake_self_steps(context, low, st, kinds, keep_state=None):
     images = {}
     nodes = []
     skipped_fast = []
+    fast_px, fast_why = {}, {}
     try:
         low.hide_viewport = False
         low.hide_render = False
@@ -1070,13 +1072,31 @@ def bake_self_steps(context, low, st, kinds, keep_state=None):
         # 0.24.329 (user: "베이크가 아직도 너무 느려") samples by need: a shader with AO / Bevel nodes gets the Quality's,
         # one without just a little edge smoothing; no glow: the Emission map black, no bake; Roughness + Metallic in one
         spp = QUALITY_SAMPLES.get(getattr(st, 'quality', 'NORMAL'), 8) if has_ray_nodes(mats) else PLAIN_SAMPLES
-        pack = 'ROUGH' in kinds and 'METAL' in kinds
+        # 0.24.341 (user: "노하이폴리도 느려서 만들라는거야") the material's nodes evaluated by our own engine, every map
+        # in one go; a map with a node it does not know goes to Cycles below, as before
+        fast_px, fast_why = {}, {}
+        if getattr(st, 'fast', True):
+            yield (0.06, 'Fast Bake: reading the material')
+            try:
+                from . import fast_shade
+                if fast_shade.lib() is not None:
+                    want = [k for k in kinds if k != 'EMIT' or glows(mats)]
+                    fast_px, fast_why, _sec = fast_shade.bake(context, low, mats, want, res, st, int(st.margin))
+                else:
+                    fast_why = {k: 'no engine' for k in kinds}
+            except Exception as ex:                  # (anything unexpected: Cycles bakes it all, as before)
+                fast_px, fast_why = {}, {k: f'{type(ex).__name__}: {ex}' for k in kinds}
+        pack = 'ROUGH' in kinds and 'METAL' in kinds and 'ROUGH' not in fast_px and 'METAL' not in fast_px
         for ki, kind in enumerate(kinds):
             if kind == 'METAL' and pack:
                 continue                            # (baked with the Roughness)
             yield (0.08 + 0.9 * ki / len(kinds), f'Baking {SUFFIX[kind]} ({ki + 1} / {len(kinds)})')
             img = image_for(low, kind, res)
             images[kind] = img
+            if kind in fast_px:
+                img.pixels.foreach_set(fast_px[kind].ravel())
+                img.update()
+                continue
             if kind == 'EMIT' and not glows(mats):
                 _fill(img, (0.0, 0.0, 0.0))
                 skipped_fast.append('EMIT')
@@ -1153,7 +1173,8 @@ def bake_self_steps(context, low, st, kinds, keep_state=None):
         for s in low.material_slots:
             s.material = mat
     info = dict(low=low.name, highs=[], maps=kinds, res=res, uv=uv, sharp=sharp, ray=0.0, stored=stored,
-                material=mat.name if mat else None, seconds=time.time() - t0, own=True, skipped=skipped, gpu=gpu)
+                material=mat.name if mat else None, seconds=time.time() - t0, own=True, skipped=skipped, gpu=gpu,
+                fast=sorted(fast_px), fast_why=fast_why)
     LAST.clear()
     LAST.update(info)
     return info
@@ -1269,8 +1290,7 @@ def draw(layout, context):
     r.prop(st, 'rough', toggle=True)
     r.prop(st, 'metal', toggle=True)
     r.prop(st, 'curv', toggle=True)
-    if not st.own:
-        col.prop(st, 'fast', toggle=True, icon='SORTTIME')            # 0.24.340
+    col.prop(st, 'fast', toggle=True, icon='SORTTIME')                # 0.24.340 (0.24.341 No High Poly too)
     r.prop(st, 'height', toggle=True)
     r.prop(st, 'emit', toggle=True)                  # 0.24.325
     col = box.column(align=True)

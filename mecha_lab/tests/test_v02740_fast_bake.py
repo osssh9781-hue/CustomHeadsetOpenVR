@@ -34,7 +34,7 @@ lo = C.active_object
 bpy.ops.object.shade_smooth()
 st = S.mch_bake
 st.res = str(RES)
-st.normal, st.ao, st.color, st.height, st.curv = True, False, False, True, True
+st.normal, st.ao, st.color, st.height, st.curv = True, True, False, True, True   # (0.24.341 AO too)
 for k in ('rough', 'metal', 'emit'):
     setattr(st, k, False)
 st.save, st.use_on_low, st.new_uv, st.smooth = False, False, False, False
@@ -48,7 +48,7 @@ def run(fast):
     bm.bake_pair(C, lo, [hi], st)
     dt = time.time() - t0
     out = {k: np.array(bpy.data.images[f'{lo.name}_{bm.SUFFIX[k]}'].pixels[:]).reshape(RES, RES, 4)
-           for k in ('NORMAL', 'HEIGHT', 'CURV')}
+           for k in ('NORMAL', 'HEIGHT', 'CURV', 'AO')}
     return dt, out, list(bm.LAST.get('fast') or [])
 
 
@@ -70,8 +70,11 @@ def corr(x, y):
 
 ch, cc = corr(cyc['HEIGHT'], fst['HEIGHT']), corr(cyc['CURV'], fst['CURV'])
 check(f'Height and Curvature: the same picture as Cycles\' (correlation {ch:.3f}, {cc:.3f})', ch > 0.9 and cc > 0.85)
-check(f'all three by the fast engine in one go ({ff}), faster than Cycles: {tf:.2f} s vs {tc:.2f} s',
-      set(ff) == {'NORMAL', 'HEIGHT', 'CURV'} and fc == [] and tf < tc * 0.7)
+ca = corr(cyc['AO'], fst['AO'])
+check(f'AO (0.24.341): the same picture as Cycles\' (correlation {ca:.3f}, mean {cyc["AO"][..., 0].mean():.3f} vs '
+      f'{fst["AO"][..., 0].mean():.3f})', ca > 0.85 and abs(cyc['AO'][..., 0].mean() - fst['AO'][..., 0].mean()) < 0.05)
+check(f'all four by the fast engine in one go ({ff}), faster than Cycles: {tf:.2f} s vs {tc:.2f} s',
+      set(ff) == {'NORMAL', 'HEIGHT', 'CURV', 'AO'} and fc == [] and tf < tc * 0.7)
 real = fb.lib
 fb.lib = lambda: None
 t2, _o, f2 = run(True)
