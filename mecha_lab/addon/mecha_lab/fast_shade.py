@@ -1469,6 +1469,8 @@ def _add_c(a, b, kind):
 
 USE_GPU = [False]                 # (0.24.346 set by bake_parts from the Bake settings' GPU switch)
 GPU_RAYS = [0]                    # (rays the GPU took in the last bake - for the report / tests)
+GPU_MATS = [0]                    # (0.24.348 materials whose node maths ran on the GPU in the last bake)
+GPU_WHY = {}                      # (material -> why the GPU could not, the last bake)
 
 
 def _ao(sc, P, N, Ng, tri, seeds, ns, dist, inside, out):
@@ -1602,6 +1604,14 @@ def _aa(full, mask, res, sigma=AA_SIGMA):
     return out.reshape(-1, 4)
 
 
+def _gpu_ok():
+    try:
+        from . import gpu_bake as gb
+        return gb.available()
+    except Exception:                                     # noqa: BLE001
+        return False
+
+
 def _shade_part(ob, g, kinds, images, scene, local, seeds, ray_quality, pix, why):
     """The non-AO maps of ``ob``'s materials at its texels ``g`` into ``pix`` (per kind (n, 3), linear)."""
     slot_mats = [s_.material for s_ in ob.material_slots]
@@ -1610,11 +1620,38 @@ def _shade_part(ob, g, kinds, images, scene, local, seeds, ray_quality, pix, why
         m = slot_mats[mi] if 0 <= mi < len(slot_mats) else None
         per[int(mi)] = (m, np.nonzero(g.mat == mi)[0])
     evs = {}
+
+    def ev_of(mi, m, sel):
+        if mi not in evs:
+            gs = g.subset(sel) if len(sel) != g.n else g
+            e = Eval(ob, gs, images, scene, local, _c(seeds[sel], np.uint32), ray_quality)
+            e.root_tree = m.node_tree
+            evs[mi] = e
+        return evs[mi]
+
+    done = set()
+    want = [k for k in kinds if k != 'AO' and k not in why]
+    if USE_GPU[0] and want and _gpu_ok():                               # (0.24.348 the node maths on the graphics card; numpy
+        for mi, (m, sel) in per.items():                  #  below for a material it cannot do - the same result)
+            if m is None or not m.use_nodes or m.node_tree is None:
+                continue
+            try:
+                from . import gpu_shade
+                r = gpu_shade.evaluate(ev_of(mi, m, sel), m, want, images)
+            except Exception as ex:                       # noqa: BLE001  (any GPU trouble: numpy)
+                GPU_WHY[m.name] = str(ex)
+                continue
+            for k, v in r.items():
+                pix[k][sel] = v
+            done.add(mi)
+            GPU_MATS[0] += 1
     for k in kinds:
         if k in ('AO',) or k in why:
             continue
         try:
             for mi, (m, sel) in per.items():
+                if mi in done:
+                    continue
                 if m is None or not m.use_nodes or m.node_tree is None:
                     if k == 'NORMAL':
                         pix[k][sel] = g.N[sel]
@@ -1622,12 +1659,7 @@ def _shade_part(ob, g, kinds, images, scene, local, seeds, ray_quality, pix, why
                         pix[k][sel] = {'COLOR': (0.8, 0.8, 0.8), 'ROUGH': (0.5,) * 3, 'METAL': (0.0,) * 3,
                                        'EMIT': (0.0,) * 3, 'ALPHA': (1.0,) * 3}.get(k, (0.0,) * 3)
                     continue
-                if mi not in evs:
-                    gs = g.subset(sel) if len(sel) != g.n else g
-                    e = Eval(ob, gs, images, scene, local, _c(seeds[sel], np.uint32), ray_quality)
-                    e.root_tree = m.node_tree
-                    evs[mi] = e
-                e = evs[mi]
+                e = ev_of(mi, m, sel)
                 nt = m.node_tree
                 outn = nt.get_output_node('CYCLES') or nt.get_output_node('ALL')
                 if outn is None:
@@ -1721,6 +1753,8 @@ def bake_parts(context, parts, kinds, res, st, margin=16, ray_quality=1.0, decal
     from . import bake_maps as bm_
     USE_GPU[0] = bool(getattr(st, 'gpu', False))
     GPU_RAYS[0] = 0
+    GPU_MATS[0] = 0
+    GPU_WHY.clear()
     why = {}
     geos = []
     for ob in parts:

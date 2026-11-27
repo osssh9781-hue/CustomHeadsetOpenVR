@@ -73,7 +73,9 @@ def run(context, res=2048):
             info = bm.bake_pair(context, own, [], st)
             maps[g] = (np.array(bpy.data.images[f'{own.name}_AO'].pixels[:], np.float32), time.time() - t0,
                        bool(info.get('fast_gpu')))
-        out.append(('No High Poly (Mech) AO + Color', maps[False][1], maps[True][1], maps[True][2],
+        from . import fast_shade as F
+        out.append((f'No High Poly (Mech) AO + Color (node maths on the GPU: {F.GPU_MATS[0]} material)',
+                    maps[False][1], maps[True][1], maps[True][2],
                     float(np.abs(maps[False][0] - maps[True][0]).mean())))
     finally:
         for o in made:

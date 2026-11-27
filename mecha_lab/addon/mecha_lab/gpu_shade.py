@@ -21,6 +21,7 @@ import numpy as np
 from .fast_shade import LUMA, Unsupported, _blend  # noqa: F401  (_blend: the reference the GLSL follows)
 
 TEXW = 4096
+MAXROWS = [8192]                  # (rows per texture: each batch of texels well under the GPUs' 16384-row limit)
 _CACHE = {}
 STATS = {'compiled': 0, 'reused': 0, 'materials': 0, 'last_error': ''}
 
@@ -72,10 +73,11 @@ vec3 hsv2rgb(vec3 c) {
   return vec3(v, p, q);
 }
 vec3 unit3(vec3 v) { float l = length(v); return l > 1e-20 ? v / l : v; }
+int pmod(int i, int n) { return i >= 0 ? i % n : n - 1 - ((-i - 1) % n); }   // (GLSL's % of a negative: undefined)
 int wrapi(int i, int n, int ext, inout bool ok) {
-  if (ext == 0) { i = i % n; if (i < 0) i += n; return i; }
+  if (ext == 0) return pmod(i, n);
   if (ext == 2) { if (i < 0 || i >= n) ok = false; return clamp(i, 0, n - 1); }
-  if (ext == 3) { int p = 2 * n; i = i % p; if (i < 0) i += p; return i < n ? i : p - 1 - i; }
+  if (ext == 3) { int p = 2 * n; i = pmod(i, p); return i < n ? i : p - 1 - i; }
   return clamp(i, 0, n - 1);
 }
 vec4 img_px(int off, int w, int x, int y) { return fetch(atlas, off + y * w + x); }
@@ -951,11 +953,9 @@ def _tex(arr):
     return gpu.types.GPUTexture((TEXW, rows), format='RGBA32F', data=gpu.types.Buffer('FLOAT', full.size, full.ravel()))
 
 
-def evaluate(ev, mat, kinds, images):
-    """The maps ``kinds`` of material ``mat`` over the texels of the Eval ``ev`` (its Geo, its ray scenes) on the GPU.
-    {kind: (n, 3) float32}.  Raises Unsupported (then numpy as before)."""
-    import gpu
-    from gpu.types import GPUShaderCreateInfo
+def build(ev, mat, kinds, images, probes=None):
+    """The compute shader's source for material ``mat`` and its inputs: (source, geometry (n, slots, 4), atlas
+    (k, 4), kinds).  No GPU needed (the ray nodes are traced here, on the ray engine).  Raises Unsupported."""
     g = ev.g
     n = g.n
     nt = mat.node_tree
@@ -966,7 +966,12 @@ def evaluate(ev, mat, kinds, images):
     L._imgs = images
     gen = Gen(mat, ev.ob, L, ctx='c')
     results = []
-    for k in kinds:
+    if probes:                                    # (tests: the value of given (node, output socket, path) as rgb)
+        kinds = [f'probe{j}' for j in range(len(probes))]
+        for node, sock, path in probes:
+            e, t = gen.out(node, sock, path)
+            results.append(gen.var('vec3', gen.conv(e, t, 'VECTOR') if t in ('VALUE', 'INT', 'BOOLEAN') else e))
+    for k in ([] if probes else kinds):
         if k == 'NORMAL' and outn.inputs['Displacement'].is_linked and \
                 getattr(mat, 'displacement_method', 'BUMP') != 'DISPLACEMENT':
             raise Unsupported('a displacement bump')
@@ -1026,6 +1031,19 @@ def evaluate(ev, mat, kinds, images):
             '  c.uvb = uvs.xy;\n  c.uvr = uvs.zw;\n'
             f'{src_body}\n{writes}\n}}\n')
     src = (HELPERS + shift + '\n'.join(L.fn_src) + main).replace('SLOTS', str(slots))
+    atlas = np.zeros((max(1, L.atlas_n), 4), np.float32)
+    for off, arr in L.atlas:
+        atlas[off:off + len(arr)] = arr
+    return src, geo, atlas, kinds
+
+
+def evaluate(ev, mat, kinds, images, probes=None):
+    """The maps ``kinds`` of material ``mat`` over the texels of the Eval ``ev`` (its Geo, its ray scenes) on the GPU.
+    {kind: (n, 3) float32}.  Raises Unsupported (then numpy as before)."""
+    import gpu
+    from gpu.types import GPUShaderCreateInfo
+    src, geo, atlas, kinds = build(ev, mat, kinds, images, probes)
+    n, slots = geo.shape[0], geo.shape[1]
     key = hashlib.sha1(src.encode()).hexdigest()
     sh = _CACHE.get(key)
     if sh is None:
@@ -1047,30 +1065,35 @@ def evaluate(ev, mat, kinds, images):
         STATS['compiled'] += 1
     else:
         STATS['reused'] += 1
-    atlas = np.zeros((max(1, L.atlas_n), 4), np.float32)
-    for off, arr in L.atlas:
-        atlas[off:off + len(arr)] = arr
-    tg = _tex(geo.reshape(-1, 4))
     ta = _tex(atlas)
-    rows = max(1, (len(kinds) * n + TEXW - 1) // TEXW)
-    res = gpu.types.GPUTexture((TEXW, rows), format='RGBA32F')
-    sh.bind()
-    sh.uniform_sampler('geo', tg)
-    sh.uniform_sampler('atlas', ta)
-    sh.image('result', res)
-    sh.uniform_int('count', n)
-    chunk = 1 << 17
-    for off in range(0, n, chunk):
-        sh.uniform_int('offset', off)
-        gpu.compute.dispatch(sh, (min(chunk, n - off) + 63) // 64, 1, 1)
-    buf = res.read()
-    try:
-        a = np.frombuffer(buf, np.float32)
-    except (TypeError, ValueError):
-        a = np.asarray(buf.to_list(), np.float32)
-    a = a.reshape(-1, 4)
+
+    batch = max(1024, min(n, (MAXROWS[0] * TEXW) // max(slots, len(kinds))))
+    outs = [np.empty((n, 3), np.float32) for _ in kinds]
+    for b0 in range(0, n, batch):
+        m = min(batch, n - b0)
+        tg = _tex(geo[b0:b0 + m].reshape(-1, 4))
+        rows = max(1, (len(kinds) * m + TEXW - 1) // TEXW)
+        res = gpu.types.GPUTexture((TEXW, rows), format='RGBA32F')
+        sh.bind()
+        sh.uniform_sampler('geo', tg)
+        sh.uniform_sampler('atlas', ta)
+        sh.image('result', res)
+        sh.uniform_int('count', m)
+        chunk = 1 << 17
+        for off in range(0, m, chunk):
+            sh.uniform_int('offset', off)
+            gpu.compute.dispatch(sh, (min(chunk, m - off) + 63) // 64, 1, 1)
+        buf = res.read()
+        try:
+            a = np.frombuffer(buf, np.float32)
+        except (TypeError, ValueError):
+            a = np.asarray(buf.to_list(), np.float32)
+        a = a.reshape(-1, 4)
+        for j in range(len(kinds)):
+            outs[j][b0:b0 + m] = a[j * m:(j + 1) * m, :3]
+        del tg, res
     STATS['materials'] += 1
-    return {k: a[j * n:(j + 1) * n, :3].copy() for j, k in enumerate(kinds)}
+    return {k: outs[j] for j, k in enumerate(kinds)}
 
 
 def timed(fn, *a, **k):
