@@ -5,6 +5,8 @@ Select the mecha parts, pick Mecha Guides, drag lines over them with the Rig too
 whatever part is under the mouse (half way between where the view ray goes into the part and comes out of it), so it
 follows the parts across the screen.  Make Rig:
 
+* a part is a mesh object, or one loose piece of it (0.24.338: the user's spider is one object of 19 pieces - each
+  piece its own part, the object stays one object, each piece's points wholly on its bone);
 * every part a line passes through gets ONE bone - only one, however many lines cross it or how often;
 * along a line the bones follow each other: the joint between two parts is where the line goes from the one into the
   other; a part's bone runs from the joint it is entered by to the joint it is left by (the line's end in the last);
@@ -128,33 +130,101 @@ def drop_line(which='LAST'):
     return n
 
 
-def through_part(context, parts, o, d):
-    """The middle of the first of ``parts`` the view ray (world ``o``, ``d``) goes through: (point, part) or None."""
-    best = None
+class Piece:
+    """A part: one loose piece of a mesh object (an object made of several pieces - a spider's legs in one mesh - is
+    several parts, each its own bone)."""
+
+    def __init__(self, name, obj, verts, V, tree):
+        self.name, self.obj, self.verts, self.V, self.tree = name, obj, verts, V, tree
+
+
+_PIECES = {}
+
+
+def pieces_of(objs):
+    """The parts of the mesh objects ``objs``: [Piece] - an object of one piece is one part named as the object; an
+    object of several loose pieces gives one part each ("<object>.p00", ".p01" ... in the order of their points)."""
+    from mathutils.bvhtree import BVHTree
+    import bmesh
+    out = []
+    for ob in objs:
+        if ob.type != 'MESH':
+            continue
+        me = ob.data
+        key = (ob.name, len(me.vertices), len(me.polygons), tuple(round(x, 6) for r in ob.matrix_world for x in r))
+        if key in _PIECES:
+            out.extend(_PIECES[key])
+            continue
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        bm.verts.ensure_lookup_table()
+        seen, isl = set(), []
+        for v in bm.verts:
+            if v.index in seen:
+                continue
+            st, comp = [v], []
+            seen.add(v.index)
+            while st:
+                u = st.pop()
+                comp.append(u.index)
+                for e in u.link_edges:
+                    w = e.other_vert(u)
+                    if w.index not in seen:
+                        seen.add(w.index)
+                        st.append(w)
+            isl.append(sorted(comp))
+        isl.sort(key=lambda c: c[0])
+        M = ob.matrix_world
+        W = [M @ v.co for v in me.vertices]
+        faces_of = {}
+        where = {}
+        for k, c in enumerate(isl):
+            for i in c:
+                where[i] = k
+        for f in me.polygons:
+            faces_of.setdefault(where[f.vertices[0]], []).append(list(f.vertices))
+        bm.free()
+        mine = []
+        for k, c in enumerate(isl):
+            fs = faces_of.get(k, [])
+            if not fs:
+                continue
+            remap = {i: j for j, i in enumerate(c)}
+            Vk = [W[i] for i in c]
+            tree = BVHTree.FromPolygons(Vk, [[remap[i] for i in f] for f in fs])
+            name = ob.name if len(isl) == 1 else f'{ob.name}.p{k:02d}'
+            mine.append(Piece(name, ob, c, np.array([tuple(v) for v in Vk]), tree))
+        if len(mine) == 1:
+            mine[0].name = ob.name
+        _PIECES[key] = mine
+        out.extend(mine)
+    return out
+
+
+def through_part(context, parts, o, d, pieces=None):
+    """The middle of the first part the view ray (world ``o``, ``d``) goes through: (point, Piece) or None.
+    ``parts``: mesh objects (their loose pieces are the parts)."""
+    pcs = pieces if pieces is not None else pieces_of(parts)
     o, d = Vector(tuple(o)), Vector(tuple(d)).normalized()
-    for p in parts:
-        Mi = p.matrix_world.inverted()
-        lo, ld = Mi @ o, (Mi.to_3x3() @ d).normalized()
-        ok, loc, _n, _i = p.ray_cast(lo, ld)
-        if not ok:
+    best = None
+    for pc in pcs:
+        loc, _n, _i, t_in = pc.tree.ray_cast(o, d)
+        if loc is None or (best is not None and t_in >= best[0]):
             continue
-        t_in = (p.matrix_world @ loc - o).length
-        if best is not None and t_in >= best[0]:
-            continue
-        # out again: the next surface along (walls inside counted in and out)
-        q, depth, t_out = loc + ld * 1e-6 * max(p.dimensions.length, 1e-6), 1, None
+        eps = 1e-6 * max(float(np.ptp(pc.V, axis=0).max()), 1e-6)
+        q, depth, t_out = loc + d * eps, 1, None
         for _k in range(32):
-            ok2, loc2, n2, _i2 = p.ray_cast(q, ld)
-            if not ok2:
+            loc2, n2, _i2, _t2 = pc.tree.ray_cast(q, d)
+            if loc2 is None:
                 break
-            depth += 1 if n2.dot(ld) < 0 else -1
+            depth += 1 if n2.dot(d) < 0 else -1
             if depth <= 0:
-                t_out = (p.matrix_world @ loc2 - o).length
+                t_out = (loc2 - o).length
                 break
-            q = loc2 + ld * 1e-6 * max(p.dimensions.length, 1e-6)
+            q = loc2 + d * eps
         if t_out is None:
             t_out = t_in
-        best = (t_in, 0.5 * (t_in + t_out), p)
+        best = (t_in, 0.5 * (t_in + t_out), pc)
     if best is None:
         return None
     return np.array(tuple(o + d * best[1])), best[2]
@@ -162,16 +232,12 @@ def through_part(context, parts, o, d):
 
 # --- the rig -----------------------------------------------------------------------------------------------------------
 
-def _inside(part, p, tol):
-    """Is the world point ``p`` inside ``part`` (or on it)?"""
-    Mi = part.matrix_world.inverted()
-    ok, loc, n, _i = part.closest_point_on_mesh(Mi @ Vector(tuple(p)))
-    if not ok:
+def _inside(pc, p, tol):
+    """Is the world point ``p`` inside the part ``pc`` (or on it)?  (inside, distance off it)"""
+    loc, n, _i, dist = pc.tree.find_nearest(Vector(tuple(p)))
+    if loc is None:
         return False, np.inf
-    w = part.matrix_world @ loc
-    dist = (w - Vector(tuple(p))).length
-    nw = (part.matrix_world.to_3x3().inverted().transposed() @ n).normalized()
-    inside = (Vector(tuple(p)) - w).dot(nw) < 0
+    inside = (Vector(tuple(p)) - loc).dot(n) < 0
     return inside or dist < tol, (0.0 if inside else dist)
 
 
@@ -183,31 +249,25 @@ def _resample(P, step):
     return np.stack([np.interp(u, s, P[:, i]) for i in range(3)], axis=1)
 
 
-def walk(P, parts, step, tol, owners=None):
-    """The parts the line ``P`` runs through, in order, each once: [(part, entry point, exit point)]; the joint between
-    two parts half way between the line's last point in the one and its first in the next.  ``owners``: the part
-    under each point when it was drawn (what the user saw - parts inside parts are not guessed)."""
-    from . import rigging as rg
-    if owners is not None:
-        by = {p.name: p for p in parts}
-        D = np.asarray(P, float)
-        owner = [by.get(n) for n in owners]
-        return _runs(D, owner)
+def walk(P, pcs, step, tol, owners=None):
+    """The parts the line ``P`` runs through, in order, each once: [(Piece, entry point, exit point)]; the joint
+    between two parts half way between the line's last point in the one and its first in the next.  ``owners``: the
+    part under each point when it was drawn (what the user saw - parts inside parts are not guessed)."""
+    by = {pc.name: pc for pc in pcs}
+    if owners is not None and any(n in by for n in owners):
+        return _runs(np.asarray(P, float), [by.get(n) for n in owners])
     D = _resample(P, step)
-    boxes = {}
-    for p in parts:
-        W = rg.world_points(bpy.context, p)
-        boxes[p.name] = (W.min(0) - tol, W.max(0) + tol) if len(W) else (np.zeros(3), np.zeros(3))
+    boxes = {pc.name: (pc.V.min(0) - tol, pc.V.max(0) + tol) for pc in pcs}
     owner = []
     for q in D:
         cand = []
-        for p in parts:
-            lo, hi = boxes[p.name]
+        for pc in pcs:
+            lo, hi = boxes[pc.name]
             if (q < lo).any() or (q > hi).any():
                 continue
-            ins, dist = _inside(p, q, tol)
+            ins, dist = _inside(pc, q, tol)
             if ins:
-                cand.append((dist, p))
+                cand.append((dist, pc))
         owner.append(min(cand, key=lambda c: c[0])[1] if cand else None)
     return _runs(D, owner)
 
@@ -235,42 +295,44 @@ def _runs(D, owner):
 
 
 def build(context, parts, glines, seamless=False):
-    """The rig from the guide lines ``glines`` [(points, kind)] over ``parts``.  Returns (armature, report)."""
+    """The rig from the guide lines ``glines`` [(points, kind, owners)] over the mesh objects ``parts`` (their loose
+    pieces are the parts).  Returns (armature, report)."""
     from . import rigging as rg
-    parts = [p for p in parts if p.type == 'MESH']
-    if not parts:
+    objs = [p for p in parts if p.type == 'MESH']
+    if not objs:
         raise RuntimeError('Select the mecha parts')
     if not glines:
         raise RuntimeError('Draw guide lines over the parts first (Rig tool, drag)')
-    allV = np.concatenate([rg.world_points(context, p) for p in parts])
+    _PIECES.clear()
+    pcs = pieces_of(objs)
+    allV = np.concatenate([pc.V for pc in pcs])
     ground = float(allV[:, 2].min())
     size = float(np.ptp(allV, axis=0).max()) or 1.0
     H = float(np.ptp(allV[:, 2])) or size
     step, tol = 0.004 * size, 0.002 * size
     bone_of = {}                                     # part name -> bone (= the part's name)
     heads, tails, parent = {}, {}, {}
-    chains = []                                      # (kind, [bone names in order along the line, own ones only],
-    order = []                                       #  the anchor bone it hangs from)
+    chains, order = [], []
     for li, gl in enumerate(glines):
         P, kind = gl[0], gl[1]
-        seq = walk(P, parts, step, tol, gl[2] if len(gl) > 2 else None)
+        seq = walk(P, pcs, step, tol, gl[2] if len(gl) > 2 else None)
         if not seq:
             continue
         mine, anchor = [], None
-        for k, (p, h, t) in enumerate(seq):
-            if p.name in bone_of:                    # (already boned by an earlier line: hang the rest from it)
-                anchor = bone_of[p.name]
+        for k, (pc, h, t) in enumerate(seq):
+            if pc.name in bone_of:                   # (already boned by an earlier line: hang the rest from it)
+                anchor = bone_of[pc.name]
                 mine = []
                 continue
-            b = p.name
-            bone_of[p.name] = b
+            b = pc.name
+            bone_of[pc.name] = b
             heads[b], tails[b] = h, t
             if mine:
                 parent[b] = mine[-1]
             elif anchor is not None:
                 parent[b] = anchor
             elif order:                              # (starts in no boned part: off the bone nearest its start)
-                def dist(bn):
+                def dist(bn, h=h):
                     a_, c_ = heads[bn], tails[bn]
                     d_ = c_ - a_
                     tt = float(np.clip((h - a_) @ d_ / max(d_ @ d_, 1e-12), 0, 1))
@@ -286,13 +348,18 @@ def build(context, parts, glines, seamless=False):
             chains.append((k_, mine))
     if not order:
         raise RuntimeError('No guide line runs through the selected parts')
-    # IK limbs: the last three own bones of a Leg / IK line (upper, lower, end)
+    # IK limbs: the last three own bones of a Leg / IK line (upper, lower, end); a two-part leg: IK on its two
     limbs = []
     for kind, mine in chains:
-        if kind in {'LEG', 'IK'} and len(mine) >= 3:
+        if kind in {'LEG', 'IK'} and len(mine) >= 2:
             bend = np.array((0.0, -1.0, 0.0)) if kind == 'LEG' else np.array((0.0, 1.0, 0.0))
-            limbs.append((mine[-3], mine[-2], mine[-1], bend, kind))
+            if len(mine) >= 3:
+                limbs.append((mine[-3], mine[-2], mine[-1], bend, kind))
+            else:
+                limbs.append((None, mine[-2], mine[-1], bend, kind))
     for u, l_, e, bend, _k in limbs:                 # (straight: the middle joint a hair the way it bends)
+        if u is None:
+            continue
         a, m, f = heads[u], heads[l_], heads[e]
         ab = f - a
         t = float((m - a) @ ab / max(ab @ ab, 1e-12))
@@ -319,41 +386,61 @@ def build(context, parts, glines, seamless=False):
                 ebs[b].parent = ebs[parent[b]]
         for u, l_, e, bend, _k in limbs:
             f = ebs[e]
-            mid = heads[l_]
-            ab = heads[e] - heads[u]
-            tt = float((mid - heads[u]) @ ab / max(ab @ ab, 1e-12))
-            off = mid - (heads[u] + tt * ab)
-            if float(off @ bend) < 0.5 * np.linalg.norm(off) or np.linalg.norm(off) < 1e-6:
+            mid = heads[l_] if u is not None else tails[l_]
+            top = heads[u] if u is not None else heads[l_]
+            ab = heads[e] - top if u is not None else tails[e] - top
+            tt = float((mid - top) @ ab / max(ab @ ab, 1e-12))
+            off = mid - (top + tt * ab)
+            if np.linalg.norm(off) < 1e-6 or (u is not None and float(off @ bend) < 0.5 * np.linalg.norm(off)):
                 off = bend
             off = off / np.linalg.norm(off) * 0.5 * float(np.linalg.norm(ab))
             rg._limb_ik_bones(ebs, l_, e, f.head.copy(), f.tail.copy(), mid, tuple(off), 'root')
     # the parts no line crosses: on the bone of the part nearest them
     from mathutils.kdtree import KDTree
-    boned = [p for p in parts if p.name in bone_of]
-    src = [(bone_of[p.name], v) for p in boned for v in rg.world_points(context, p)[::7]]
+    boned = [pc for pc in pcs if pc.name in bone_of]
+    src = [(bone_of[pc.name], v) for pc in boned for v in pc.V[:: max(1, len(pc.V) // 400)]]
     kd = KDTree(len(src))
     for i, (_b, v) in enumerate(src):
         kd.insert(v, i)
     kd.balance()
-    owner = {p.name: bone_of[p.name] for p in boned}
+    owner = {pc.name: bone_of[pc.name] for pc in boned}
     rode = {}
-    for p in parts:
-        if p.name in owner:
-            continue
-        W = rg.world_points(context, p)
-        if not len(W):
+    for pc in pcs:
+        if pc.name in owner:
             continue
         votes = {}
-        for v in W[:: max(1, len(W) // 200)]:
-            votes[src[kd.find(v)[1]][0]] = votes.get(src[kd.find(v)[1]][0], 0) + 1
-        owner[p.name] = rode[p.name] = max(votes, key=votes.get)
-    if seamless:
+        for v in pc.V[:: max(1, len(pc.V) // 200)]:
+            bn = src[kd.find(v)[1]][0]
+            votes[bn] = votes.get(bn, 0) + 1
+        owner[pc.name] = rode[pc.name] = max(votes, key=votes.get)
+    # put the parts on their bones: an object of one part rides its bone (or Seamless); an object of several
+    # pieces stays one object, each piece's points wholly on its own bone (an Armature modifier)
+    single = [o for o in objs if sum(1 for pc in pcs if pc.obj is o) == 1]
+    multi = [o for o in objs if o not in single]
+    if seamless and single:
         from . import mecha_named
-        mecha_named.skin(context, ob, parts, owner)
+        mecha_named.skin(context, ob, single, {o.name: owner[o.name] for o in single if o.name in owner})
     else:
-        for p in parts:
-            if p.name in owner:
-                rg.attach(p, ob, owner[p.name])
+        for o in single:
+            if o.name in owner:
+                rg.attach(o, ob, owner[o.name])
+    for o in multi:
+        mw = o.matrix_world.copy()
+        for m in [m for m in o.modifiers if m.type == 'ARMATURE']:
+            o.modifiers.remove(m)
+        for pc in [pc for pc in pcs if pc.obj is o]:
+            bn = owner.get(pc.name)
+            if bn is None:
+                continue
+            vg = o.vertex_groups.get(bn) or o.vertex_groups.new(name=bn)
+            vg.add(pc.verts, 1.0, 'REPLACE')
+        m = o.modifiers.new('Armature', 'ARMATURE')
+        m.object = ob
+        o.parent = ob
+        o.parent_type = 'OBJECT'
+        o.matrix_parent_inverse = ob.matrix_world.inverted()
+        o.matrix_world = mw
+        o[rg.PART_KEY] = order[0]
     offs = {}
     for u, l_, e, _b, _k in limbs:
         pb = ob.data.bones.get(l_ + '_pole')
@@ -361,10 +448,11 @@ def build(context, parts, glines, seamless=False):
             offs[l_] = list(pb.head_local - ob.data.bones[l_].head_local)
     ob['mch_pole_off'] = offs
     for u, l_, e, _b, _k in limbs:
-        rg._limb_ik(context, ob, l_, e, 2)
+        rg._limb_ik(context, ob, l_, e, 2 if u is not None else 1)
     legs = [e for _u, _l, e, _b, k in limbs if k == 'LEG']
     ob['mch_legs'] = json.dumps(legs)
-    lens = [float(np.linalg.norm(heads[e] - heads[u])) for u, _l, e, _b, k in limbs if k == 'LEG']
+    lens = [float(np.linalg.norm(heads[e] - heads[u if u is not None else l_])) for u, l_, e, _b, k in limbs
+            if k == 'LEG']
     ob['mch_leg_len'] = float(min(lens)) if lens else 0.3 * H
     rg.controls(ob)
     g = guides()
@@ -401,6 +489,7 @@ class MCH_OT_mecha_guide_draw(bpy.types.Operator):
             return {'CANCELLED'}
         size = max(max(p.dimensions) for p in self.parts) or 1.0
         self.gap = 0.004 * size
+        self.pieces = pieces_of(self.parts)
         self.pts, self.own, self.spline = [], [], None
         self._add(context, event)
         context.window_manager.modal_handler_add(self)
@@ -411,7 +500,7 @@ class MCH_OT_mecha_guide_draw(bpy.types.Operator):
         xy = (event.mouse_region_x, event.mouse_region_y)
         o = view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, xy)
         d = view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, xy)
-        hit = through_part(context, self.parts, o, d)
+        hit = through_part(context, self.parts, o, d, self.pieces)
         if hit is None:
             return
         p = hit[0]

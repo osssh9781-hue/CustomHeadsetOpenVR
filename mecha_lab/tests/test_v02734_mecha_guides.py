@@ -73,7 +73,7 @@ check(f'the leg IK works: its foot target up 0.25 - the foot part goes with it (
 # through the middle: the point under the mouse is half way through the part
 hit = mg.through_part(C, [parts['몸통'], parts['Head']], (0, -5, 1.3), (0, 1, 0))
 check(f'drawing: a view ray through the chest gives the chest\'s middle (y {hit[0][1]:.3f}), the chest part',
-      hit is not None and abs(hit[0][1]) < 0.01 and hit[1] is parts['몸통'])
+      hit is not None and abs(hit[0][1]) < 0.01 and hit[1].obj is parts['몸통'])
 # a part hidden inside another (a neck post sunk into the chest): the part under the mouse when drawn decides, not a
 # guess - the line drawn over the chest there gives the chest, not the post inside it
 for o in list(S.objects):
@@ -93,4 +93,43 @@ arm2, rep2 = mg.build(C, [chest, post, head], mg.lines(), False)
 check(f'a part inside another: the drawn line\'s own parts decide - chest, then the post where it shows above the '
       f'chest, then the head, one bone each ({rep2["bones"]}, {rep2["parent"]})',
       rep2['bones'] == ['Chest', 'Post', 'Head'] and rep2['parent'] == {'Chest': None, 'Post': 'Chest', 'Head': 'Post'})
+# 0.24.339 (the user's spider: ONE object of 19 loose pieces) each loose piece of an object is a part of its own - one
+# bone each - and the object stays one object, each piece's points wholly on its own bone
+for o in list(S.objects):
+    if o.type == 'MESH' or o.type == 'ARMATURE':
+        bpy.data.objects.remove(o)
+mg.drop_line('ALL')
+a1 = box('A', (-0.3, -0.3, 0.0), (0.3, 0.3, 0.3))          # noqa: F821
+a2 = box('B', (0.3, -0.05, 0.1), (0.9, 0.05, 0.2))         # noqa: F821
+a3 = box('C', (0.9, -0.05, 0.1), (1.5, 0.05, 0.2))         # noqa: F821
+for o in (a1, a2, a3):
+    o.select_set(True)
+C.view_layer.objects.active = a1
+with C.temp_override(active_object=a1, selected_objects=[a1, a2, a3], selected_editable_objects=[a1, a2, a3]):
+    bpy.ops.object.join()
+one = C.view_layer.objects.active
+pcs = mg.pieces_of([one])
+pts, own = [], []
+for x in np.linspace(-0.25, 1.45, 60):
+    h_ = mg.through_part(C, [one], (x, 0, 5), (0, 0, -1), pcs)
+    if h_ is not None:
+        pts.append(h_[0])
+        own.append(h_[1].name)
+mg.add_line(C, np.array(pts), 'BONES', own)
+arm3, rep3 = mg.build(C, [one], mg.lines(), False)
+vg = {g.name for g in one.vertex_groups}
+w_ok = all(len(v.groups) == 1 and v.groups[0].weight == 1.0 for v in one.data.vertices)
+pb_ = arm3.pose.bones[rep3['bones'][2]]
+pb_.rotation_mode = 'XYZ'
+pb_.rotation_euler = (0, 0, 0.8)
+C.view_layer.update()
+ev = one.evaluated_get(C.evaluated_depsgraph_get()).to_mesh()
+moved = [i for i in range(len(one.data.vertices)) if (ev.vertices[i].co - one.data.vertices[i].co).length > 1e-4]
+one.evaluated_get(C.evaluated_depsgraph_get()).to_mesh_clear()
+last = max(pcs, key=lambda pc: pc.V.mean(0)[0])
+tip = set(last.verts)
+check(f'one object of 3 loose pieces: 3 parts, 3 bones ({rep3["bones"]}), each piece wholly on its own bone, the '
+      f'object still one object; turn the last bone - only the last piece moves ({len(moved)} points moved)',
+      len(pcs) == 3 and len(rep3['bones']) == 3 and vg >= set(rep3['bones']) and w_ok
+      and any(m.type == 'ARMATURE' for m in one.modifiers) and set(moved) == tip and len(tip) == 8)
 summary()
