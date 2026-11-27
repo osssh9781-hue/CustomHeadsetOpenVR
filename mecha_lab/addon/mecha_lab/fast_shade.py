@@ -40,7 +40,7 @@ def lib():
         L = fast_bake.lib()
         if L is not None:
             try:
-                if L.mbake_version() >= 5:
+                if L.mbake_version() >= 6:
                     L.mbake_raster.restype = ctypes.c_int
                     L.mbake_raster.argtypes = [ctypes.c_int, _FP, ctypes.c_int, ctypes.c_int, _IP, _FP, _UP]
                     L.mbake_margin.restype = None
@@ -55,6 +55,10 @@ def lib():
                     L.mbake_ao.restype = None
                     L.mbake_ao.argtypes = [ctypes.c_void_p, ctypes.c_int, _FP, _FP, _FP, _IP, _UIP, ctypes.c_int,
                                            ctypes.c_float, ctypes.c_int, _FP, ctypes.c_int]
+                    L.mbake_image_box.restype = None
+                    L.mbake_image_box.argtypes = [_FP, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                                  ctypes.c_int, ctypes.c_int, _FP, _FP, ctypes.c_float, _FP,
+                                                  ctypes.c_int]
                     L.mbake_cast.restype = None
                     L.mbake_cast.argtypes = [ctypes.c_void_p, ctypes.c_int, _FP, _FP, ctypes.c_float, _IP, _FP, _FP,
                                              _FP, ctypes.c_int]
@@ -1180,53 +1184,16 @@ class Eval:
         return c[:, :3].copy()
 
     def _box(self, img, n, co):
-        """Cycles' svm_node_tex_image_box: three planar lookups blended by the object-space normal."""
+        """Cycles' svm_node_tex_image_box: three planar lookups blended by the object-space normal (0.24.343 in the
+        engine, one call)."""
         g = self.g
-        N = g.No.astype(np.float32)
-        sN = N
-        A = np.abs(N)
-        A = A / np.maximum(A.sum(1, keepdims=True), 1e-20)
-        blend = float(n.projection_blend)
-        limit = 0.5 * (1.0 + blend)
-        x, y, z = A[:, 0], A[:, 1], A[:, 2]
-        W = np.zeros_like(A)
-        cx = (x > limit * (x + y)) & (x > limit * (x + z))
-        cy = ~cx & (y > limit * (x + y)) & (y > limit * (y + z))
-        cz = ~cx & ~cy & (z > limit * (x + z)) & (z > limit * (y + z))
-        W[cx, 0] = 1
-        W[cy, 1] = 1
-        W[cz, 2] = 1
-        rest = ~(cx | cy | cz)
-        if blend > 0:
-            with np.errstate(all='ignore'):
-                m1 = rest & (z < (1 - limit) * (y + x))
-                wx = sat((x / (x + y) - 0.5 * (1 - blend)) / blend)
-                W[m1, 0], W[m1, 1] = wx[m1], 1 - wx[m1]
-                m2 = rest & ~m1 & (x < (1 - limit) * (y + z))
-                wy = sat((y / (y + z) - 0.5 * (1 - blend)) / blend)
-                W[m2, 1], W[m2, 2] = wy[m2], 1 - wy[m2]
-                m3 = rest & ~m1 & ~m2 & (y < (1 - limit) * (x + z))
-                wx2 = sat((x / (x + z) - 0.5 * (1 - blend)) / blend)
-                W[m3, 0], W[m3, 2] = wx2[m3], 1 - wx2[m3]
-                m4 = rest & ~m1 & ~m2 & ~m3
-                den = 2 * limit - 1
-                for k, comp in enumerate((x, y, z)):
-                    W[m4, k] = ((2 - limit) * comp[m4] + (limit - 1)) / den
-        else:
-            W[rest, 0] = 1
-        out = np.zeros((g.n, 4), np.float32)
-        for k in range(3):
-            sel = np.nonzero(W[:, k] > 0)[0]
-            if not len(sel):
-                continue
-            c = co[sel]
-            if k == 0:
-                uv = np.stack([np.where(sN[sel, 0] < 0, 1 - c[:, 1], c[:, 1]), c[:, 2]], 1)
-            elif k == 1:
-                uv = np.stack([np.where(sN[sel, 1] > 0, 1 - c[:, 0], c[:, 0]), c[:, 2]], 1)
-            else:
-                uv = np.stack([np.where(sN[sel, 2] > 0, 1 - c[:, 1], c[:, 1]), c[:, 0]], 1)
-            out[sel] += W[sel, k:k + 1] * self._lookup(img, n, uv)
+        L = lib()
+        px, w, h = self.images.get(img)
+        N0 = g.base.No if isinstance(g, Shift) else g.No
+        out = np.empty((g.n, 4), np.float32)
+        L.mbake_image_box(_ptr(px), int(w), int(h), 4, 0 if n.interpolation == 'Closest' else 1,
+                          {'REPEAT': 0, 'EXTEND': 1, 'CLIP': 2, 'MIRROR': 3}.get(n.extension, 0), int(g.n),
+                          _ptr(_c(co)), _ptr(_c(N0)), float(n.projection_blend), _ptr(out), _threads())
         return out
 
     # -- ray nodes -----------------------------------------------------------------------------------------------

@@ -1425,6 +1425,9 @@ def bake_self_one_steps(context, objs, st, keep_state=None):
     for o in objs:
         o.hide_set(True)
         o.select_set(False)
+        if 'COLOR' in images or 'ROUGH' in images or 'METAL' in images:
+            for d in fast_shade.decals_of(o):            # (0.24.343 baked into the maps: hidden with their part)
+                d.hide_set(True)
     joined.hide_set(False)
     joined.select_set(True)
     context.view_layer.objects.active = joined

@@ -384,7 +384,7 @@ static void margin_fill(float *out, int ch, const unsigned char *mask, int w, in
   free(ring); free(m);
 }
 
-EXPORT int mbake_version(void) { return 5; }
+EXPORT int mbake_version(void) { return 6; }
 
 /* v2: the Normal map and, in the same rays, the Height (hit distance along the low's normal, world units; NULL: not
  * wanted) and a value of the high's points (hA, e.g. its curvature, between the hit triangle's corners; NULL: not
@@ -863,4 +863,73 @@ EXPORT void mbake_cast(void *scene, int n, const float *O, const float *D, float
   if (!scene || n <= 0) return;
   CastJob j = {(const Scene *)scene, O, D, tmax, tri, t, u, v};
   parallel(cast_work, &j, n, threads);
+}
+
+
+/* v6 (0.24.343): Cycles' box-projected image lookup (svm_node_tex_image_box) in one go: weights from the object-space
+ * normal and the blend, up to three planar lookups */
+static void sample_one(const ImgJob *j, float u, float v, float *o) {
+  o[0] = o[1] = o[2] = o[3] = 0.f;
+  if (!(u == u) || !(v == v)) return;
+  if (j->interp == 0) {
+    int ok = 1;
+    int x = wrap_i((int)floorf(u * j->iw), j->iw, j->ext, &ok), y = wrap_i((int)floorf(v * j->ih), j->ih, j->ext, &ok);
+    if (!ok) return;
+    const float *p = j->img + ((size_t)y * j->iw + x) * j->ch;
+    for (int a = 0; a < 4; a++) o[a] = a < j->ch ? p[a] : 1.f;
+    return;
+  }
+  float fx = u * j->iw - 0.5f, fy = v * j->ih - 0.5f;
+  int x0 = (int)floorf(fx), y0 = (int)floorf(fy);
+  float tx = fx - x0, ty = fy - y0;
+  for (int dy = 0; dy < 2; dy++) for (int dx = 0; dx < 2; dx++) {
+    int ok = 1;
+    int x = wrap_i(x0 + dx, j->iw, j->ext, &ok), y = wrap_i(y0 + dy, j->ih, j->ext, &ok);
+    float wt = (dx ? tx : 1.f - tx) * (dy ? ty : 1.f - ty);
+    if (!ok) continue;
+    const float *p = j->img + ((size_t)y * j->iw + x) * j->ch;
+    for (int a = 0; a < 4; a++) o[a] += wt * (a < j->ch ? p[a] : 1.f);
+  }
+}
+
+typedef struct { ImgJob im; const float *co, *N; float blend; } BoxJob;
+static float satf(float x) { return x < 0.f ? 0.f : (x > 1.f ? 1.f : x); }
+static void box_work(void *c, int i0, int i1) {
+  BoxJob *j = (BoxJob *)c;
+  float blend = j->blend, limit = 0.5f * (1.f + blend);
+  for (int i = i0; i < i1; i++) {
+    const float *sn = j->N + i * 3, *co = j->co + i * 3;
+    float x = fabsf(sn[0]), y = fabsf(sn[1]), z = fabsf(sn[2]);
+    float sum = x + y + z;
+    if (sum > 0.f) { x /= sum; y /= sum; z /= sum; }
+    float w[3] = {0, 0, 0};
+    if (x > limit * (x + y) && x > limit * (x + z)) w[0] = 1.f;
+    else if (y > limit * (x + y) && y > limit * (y + z)) w[1] = 1.f;
+    else if (z > limit * (x + z) && z > limit * (y + z)) w[2] = 1.f;
+    else if (blend > 0.f) {
+      if (z < (1.f - limit) * (y + x)) { w[0] = satf((x / (x + y) - 0.5f * (1.f - blend)) / blend); w[1] = 1.f - w[0]; }
+      else if (x < (1.f - limit) * (y + z)) { w[1] = satf((y / (y + z) - 0.5f * (1.f - blend)) / blend); w[2] = 1.f - w[1]; }
+      else if (y < (1.f - limit) * (x + z)) { w[0] = satf((x / (x + z) - 0.5f * (1.f - blend)) / blend); w[2] = 1.f - w[0]; }
+      else {
+        float den = 2.f * limit - 1.f;
+        w[0] = ((2.f - limit) * x + (limit - 1.f)) / den;
+        w[1] = ((2.f - limit) * y + (limit - 1.f)) / den;
+        w[2] = ((2.f - limit) * z + (limit - 1.f)) / den;
+      }
+    } else w[0] = 1.f;
+    float *o = j->im.out + (size_t)i * 4, t[4];
+    o[0] = o[1] = o[2] = o[3] = 0.f;
+    if (w[0] > 0.f) { sample_one(&j->im, sn[0] < 0.f ? 1.f - co[1] : co[1], co[2], t); for (int a = 0; a < 4; a++) o[a] += w[0] * t[a]; }
+    if (w[1] > 0.f) { sample_one(&j->im, sn[1] > 0.f ? 1.f - co[0] : co[0], co[2], t); for (int a = 0; a < 4; a++) o[a] += w[1] * t[a]; }
+    if (w[2] > 0.f) { sample_one(&j->im, sn[2] > 0.f ? 1.f - co[1] : co[1], co[0], t); for (int a = 0; a < 4; a++) o[a] += w[2] * t[a]; }
+  }
+}
+
+EXPORT void mbake_image_box(const float *img, int iw, int ih, int ch, int interp, int ext, int n, const float *co,
+                            const float *N, float blend, float *out, int threads) {
+  if (iw <= 0 || ih <= 0 || n <= 0) return;
+  BoxJob j;
+  j.im.img = img; j.im.iw = iw; j.im.ih = ih; j.im.ch = ch; j.im.interp = interp; j.im.ext = ext; j.im.uv = NULL;
+  j.im.out = out; j.co = co; j.N = N; j.blend = blend;
+  parallel(box_work, &j, n, threads);
 }
