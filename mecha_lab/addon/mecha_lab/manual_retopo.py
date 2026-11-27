@@ -10,7 +10,8 @@
   two lines cross is a point, every cell closed by the lines is a face (4 lines: a quad; 3 or 5+: a triangle / n-gon,
   counted in the message).  The cells show while drawing.  Ctrl+Z the last line, Shift+click a line: it goes;
   Enter makes the faces (Cuts 2-4: each cell divided 2x2 .. 4x4, along the lines' own curves), Esc leaves (the lines
-  are kept for later).  The new faces join the low (shared edges merged).
+  are kept for later).  The new faces join the low (shared edges merged); 0.24.333 the low's open border counts as a
+  line - lines drawn next to it close their cells on it, the new faces on its own points.
 * **Right click** in the Retopo scene: the Retopo menu (not the Actions wheel) - Grid Draw, Extrude, Merge (Center /
   Collapse / By Distance), Knife, Loop Cut, Poly Build, Fill, Grid Fill, Dissolve, Delete, Relax, Snap to Surface,
   Flip, X Mirror, Edit / Object, Finish.  In Edit Mode moved points snap onto the reference (this scene's own snap
@@ -31,6 +32,7 @@ LINES = 'mch_mretopo_lines'    # on the Retopo scene: [[tol, [x, y, z] ...] ...]
 LOW_COLOR = (0.25, 0.65, 1.0, 1.0)
 REF_COLOR = (0.62, 0.62, 0.64, 1.0)
 PICK_PX = 14                   # a crossing / a Shift+click: this many pixels
+SNAP_END = 0.35                # a line meeting the low's border this near (of the edge) to its point: on the point
 STEP_PX = 6                    # a line point every this many pixels
 
 
@@ -270,7 +272,7 @@ def _extend(P, by):
     return np.concatenate(out)
 
 
-def graph(L):
+def graph(L, border_from=None):
     """The crossings of the lines ``L`` [(tol, P, view)]: (nodes (k, 3), edges [(a, b, path (n, 3), line)])."""
     ext = [(x[0], _extend(x[1], x[0] * 1.2), x[2] if len(x) > 2 else None) for x in L]
     hits = []                                    # (line i, arc s on i, line j, arc s on j, point)
@@ -291,6 +293,13 @@ def graph(L):
             else:
                 s, t, dist = _seg_closest(Pi[:-1], Pi[1:], Pj[:-1], Pj[1:])
                 ok = dist < tol
+            if border_from is not None and i < border_from <= j:   # 0.24.333 a line along the low's border (over it):
+                da = Pi[1:] - Pi[:-1]                            #  not crossing it there
+                db = Pj[1:] - Pj[:-1]
+                na = np.linalg.norm(da, axis=1)[:, None]
+                nb = np.linalg.norm(db, axis=1)[None, :]
+                cos = np.abs(da @ db.T) / np.maximum(na * nb, 1e-20)
+                ok = ok & (cos < 0.9)
             ia, ja = np.nonzero(ok)
             if not len(ia):
                 continue
@@ -506,6 +515,94 @@ def build(nodes, edges, cells, cuts=1, snap=None):
     return np.array(V).reshape(-1, 3), F
 
 
+def border_lines(low, L, view):
+    """0.24.333 (user: "그 옆에 그리면 추가로 같이 붙는 건 어때") the low's open border near the new lines, as lines
+    of its own (one per border edge, the new lines' tolerance and screen): a new line that crosses it or ends on it
+    meets it, the border closes the cells next to the low."""
+    if low is None or view is None or not len(low.data.polygons) or not L:
+        return []
+    import bmesh
+    me = low.data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    M = low.matrix_world
+    segs = [(np.array(M @ e.verts[0].co), np.array(M @ e.verts[1].co)) for e in bm.edges if e.is_boundary]
+    bm.free()
+    if not segs:
+        return []
+    allp = np.concatenate([_screen(x[1], view)[0] for x in L])
+    lo, hi = allp.min(0) - PICK_PX * 4, allp.max(0) + PICK_PX * 4
+    tol = float(np.median([x[0] for x in L]))
+    out = []
+    for a, b in segs:
+        q, w = _screen(np.array([a, b]), view)
+        if (w <= 0).any():
+            continue
+        if (np.maximum(q[0], q[1]) < lo).any() or (np.minimum(q[0], q[1]) > hi).any():
+            continue
+        out.append((tol, np.array([a, b]), view))
+    return out
+
+
+def plan(L, ref, tree, low=None, low_tree=None):
+    """(nodes, edges, cells, all lines) of the drawn lines ``L`` - with the low's open border near them as lines
+    too (``low``); a cell of the border only, or over faces the low already has, is left out."""
+    view = next((x[2] for x in reversed(L) if len(x) > 2 and x[2]), None)
+    B = border_lines(low, L, view)
+    A = list(L) + B
+    nodes, edges = graph(A, len(L) if B else None)
+    if not len(nodes):
+        return nodes, edges, [], A
+    Mr, Mri = ref.matrix_world, ref.matrix_world.inverted()
+
+    def normal_at(p):
+        hit = tree.find_nearest(Mri @ Vector(p))
+        return tuple((Mr.to_3x3() @ hit[1]).normalized()) if hit[1] is not None else (0.0, 0.0, 1.0)
+    cells = faces(nodes, edges, normal_at, [x[2] if len(x) > 2 else None for x in A])
+    if B:
+        n_new = len(L)
+        keep = []
+        for cyc in cells:
+            if all(edges[k][3] >= n_new for k, _f in cyc):
+                continue                         # (the low's own border round: not a new cell)
+            if low_tree is not None:
+                P = np.concatenate([edges[k][2] for k, _f in cyc])
+                c = P.mean(0)
+                hit = low_tree.find_nearest(Vector(c))
+                if hit[0] is not None and hit[3] < max(x[0] for x in L) * 0.5:
+                    inside = _inside_low(cyc, edges, nodes, low_tree, view)
+                    if inside:
+                        continue
+            keep.append(cyc)
+        cells = keep
+    return nodes, edges, cells, A
+
+
+def _inside_low(cyc, edges, nodes, low_tree, view):
+    """Is the cell over faces the low already has (its middle, seen on the screen, on the low)?"""
+    if view is None:
+        return False
+    P = np.concatenate([edges[k][2] if f else edges[k][2][::-1] for k, f in cyc])
+    Q = _screen(P, view)[0]
+    cx, cy = Q.mean(0)
+    Minv = np.linalg.inv(np.array(view['m'], float).reshape(4, 4))
+    ndc = (cx / view['w'] * 2 - 1, cy / view['h'] * 2 - 1)
+    a = Minv @ np.r_[ndc[0], ndc[1], -1.0, 1.0]
+    b = Minv @ np.r_[ndc[0], ndc[1], 1.0, 1.0]
+    a, b = a[:3] / a[3], b[:3] / b[3]
+    hit = low_tree.ray_cast(Vector(a), Vector(b - a).normalized())
+    return hit[0] is not None
+
+
+def low_tree_of(low):
+    """A BVH of the low (world space), or None."""
+    from mathutils.bvhtree import BVHTree
+    if low is None or not len(low.data.polygons):
+        return None
+    M = low.matrix_world
+    return BVHTree.FromPolygons([M @ v.co for v in low.data.vertices], [p.vertices for p in low.data.polygons])
+
+
 def make(context, scene, cuts=1):
     """The scene's lines into faces on the low.  Returns (quads, others) made, or None (no cell)."""
     import bmesh
@@ -550,13 +647,27 @@ def make(context, scene, cuts=1):
         hit = near(p)
         return np.array(Mr @ hit[0]) if hit[0] is not None else np.asarray(p)
     tol_snap = max(x[0] for x in L) * 6
-    nodes, edges = graph(L)
-    if not len(nodes):
+    nodes, edges, cells, A = plan(L, ref, tree, low, low_tree_of(low))
+    if not len(nodes) or not cells:
         return None
     nodes = np.array([snap(p) for p in nodes])
-    cells = faces(nodes, edges, normal_at, [x[2] if len(x) > 2 else None for x in L])
-    if not cells:
-        return None
+    B = A[len(L):]
+    if B:                                       # (a line meeting the low's border near one of its points: on it -
+        btol = max(x[0] for x in L)             #  only near the middle of a border edge is that edge split)
+        for k in range(len(nodes)):
+            for _t, seg, *_v in B:
+                a, b = seg[0], seg[1]
+                d = b - a
+                L2 = float(d @ d)
+                if L2 <= 1e-20:
+                    continue
+                t = float((nodes[k] - a) @ d) / L2
+                if -0.05 <= t <= 1.05 and np.linalg.norm(a + d * min(max(t, 0), 1) - nodes[k]) < btol:
+                    if t < SNAP_END:
+                        nodes[k] = a
+                    elif t > 1 - SNAP_END:
+                        nodes[k] = b
+                    break
     if Minv is not None:                        # 0.24.332 on the screen it was drawn on: the cells divided there
         # (evenly, as seen), every point then put on the surface along its line of sight - a groove the lines
         # cross does not pull the points into it
@@ -624,8 +735,27 @@ def make(context, scene, cuts=1):
                 _co, i, dist = kd.find(v.co)
                 if i is not None and dist < tol:
                     weld[v] = olds[i]
+        rest = [v for v in vs if v.is_valid and v not in weld]
         if weld:
             bmesh.ops.weld_verts(bm, targetmap=weld)
+        # (a new point ON an old border edge, not at its ends: that edge split there, the point merged into it)
+        split = {}
+        for v in rest:
+            if not v.is_valid:
+                continue
+            for e in [e for e in bm.edges if e.is_boundary and v not in e.verts]:
+                a, b = e.verts[0].co, e.verts[1].co
+                d = b - a
+                L2 = d.length_squared
+                if L2 <= 1e-20:
+                    continue
+                t = (v.co - a).dot(d) / L2
+                if 0.02 < t < 0.98 and (a + d * t - v.co).length < tol:
+                    _e, nv = bmesh.utils.edge_split(e, e.verts[0], t)
+                    split[v] = nv
+                    break
+        if split:
+            bmesh.ops.weld_verts(bm, targetmap=split)
     loose = [v for v in bm.verts if not v.link_faces]
     bmesh.ops.delete(bm, geom=loose, context='VERTS')
     if bpy.context.mode == 'EDIT_MESH' and low.mode == 'EDIT':
@@ -760,18 +890,14 @@ class MCH_OT_mretopo_draw(bpy.types.Operator):
     def _preview(self, context):
         """The cells the lines close now (shown)."""
         self.preview = []
-        if len(self.L) < 3:
+        if len(self.L) < 2:
             return
         try:
-            nodes, edges = graph(self.L)
+            low = low_of(context.scene)
+            nodes, edges, cells, _A = plan(self.L, self.ref, self.tree, low, low_tree_of(low))
             if not len(nodes):
                 return
-            Mr, Mri = self.ref.matrix_world, self.ref.matrix_world.inverted()
-
-            def normal_at(p):
-                hit = self.tree.find_nearest(Mri @ Vector(p))
-                return tuple((Mr.to_3x3() @ hit[1]).normalized()) if hit[1] is not None else (0.0, 0.0, 1.0)
-            for cyc in faces(nodes, edges, normal_at, [x[2] if len(x) > 2 else None for x in self.L]):
+            for cyc in cells:
                 P = np.concatenate([edges[k][2] if f else edges[k][2][::-1] for k, f in cyc])
                 self.preview.append((P, len(cyc)))
             self.nodes = nodes

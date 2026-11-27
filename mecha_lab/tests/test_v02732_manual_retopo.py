@@ -82,6 +82,44 @@ check(f'Cuts 2: the 4 cells made 2 x 2 each - 16 quads, 25 points (shared edges 
       got_c == (16, 0) and len(low.data.polygons) == 16 and len(low.data.vertices) == 25)
 low.data = low_me
 bpy.data.objects.remove(tmp)
+# 0.24.333 (user: "그 옆에 그리면 추가로 같이 붙는 건 어때") lines drawn next to the low (from it outward + one across):
+# the low's open border closes the cells - new faces on its own points, no gap, no T
+TOP = {'m': [0.5, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, -0.1, 0, 0, 0, 0, 1], 'w': 800, 'h': 800}   # (seen from above)
+bpy.ops.mesh.primitive_plane_add(size=0.1, location=(60, 60, 60))
+tmp2 = C.active_object
+keep_me = low.data
+low.data = bpy.data.meshes.new('side_low')
+mr.set_lines(ws, [line(a, b) + (TOP,) for a, b in [((-0.8, y), (0.8, y)) for y in (-0.6, 0.0, 0.6)]
+                  + [((x, -0.8), (x, 0.8)) for x in (-0.6, 0.0, 0.6)]])
+g0 = mr.make(C, ws, cuts=1)
+mr.set_lines(ws, [line((x, 0.3), (x, 1.2)) + (TOP,) for x in (-0.6, 0.0, 0.6)] + [line((-0.75, 1.0), (0.75, 1.0)) + (TOP,)])
+g1 = mr.make(C, ws, cuts=1)
+sm = low.data
+users = {}
+for p_ in sm.polygons:
+    for ek in p_.edge_keys:
+        users[ek] = users.get(ek, 0) + 1
+check(f'drawn next to the low: 2 new quads on its border points (no second row of points, no edge used 3 times) '
+      f'({g0} then {g1}; {len(sm.polygons)} faces, {len(sm.vertices)} points)',
+      g0 == (4, 0) and g1 == (2, 0) and len(sm.polygons) == 6 and len(sm.vertices) == 12 and max(users.values()) <= 2)
+mr.set_lines(ws, [line((x, -0.2), (x, -1.1)) + (TOP,) for x in (-0.3, 0.3)] + [line((-0.5, -1.0), (0.5, -1.0)) + (TOP,)])
+g2 = mr.make(C, ws, cuts=1)
+users = {}
+for p_ in sm.polygons:
+    for ek in p_.edge_keys:
+        users[ek] = users.get(ek, 0) + 1
+loose_mid = [v for v in sm.vertices if abs(v.co.y + 0.6) < 0.05 and abs(abs(v.co.x) - 0.3) < 0.05]
+check(f'lines meeting the border in the middle between its points: the border edges split there (no T, no gap) - the '
+      f'new cell has 5 sides (it takes the border point between) ({g2}; points on the border at x=±0.3: {len(loose_mid)})',
+      g2 == (0, 1) and len(loose_mid) == 2 and max(users.values()) <= 2
+      and all(sum(v.index in p_.vertices for p_ in sm.polygons) == 2 for v in loose_mid))
+mr.set_lines(ws, [line((-0.3, y), (-0.98, y)) + (TOP,) for y in (-0.54, 0.05)] + [line((-0.9, -0.75), (-0.9, 0.2)) + (TOP,)])
+nv = len(sm.vertices)
+g3 = mr.make(C, ws, cuts=1)
+check(f'lines meeting the border NEAR its points (a little off, as a hand draws): on those points - a clean quad, 2 new '
+      f'points only ({g3}; {len(sm.vertices) - nv} new points)', g3 == (1, 0) and len(sm.vertices) - nv == 2)
+low.data = keep_me
+bpy.data.objects.remove(tmp2)
 # a triangle cell (3 lines): counted apart
 mr.set_lines(ws, [line((-0.9, -0.9), (-0.3, -0.9)), line((-0.85, -0.95), (-0.5, -0.4)), line((-0.35, -0.95), (-0.65, -0.35))])
 got3 = mr.make(C, ws, cuts=1)
