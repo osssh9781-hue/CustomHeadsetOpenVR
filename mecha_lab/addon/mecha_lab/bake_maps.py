@@ -1218,6 +1218,15 @@ def _baked_copy(context, ob, coll, dg):
     return c
 
 
+def _own_mats_all(objs):
+    out = []
+    for o in objs:
+        for m in _own_mats(o):
+            if m not in out:
+                out.append(m)
+    return out
+
+
 def bake_self_one_steps(context, objs, st, keep_state=None):
     """0.24.342 No High Poly, As One: ``objs`` baked into ONE set of maps.  Plain copies of them (modifiers applied,
     in place) are joined once only to lay out one UV atlas; the atlas goes back onto each copy, each copy is baked
@@ -1312,41 +1321,67 @@ def bake_self_one_steps(context, objs, st, keep_state=None):
         for o in list(objs) + [joined]:
             hidden_r.append((o, o.hide_render))
             o.hide_render = True
-        st.margin, st.use_on_low, st.save, st.new_uv = 0, False, False, False
-        acc, cover, fast_all, why_all, skipped = {}, np.zeros(res * res, bool), set(), {}, []
-        n = len(copies)
-        for i, c in enumerate(copies):
-            gen = bake_self_steps(context, c, st, kinds, keep_state=keep)
+        fast_px, why_all, fast_all, skipped = {}, {}, set(), [k for k in kinds_of(st) if k not in SELF_KINDS]
+        # 0.24.343 (user: "빠르게 해줘" - 30 parts) every copy into the same maps in ONE pass of our engine (their
+        # decals laid over too); a map it cannot do goes to Cycles below, copy by copy
+        if getattr(st, 'fast', True):
+            yield (0.1, f'Fast Bake: {len(copies)} meshes in one go')
+            want = [k for k in kinds if k != 'EMIT' or glows(_own_mats_all(objs))]
+            dmap = {c: fast_shade.decals_of(o) for c, o in zip(copies, objs)}
             try:
-                while True:
-                    f, label = next(gen)
-                    yield (0.08 + 0.8 * (i + f) / n, f'{objs[i].name} ({i + 1} / {n}): {label}')
-            except StopIteration as ex:
-                info = ex.value
-            fast_all.update(info.get('fast') or [])
-            why_all.update(info.get('fast_why') or {})
-            skipped = info.get('skipped') or skipped
-            g = fast_shade.Geo(context, c, res)
-            m = g.mask.astype(bool)
-            for k in info['maps']:
-                img = bpy.data.images.get(f'{c.name}_{SUFFIX[k]}')
-                if img is None:
-                    continue
-                px = np.empty(res * res * 4, np.float32)
-                img.pixels.foreach_get(px)
-                px = px.reshape(-1, 4)
-                if k not in acc:
-                    acc[k] = np.zeros((res * res, 4), np.float32)
-                    if k == 'NORMAL':
-                        acc[k][:] = (0.5, 0.5, 1.0, 1.0)
-                acc[k][m] = px[m]
-                bpy.data.images.remove(img)
-            cover |= m
-        yield (0.9, 'Putting the maps together')
+                fast_px, why_all, _sec = fast_shade.bake_parts(context, copies, want, res, st, int(st.margin),
+                                                               decals=dmap)
+            except Exception as ex:                  # (anything unexpected: Cycles for all, as before)
+                fast_px, why_all = {}, {k: f'{type(ex).__name__}: {ex}' for k in kinds}
+            fast_all.update(fast_px)
+        images = {}
+        for k, px in fast_px.items():
+            img = image_for(joined, k, res)
+            img.pixels.foreach_set(px.ravel())
+            img.update()
+            images[k] = img
+        if 'EMIT' in kinds and 'EMIT' not in fast_px and not glows(_own_mats_all(objs)):
+            img = image_for(joined, 'EMIT', res)
+            _fill(img, (0.0, 0.0, 0.0))
+            images['EMIT'] = img
+        rest = [k for k in kinds if k not in images]
+        acc, cover = {}, np.zeros(res * res, bool)
+        if rest:
+            st.margin, st.use_on_low, st.save, st.new_uv = 0, False, False, False
+            fast0 = st.fast
+            st.fast = False                          # (what our engine could not do: Cycles, copy by copy)
+            n = len(copies)
+            try:
+                for i, c in enumerate(copies):
+                    gen = bake_self_steps(context, c, st, rest, keep_state=keep)
+                    try:
+                        while True:
+                            f, label = next(gen)
+                            yield (0.3 + 0.6 * (i + f) / n, f'{objs[i].name} ({i + 1} / {n}): {label}')
+                    except StopIteration as ex:
+                        info = ex.value
+                    g = fast_shade.Geo(context, c, res)
+                    m = g.mask.astype(bool)
+                    for k in info['maps']:
+                        img = bpy.data.images.get(f'{c.name}_{SUFFIX[k]}')
+                        if img is None:
+                            continue
+                        px = np.empty(res * res * 4, np.float32)
+                        img.pixels.foreach_get(px)
+                        px = px.reshape(-1, 4)
+                        if k not in acc:
+                            acc[k] = np.zeros((res * res, 4), np.float32)
+                            if k == 'NORMAL':
+                                acc[k][:] = (0.5, 0.5, 1.0, 1.0)
+                        acc[k][m] = px[m]
+                        bpy.data.images.remove(img)
+                    cover |= m
+            finally:
+                st.fast = fast0
+        yield (0.92, 'Putting the maps together')
         st.margin, st.use_on_low, st.save, st.new_uv = (saved['margin'], saved['use_on_low'], saved['save'],
                                                         saved['new_uv'])
         mask = cover.astype(np.uint8)
-        images = {}
         for k, px in acc.items():
             px = np.ascontiguousarray(px, np.float32)
             if int(st.margin) > 0:

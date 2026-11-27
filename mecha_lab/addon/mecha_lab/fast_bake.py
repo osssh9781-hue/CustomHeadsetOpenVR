@@ -34,7 +34,7 @@ def lib():
             try:
                 L.mbake_version.restype = ctypes.c_int
                 L.mbake_version.argtypes = []
-                if L.mbake_version() == VERSION:
+                if L.mbake_version() >= VERSION:
                     L.mbake_maps.restype = ctypes.c_int
                     L.mbake_maps.argtypes = [ctypes.c_int, _FP, _FP, _FP, _FP, _FP, _FP, ctypes.c_int, _FP,
                                              ctypes.c_int, _IP, _FP, _FP, ctypes.c_int, ctypes.c_int, ctypes.c_float,

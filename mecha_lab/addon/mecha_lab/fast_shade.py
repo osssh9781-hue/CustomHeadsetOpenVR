@@ -40,7 +40,7 @@ def lib():
         L = fast_bake.lib()
         if L is not None:
             try:
-                if L.mbake_version() >= 4:
+                if L.mbake_version() >= 5:
                     L.mbake_raster.restype = ctypes.c_int
                     L.mbake_raster.argtypes = [ctypes.c_int, _FP, ctypes.c_int, ctypes.c_int, _IP, _FP, _UP]
                     L.mbake_margin.restype = None
@@ -55,6 +55,9 @@ def lib():
                     L.mbake_ao.restype = None
                     L.mbake_ao.argtypes = [ctypes.c_void_p, ctypes.c_int, _FP, _FP, _FP, _IP, _UIP, ctypes.c_int,
                                            ctypes.c_float, ctypes.c_int, _FP, ctypes.c_int]
+                    L.mbake_cast.restype = None
+                    L.mbake_cast.argtypes = [ctypes.c_void_p, ctypes.c_int, _FP, _FP, ctypes.c_float, _IP, _FP, _FP,
+                                             _FP, ctypes.c_int]
                     L.mbake_bevel.restype = None
                     L.mbake_bevel.argtypes = [ctypes.c_void_p, ctypes.c_int, _FP, _FP, _FP, _FP, _UIP, ctypes.c_int,
                                               _FP, ctypes.c_int]
@@ -131,7 +134,9 @@ class Images:
 class Geo:
     """Every covered texel of the low's UVs (res x res): its triangle, point, normals, UVs ... (world and object)."""
 
-    def __init__(self, context, low, res):
+    def __init__(self, context, low, res, hits=None):
+        """``hits``: (triangles, barycentrics) of given points on ``low`` instead of its UV texels (0.24.343: the
+        points of a decal over a part's texels)."""
         import bmesh
         from . import bake_maps as bm_
         L = lib()
@@ -181,16 +186,22 @@ class Geo:
             me.loops.foreach_get('bitangent_sign', sgn)
             cn = fast_bake._corner_normals(me)
             # the texels
-            luv = _c(uvs[uvl.name][lo])
-            np_ = res * res
-            ptri = np.empty(np_, np.int32)
-            pbar = np.empty(np_ * 3, np.float32)
-            mask = np.zeros(np_, np.uint8)
-            L.mbake_raster(int(nt), _ptr(luv), int(res), int(res), _ptr(ptri, _IP), _ptr(pbar), _ptr(mask, _UP))
-            self.mask = mask
-            self.idx = np.nonzero(mask)[0]
-            t = ptri[self.idx].astype(np.int64)
-            w = pbar.reshape(-1, 3)[self.idx]
+            if hits is None:
+                luv = _c(uvs[uvl.name][lo])
+                np_ = res * res
+                ptri = np.empty(np_, np.int32)
+                pbar = np.empty(np_ * 3, np.float32)
+                mask = np.zeros(np_, np.uint8)
+                L.mbake_raster(int(nt), _ptr(luv), int(res), int(res), _ptr(ptri, _IP), _ptr(pbar), _ptr(mask, _UP))
+                self.mask = mask
+                self.idx = np.nonzero(mask)[0]
+                t = ptri[self.idx].astype(np.int64)
+                w = pbar.reshape(-1, 3)[self.idx]
+            else:
+                t = np.asarray(hits[0], np.int64)
+                w = np.asarray(hits[1], np.float32).reshape(-1, 3)
+                self.mask = None
+                self.idx = np.arange(len(t))
             self.tri = t
             self.mat = mi[pi[t]]
             self.n = len(t)
@@ -1377,6 +1388,15 @@ def shade(ev, sock_out, path, kind):
         gnode = ev._group_node(path[:-1], path[-1])
         si = next((x for x in gnode.inputs if x.identifier == sock_out.identifier), None)
         return shade_in(ev, si, path[:-1], kind) if si is not None else _zero(ev, kind)
+    if kind == 'ALPHA':                           # (0.24.343 a decal's coverage: 1 opaque .. 0 see-through)
+        if t == 'BSDF_TRANSPARENT':
+            return _zero(ev, kind)
+        if t == 'BSDF_PRINCIPLED':
+            return _full(ev, np.asarray(ev.inp(n, 'Alpha', path), np.float32))
+        if t == 'ADD_SHADER':
+            return np.minimum(shade_in(ev, n.inputs[0], path, kind) + shade_in(ev, n.inputs[1], path, kind), 1.0)
+        if t.startswith('BSDF_') or t in ('EMISSION', 'HOLDOUT', 'SUBSURFACE_SCATTERING'):
+            return _full(ev, np.float32(1.0))
     if t == 'MIX_SHADER':
         f = sat(np.asarray(ev.inp(n, 0, path), np.float32))
         a = shade_in(ev, n.inputs[1], path, kind)
@@ -1465,22 +1485,49 @@ def _add_c(a, b, kind):
 # the bake
 # ---------------------------------------------------------------------------------------------------------------------
 
-def _scene_of(context, low, g, dist, others=True):
-    """(scene with the low and the meshes near it - for AO, the object alone - for Bevel and local AO)."""
+def _scene_new(V, T, N):
     L = lib()
-    V = g.me_co @ g.R.T + g.M[:3, 3]
+    return L.mbake_scene_new(int(len(V)), _ptr(_c(V)), int(len(T)), _ptr(_c(T, np.int32), _IP), _ptr(_c(N)))
+
+
+def _part_mesh(g):
+    """(points, triangles, corner normals x 9) of a Geo's mesh, world space."""
+    V = (g.me_co @ g.R.T + g.M[:3, 3]).astype(np.float32)
     T = g.me_tris.astype(np.int32)
-    Nn = (g.me_cn.reshape(-1, 3) @ g.Rn.T).reshape(-1, 9)
-    local = L.mbake_scene_new(int(len(V)), _ptr(_c(V)), int(len(T)), _ptr(_c(T, np.int32), _IP), _ptr(_c(Nn)))
-    if not others:
-        return local, local
-    lo_, hi_ = V.min(0) - dist, V.max(0) + dist
-    Vs, Ts, Ns, base = [V.astype(np.float32)], [T], [Nn.astype(np.float32)], len(V)
+    Nn = (g.me_cn.reshape(-1, 3) @ g.Rn.T).reshape(-1, 9).astype(np.float32)
+    return V, T, Nn
+
+
+def is_decal(o):
+    try:
+        from . import decals as dc
+        return bool(dc.is_decal(o))
+    except (ImportError, AttributeError):
+        return False
+
+
+def decals_of(ob):
+    """0.24.343 the Decals stuck on ``ob`` (its children, shown in renders)."""
+    return [c for c in ob.children if c.type == 'MESH' and is_decal(c) and not c.hide_render]
+
+
+def _scene_all(context, geos, skip, dist):
+    """One scene for AO: every part being baked + the other meshes near them (not decals: paint, not shape)."""
+    import mathutils
+    Vs, Ts, Ns, base = [], [], [], 0
+    for g in geos:
+        V, T, N = _part_mesh(g)
+        Vs.append(V)
+        Ts.append(T + base)
+        Ns.append(N)
+        base += len(V)
+    allv = np.concatenate(Vs)
+    lo_, hi_ = allv.min(0) - dist, allv.max(0) + dist
     dg = context.evaluated_depsgraph_get()
     for o in context.scene.objects:
-        if o is low or o.type != 'MESH' or o.hide_render or not o.visible_get():
+        if o in skip or o.type != 'MESH' or o.hide_render or not o.visible_get() or is_decal(o):
             continue
-        bb = np.array([o.matrix_world @ __import__('mathutils').Vector(c) for c in o.bound_box])
+        bb = np.array([o.matrix_world @ mathutils.Vector(c) for c in o.bound_box])
         if (bb.max(0) < lo_).any() or (bb.min(0) > hi_).any():
             continue
         ev = o.evaluated_get(dg)
@@ -1501,11 +1548,7 @@ def _scene_of(context, low, g, dist, others=True):
             base += len(me.vertices)
         finally:
             ev.to_mesh_clear()
-    if len(Vs) == 1:
-        return local, local
-    V2, T2, N2 = np.concatenate(Vs), np.concatenate(Ts).astype(np.int32), np.concatenate(Ns)
-    sc = L.mbake_scene_new(int(len(V2)), _ptr(_c(V2)), int(len(T2)), _ptr(_c(T2, np.int32), _IP), _ptr(_c(N2)))
-    return sc or local, local
+    return _scene_new(np.concatenate(Vs), np.concatenate(Ts).astype(np.int32), np.concatenate(Ns))
 
 
 AA_SIGMA = 0.6
@@ -1543,98 +1586,193 @@ def _aa(full, mask, res, sigma=AA_SIGMA):
     return out.reshape(-1, 4)
 
 
-def bake(context, low, mats, kinds, res, st, margin=16, ray_quality=1.0):
-    """The maps ``kinds`` of ``low``'s own materials on its own UVs (res x res).  Returns ({kind: pixels (res*res*4)
-    ready for the image}, {kind: reason it went to Cycles}, seconds)."""
+def _shade_part(ob, g, kinds, images, scene, local, seeds, ray_quality, pix, why):
+    """The non-AO maps of ``ob``'s materials at its texels ``g`` into ``pix`` (per kind (n, 3), linear)."""
+    slot_mats = [s_.material for s_ in ob.material_slots]
+    per = {}
+    for mi in np.unique(g.mat):
+        m = slot_mats[mi] if 0 <= mi < len(slot_mats) else None
+        per[int(mi)] = (m, np.nonzero(g.mat == mi)[0])
+    evs = {}
+    for k in kinds:
+        if k in ('AO',) or k in why:
+            continue
+        try:
+            for mi, (m, sel) in per.items():
+                if m is None or not m.use_nodes or m.node_tree is None:
+                    if k == 'NORMAL':
+                        pix[k][sel] = g.N[sel]
+                    else:
+                        pix[k][sel] = {'COLOR': (0.8, 0.8, 0.8), 'ROUGH': (0.5,) * 3, 'METAL': (0.0,) * 3,
+                                       'EMIT': (0.0,) * 3, 'ALPHA': (1.0,) * 3}.get(k, (0.0,) * 3)
+                    continue
+                if mi not in evs:
+                    gs = g.subset(sel) if len(sel) != g.n else g
+                    e = Eval(ob, gs, images, scene, local, _c(seeds[sel], np.uint32), ray_quality)
+                    e.root_tree = m.node_tree
+                    evs[mi] = e
+                e = evs[mi]
+                nt = m.node_tree
+                outn = nt.get_output_node('CYCLES') or nt.get_output_node('ALL')
+                if outn is None:
+                    pix[k][sel] = g.N[sel] if k == 'NORMAL' else 0.0
+                    continue
+                if k == 'NORMAL' and outn.inputs['Displacement'].is_linked and \
+                        getattr(m, 'displacement_method', 'BUMP') != 'DISPLACEMENT':
+                    raise Unsupported('a displacement bump')
+                v = shade_in(e, outn.inputs['Surface'], (), k)
+                if k == 'NORMAL':
+                    ln = np.linalg.norm(v, axis=1, keepdims=True)
+                    v = np.where(ln > 1e-12, v / np.maximum(ln, 1e-12), e.g.N)
+                pix[k][sel] = v
+        except Unsupported as ex:
+            why[k] = str(ex)
+
+
+DECAL_KINDS = ('COLOR', 'ROUGH', 'METAL')
+
+
+def _apply_decals(context, g, decals, pix, why, images):
+    """0.24.343 (user: "데칼은 왜 베이크가 안돼?") each decal over the part: a short ray from each texel along its
+    normal finds the decal there; the decal's material (its colour, roughness, metallic and alpha - its damage
+    too) worked out at that point and laid over the part's by its alpha."""
+    L = lib()
+    for d in decals:
+        try:
+            gd0 = Geo(context, d, g.res, hits=([0], [[1.0, 0.0, 0.0]]))
+        except (Unsupported, RuntimeError, IndexError):
+            continue
+        V, T, N = _part_mesh(gd0)
+        if not len(T):
+            continue
+        st_ = getattr(d, 'mch_decal', None)
+        h = float(getattr(st_, 'height', 0.0) or 0.0) or float(max(d.dimensions)) * 0.2
+        reach = max(h * 0.6, 1e-5)
+        lo_, hi_ = V.min(0) - reach, V.max(0) + reach
+        near = np.nonzero(np.all((g.P >= lo_) & (g.P <= hi_), axis=1))[0]
+        if not len(near):
+            continue
+        sc = _scene_new(V, T, N)
+        try:
+            O = _c(g.P[near] + g.N[near] * reach)
+            D = _c(-g.N[near])
+            m = len(near)
+            tri = np.full(m, -1, np.int32)
+            tt, uu, vv = (np.zeros(m, np.float32) for _ in range(3))
+            L.mbake_cast(sc, int(m), _ptr(O), _ptr(D), float(2 * reach), _ptr(tri, _IP), _ptr(tt), _ptr(uu), _ptr(vv),
+                         _threads())
+        finally:
+            L.mbake_scene_free(sc)
+        ok = tri >= 0
+        if not ok.any():
+            continue
+        sel = near[ok]
+        w = np.stack([1.0 - uu[ok] - vv[ok], uu[ok], vv[ok]], 1)
+        try:
+            gd = Geo(context, d, g.res, hits=(tri[ok], w))
+        except (Unsupported, RuntimeError):
+            continue
+        want = [k for k in DECAL_KINDS if k in pix and k not in why] + ['ALPHA']
+        dp = {k: np.zeros((gd.n, 3), np.float32) for k in want}
+        dwhy = {}
+        _shade_part(d, gd, want, images, None, None, np.zeros(gd.n, np.uint32), 1.0, dp, dwhy)
+        if 'ALPHA' in dwhy:
+            why.setdefault('COLOR', 'decal: ' + dwhy['ALPHA'])
+            continue
+        a = np.clip(dp['ALPHA'][:, :1], 0.0, 1.0)
+        for k in want[:-1]:
+            if k in dwhy:
+                why[k] = 'decal: ' + dwhy[k]
+                continue
+            pix[k][sel] = pix[k][sel] * (1.0 - a) + dp[k] * a
+
+
+def bake(context, low, mats, kinds, res, st, margin=16, ray_quality=1.0, decals=None):
+    """The maps ``kinds`` of ``low``'s own materials on its own UVs (res x res) - with its Decals laid over.  Returns
+    ({kind: pixels (res*res*4) ready for the image}, {kind: reason it went to Cycles}, seconds)."""
+    return bake_parts(context, [low], kinds, res, st, margin, ray_quality,
+                      {low: decals_of(low) if decals is None else decals})
+
+
+def bake_parts(context, parts, kinds, res, st, margin=16, ray_quality=1.0, decals=None):
+    """0.24.343 several meshes onto ONE set of maps (their UVs already laid out together, As One) - every part
+    evaluated in turn into the same images, the AO with all of them (they shade each other), the softening and the
+    margin once over all.  ``decals``: {part: [decal objects]} (default: each part's own).  Returns as ``bake``."""
     t0 = time.time()
     L = lib()
     if L is None:
         return {}, {k: 'no engine' for k in kinds}, 0.0
-    out, why = {}, {}
-    g = Geo(context, low, res)
-    if g.n == 0:
-        return {}, {k: 'no texels' for k in kinds}, 0.0
     from . import bake_maps as bm_
-    size = bm_.size_of(low)
+    why = {}
+    geos = []
+    for ob in parts:
+        g = Geo(context, ob, res)
+        if g.n:
+            geos.append((ob, g))
+    if not geos:
+        return {}, {k: 'no texels' for k in kinds}, 0.0
+    size = max(bm_.size_of(ob) for ob, _g in geos)
     ao_dist = size * float(st.ao_distance) / 100.0
-    scene, local = _scene_of(context, low, g, max(ao_dist, 0.5))
-    seeds = (np.arange(g.n, dtype=np.uint64) * 2654435761 % (2 ** 32)).astype(np.uint32)
+    skip = set(parts)
+    scene = _scene_all(context, [g for _o, g in geos], skip, max(ao_dist, 0.5)) if (
+        'AO' in kinds or any(n.type == 'AMBIENT_OCCLUSION' for ob, _g in geos for s_ in ob.material_slots
+                             if s_.material and s_.material.node_tree for n in s_.material.node_tree.nodes)) else None
     images = Images()
-    slot_mats = [s.material for s in low.material_slots]
+    mask = np.zeros(res * res, np.uint8)
+    full = {}
+    for k in kinds:
+        full[k] = np.zeros((res * res, 4), np.float32)
+        if k == 'NORMAL':
+            full[k][:] = (0.5, 0.5, 1.0, 1.0)
     try:
-        per = {}
-        for mi in np.unique(g.mat):
-            m = slot_mats[mi] if 0 <= mi < len(slot_mats) else None
-            sel = np.nonzero(g.mat == mi)[0]
-            per[int(mi)] = (m, sel)
-        pix = {k: np.zeros((g.n, 3), np.float32) for k in kinds}
-        evs = {}
-        for k in kinds:
-            if k == 'AO':
-                continue
+        for ob, g in geos:
+            seeds = ((g.idx.astype(np.uint64) * 2654435761 + 12345) % (2 ** 32)).astype(np.uint32)
+            local = _scene_new(*_part_mesh(g))
             try:
-                for mi, (m, sel) in per.items():
-                    if m is None or not m.use_nodes or m.node_tree is None:
-                        val = {'COLOR': (0.8, 0.8, 0.8), 'ROUGH': (0.5,) * 3, 'METAL': (0.0,) * 3,
-                               'EMIT': (0.0,) * 3}.get(k)
-                        if k == 'NORMAL':
-                            pix[k][sel] = g.N[sel]
-                        else:
-                            pix[k][sel] = val
-                        continue
-                    if mi not in evs:
-                        gs = g.subset(sel)
-                        sseeds = _c(seeds[sel], np.uint32)
-                        e = Eval(low, gs, images, scene, local, sseeds, ray_quality)
-                        e.root_tree = m.node_tree
-                        evs[mi] = e
-                    e = evs[mi]
-                    nt = m.node_tree
-                    outn = nt.get_output_node('CYCLES') or nt.get_output_node('ALL')
-                    if outn is None:
-                        pix[k][sel] = g.N[sel] if k == 'NORMAL' else 0.0
-                        continue
-                    if k == 'NORMAL' and outn.inputs['Displacement'].is_linked and \
-                            getattr(m, 'displacement_method', 'BUMP') != 'DISPLACEMENT':
-                        raise Unsupported('a displacement bump')
-                    v = shade_in(e, outn.inputs['Surface'], (), k)
-                    if k == 'NORMAL':
-                        ln = np.linalg.norm(v, axis=1, keepdims=True)
-                        v = np.where(ln > 1e-12, v / np.maximum(ln, 1e-12), e.g.N)
-                    pix[k][sel] = v
-            except Unsupported as ex:
-                why[k] = str(ex)
-                pix.pop(k, None)
-        if 'AO' in kinds:
-            o = np.ones(g.n, np.float32)
-            ns = min(int(st.ao_samples), bm_.AO_CAP.get(getattr(st, 'quality', 'NORMAL'), 10 ** 6))
-            L.mbake_ao(scene, int(g.n), _ptr(_c(g.P)), _ptr(_c(g.N)), _ptr(_c(g.Ng)), None, _ptr(seeds, _UIP),
-                       int(max(ns, 16)), float(ao_dist), 0, _ptr(o), _threads())
-            pix['AO'] = np.repeat(o[:, None], 3, 1)
-        for k, v in pix.items():
-            if k == 'NORMAL':
-                B = np.cross(g.N, g.T)
-                x = _dot(v, g.T)
-                y = g.S * _dot(v, B)
-                z = _dot(v, g.N)
-                if st.green == 'DIRECTX':
-                    y = -y
-                v = np.stack([x, y, z], 1) * 0.5 + 0.5
-            elif k in ('COLOR', 'EMIT'):
-                v = lin_to_srgb(np.clip(v, 0.0, 1.0))
-            else:
-                v = np.clip(v, 0.0, 1.0)
-            full = np.zeros((res * res, 4), np.float32)
-            if k == 'NORMAL':
-                full[:] = (0.5, 0.5, 1.0, 1.0)
-            full[g.idx, :3] = v
-            full[g.idx, 3] = 1.0
-            full = _c(_aa(full, g.mask, res))
-            if margin > 0:
-                L.mbake_margin(_ptr(full), 4, _ptr(g.mask, _UP), int(res), int(res), int(margin))
-            out[k] = full
+                pix = {k: np.zeros((g.n, 3), np.float32) for k in kinds}
+                _shade_part(ob, g, kinds, images, scene or local, local, seeds, ray_quality, pix, why)
+                dl = (decals or {}).get(ob)
+                if dl is None:
+                    dl = decals_of(ob)
+                if dl:
+                    _apply_decals(context, g, dl, pix, why, images)
+                if 'AO' in kinds:
+                    o = np.ones(g.n, np.float32)
+                    ns = min(int(st.ao_samples), bm_.AO_CAP.get(getattr(st, 'quality', 'NORMAL'), 10 ** 6))
+                    L.mbake_ao(scene or local, int(g.n), _ptr(_c(g.P)), _ptr(_c(g.N)), _ptr(_c(g.Ng)), None,
+                               _ptr(seeds, _UIP), int(max(ns, 16)), float(ao_dist), 0, _ptr(o), _threads())
+                    pix['AO'] = np.repeat(o[:, None], 3, 1)
+            finally:
+                L.mbake_scene_free(local)
+            for k, v in pix.items():
+                if k in why:
+                    continue
+                if k == 'NORMAL':
+                    B = np.cross(g.N, g.T)
+                    x = _dot(v, g.T)
+                    y = g.S * _dot(v, B)
+                    z = _dot(v, g.N)
+                    if st.green == 'DIRECTX':
+                        y = -y
+                    v = np.stack([x, y, z], 1) * 0.5 + 0.5
+                elif k in ('COLOR', 'EMIT'):
+                    v = lin_to_srgb(np.clip(v, 0.0, 1.0))
+                else:
+                    v = np.clip(v, 0.0, 1.0)
+                full[k][g.idx, :3] = v
+                full[k][g.idx, 3] = 1.0
+            mask |= g.mask
     finally:
-        L.mbake_scene_free(local)
-        if scene and scene != local:
+        if scene:
             L.mbake_scene_free(scene)
+    out = {}
+    for k in kinds:
+        if k in why:
+            continue
+        f = _c(_aa(full[k], mask, res))
+        if margin > 0:
+            L.mbake_margin(_ptr(f), 4, _ptr(mask, _UP), int(res), int(res), int(margin))
+        out[k] = f
+    out_mask = mask
+    bake_parts.last_mask = out_mask
     return out, why, time.time() - t0

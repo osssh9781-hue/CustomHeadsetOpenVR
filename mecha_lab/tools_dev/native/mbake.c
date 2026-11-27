@@ -384,7 +384,7 @@ static void margin_fill(float *out, int ch, const unsigned char *mask, int w, in
   free(ring); free(m);
 }
 
-EXPORT int mbake_version(void) { return 4; }
+EXPORT int mbake_version(void) { return 5; }
 
 /* v2: the Normal map and, in the same rays, the Height (hit distance along the low's normal, world units; NULL: not
  * wanted) and a value of the high's points (hA, e.g. its curvature, between the hit triangle's corners; NULL: not
@@ -843,4 +843,24 @@ EXPORT void mbake_bevel(void *scene, int n, const float *P, const float *N, cons
   if (!scene || n <= 0) return;
   RayJob j = {(const Scene *)scene, P, N, Ng, NULL, seed, samples < 1 ? 1 : samples, 0.f, radius, 0, out};
   parallel(bevel_work, &j, n, threads);
+}
+
+
+/* v5 (0.24.343): nearest hit of rays (O, D) within (0, tmax] - each texel's look for a decal over it.  out_tri -1:
+ * none; out_t / out_u / out_v the hit. */
+typedef struct { const Scene *s; const float *O, *D; float tmax; int *tri; float *t, *u, *v; } CastJob;
+static void cast_work(void *c, int i0, int i1) {
+  CastJob *j = (CastJob *)c;
+  for (int i = i0; i < i1; i++) {
+    float tt, uu, vv;
+    int h = trace(&j->s->b, j->O + i * 3, j->D + i * 3, j->tmax, &tt, &uu, &vv);
+    j->tri[i] = h;
+    if (h >= 0) { j->t[i] = tt; j->u[i] = uu; j->v[i] = vv; }
+  }
+}
+EXPORT void mbake_cast(void *scene, int n, const float *O, const float *D, float tmax, int *tri, float *t, float *u,
+                       float *v, int threads) {
+  if (!scene || n <= 0) return;
+  CastJob j = {(const Scene *)scene, O, D, tmax, tri, t, u, v};
+  parallel(cast_work, &j, n, threads);
 }

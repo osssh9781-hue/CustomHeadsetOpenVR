@@ -18,8 +18,8 @@ S = C.scene
 RES = 256
 L = fsh.lib()
 dll = open(os.path.join(os.path.dirname(fd.__file__), 'bin', 'mdecim_win_x64.dll'), 'rb').read()
-check('the engine has the shader pieces (mbake v4: raster, images, AO, Bevel), here and in the Windows build',
-      L is not None and L.mbake_version() == 4 and b'mbake_bevel' in dll and b'mbake_image' in dll)
+check('the engine has the shader pieces (mbake v4+: raster, images, AO, Bevel), here and in the Windows build',
+      L is not None and L.mbake_version() >= 4 and b'mbake_bevel' in dll and b'mbake_image' in dll)
 
 
 def panel_cube(name):
