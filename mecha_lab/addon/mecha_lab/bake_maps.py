@@ -71,6 +71,12 @@ class MCH_PG_BakeMaps(bpy.types.PropertyGroup):
                       description='Bake each selected mesh\'s own material onto its own UVs - no high poly: Normal '
                                   '(its shader\'s bump / bevel), Color, Roughness, Metallic, Emission, AO.  Height / '
                                   'Curvature need a high (left out).  Its materials are kept in the file')
+    # 0.24.342 (user: "오브젝트 여러 개를 조인으로 합쳐서 베이크 못해?" -> "한 장에 굽고 합친 사본")
+    own_one: BoolProperty(name='As One', default=False,
+                          description='No High Poly, several meshes: one set of maps for all of them - their UVs laid '
+                          'out together on one image, each baked with its own material where it is (its maps do not '
+                          'move), then one joined copy with the baked material.  The meshes themselves stay as they '
+                          'are (hidden)')
     emit: BoolProperty(name='Emission', default=False,
                        description='The high\'s glow (its materials\' Emission colour x strength; black where none)')
     height: BoolProperty(name='Height', default=False,
@@ -1180,6 +1186,211 @@ def bake_self_steps(context, low, st, kinds, keep_state=None):
     return info
 
 
+def kinds_of(st):
+    return [k for k, on in (('NORMAL', st.normal), ('AO', st.ao), ('COLOR', st.color),
+                            ('ROUGH', getattr(st, 'rough', False)), ('METAL', getattr(st, 'metal', False)),
+                            ('CURV', getattr(st, 'curv', False)), ('HEIGHT', getattr(st, 'height', False)),
+                            ('EMIT', getattr(st, 'emit', False))) if on]
+
+
+ONE_SRC, ONE_LOOP = 'mch_one_src', 'mch_one_loop'
+
+
+def _baked_copy(context, ob, coll, dg):
+    """A plain copy of ``ob`` as it is drawn (its modifiers applied), the same place / materials / custom
+    properties, its Generated coordinates kept (the original's texture space)."""
+    from .light_copies import full as lc_full
+    me = bpy.data.meshes.new_from_object(lc_full(ob, dg), preserve_all_data_layers=True, depsgraph=dg)
+    try:
+        me.use_auto_texspace = False
+        me.texspace_location = ob.data.texspace_location
+        me.texspace_size = ob.data.texspace_size
+    except (AttributeError, TypeError):
+        pass
+    c = ob.copy()
+    c.data = me
+    c.modifiers.clear()
+    c.parent = None
+    c.matrix_world = ob.matrix_world.copy()
+    c.name = ob.name + '.MCH1'
+    coll.objects.link(c)
+    c.hide_set(False)
+    return c
+
+
+def bake_self_one_steps(context, objs, st, keep_state=None):
+    """0.24.342 No High Poly, As One: ``objs`` baked into ONE set of maps.  Plain copies of them (modifiers applied,
+    in place) are joined once only to lay out one UV atlas; the atlas goes back onto each copy, each copy is baked
+    with its own materials where it is (object / generated coordinates unchanged - box-projected maps do not move),
+    the copies' texels put together into the shared images, the margin filled over all; the joined copy gets the
+    baked material.  The meshes themselves are not changed (hidden at the end)."""
+    from . import fast_shade
+    t0 = time.time()
+    S = context.scene
+    kinds = [k for k in kinds_of(st) if k in SELF_KINDS]
+    if not kinds:
+        raise RuntimeError('No High Poly bakes Normal / AO / Color / Roughness / Metallic / Emission')
+    L = fast_shade.lib()
+    if L is None:
+        raise RuntimeError('As One needs Mecha Lab\'s engine (not on this system)')
+    res = int(st.res)
+    objs = [o for o in objs if o.type == 'MESH' and len(o.data.polygons)]
+    if len(objs) < 2:
+        raise RuntimeError('As One: select two or more meshes')
+    yield (0.01, 'Copies')
+    dg = context.evaluated_depsgraph_get()
+    coll = objs[0].users_collection[0] if objs[0].users_collection else S.collection
+    copies, made = [], []
+    keep = keep_state or _Keep(context, list(objs))
+    saved = {k: getattr(st, k) for k in ('margin', 'use_on_low', 'save', 'new_uv')}
+    joined = None
+    try:
+        for i, o in enumerate(objs):
+            c = _baked_copy(context, o, coll, dg)
+            copies.append(c)
+            made.append(c)
+            me = c.data
+            a = me.attributes.new(ONE_SRC, 'INT', 'FACE')
+            a.data.foreach_set('value', np.full(len(me.polygons), i, np.int32))
+            a = me.attributes.new(ONE_LOOP, 'INT', 'CORNER')
+            a.data.foreach_set('value', np.arange(len(me.loops), dtype=np.int32))
+        # one UV atlas: a joined duplicate (the result), Smart UV over all of it
+        yield (0.04, 'One UV layout for all')
+        dups = []
+        for c in copies:
+            d = c.copy()
+            d.data = c.data.copy()
+            coll.objects.link(d)
+            dups.append(d)
+        for o in list(context.selected_objects):
+            o.select_set(False)
+        for d in dups:
+            d.hide_set(False)
+            d.select_set(True)
+        context.view_layer.objects.active = dups[0]
+        with context.temp_override(active_object=dups[0], selected_editable_objects=dups, selected_objects=dups):
+            bpy.ops.object.join()
+        joined = context.view_layer.objects.active
+        made.append(joined)
+        base = objs[0].name
+        joined.name = base + '_One'
+        joined.data.name = base + '_One'
+        ensure_uv(context, joined, new=True, res=res)
+        jm = joined.data
+        juv = np.empty(len(jm.loops) * 2, np.float32)
+        jm.uv_layers[UV_NAME].data.foreach_get('uv', juv)
+        juv = juv.reshape(-1, 2)
+        src = np.empty(len(jm.polygons), np.int32)
+        jm.attributes[ONE_SRC].data.foreach_get('value', src)
+        jl = np.empty(len(jm.loops), np.int32)
+        jm.attributes[ONE_LOOP].data.foreach_get('value', jl)
+        tot = np.empty(len(jm.polygons), np.int32)
+        jm.polygons.foreach_get('loop_total', tot)
+        lsrc = np.repeat(src, tot)
+        for i, c in enumerate(copies):               # (the atlas back onto each copy, loop by loop)
+            me = c.data
+            uv = np.zeros((len(me.loops), 2), np.float32)
+            sel = lsrc == i
+            uv[jl[sel]] = juv[sel]
+            render = next((u for u in me.uv_layers if u.active_render), None)
+            lay = me.uv_layers.new(name=UV_NAME)
+            lay.data.foreach_set('uv', uv.ravel())
+            me.uv_layers.active = lay
+            if render is not None:
+                render.active_render = True          # (its own textures keep their own UVs)
+            for nm in (ONE_SRC, ONE_LOOP):
+                at = me.attributes.get(nm)
+                if at is not None:
+                    me.attributes.remove(at)
+        for nm in (ONE_SRC, ONE_LOOP):
+            at = jm.attributes.get(nm)
+            if at is not None:
+                jm.attributes.remove(at)
+        # each copy baked in its own place, its texels kept
+        st.margin, st.use_on_low, st.save, st.new_uv = 0, False, False, False
+        acc, cover, fast_all, why_all, skipped = {}, np.zeros(res * res, bool), set(), {}, []
+        n = len(copies)
+        for i, c in enumerate(copies):
+            gen = bake_self_steps(context, c, st, kinds, keep_state=keep)
+            try:
+                while True:
+                    f, label = next(gen)
+                    yield (0.08 + 0.8 * (i + f) / n, f'{objs[i].name} ({i + 1} / {n}): {label}')
+            except StopIteration as ex:
+                info = ex.value
+            fast_all.update(info.get('fast') or [])
+            why_all.update(info.get('fast_why') or {})
+            skipped = info.get('skipped') or skipped
+            g = fast_shade.Geo(context, c, res)
+            m = g.mask.astype(bool)
+            for k in info['maps']:
+                img = bpy.data.images.get(f'{c.name}_{SUFFIX[k]}')
+                if img is None:
+                    continue
+                px = np.empty(res * res * 4, np.float32)
+                img.pixels.foreach_get(px)
+                px = px.reshape(-1, 4)
+                if k not in acc:
+                    acc[k] = np.zeros((res * res, 4), np.float32)
+                    if k == 'NORMAL':
+                        acc[k][:] = (0.5, 0.5, 1.0, 1.0)
+                acc[k][m] = px[m]
+                bpy.data.images.remove(img)
+            cover |= m
+        yield (0.9, 'Putting the maps together')
+        st.margin, st.use_on_low, st.save, st.new_uv = (saved['margin'], saved['use_on_low'], saved['save'],
+                                                        saved['new_uv'])
+        mask = cover.astype(np.uint8)
+        images = {}
+        for k, px in acc.items():
+            px = np.ascontiguousarray(px, np.float32)
+            if int(st.margin) > 0:
+                L.mbake_margin(px.ctypes.data_as(fast_shade._FP), 4, mask.ctypes.data_as(fast_shade._UP), res, res,
+                               int(st.margin))
+            img = image_for(joined, k, res)
+            img.pixels.foreach_set(px.ravel())
+            img.update()
+            images[k] = img
+        stored = {k: _store_image(img, st) for k, img in images.items()}
+        mats = []
+        for o in objs:
+            mats += [s.material for s in o.material_slots if s.material is not None]
+        for m in mats:
+            m.use_fake_user = True
+        mat = baked_material(joined, {k: v for k, v in images.items() if k != 'AO'}, _base_colour(mats), st.green,
+                             UV_NAME)
+        jm.materials.clear()
+        jm.materials.append(mat)
+        if len(jm.polygons):
+            jm.polygons.foreach_set('material_index', np.zeros(len(jm.polygons), np.int32))
+        made.remove(joined)
+    finally:
+        st.margin, st.use_on_low, st.save, st.new_uv = (saved['margin'], saved['use_on_low'], saved['save'],
+                                                        saved['new_uv'])
+        for c in made:                               # (the copies; the joined one too if it failed)
+            try:
+                me = c.data
+                bpy.data.objects.remove(c)
+                if me is not None and me.users == 0:
+                    bpy.data.meshes.remove(me)
+            except ReferenceError:
+                pass
+        if keep_state is None:
+            keep.restore(context)
+    for o in objs:
+        o.hide_set(True)
+        o.select_set(False)
+    joined.hide_set(False)
+    joined.select_set(True)
+    context.view_layer.objects.active = joined
+    info = dict(low=joined.name, highs=[], maps=sorted(images), res=res, uv='smart', sharp=None, ray=0.0,
+                stored=stored, material=mat.name, seconds=time.time() - t0, own=True, one=[o.name for o in objs],
+                skipped=skipped, gpu=False, fast=sorted(fast_all), fast_why=why_all)
+    LAST.clear()
+    LAST.update(info)
+    return info
+
+
 def describe(info):
     where = next(iter(info['stored'].values()), '')
     where = 'packed in the .blend' if where == 'packed' else f'saved to {os.path.dirname(where)}'
@@ -1199,6 +1410,10 @@ def run(context, st=None):
     st = st or settings(context)
     todo = pairs(context)
     objs = [lo for lo, _h in todo] + [h for _lo, hs in todo for h in hs]
+    if getattr(st, 'own', False) and getattr(st, 'own_one', False) and len(todo) > 1:     # 0.24.342 As One
+        from . import progress
+        info = progress.run_now(bake_self_one_steps(context, [lo for lo, _h in todo], st))
+        return describe(info)
     keep = _Keep(context, objs)
     infos = []
     try:
@@ -1282,6 +1497,8 @@ def draw(layout, context):
     r_.prop(st, 'own', toggle=True, icon='MATERIAL')     # 0.24.325 no high poly: its own material
     if st.own:
         r_.prop(st, 'quality', text='')                  # 0.24.329
+        if sum(1 for o in context.selected_objects if o.type == 'MESH') > 1:
+            col.prop(st, 'own_one', toggle=True, icon='SELECT_EXTEND')     # 0.24.342
     r = col.row(align=True)
     r.prop(st, 'normal', toggle=True)
     r.prop(st, 'ao', toggle=True)

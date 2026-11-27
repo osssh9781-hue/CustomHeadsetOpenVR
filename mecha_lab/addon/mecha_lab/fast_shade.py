@@ -1011,10 +1011,12 @@ class Eval:
         return self.n_COMBXYZ(n, s, path)
 
     def n_TEX_COORD(self, n, s, path):
-        if n.object is not None and n.object != self.ob:
-            raise Unsupported('texture coordinates from another object')
         k = s.identifier
         g = self.g
+        if n.object is not None and k == 'Object' and n.object != self.ob:
+            # (0.24.342 another object's space - e.g. a lasso Zone's projector, or the part a baking copy came from)
+            Mo = np.array(n.object.matrix_world, np.float64)
+            return ((g.P - Mo[:3, 3]) @ np.linalg.inv(Mo[:3, :3]).T).astype(np.float32)
         if k == 'Generated':
             return self._generated()
         if k == 'Normal':

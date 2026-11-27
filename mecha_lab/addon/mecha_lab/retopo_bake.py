@@ -933,6 +933,18 @@ def _own_go(self, context, mine):
             msg += ' | failed: ' + '; '.join(f'{n}: {e}' for n, e in bad[:3])
         return msg
     items = [(o, o) for o in mine]
+    st = bm.settings(context)
+    if getattr(st, 'own_one', False) and len(mine) > 1:     # 0.24.342 As One: one set of maps, one joined copy
+        def done_one(res):
+            (it, r), = res
+            if isinstance(r, Exception):
+                return f'Bake (As One) failed: {r}'
+            return f'Bake (As One): {len(mine)} meshes -> {r["low"]} | ' + bm.describe(r)
+        gen = _many([(mine[0], mine)], lambda it: bm.bake_self_one_steps(context, mine, st))
+        res = progress.start(context, f'Bake: {len(mine)} meshes as one', gen, done_one)
+        if res != 'RUNNING':
+            self.report({'INFO'}, done_one(res))
+        return {'FINISHED'}
     gen = _many(items, lambda it: _own_job(context, it[0]))
     title = f'Bake: {mine[0].name} (its own material)' if len(mine) == 1 else f'Bake: {len(mine)} meshes (own materials)'
     res = progress.start(context, title, gen, done)
@@ -996,8 +1008,12 @@ def draw(layout, context, colour=None):
     r.scale_y = 1.3
     r.enabled = n_low > 0
     r.operator('mch.retopo_bake', text=f'2  Bake {n_low} Meshes' if n_low > 1 else '2  Bake', icon='RENDER_STILL')
+    if getattr(st, 'own', False) and len(mine) > 1:
+        box.prop(st, 'own_one', toggle=True, icon='SELECT_EXTEND')      # 0.24.342 one set of maps for all
     if getattr(st, 'own', False):
-        box.label(text=(f'{len(mine)} mesh(es): own material -> own UVs (no Retopo needed)' if mine else
+        box.label(text=(f'{len(mine)} meshes -> one set of maps, one joined copy' if mine and len(mine) > 1 and
+                        getattr(st, 'own_one', False) else
+                        f'{len(mine)} mesh(es): own material -> own UVs (no Retopo needed)' if mine else
                         'No High Poly: select the mesh(es), then 2 Bake'), icon='CHECKMARK' if mine else 'INFO')
         if st.height or st.curv:
             box.label(text='No High Poly: Height / Curvature need a high (left out)', icon='INFO')
