@@ -1,6 +1,6 @@
 schema_version = "1.0.0"
 id = "mecha_lab"
-version = "0.24.328"
+version = "0.24.329"
 name = "Mecha Lab"
 tagline = "Mechanical hard-surface toolkit: cut, extract, armor, cables"
 maintainer = "Mecha Lab project"

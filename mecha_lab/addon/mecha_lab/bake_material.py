@@ -96,6 +96,7 @@ def bake_polypaint(context, objs, layer=LAYER):
     try:
         S.render.engine = 'CYCLES'
         S.cycles.samples = 1
+        bm.use_gpu(context)                          # 0.24.329 on the GPU when it is on (put back after: _Keep)
         for ob in objs:
             mats = [s.material for s in ob.material_slots if s.material is not None]
             if not mats:

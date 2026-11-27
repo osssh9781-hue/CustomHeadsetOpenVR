@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## 0.24.329 — 베이크 속도: 필요한 만큼만 (2026-11-27)
+
+- (사용자: "베이크가 아직도 너무 느려" + 코드 리뷰) 맵별로 재 보니 (사용자 벽 한 조각, 1024, 이 컨테이너 CPU) AO 79.5 s, 발광 없는 Emission
+  19.1 s, Roughness 11.0 s, Color 10.5 s, Metallic 1.4 s, Normal 0.9 s. 그래서 No High Poly 에서:
+  - Quality (Draft 4 / Normal 8 / High 16): 셰이더에 AO / Bevel 노드가 있을 때의 샘플 수 (기본 Normal). 없으면 2 샘플 (노이즈가 생길 일이
+    없음). AO 맵 샘플도 Quality 로 상한 (Draft 16 / Normal 32 / High 는 AO Samples 그대로).
+  - 발광이 아예 없는 머티리얼: Emission 맵은 굽지 않고 검정으로 채움.
+  - Roughness + Metallic 을 한 번에 (R / G 로 굽고 나눔).
+  - 결과: 맵 6 장 123 s -> 50.8 s (Normal), AO 빼면 12.5 s. 벽 25 조각 (AO 없이) 385 s -> 200 s, 원본 렌더와 차이 그대로 (2.82 / 255).
+- High to Low: Metallic 만 골라도 하이의 모든 점에 대해 Curvature / Height 를 계산하던 것 - 굽는 것만 계산. Height 의 계산도 행렬은 한
+  번만 (점마다 역행렬을 다시 구하던 것).
+- Bake to Polypaint 도 GPU 가 켜져 있으면 GPU 로 (씬은 끝나면 원래대로).
+- 확인 (5.3): test_v02729_bake_speed 8/8, 베이크 기존 테스트 v02727 20/20, v02725 4/4, v02495_bake_maps 24/24, v02495_bake_highpoly 45/45,
+  v02495_bake_polypaint 11/11, v02641 35/35, v02726 4/4, test_ui_draw / test_v02633 전과 같음. GPU 로는 확인 못 함 (이 컨테이너에 없음).
+
 ## 0.24.328 — 도구별 라쏘 설정: Sketch 도 따로, Mold 도구도 따로 (2026-11-26)
 
 - (사용자: "브러시마다 라인이나 스케치 설정 다르게 저장되던 게 갑자기 다 통일됐어" / "몰드 도구랑 컷 스플릿이 같이 연동돼, 분리해 줘")
