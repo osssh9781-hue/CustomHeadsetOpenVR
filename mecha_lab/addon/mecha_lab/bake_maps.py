@@ -104,6 +104,9 @@ class MCH_PG_BakeMaps(bpy.types.PropertyGroup):
     folder: StringProperty(name='Folder', default='//bake_maps/', subtype='DIR_PATH',
                            description='Where the PNGs go (// = next to the .blend)')
     show: BoolProperty(name='Show Low', default=True, description='After baking show the low (the high hidden)')
+    fast: BoolProperty(name='Fast Bake', default=True,
+                       description='Normal, Height and Curvature by Mecha Lab\'s own baker (one ray a pixel, all three '
+                       'at once - several times faster than Cycles, the same result); off: Cycles bakes them')
 
 
 def settings(context):
@@ -776,12 +779,35 @@ def bake_pair_steps(context, low, highs, st, keep_state=None):
         S.render.engine = 'CYCLES'
         gpu = use_gpu(context)                       # 0.24.327
         ext = size * float(st.ray) / 100.0
+        # 0.24.340 (user: "베이크를 좀 더 빠르게") Normal / Height / Curvature by our own engine, all from the same
+        # rays (fast_bake); the rest (and these, should it fail) by Cycles as before
+        fast_kinds = [k for k in kinds if k in ('NORMAL', 'HEIGHT', 'CURV')] if getattr(st, 'fast', True) else []
+        cy_kinds = list(kinds)
+        if fast_kinds:
+            from . import fast_bake
+            if fast_bake.lib() is not None:
+                yield (0.06, 'Fast bake: ' + ', '.join(SUFFIX[k] for k in fast_kinds))
+                try:
+                    got = fast_bake.bake_maps(context, low, highs, res, res, ext, fast_kinds, st.green,
+                                              int(st.margin))
+                except RuntimeError as ex:
+                    print('Mecha Lab fast bake: Cycles instead -', ex)
+                    got = None
+                if got is not None:
+                    for k in fast_kinds:
+                        img = image_for(low, k, res)
+                        img.pixels.foreach_set(got[k].ravel())
+                        img.update()
+                        if k == 'HEIGHT':
+                            img['mch_height_range'] = float(got.get('HEIGHT_RANGE', 0.0))
+                        images[k] = img
+                    cy_kinds = [k for k in kinds if k not in fast_kinds]
         cage = make_cage(context, low, ext)
         common = dict(use_selected_to_active=True, use_cage=True, cage_object=cage.name, cage_extrusion=0.0,
                       max_ray_distance=2.0 * ext, margin=int(st.margin), margin_type='EXTEND', use_clear=True,
                       target='IMAGE_TEXTURES', save_mode='INTERNAL')
-        for ki, kind in enumerate(kinds):
-            yield (0.08 + 0.9 * ki / len(kinds), f'Baking {SUFFIX[kind]} ({ki + 1} / {len(kinds)})')
+        for ki, kind in enumerate(cy_kinds):
+            yield (0.08 + 0.9 * ki / len(cy_kinds), f'Baking {SUFFIX[kind]} ({ki + 1} / {len(cy_kinds)})')
             img = image_for(low, kind, res)
             images[kind] = img
             tgt = _target_material(img)
@@ -820,7 +846,7 @@ def bake_pair_steps(context, low, highs, st, keep_state=None):
             else:                                   # 0.24.243 Metallic / Curvature / Height: from copies that glow it
                 S.cycles.samples = 1
                 if srcs is None:
-                    srcs = _emit_sources(context, low, highs, need=[k for k in kinds if k in ('CURV', 'HEIGHT')])
+                    srcs = _emit_sources(context, low, highs, need=[k for k in cy_kinds if k in ('CURV', 'HEIGHT')])
                 for h in highs:
                     h.select_set(False)
                 for c_ in srcs:
@@ -860,7 +886,7 @@ def bake_pair_steps(context, low, highs, st, keep_state=None):
                 s.material = mat
     info = dict(low=low.name, highs=[h.name for h in highs], maps=kinds, res=res, uv=uv, sharp=sharp,
                 ray=size * float(st.ray) / 100.0, stored=stored, material=mat.name if mat else None,
-                seconds=time.time() - t0, gpu=gpu)
+                seconds=time.time() - t0, gpu=gpu, fast=[k for k in kinds if k not in cy_kinds])
     LAST.clear()
     LAST.update(info)
     return info
@@ -1241,6 +1267,8 @@ def draw(layout, context):
     r.prop(st, 'rough', toggle=True)
     r.prop(st, 'metal', toggle=True)
     r.prop(st, 'curv', toggle=True)
+    if not st.own:
+        col.prop(st, 'fast', toggle=True, icon='SORTTIME')            # 0.24.340
     r.prop(st, 'height', toggle=True)
     r.prop(st, 'emit', toggle=True)                  # 0.24.325
     col = box.column(align=True)

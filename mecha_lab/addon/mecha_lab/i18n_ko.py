@@ -3322,6 +3322,7 @@ KO = {
     'Fan Blades': '팬 날개',
     'Fan Mix': '팬 믹스',
     'Fast': '빠르게',
+    'Fast Bake': '빠른 베이크',
     'Fast Decimate engine not available - sent as is': '빠른 데시메이트 엔진을 쓸 수 없음 - 그대로 보냄',
     'Fast Decimate engine not available on this system': '이 시스템에서는 빠른 데시메이트 엔진을 쓸 수 없습니다',
     'Fast Decimate failed (code': '빠른 데시메이트 실패 (코드',

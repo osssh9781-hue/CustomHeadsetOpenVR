@@ -74,8 +74,14 @@ bm.bake_pair(C, lo, [hp], st)
 check('High to Low, Metallic only: the height over the low not computed (it walked every point)', 'height' not in seen)
 st.metal = False
 st.height = True
+st.fast = True                       # 0.24.340 Height by our own engine (one ray a pixel): no point walk at all
 bm.bake_pair(C, lo, [hp], st)
-check('... Height asked: computed', seen.get('height') is True)
+check(f'... Height asked: baked by the fast engine ({bm.LAST.get("fast")}) - the point walk not needed',
+      'HEIGHT' in (bm.LAST.get('fast') or []) and 'height' not in seen)
+st.fast = False                      # (Fast Bake off: Cycles as before - the point walk then)
+bm.bake_pair(C, lo, [hp], st)
+check('... Fast Bake off: Height by Cycles, the height computed as before', seen.get('height') is True)
+st.fast = True
 bm._height = real
 st.height = False
 
