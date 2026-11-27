@@ -79,4 +79,38 @@ inside = np.array([abs((pl.matrix_world @ v.co).x - 5) < 0.95 and abs((pl.matrix
                    for v in pl.data.vertices])
 check(f'a thin plate: the points land on its near side (top z {zs[inside].min():.4f}..{zs[inside].max():.4f})',
       np.allclose(zs[inside], 0.01, atol=1e-4))
+
+# As One: two meshes with Mech Shader materials -> one joined copy, one set of maps (fast), originals untouched
+from mecha_lab import bake_maps as bm, mech_shader as ms, progress
+objs = []
+for i, x in enumerate((10, 13)):
+    bpy.ops.mesh.primitive_cube_add(size=2, location=(x, 0, 0))
+    o = C.active_object
+    o.name = f'Part{i}'
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.subdivide(number_cuts=2)
+    bpy.ops.mesh.inset(thickness=0.08, depth=-0.04, use_individual=True)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    ms.assign(C, [o], ms.new_material('BATTLE' if i else 'STEEL'))
+    objs.append(o)
+nfaces = [len(o.data.polygons) for o in objs]
+st = S.mch_bake
+st.res = '256'
+st.own, st.own_one, st.fast = True, True, True
+st.normal = st.ao = st.color = st.rough = st.metal = True
+st.curv = st.height = st.emit = False
+st.save = False
+info = progress.run_now(bm.bake_self_one_steps(C, objs, st))
+J = bpy.data.objects.get(info['low'])
+check(f'As One: one joined copy {info["low"]} ({len(J.data.polygons) if J else 0} faces = {sum(nfaces)}), '
+      f'maps {info["maps"]} all fast ({info["fast"]})',
+      J is not None and len(J.data.polygons) == sum(nfaces) and set(info['fast']) == set(info['maps'])
+      == {'NORMAL', 'AO', 'COLOR', 'ROUGH', 'METAL'} and len(J.data.materials) == 1)
+cols = np.array(bpy.data.images[f'{J.name}_Color'].pixels[:]).reshape(256, 256, 4)
+check('As One: both parts in the one Color map (the two materials\' colours both there)',
+      cols[..., :3].std() > 0.02 and (cols[..., 3] > 0).mean() > 0.3)
+check('As One: the originals kept (hidden, own UVs / materials / faces unchanged), no copies left behind',
+      all(o.hide_get() for o in objs) and [len(o.data.polygons) for o in objs] == nfaces
+      and all(not o.data.uv_layers.get(bm.UV_NAME) for o in objs)
+      and not any(ob.name.endswith('.MCH1') for ob in bpy.data.objects))
 summary()
