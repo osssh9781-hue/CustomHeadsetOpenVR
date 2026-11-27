@@ -68,6 +68,10 @@ class MCH_PG_Rig(bpy.types.PropertyGroup):
                               description='Mecha: the order and the joints from where the parts touch; the legs (parts '
                               'down to one on the ground) get IK')
     face: BoolProperty(name='Face Bones', default=True, description='Jaw, eyes (looking at a target), brows, lips')
+    seamless: BoolProperty(name='Seamless', default=True,
+                           description='Mecha Names: the parts bend by weights the same on both sides of every cut - '
+                           'a body cut into parts keeps its cuts shut in any pose (off: each part rides its bone stiff, '
+                           'like hard mecha armour)')
     axis: EnumProperty(name='Turn Axis', default='X', items=[('X', 'X', 'Turns round the world X axis'),
                                                             ('Y', 'Y', 'Turns round the world Y axis'),
                                                             ('Z', 'Z', 'Turns round the world Z axis')])
@@ -1649,7 +1653,7 @@ class MCH_OT_rig_make(bpy.types.Operator):
                 _show(context, arm)
             elif st.kind == 'NAMED':                   # 0.24.336 by the parts' names
                 from . import mecha_named
-                arm, rep = mecha_named.build(context, [o for o in (sel or [act]) if o.type == 'MESH'])
+                arm, rep = mecha_named.build(context, [o for o in (sel or [act]) if o.type == 'MESH'], st.seamless)
                 msg = (f'{arm.name}: {len(rep["bones"])} bones by name ({", ".join(rep["bones"])})'
                        + (f', IK on {", ".join(rep["ik"])}' if rep['ik'] else ', no IK (an arm / leg needs its '
                           'upper, lower and end part)')
@@ -1686,6 +1690,28 @@ def _show(context, arm):
         o.select_set(False)
     arm.select_set(True)
     context.view_layer.objects.active = arm
+
+
+class MCH_OT_rig_name_by_place(bpy.types.Operator):
+    """Name the selected parts by where they are on a body standing up, facing -Y (Head, Neck, Chest, Belly, Pelvis,
+    UpperArm.L, Forearm.L, Hand.L, Thigh.R, Shin.R, Foot.R ...); a part holding both feet is split in two.  Check the
+    names, then Make Rig"""
+    bl_idname = 'mch.rig_name_by_place'
+    bl_label = 'Name by Place'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and sum(1 for o in context.selected_objects if o.type == 'MESH') >= 2
+
+    def execute(self, context):
+        from . import mecha_named
+        done = mecha_named.name_by_place(context, [o for o in context.selected_objects if o.type == 'MESH'])
+        for o in bpy.data.objects:
+            if o.name in done.values():
+                o.select_set(True)
+        self.report({'INFO'}, f'{len(done)} part(s) named: ' + ', '.join(sorted(done.values()))[:300])
+        return {'FINISHED'}
 
 
 class MCH_OT_rig_bind(bpy.types.Operator):
@@ -2191,6 +2217,9 @@ def draw(layout, context):
         box.label(text='Select the parts; then click a part: its joint', icon='INFO')
     elif st.kind == 'NAMED':                         # 0.24.336
         from . import mecha_named
+        r = col.row(align=True)
+        r.prop(st, 'seamless', toggle=True)             # 0.24.337
+        r.operator('mch.rig_name_by_place', text='Name by Place', icon='SORTALPHA')
         mecha_named.draw_help(box)
         box.label(text='Select all the parts, then Make Rig', icon='INFO')
     elif st.kind == 'AUTO':
@@ -2259,7 +2288,7 @@ def draw(layout, context):
             r.operator('mch.rig_limit', text='Hatch').kind = 'HATCH'
 
 
-CLASSES = (MCH_PG_Rig, MCH_OT_rig_make, MCH_OT_rig_bind, MCH_OT_rig_edit, MCH_OT_rig_link, MCH_OT_rig_jiggle,
+CLASSES = (MCH_PG_Rig, MCH_OT_rig_make, MCH_OT_rig_name_by_place, MCH_OT_rig_bind, MCH_OT_rig_edit, MCH_OT_rig_link, MCH_OT_rig_jiggle,
            MCH_OT_rig_mirror, MCH_OT_rig_limit, MCH_OT_rig_piston, MCH_OT_rig_click, MCH_OT_rig_delete, MCH_OT_rig_ik)
 
 

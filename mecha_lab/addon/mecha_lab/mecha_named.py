@@ -40,14 +40,15 @@ ROLES = (
     ('head', ('head', '머리')),
     ('hand', ('hand', 'fist', '손')),
     ('foot', ('foot', 'feet', '발')),
-    ('torso', ('torso', 'chest', 'spine', 'body', 'trunk', '몸통', '가슴', '상체')),
+    ('spine', ('abdomen', 'belly', 'stomach', 'spine', 'abs', '복부', '배')),
+    ('torso', ('torso', 'chest', 'body', 'trunk', '몸통', '가슴', '상체')),
     ('upper_arm', ('arm', '팔')),
     ('thigh', ('leg', '다리')),
 )
 SIDED = {'shoulder', 'upper_arm', 'forearm', 'hand', 'thigh', 'shin', 'foot'}
 ARM = ('shoulder', 'upper_arm', 'forearm', 'hand')
 LEG = ('thigh', 'shin', 'foot')
-PARENT = {'torso': 'pelvis', 'neck': 'torso', 'head': 'neck', 'shoulder': 'torso', 'upper_arm': 'shoulder',
+PARENT = {'spine': 'pelvis', 'torso': 'spine', 'neck': 'torso', 'head': 'neck', 'shoulder': 'torso', 'upper_arm': 'shoulder',
           'forearm': 'upper_arm', 'hand': 'forearm', 'thigh': 'pelvis', 'shin': 'thigh', 'foot': 'shin'}
 
 
@@ -163,8 +164,9 @@ def _meet(A, tree_b, tol, apart=None):
     return 0.5 * (sa[k].mean(0) + near_pts[k].mean(0))
 
 
-def build(context, parts):
-    """The rig for the named parts.  Returns (armature, report dict)."""
+def build(context, parts, seamless=False):
+    """The rig for the named parts.  ``seamless``: the parts bent by weights (the same at both sides of every cut,
+    blended over the joints) - the cuts never open; else each part rides its bone stiff.  Returns (armature, report)."""
     from . import rigging as rg
     parts = [p for p in parts if p.type == 'MESH']
     groups, unknown, pts, x0 = read_names(context, parts)
@@ -191,9 +193,10 @@ def build(context, parts):
             if cand in G:
                 return cand
             p = PARENT.get(p)
-        if r in {'pelvis', 'torso'} and not (r == 'torso' and 'pelvis' in G):
-            return None                          # (the body's own root)
-        for top in ('torso', 'pelvis'):          # (no pelvis: the legs on the torso, and so on)
+        core = [c for c in ('pelvis', 'spine', 'torso') if c in G]
+        if core and r == core[0]:
+            return None                          # (the body's own root: the lowest of pelvis / spine / torso)
+        for top in ('torso', 'spine', 'pelvis'):  # (no pelvis: the legs on the torso, and so on)
             if top in G and top != b:
                 return top
         return None
@@ -215,8 +218,10 @@ def build(context, parts):
         r = role(b)
         ks = [k for k in kids[b] if role(k) in {'torso', 'neck', 'head', 'upper_arm', 'forearm', 'hand', 'shin',
                                                  'foot'} and (r != 'torso' or role(k) in {'neck', 'head'})]
-        if r == 'pelvis':                        # (up: toward the torso)
-            t = heads['torso'] if 'torso' in G else h + np.array([0, 0, 0.15 * size])
+        if r == 'pelvis':                        # (up: toward the spine / torso)
+            t = heads['spine'] if 'spine' in G else heads['torso'] if 'torso' in G else h + np.array([0, 0, 0.15 * size])
+        elif r == 'spine':
+            t = heads['torso'] if 'torso' in G else np.array([h[0], h[1], W[:, 2].max()])
         elif r == 'torso':
             t = heads[ks[0]] if ks else np.array([h[0], h[1], W[:, 2].max()])
         elif r in {'head'}:
@@ -273,9 +278,10 @@ def build(context, parts):
                 off = bend                       # (the pole the way the joint bends, not off to a side)
             off = off / np.linalg.norm(off) * 0.5 * float(np.linalg.norm(ab))
             rg._limb_ik_bones(ebs, l_, e, f.head.copy(), f.tail.copy(), mid, tuple(off), 'root')
-    for b, ps in groups.items():
-        for p in ps:
-            rg.attach(p, ob, b)
+    if not seamless:
+        for b, ps in groups.items():
+            for p in ps:
+                rg.attach(p, ob, b)
     # the unnamed parts: on the bone of the named part nearest them
     from mathutils.kdtree import KDTree
     kd_src = [(b, v) for b, W in G.items() for v in W[:: max(1, len(W) // 800)]]
@@ -293,7 +299,8 @@ def build(context, parts):
             _c, i, _d = kd.find(v)
             votes[kd_src[i][0]] = votes.get(kd_src[i][0], 0) + 1
         b = max(votes, key=votes.get)
-        rg.attach(p, ob, b)
+        if not seamless:
+            rg.attach(p, ob, b)
         rode[p.name] = b
     offs = {}
     for u, l_, e, _bend in limbs:
@@ -310,8 +317,200 @@ def build(context, parts):
     lens = [float(np.linalg.norm(heads[e] - heads[u])) for u, _l, e, _b in limbs if e.startswith('foot')]
     ob['mch_leg_len'] = float(min(lens)) if lens else 0.3 * size
     rg.controls(ob)
+    if seamless:
+        owner = {p.name: b for b, ps in groups.items() for p in ps}
+        owner.update(rode)
+        skin(context, ob, parts, owner)
     return ob, dict(bones=sorted(G), parts={b: [p.name for p in ps] for b, ps in groups.items()}, rode=rode,
                     ik=[e for _u, _l, e, _b in limbs])
+
+
+def skin(context, arm, parts, owner, blend=None):
+    """0.24.337 (user: a body cut into parts "티 안 나게") the parts bent smoothly with their cuts shut: each part on its
+    own bone, and near a cut blended with the bone of the part on the other side - half and half on the cut itself (the
+    same on both sides: the cut never opens), its own bone again ``blend`` away (a smooth fall-off).  No bone that is
+    merely near (a hand hanging by the thigh) pulls on a part.  The parts stay separate objects (Armature modifier)."""
+    from mathutils.kdtree import KDTree
+    pts = {p.name: np.array([p.matrix_world @ v.co for v in p.data.vertices]) for p in parts}
+    allp = np.concatenate([v for v in pts.values() if len(v)])
+    H = float(np.ptp(allp[:, 2])) or 1.0
+    blend = blend if blend is not None else 0.04 * H
+    tol = 1e-4 * H
+    trees = {}
+    for p in parts:
+        kd = KDTree(len(pts[p.name]))
+        for i, v in enumerate(pts[p.name]):
+            kd.insert(v, i)
+        kd.balance()
+        trees[p.name] = kd
+    # the cut points of each part, by the part (bone) on the other side
+    cuts = {p.name: {} for p in parts}
+    for p in parts:
+        lo, hi = pts[p.name].min(0) - tol, pts[p.name].max(0) + tol
+        for q in parts:
+            if q is p or owner.get(q.name) == owner.get(p.name):
+                continue
+            ql, qh = pts[q.name].min(0), pts[q.name].max(0)
+            if (ql > hi).any() or (qh < lo).any():
+                continue
+            shared = [v for v in pts[p.name] if trees[q.name].find(v)[2] < tol]
+            if shared:
+                cuts[p.name].setdefault(owner[q.name], []).extend(shared)
+    for p in parts:
+        own = owner[p.name]
+        mw = p.matrix_world.copy()
+        for m in [m for m in p.modifiers if m.type == 'ARMATURE']:
+            p.modifiers.remove(m)
+        names = {own} | set(cuts[p.name])
+        for vg in [vg for vg in p.vertex_groups if vg.name in names or vg.name in arm.data.bones]:
+            p.vertex_groups.remove(vg)
+        vgs = {n: p.vertex_groups.new(name=n) for n in names}
+        P = pts[p.name]
+        share = {}
+        for n, S_ in cuts[p.name].items():
+            kd = KDTree(len(S_))
+            for i, v in enumerate(S_):
+                kd.insert(v, i)
+            kd.balance()
+            d = np.array([kd.find(v)[2] for v in P])
+            t = np.clip(d / blend, 0.0, 1.0)
+            share[n] = 0.5 * (1.0 - (3 * t * t - 2 * t * t * t))        # (half on the cut, none blend away)
+        rest = np.ones(len(P))
+        for n, w in share.items():
+            rest -= w
+        rest = np.maximum(rest, 0.0)
+        tot = rest + sum(share.values()) if share else rest
+        for i in range(len(P)):
+            vgs[own].add([i], float(rest[i] / tot[i]), 'REPLACE')
+            for n, w in share.items():
+                if w[i] > 1e-4:
+                    vgs[n].add([i], float(w[i] / tot[i]), 'REPLACE')
+        m = p.modifiers.new('Armature', 'ARMATURE')
+        m.object = arm
+        p.parent = arm
+        p.parent_type = 'OBJECT'
+        p.matrix_parent_inverse = arm.matrix_world.inverted()
+        p.matrix_world = mw
+        from . import rigging as rg
+        p[rg.PART_KEY] = own
+    return 'cuts'
+
+
+def name_by_place(context, parts):
+    """0.24.337 (the user's BODY_TEST: a body cut into 16 parts named Body_Split_001_Split ...) the parts named by
+    where they are on a body standing up, facing -Y: the middle ones from the top - head, neck, chest (torso), belly
+    (spine), hips (pelvis); each side's ones from the body out - the legs (below the hips) thigh, shin, foot; the arms
+    shoulder, upper arm, forearm, hand.  A part with a piece on each side and none across the middle (both feet in
+    one) is split in two first.  Returns {old name: new name}."""
+    from . import rigging as rg
+    import bmesh
+    parts = [p for p in parts if p.type == 'MESH']
+    allp = np.concatenate([rg.world_points(context, p) for p in parts])
+    x0 = 0.5 * (allp[:, 0].min() + allp[:, 0].max())
+    W = float(np.ptp(allp[:, 0])) or 1.0
+    # (both sides in one part: split)
+    out = []
+    for p in parts:
+        V = rg.world_points(context, p)
+        if not len(V) or V[:, 0].min() > x0 - 0.02 * W or V[:, 0].max() < x0 + 0.02 * W:
+            out.append(p)
+            continue
+        bm = bmesh.new()
+        bm.from_mesh(p.data)
+        bm.verts.ensure_lookup_table()
+        M = p.matrix_world
+        isl, seen = [], set()
+        for v in bm.verts:
+            if v.index in seen:
+                continue
+            stack, comp = [v], []
+            seen.add(v.index)
+            while stack:
+                u = stack.pop()
+                comp.append(u.index)
+                for e in u.link_edges:
+                    w = e.other_vert(u)
+                    if w.index not in seen:
+                        seen.add(w.index)
+                        stack.append(w)
+            isl.append(comp)
+        xs = [np.mean([(M @ bm.verts[i].co).x for i in c]) for c in isl]
+        cross = any(min((M @ bm.verts[i].co).x for i in c) < x0 - 0.02 * W < x0 + 0.02 * W
+                    < max((M @ bm.verts[i].co).x for i in c) for c in isl)
+        bm.free()
+        if cross or not (any(x > x0 for x in xs) and any(x < x0 for x in xs)):
+            out.append(p)
+            continue
+        right = {i for c, x in zip(isl, xs) if x < x0 for i in c}
+        q = p.copy()
+        q.data = p.data.copy()
+        for coll in p.users_collection:
+            coll.objects.link(q)
+        for ob_, keep_right in ((p, False), (q, True)):
+            bm = bmesh.new()
+            bm.from_mesh(ob_.data)
+            bm.verts.ensure_lookup_table()
+            gone = [bm.verts[i] for i in range(len(bm.verts)) if (i in right) != keep_right]
+            bmesh.ops.delete(bm, geom=gone, context='VERTS')
+            bm.to_mesh(ob_.data)
+            bm.free()
+        out += [p, q]
+    parts = out
+    info = {}
+    for p in parts:
+        V = rg.world_points(context, p)
+        c = 0.5 * (V.min(0) + V.max(0))
+        info[p.name] = dict(c=c, lo=V.min(0), hi=V.max(0), n=len(V))
+    mid = [p for p in parts if abs(info[p.name]['c'][0] - x0) < 0.05 * W]
+    side = [p for p in parts if p not in mid]
+    names = {}
+    mid.sort(key=lambda p: -info[p.name]['c'][2])
+    roles_mid = []
+    if mid:
+        roles_mid.append('Head')
+        rest = mid[1:]
+        if rest:
+            wid = {p.name: float(info[p.name]['hi'][0] - info[p.name]['lo'][0]) for p in rest}
+            if len(rest) >= 2 and wid[rest[0].name] < 0.6 * max(wid.values()):
+                roles_mid.append('Neck')
+            n_left = len(rest) - (len(roles_mid) - 1)
+            tail = ['Chest', 'Belly', 'Pelvis'] if n_left >= 3 else (['Chest', 'Pelvis'] if n_left == 2 else ['Chest'])
+            extra = n_left - len(tail)
+            roles_mid += tail[:1] + ['Chest'] * max(0, extra) + tail[1:]
+    for p, r in zip(mid, roles_mid):
+        names[p.name] = r
+    pel = next((p for p in mid if names.get(p.name) == 'Pelvis'), mid[-1] if mid else None)
+    hip_z = float(info[pel.name]['c'][2]) if pel is not None else float(np.median(allp[:, 2]))
+    hip_half = (0.5 * float(info[pel.name]['hi'][0] - info[pel.name]['lo'][0]) if pel is not None else 0.25 * W)
+    torso_c = np.array([x0, float(np.mean(allp[:, 1])), hip_z])
+    chest = next((p for p in mid if names.get(p.name) == 'Chest'), None)
+    chest_c = info[chest.name]['c'] if chest is not None else torso_c
+    for sd, keep in (('L', lambda x: x > x0), ('R', lambda x: x < x0)):
+        mine = [p for p in side if keep(info[p.name]['c'][0])]
+        # (legs: under the hips AND within the hips' width - hands hanging down beside the thighs are outside it)
+        legs = [p for p in mine if info[p.name]['c'][2] < hip_z and abs(info[p.name]['c'][0] - x0) < hip_half * 1.6]
+        arms = [p for p in mine if p not in legs]
+        legs.sort(key=lambda p: -info[p.name]['c'][2])
+        arms.sort(key=lambda p: np.linalg.norm(info[p.name]['c'] - chest_c))
+        for p, r in zip(legs, {1: ['Thigh'], 2: ['Thigh', 'Shin']}.get(len(legs), ['Thigh', 'Shin', 'Foot']
+                                                                         + ['Foot'] * (len(legs) - 3))):
+            names[p.name] = f'{r}.{sd}'
+        a_roles = {1: ['UpperArm'], 2: ['UpperArm', 'Forearm'], 3: ['UpperArm', 'Forearm', 'Hand']}.get(
+            len(arms), ['Shoulder', 'UpperArm', 'Forearm', 'Hand'] + ['Hand'] * (len(arms) - 4))
+        for p, r in zip(arms, a_roles):
+            names[p.name] = f'{r}.{sd}'
+    done = {}
+    used = {}
+    for p in parts:
+        new = names.get(p.name)
+        if new is None:
+            continue
+        k = used.get(new, 0)
+        used[new] = k + 1
+        old = p.name
+        p.name = new if k == 0 else f'{new}.{k:03d}'
+        done[old] = p.name
+    return done
 
 
 def _chain(b, parent):
