@@ -219,7 +219,7 @@ quads_b = sum(1 for p_ in am.polygons if len(p_.vertices) == 4)
 check(f'Area Fill again (a square beside it): its own quads ({nb_} faces, {quads_b}/{len(am.polygons)} quads overall)',
       nb_ >= 9 and quads_b >= len(am.polygons) * 0.9)
 f_s = len(am.polygons)
-strip = np.array([(px(-0.9), px(0.55)), (px(0.9), px(0.55)), (px(0.9), px(0.8)), (px(-0.9), px(0.8))])
+strip = np.array([(px(-0.9), px(0.68)), (px(0.9), px(0.68)), (px(0.9), px(0.93)), (px(-0.9), px(0.93))])
 strip = np.concatenate([np.linspace(strip[i], strip[(i + 1) % 4], 15, endpoint=False) for i in range(4)])
 with C.temp_override(scene=ws, view_layer=ws.view_layers[0], active_object=low, object=low, selected_objects=[low]):
     ns_ = mr.area_fill(C, ws, strip, TOP, 40)
@@ -241,6 +241,95 @@ with C.temp_override(scene=ws, view_layer=ws.view_layers[0], active_object=low, 
     n_off = mr.area_fill(C, ws, circle(px(5), px(5), 60), TOP, 40)
 check(f'Area Fill off the model: nothing made ({n_off})', n_off == 0)
 low.data = keep_me3
+# 0.24.335 (user: "전에 만든 거랑 안 붙어? 에리어 필") Area Fill over the low made already: joined to its border
+keep_me4 = low.data
+low.data = bpy.data.meshes.new('attach_low')
+mr.set_lines(ws, [line((-0.8, y), (0.8, y)) + (TOP,) for y in (-0.6, 0.0, 0.6)]
+             + [line((x, -0.8), (x, 0.8)) + (TOP,) for x in (-0.6, 0.0, 0.6)])
+mr.make(C, ws, cuts=1)
+nv0, nf0_ = len(low.data.vertices), len(low.data.polygons)
+# an outline starting well inside the made grid (hand drawn: not on its points) and going out to the right
+out = np.array([(px(0.2), px(-0.5)), (px(0.95), px(-0.5)), (px(0.95), px(0.5)), (px(0.2), px(0.5))])
+out = np.concatenate([np.linspace(out[i], out[(i + 1) % 4], 15, endpoint=False) for i in range(4)])
+with C.temp_override(scene=ws, view_layer=ws.view_layers[0], active_object=low, object=low, selected_objects=[low]):
+    nat = mr.area_fill(C, ws, out, TOP, 40)
+am2 = low.data
+users = {}
+for p_ in am2.polygons:
+    for ek in p_.edge_keys:
+        users[ek] = users.get(ek, 0) + 1
+bm_ = bmesh.new()
+bm_.from_mesh(am2)
+right_col = [v for v in bm_.verts if abs(v.co.x - 0.6) < 0.05 and -0.65 < v.co.y < 0.65]
+shared = sum(1 for v in right_col if len(v.link_faces) >= 2)
+up2 = sum(1 for f in bm_.faces if f.normal.z > 0)
+bm_.free()
+check(f'Area Fill drawn over the made grid and out of it: the new quads start ON its border (its right column of '
+      f'points shared, none doubled, no edge used 3 times), all one way round ({nat} faces; {shared}/{len(right_col)} '
+      f'border points shared; {up2}/{len(am2.polygons)} facing up)',
+      nat > 0 and shared == len(right_col) == 3 and max(users.values()) <= 2 and up2 == len(am2.polygons))
+# Relax: a grid bunched / twisted into a fan spreads out again, the border stays
+for v in low.data.vertices:
+    if v.co.x < 0.55 and abs(v.co.x) < 0.1 and abs(v.co.y) < 0.1:
+        v.co.x += 0.5                            # (the middle point pushed over to the side: folded)
+border0 = {v.index: v.co.copy() for v in low.data.vertices}
+nr = mr.relax_low(ws)
+moved_border = 0
+bm_ = bmesh.new()
+bm_.from_mesh(low.data)
+for v in bm_.verts:
+    if v.is_boundary and (v.co - border0[v.index]).length > 1e-6:
+        moved_border += 1
+mid = [v.co.copy() for v in bm_.verts if not v.is_boundary and abs(v.co.y) < 0.05 and v.co.x < 0.2]
+bm_.free()
+check(f'Relax: the pushed-over middle point back between its neighbours, the border points not moved, all on the '
+      f'model ({nr} moved; middle at x {[round(c.x, 2) for c in mid]}; {moved_border} border points moved)',
+      nr > 0 and moved_border == 0 and mid and abs(mid[0].x) < 0.08
+      and max(abs(v.co.z - surf(v.co.x, v.co.y)[2]) for v in low.data.vertices) < 0.01)
+# Relax as seen (the view): a twisted fill (its inside turned round like a fan) spreads out again on the screen
+tw_me = bpy.data.meshes.new('twist_low')
+keep_tw = low.data
+low.data = tw_me
+with C.temp_override(scene=ws, view_layer=ws.view_layers[0], active_object=low, object=low, selected_objects=[low]):
+    mr.area_fill(C, ws, np.array([(px(-0.6), px(-0.6)), (px(0.6), px(-0.6)), (px(0.6), px(0.6)), (px(-0.6), px(0.6))]
+                                 ).repeat(1, axis=0) if False else np.concatenate(
+        [np.linspace(a_, b_, 20, endpoint=False) for a_, b_ in zip(
+            [(px(-0.6), px(-0.6)), (px(0.6), px(-0.6)), (px(0.6), px(0.6)), (px(-0.6), px(0.6))],
+            [(px(0.6), px(-0.6)), (px(0.6), px(0.6)), (px(-0.6), px(0.6)), (px(-0.6), px(-0.6))])]), TOP, 40)
+bm_ = bmesh.new()
+bm_.from_mesh(tw_me)
+inner = [v.index for v in bm_.verts if not v.is_boundary]
+bm_.free()
+good = {i: tw_me.vertices[i].co.copy() for i in inner}
+for i in inner:                                  # (turned round the middle: a fan)
+    v = tw_me.vertices[i]
+    r_ = math.hypot(v.co.x, v.co.y)
+    ang = 1.5 * (1 - min(r_ / 0.6, 1))
+    x, y = v.co.x, v.co.y
+    v.co.x, v.co.y = x * math.cos(ang) - y * math.sin(ang), x * math.sin(ang) + y * math.cos(ang)
+    v.co.z = surf(v.co.x, v.co.y)[2]
+err0 = max((tw_me.vertices[i].co - good[i]).length for i in inner)
+nrx = mr.relax_low(ws, view=TOP)
+err1 = max((tw_me.vertices[i].co - good[i]).length for i in inner)
+check(f'Relax (as seen): a fill twisted like a fan spreads back out - its inside points back by their grid places '
+      f'({nrx} moved; furthest off {err0:.3f} -> {err1:.3f})', nrx == len(inner) and err1 < err0 * 0.25)
+low.data = keep_tw
+# Ctrl+Z while drawing: the last fill taken back
+from types import SimpleNamespace  # noqa: E402
+D_ = mr.MCH_OT_mretopo_draw
+fake = SimpleNamespace(history=[], L=[], area=None)
+fake._save = lambda ctx: None
+fake._preview = lambda ctx: None
+fake._drop_last = lambda: D_._drop_last(fake)
+nf_a = len(low.data.polygons)
+with C.temp_override(scene=ws, view_layer=ws.view_layers[0], active_object=low, object=low, selected_objects=[low]):
+    D_._snap(fake, C)
+    mr.area_fill(C, ws, circle(px(-0.3), px(0.85), 40), TOP, 30)
+    nf_b = len(low.data.polygons)
+    what = D_._undo(fake, C)
+check(f'Ctrl+Z while drawing takes the last fill back ({nf_a} -> {nf_b} -> {len(low.data.polygons)} faces, {what})',
+      nf_b > nf_a and len(low.data.polygons) == nf_a and what == 'fill')
+low.data = keep_me4
 # a triangle cell (3 lines): counted apart
 mr.set_lines(ws, [line((-0.9, -0.9), (-0.3, -0.9)), line((-0.85, -0.95), (-0.5, -0.4)), line((-0.35, -0.95), (-0.65, -0.35))])
 got3 = mr.make(C, ws, cuts=1)

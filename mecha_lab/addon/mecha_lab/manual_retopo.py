@@ -33,6 +33,7 @@ LOW_COLOR = (0.25, 0.65, 1.0, 1.0)
 REF_COLOR = (0.62, 0.62, 0.64, 1.0)
 PICK_PX = 14                   # a crossing / a Shift+click: this many pixels
 SNAP_END = 0.35                # a line meeting the low's border this near (of the edge) to its point: on the point
+MAX_UNDO = 30                  # Ctrl+Z steps kept while drawing
 STEP_PX = 6                    # a line point every this many pixels
 
 
@@ -776,13 +777,17 @@ def _inside(poly, pts):
     return ((cross & (x < xs)).sum(1) % 2) == 1
 
 
-def holes(low):
-    """The low's holes: [[vertex index ...] (a closed border loop)] - every border loop but the longest of its piece
-    (that one is the piece's outside)."""
+def border_loops(low):
+    """Every closed border loop of the low: [[vertex index ...]]."""
     import bmesh
     bm = bmesh.new()
     bm.from_mesh(low.data)
-    bm.verts.ensure_lookup_table()
+    loops = _loops(bm)
+    bm.free()
+    return loops
+
+
+def _loops(bm):
     edges = [e for e in bm.edges if e.is_boundary]
     nxt = {}
     for e in edges:
@@ -809,6 +814,17 @@ def holes(low):
             loop.append(cur)
         if loop and len(loop) >= 3:
             loops.append(loop)
+    return loops
+
+
+def holes(low):
+    """The low's holes: [[vertex index ...] (a closed border loop)] - every border loop but the longest of its piece
+    (that one is the piece's outside)."""
+    import bmesh
+    bm = bmesh.new()
+    bm.from_mesh(low.data)
+    bm.verts.ensure_lookup_table()
+    loops = _loops(bm)
     # the piece each loop is on (faces linked), its outside = its longest loop
     piece, k = {}, 0
     for f in bm.faces:
@@ -976,133 +992,370 @@ def _grid_ring(P2, step):
     return np.array(ring), na
 
 
-def area_fill(context, scene, poly, view, size_px=40, tol=None):
-    """0.24.334 (user: "그냥 내가 영역을 그리면 거기 내부를 쿼드로 채워 주는 모드도") the outline ``poly`` (pixels on
-    ``view``) filled with quads about ``size_px`` across: its edge ring every Size pixels, filled as a grid (else
-    filled and made quads), the inside points put on the model and evened out; points of the outline by the low's
-    points become them.  Returns the faces made (0: nothing under the outline)."""
+def _dense(P2):
+    """The closed outline ``P2`` (pixels) every ~2 pixels, CCW."""
+    P = np.asarray(P2, float)
+    if len(P) > 2 and np.linalg.norm(P[0] - P[-1]) < 1e-6:
+        P = P[:-1]
+    area = 0.5 * float(np.sum(P[:, 0] * np.roll(P[:, 1], -1) - np.roll(P[:, 0], -1) * P[:, 1]))
+    if area < 0:
+        P = P[::-1]
+    Q = np.vstack([P, P[:1]])
+    s = _arc(np.c_[Q, np.zeros(len(Q))])
+    m = max(64, int(s[-1] / 2))
+    u = np.linspace(0, s[-1], m + 1)[:-1]
+    return np.c_[np.interp(u, s, Q[:, 0]), np.interp(u, s, Q[:, 1])]
+
+
+def _cut(P, n):
+    """The open polyline ``P`` (2D) cut into ``n`` even pieces: n + 1 points."""
+    s = _arc(np.c_[P, np.zeros(len(P))])
+    u = np.linspace(0, s[-1], n + 1)
+    return np.c_[np.interp(u, s, P[:, 0]), np.interp(u, s, P[:, 1])]
+
+
+def attach_plan(low, poly, view, step):
+    """0.24.335 (user: "전에 만든 거랑 안 붙어? 에리어 필") the part of the outline over the low already made is the
+    low's own border: (border vertex path A..B, left, top, right (pixels)) for a grid between that border and the new
+    part of the outline, or None (the outline does not reach the low)."""
+    tree = low_tree_of(low)
+    if tree is None:
+        return None
+    D = _dense(poly)
+    Minv = np.linalg.inv(np.array(view['m'], float).reshape(4, 4))
+
+    def on_low(q):
+        ndc = (q[0] / view['w'] * 2 - 1, q[1] / view['h'] * 2 - 1)
+        a = Minv @ np.r_[ndc[0], ndc[1], -1.0, 1.0]
+        b = Minv @ np.r_[ndc[0], ndc[1], 1.0, 1.0]
+        a, b = a[:3] / a[3], b[:3] / b[3]
+        return tree.ray_cast(Vector(a), Vector(b - a).normalized())[0] is not None
+    inside = np.array([on_low(q) for q in D])
+    if not inside.any() or inside.all():
+        return None
+    k0 = int(np.argmax(inside))                  # (start on the low: the runs off it in one piece)
+    D, inside = np.roll(D, -k0, axis=0), np.roll(inside, -k0)
+    runs, i = [], 0
+    while i < len(D):
+        if not inside[i]:
+            j = i
+            while j + 1 < len(D) and not inside[j + 1]:
+                j += 1
+            runs.append((i, j))
+            i = j + 1
+        else:
+            i += 1
+    s0, e0 = max(runs, key=lambda r: r[1] - r[0])
+    if e0 - s0 < 4:
+        return None
+    M = low.matrix_world
+    co = np.array([M @ v.co for v in low.data.vertices])
+    xy, w = _screen(co, view)
+    loops = border_loops(low)
+    if not loops:
+        return None
+    bverts = np.array(sorted({v for lp in loops for v in lp}))
+
+    def nearest_border(q):
+        d = np.linalg.norm(xy[bverts] - q, axis=1)
+        d[w[bverts] <= 0] = np.inf
+        return int(bverts[int(np.argmin(d))])
+    A = nearest_border((D[s0 - 1] + D[s0]) * 0.5)
+    B = nearest_border((D[e0] + D[(e0 + 1) % len(D)]) * 0.5)
+    loop = next((lp for lp in loops if A in lp and B in lp), None)
+    if loop is None or A == B:
+        return None
+    ia, ib = loop.index(A), loop.index(B)
+    fwd = loop[ia:] + loop[:ia]
+    p1 = fwd[:fwd.index(B) + 1]                  # A .. B one way round
+    rev = (loop[ib:] + loop[:ib])
+    p2 = rev[:rev.index(A) + 1][::-1]            # A .. B the other way
+    # the way round that lies along the drawn outline's inside part (inside the outline)
+
+    def score(path):
+        if len(path) <= 2:
+            return 0.5
+        return float(_inside(D, xy[path[1:-1]]).mean())
+    path = p1 if score(p1) >= score(p2) else p2
+    run = np.vstack([xy[A][None], D[s0:e0 + 1], xy[B][None]])
+    m = len(path) - 1
+    # how far the new part stands off the border: the rows across (k), and the run's two ends that far each
+    bp = xy[path]
+    dist = np.array([np.min(np.linalg.norm(bp - q, axis=1)) for q in run])
+    reach = float(np.median(dist[len(dist) // 4: max(len(dist) * 3 // 4, len(dist) // 4 + 1)]))
+    sr = _arc(np.c_[run, np.zeros(len(run))])
+    Lrun = sr[-1]
+    lk = min(max(reach, step * 0.5), Lrun / 3)
+    k = max(1, int(round(lk / max(step, 2.0))))
+
+    def piece(a, b):
+        u = np.linspace(a, b, max(8, int((b - a) / 2) + 2))
+        return np.c_[np.interp(u, sr, run[:, 0]), np.interp(u, sr, run[:, 1])]
+    left = _cut(piece(0, lk), k)
+    top = _cut(piece(lk, Lrun - lk), m)
+    right = _cut(piece(Lrun - lk, Lrun), k)[::-1]
+    return dict(path=path, left=left, top=top, right=right, k=k, m=m, run=run)
+
+
+def _attached_fill(context, scene, low, plan_, view):
+    """The grid between the low's border path and the new part of the outline (a Coons patch on the screen, put on the
+    model along the line of sight).  Returns the faces made."""
     import bmesh
-    low = low_of(scene)
-    if low is None:
-        return 0
-    ring2, span = _grid_ring(poly, size_px)
-    ring = ray_lift(scene, view, ring2)
-    ok = ~np.isnan(ring).any(1)
-    if ok.sum() < len(ring) * 0.6:
-        return 0
-    if not ok.all():                             # (a point off the model: as deep as its neighbours)
-        idx = np.nonzero(ok)[0]
-        for i in np.nonzero(~ok)[0]:
-            j = idx[np.argmin(np.abs(idx - i))]
-            ring[i] = ring[j]
-    lay = context.view_layer
+    path, left, top, right, k, m = (plan_[x] for x in ('path', 'left', 'top', 'right', 'k', 'm'))
+    M, Mi = low.matrix_world, low.matrix_world.inverted()
+    co = np.array([M @ v.co for v in low.data.vertices])
+    bxy = _screen(co[path], view)[0]
+    G = _coons(bxy, np.asarray(top), np.asarray(left), np.asarray(right))
+    if _folded(G) and _folded(G[:, ::-1]):      # (the grid would fold: the ring filled and made quads instead)
+        return _fill_attached_ngon(context, scene, low, plan_, view)
+    new_xy = G[:, 1:].reshape(-1, 2)
+    P = ray_lift(scene, view, new_xy).reshape(m + 1, k, 3)
+    for i in range(m + 1):                       # (off the model: as deep as the border point below it)
+        for j in range(k):
+            if np.isnan(P[i, j]).any():
+                P[i, j] = co[path[i]]
     if context.mode != 'OBJECT':
         bpy.ops.object.mode_set(mode='OBJECT')
-    if lay.objects.active != low:
-        for o in context.selected_objects:
-            o.select_set(False)
-        low.select_set(True)
-        lay.objects.active = low
     me = low.data
-    Mi = low.matrix_world.inverted()
-    n0, f0 = len(me.vertices), len(me.polygons)
-    bm = bmesh.new()
-    bm.from_mesh(me)
-    for v in bm.verts:
-        v.select_set(False)
-    for e in bm.edges:
-        e.select_set(False)
-    for f in bm.faces:
-        f.select_set(False)
-    vs = [bm.verts.new(Mi @ Vector(p)) for p in ring]
-    for v in vs:
-        v.select_set(True)
-    for a, b in zip(vs, vs[1:] + vs[:1]):
-        bm.edges.new((a, b)).select_set(True)
-    bm.to_mesh(me)
-    bm.free()
-    bpy.ops.object.mode_set(mode='EDIT')
-    bpy.ops.mesh.select_mode(type='VERT')
-    try:                                         # (the ring's own four sides)
-        bpy.ops.mesh.fill_grid(span=span, offset=0, use_interp_simple=False)
-    except RuntimeError:
-        pass
-    bpy.ops.object.mode_set(mode='OBJECT')
-    if len(low.data.polygons) == f0:            # (no grid: filled, then the triangles made quads)
-        bpy.ops.object.mode_set(mode='EDIT')
-        try:
-            bpy.ops.mesh.fill(use_beauty=True)
-            bpy.ops.mesh.tris_convert_to_quads()
-        except RuntimeError:
-            pass
-        bpy.ops.object.mode_set(mode='OBJECT')
-    me = low.data
-    if len(me.polygons) == f0:
-        bm = bmesh.new()                         # (nothing filled: the ring taken out again)
-        bm.from_mesh(me)
-        bm.verts.ensure_lookup_table()
-        bmesh.ops.delete(bm, geom=[bm.verts[i] for i in range(n0, len(bm.verts))], context='VERTS')
-        bm.to_mesh(me)
-        bm.free()
-        return 0
-    # the inside points: on the model (along the line of sight), evened out a few times
-    M = low.matrix_world
+    f0 = len(me.polygons)
     bm = bmesh.new()
     bm.from_mesh(me)
     bm.verts.ensure_lookup_table()
-    ring_ids = set(range(n0, n0 + len(ring)))
-    inner = [v for v in bm.verts[n0:] if v.index not in ring_ids]
-    for _it in range(4):
-        if not inner:
+    ids = [[bm.verts[path[i]]] + [None] * k for i in range(m + 1)]
+    for i in range(m + 1):
+        for j in range(1, k + 1):
+            ids[i][j] = bm.verts.new(Mi @ Vector(P[i, j - 1]))
+    made = []
+    for i in range(m):
+        for j in range(k):
+            try:
+                made.append(bm.faces.new((ids[i][j], ids[i + 1][j], ids[i + 1][j + 1], ids[i][j + 1])))
+            except ValueError:
+                pass
+    # the same way round as the faces next to them: two faces the same way round walk their shared edge in
+    # opposite directions
+    flip = None
+    made_set = set(made)
+    for f in made:
+        for e in f.edges:
+            other = [g for g in e.link_faces if g not in made_set]
+            if not other:
+                continue
+            g = other[0]
+
+            def walks(face, e=e):
+                vs = [lp.vert for lp in face.loops]
+                i = vs.index(e.verts[0])
+                return vs[(i + 1) % len(vs)] == e.verts[1]
+            flip = walks(f) == walks(g)
             break
-        pts = np.array([M @ v.co for v in inner])
-        q2, _w = _screen(pts, view)
-        lifted = ray_lift(scene, view, q2)
-        for v, p in zip(inner, lifted):
-            if not np.isnan(p).any():
-                v.co = Mi @ Vector(p)
-        if _it < 3:
-            new_co = {}
-            for v in inner:
-                nb = [e.other_vert(v).co for e in v.link_edges]
-                if nb:
-                    new_co[v] = v.co * 0.5 + (sum(nb, Vector()) / len(nb)) * 0.5
-            for v, c in new_co.items():
-                v.co = c
-    # faces toward the eye
-    Minv = np.linalg.inv(np.array(view['m'], float).reshape(4, 4))
-    eye = Minv @ np.array([0.0, 0.0, -1.0, 1.0])
-    eye = Vector(eye[:3] / eye[3])
-    new_faces = [f for f in bm.faces if f.index >= f0]
-    flip = 0
-    for f in new_faces:
-        c = M @ f.calc_center_median()
-        n = (M.to_3x3() @ f.normal)
-        if n.dot(c - eye) > 0:
-            flip += 1
-    if flip > len(new_faces) / 2:
-        for f in new_faces:
+        if flip is not None:
+            break
+    if flip:
+        for f in made:
             f.normal_flip()
-    # the outline by the low's own points: on them
-    if n0:
-        from mathutils.kdtree import KDTree
-        kd = KDTree(n0)
-        for v in bm.verts[:n0]:
-            kd.insert(v.co, v.index)
-        kd.balance()
-        wtol = tol if tol is not None else float(np.median(np.linalg.norm(np.diff(ring, axis=0), axis=1))) * 0.35
-        weld = {}
-        for i in ring_ids:
-            v = bm.verts[i]
-            _c, j, d = kd.find(v.co)
-            if j is not None and d < wtol:
-                weld[v] = bm.verts[j]
-        if weld:
-            bmesh.ops.weld_verts(bm, targetmap=weld)
+    elif flip is None:
+        _faces_toward(bm, made, M, view)
     bm.normal_update()
     bm.to_mesh(me)
     bm.free()
     me.update()
+    return len(me.polygons) - f0
+
+
+def _coons(bottom, top, left, right):
+    """A grid (m+1, k+1, 2) inside four sides (2D): bottom / top m+1 points left to right, left / right k+1 points
+    bottom to top (their corners shared)."""
+    m, k = len(bottom) - 1, len(left) - 1
+    G = np.zeros((m + 1, k + 1, 2))
+    G[:, 0], G[:, k] = bottom, top
+    G[0, :], G[m, :] = left, right
+    c00, c10, c01, c11 = bottom[0], bottom[m], top[0], top[m]
+    for i in range(1, m):
+        for j in range(1, k):
+            u, v = i / m, j / k
+            G[i, j] = ((1 - v) * bottom[i] + v * top[i] + (1 - u) * left[j] + u * right[j]
+                       - ((1 - u) * (1 - v) * c00 + u * (1 - v) * c10 + (1 - u) * v * c01 + u * v * c11))
+    return G
+
+
+def _folded(G):
+    """Does the grid fold over itself (a quad turned the other way round on the screen)?"""
+    a, b, c, d = G[:-1, :-1], G[1:, :-1], G[1:, 1:], G[:-1, 1:]
+    area = 0.5 * ((a[..., 0] * b[..., 1] - b[..., 0] * a[..., 1]) + (b[..., 0] * c[..., 1] - c[..., 0] * b[..., 1])
+                  + (c[..., 0] * d[..., 1] - d[..., 0] * c[..., 1]) + (d[..., 0] * a[..., 1] - a[..., 0] * d[..., 1]))
+    return bool((area <= 0).any())
+
+
+def _faces_toward(bm, faces, M, view):
+    """``faces`` turned to face the eye of ``view`` (most of them)."""
+    Minv = np.linalg.inv(np.array(view['m'], float).reshape(4, 4))
+    eye = Minv @ np.array([0.0, 0.0, -1.0, 1.0])
+    eye = Vector(eye[:3] / eye[3])
+    bm.normal_update()
+    away = sum(1 for f in faces if (M.to_3x3() @ f.normal).dot((M @ f.calc_center_median()) - eye) > 0)
+    if away > len(faces) / 2:
+        for f in faces:
+            f.normal_flip()
+
+
+def _fill_attached_ngon(context, scene, low, plan_, view):
+    """An attached shape a grid would fold over: the ring (the low's border path + the new part of the outline)
+    filled, the triangles made quads, the new inside relaxed."""
+    import bmesh
+    path, run = plan_['path'], plan_['run']
+    step = max(np.linalg.norm(plan_['top'][1] - plan_['top'][0]) if len(plan_['top']) > 1 else 20.0, 4.0)
+    sr = _arc(np.c_[run, np.zeros(len(run))])
+    n = max(2, int(round(sr[-1] / step)))
+    R = _cut(run, n)[1:-1]                       # (its ends are the border's A and B)
+    P = ray_lift(scene, view, R)
+    me = low.data
+    M, Mi = low.matrix_world, low.matrix_world.inverted()
+    co = np.array([M @ v.co for v in me.vertices])
+    for i in range(len(P)):
+        if np.isnan(P[i]).any():
+            P[i] = co[path[0]] if i < len(P) / 2 else co[path[-1]]
+    n0, f0 = len(me.vertices), len(me.polygons)
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.verts.ensure_lookup_table()
+    new_vs = [bm.verts.new(Mi @ Vector(p)) for p in P]
+    ring = [bm.verts[path[0]]] + new_vs + [bm.verts[i] for i in path[::-1][:-1]]
+    es = []
+    for a, b in zip(ring, ring[1:] + ring[:1]):
+        e = bm.edges.get((a, b))
+        es.append(e if e is not None else bm.edges.new((a, b)))
+    before = set(bm.faces)
+    res = bmesh.ops.triangle_fill(bm, use_beauty=True, use_dissolve=False, edges=es)
+    tris = [f for f in res['geom'] if isinstance(f, bmesh.types.BMFace)]
+    if not tris:
+        bm.free()
+        return 0
+    bmesh.ops.join_triangles(bm, faces=tris, angle_face_threshold=math.radians(180),
+                             angle_shape_threshold=math.radians(180))
+    made = [f for f in bm.faces if f not in before]
+    _faces_toward(bm, made, M, view)
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    relax_low(scene, set(range(n0, len(me.vertices))), iterations=20, view=view)
+    return len(me.polygons) - f0
+
+
+def area_fill(context, scene, poly, view, size_px=40, tol=None):
+    """0.24.334 (user: "그냥 내가 영역을 그리면 거기 내부를 쿼드로 채워 주는 모드도") the outline ``poly`` (pixels on
+    ``view``) filled with quads about ``size_px`` across.  0.24.335 (user, a fill twisted into a fan: "꼬일 때가 있는데")
+    our own grid: the outline's four sides (its corners found by its shape, opposite sides the same count), the inside
+    a Coons patch on the screen - no twist - then put on the model along the line of sight and relaxed; an outline that
+    would fold the grid (a deep L) is filled and made quads instead.  Over the low made already: joined to its border
+    (``attach_plan``); else points of the outline by the low's points become them.  Returns the faces made."""
+    import bmesh
+    low = low_of(scene)
+    if low is None:
+        return 0
+    if context.mode != 'OBJECT':
+        bpy.ops.object.mode_set(mode='OBJECT')
+    if len(low.data.polygons):                  # 0.24.335 drawn over the low made already: joined to its border
+        pl = attach_plan(low, poly, view, size_px)
+        if pl is not None:
+            return _attached_fill(context, scene, low, pl, view)
+    ring2, na = _grid_ring(poly, size_px)
+    nb = len(ring2) // 2 - na
+    if nb < 1:
+        return 0
+    ring_c = np.vstack([ring2, ring2[:1]])
+    bottom = ring_c[0:na + 1]
+    right = ring_c[na:na + nb + 1]
+    top = ring_c[na + nb:2 * na + nb + 1][::-1]
+    left = ring_c[2 * na + nb:2 * na + 2 * nb + 1][::-1]
+    G = _coons(bottom, top, left, right)
+    me = low.data
+    M, Mi = low.matrix_world, low.matrix_world.inverted()
+    n0, f0 = len(me.vertices), len(me.polygons)
+    if _folded(G):
+        return _fill_ngon(context, scene, low, ring2, view, tol)
+    P = ray_lift(scene, view, G.reshape(-1, 2)).reshape(G.shape[0], G.shape[1], 3)
+    ok = ~np.isnan(P).any(2)
+    if ok.mean() < 0.6:
+        return 0
+    if not ok.all():                             # (a point off the model: as deep as the nearest one on it)
+        good = np.argwhere(ok)
+        for i, j in np.argwhere(~ok):
+            g = good[np.argmin(np.abs(good - (i, j)).sum(1))]
+            P[i, j] = P[g[0], g[1]]
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    V = [[bm.verts.new(Mi @ Vector(P[i, j])) for j in range(G.shape[1])] for i in range(G.shape[0])]
+    made = []
+    for i in range(G.shape[0] - 1):
+        for j in range(G.shape[1] - 1):
+            made.append(bm.faces.new((V[i][j], V[i + 1][j], V[i + 1][j + 1], V[i][j + 1])))
+    _faces_toward(bm, made, M, view)
+    ring_vs = set(V[i][0] for i in range(G.shape[0])) | set(V[i][-1] for i in range(G.shape[0])) \
+        | set(V[0]) | set(V[-1])
+    if n0:
+        _weld_to_old(bm, n0, ring_vs, tol if tol is not None else size_px_world(P) * 0.35)
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    return len(me.polygons) - f0
+
+
+def size_px_world(P):
+    """The mean spacing of the grid points ``P`` (m, k, 3)."""
+    d = np.linalg.norm(np.diff(P, axis=0), axis=2)
+    return float(np.mean(d)) if d.size else 0.0
+
+
+def _weld_to_old(bm, n0, ring_vs, wtol):
+    from mathutils.kdtree import KDTree
+    import bmesh
+    bm.verts.ensure_lookup_table()
+    kd = KDTree(n0)
+    for v in bm.verts[:n0]:
+        kd.insert(v.co, v.index)
+    kd.balance()
+    weld = {}
+    for v in ring_vs:
+        if v.is_valid:
+            _c, j, d = kd.find(v.co)
+            if j is not None and d < wtol:
+                weld[v] = bm.verts[j]
+    if weld:
+        bmesh.ops.weld_verts(bm, targetmap=weld)
+
+
+def _fill_ngon(context, scene, low, ring2, view, tol):
+    """A shape a grid would fold over (a deep L): the ring filled, the triangles made quads, the inside relaxed."""
+    import bmesh
+    ring = ray_lift(scene, view, ring2)
+    ok = ~np.isnan(ring).any(1)
+    if ok.sum() < len(ring) * 0.6:
+        return 0
+    idx = np.nonzero(ok)[0]
+    for i in np.nonzero(~ok)[0]:
+        ring[i] = ring[idx[np.argmin(np.abs(idx - i))]]
+    me = low.data
+    M, Mi = low.matrix_world, low.matrix_world.inverted()
+    n0, f0 = len(me.vertices), len(me.polygons)
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    vs = [bm.verts.new(Mi @ Vector(p)) for p in ring]
+    vs_set = set(vs)
+    es = [bm.edges.new((a, b)) for a, b in zip(vs, vs[1:] + vs[:1])]
+    res = bmesh.ops.triangle_fill(bm, use_beauty=True, use_dissolve=False, edges=es)
+    tris = [f for f in res['geom'] if isinstance(f, bmesh.types.BMFace)]
+    bmesh.ops.join_triangles(bm, faces=tris, angle_face_threshold=math.radians(180),
+                             angle_shape_threshold=math.radians(180))
+    made = [f for f in bm.faces if f.is_valid and all(v in vs_set for v in f.verts)]
+    _faces_toward(bm, made, M, view)
+    if n0:
+        _weld_to_old(bm, n0, set(vs), tol if tol is not None else float(np.median(
+            np.linalg.norm(np.diff(ring, axis=0), axis=1))) * 0.35)
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    relax_low(scene, set(range(n0, len(me.vertices))), iterations=20, view=view)
     return len(me.polygons) - f0
 
 
@@ -1112,6 +1365,88 @@ def is_lasso(P2):
         return False
     span = P2.max(0) - P2.min(0)
     return bool(np.linalg.norm(P2[-1] - P2[0]) < PICK_PX * 2.5 and span.min() > PICK_PX * 3)
+
+
+def relax_low(scene, only=None, iterations=40, strength=0.5, view=None):
+    """0.24.335 (user, a fill twisted into a fan: "스무스 같은 거 만들어서 풀어지게") Relax: the low's inside points
+    (``only``: these vertex indices) moved to the middle of their neighbours again and again - the border points stay
+    - each time put back on the model: a bunched, twisted grid spreads out even.  Returns the points moved."""
+    low, ref = low_of(scene), ref_of(scene)
+    if low is None or ref is None or not len(low.data.vertices):
+        return 0
+    if low.mode == 'EDIT':                       # (Edit Mode: its own copy of the mesh would cover the change)
+        low.update_from_editmode()
+        bpy.ops.object.mode_set(mode='OBJECT')
+        try:
+            return relax_low(scene, only, iterations, strength, view)
+        finally:
+            bpy.ops.object.mode_set(mode='EDIT')
+    import bmesh
+    me = low.data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.verts.ensure_lookup_table()
+    pinned = {v.index for v in bm.verts if v.is_boundary or not v.link_faces}
+    nbr = [[e.other_vert(v).index for e in v.link_edges] for v in bm.verts]
+    bm.free()
+    move = [i for i in range(len(nbr)) if i not in pinned and nbr[i] and (only is None or i in only)]
+    if not move:
+        return 0
+    M, Mi = low.matrix_world, low.matrix_world.inverted()
+    co = np.array([M @ v.co for v in me.vertices])
+    tree = _ref_tree(ref)
+    Mr, Mri = ref.matrix_world, ref.matrix_world.inverted()
+    me.update()
+    nrm = np.array([(M.to_3x3() @ v.normal).normalized() for v in me.vertices])
+    reach = float(np.median([np.linalg.norm(co[i] - co[nbr[i]], axis=1).mean() for i in move])) * 2
+
+    def onto(p, n):
+        """``p`` onto the model along its own normal (the nearer hit, either way) - not the nearest surface, which
+        can be inside a groove next to it."""
+        best = None
+        for d in (n, -n):
+            hit = tree.ray_cast(Mri @ Vector(p), (Mri.to_3x3() @ Vector(d)).normalized(), reach)
+            if hit[0] is not None:
+                q = np.array(Mr @ hit[0])
+                if best is None or np.linalg.norm(q - p) < np.linalg.norm(best - p):
+                    best = q
+        if best is None:
+            hit = tree.find_nearest(Mri @ Vector(p))
+            best = np.array(Mr @ hit[0]) if hit[0] is not None else p
+        return best
+    if view is not None:                        # 0.24.335 as seen: evened out on the screen, back on the model along
+        xy, w = _screen(co, view)               # the line of sight (a groove beside a point does not pull it in);
+        seen = ray_lift(scene, view, xy)        # only the points seen there (not hidden, not round the back)
+        vis = set(i for i in move if w[i] > 0 and not np.isnan(seen[i]).any()
+                  and np.linalg.norm(seen[i] - co[i]) < reach * 0.5)
+        if vis:
+            q = xy.copy()
+            mv = [i for i in move if i in vis]
+            for _it in range(iterations):
+                new = q.copy()
+                for i in mv:
+                    new[i] = q[i] * (1 - strength) + q[nbr[i]].mean(0) * strength
+                q = new
+            lifted = ray_lift(scene, view, q[mv])
+            for i, p_ in zip(mv, lifted):
+                if not np.isnan(p_).any():
+                    co[i] = p_
+            for i in mv:
+                me.vertices[i].co = Mi @ Vector(co[i])
+            me.update()
+            return len(mv)
+        return 0
+    for _it in range(iterations):
+        new = co.copy()
+        for i in move:
+            new[i] = co[i] * (1 - strength) + co[nbr[i]].mean(0) * strength
+        for i in move:
+            new[i] = onto(new[i], nrm[i])
+        co = new
+    for i in move:
+        me.vertices[i].co = Mi @ Vector(co[i])
+    me.update()
+    return len(move)
 
 
 def snap_low(context, scene, only_selected=False):
@@ -1204,6 +1539,7 @@ class MCH_OT_mretopo_draw(bpy.types.Operator):
     def invoke(self, context, event):
         from mathutils.bvhtree import BVHTree
         self.cur_xy = []
+        self.history = []
         if self.mode != 'KEEP':
             context.scene.mch_mretopo.mode = self.mode
         self.ref = ref_of(context.scene)
@@ -1321,7 +1657,60 @@ class MCH_OT_mretopo_draw(bpy.types.Operator):
                         best, at = d, k
         return at
 
+    def _snap(self, context):
+        """0.24.335 (user: "왜 컨트롤 Z 도 안 먹히고") the low as it is, kept for Ctrl+Z (a fill changes it while
+        drawing - Blender's own undo only sees the drawing as one step)."""
+        low = low_of(context.scene)
+        if low is not None:
+            keep = low.data.copy()
+            keep.use_fake_user = False
+            self.history.append(('MESH', keep.name))
+            del self.history[:-MAX_UNDO]
+
+    def _undo(self, context):
+        """Ctrl+Z while drawing: the last line, or the last fill, taken back."""
+        while self.history:
+            kind, name = self.history.pop()
+            if kind == 'LINE':
+                if self.L:
+                    self.L.pop()
+                    self._save(context)
+                    return 'line'
+                continue
+            keep = bpy.data.meshes.get(name)
+            low = low_of(context.scene)
+            if keep is None or low is None:
+                continue
+            old = low.data
+            low.data = keep
+            if old.users == 0:
+                bpy.data.meshes.remove(old)
+            self._preview(context)
+            if context.area is not None:
+                context.area.tag_redraw()
+            return 'fill'
+        if self.L:                              # (lines from before this drawing)
+            self.L.pop()
+            self._save(context)
+            return 'line'
+        return None
+
+    def _drop_last(self):
+        if self.history and self.history[-1][0] == 'MESH':
+            me = bpy.data.meshes.get(self.history.pop()[1])
+            if me is not None and me.users == 0:
+                bpy.data.meshes.remove(me)
+
+    def _drop_history(self):
+        for kind, name in getattr(self, 'history', []):
+            if kind == 'MESH':
+                me = bpy.data.meshes.get(name)
+                if me is not None and me.users == 0:
+                    bpy.data.meshes.remove(me)
+        self.history = []
+
     def _end(self, context):
+        self._drop_history()
         _DRAW['op'] = None
         if _DRAW['handle'] is not None:
             bpy.types.SpaceView3D.draw_handler_remove(_DRAW['handle'], 'WINDOW')
@@ -1346,8 +1735,10 @@ class MCH_OT_mretopo_draw(bpy.types.Operator):
             if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
                 P2 = np.array(self.cur_xy + [xy], float)
                 if is_lasso(P2):                     # 0.24.334 a closed loop round a hole: the hole filled (no hole
-                    n = fill_holes(context, context.scene, P2,                  # inside: an ordinary line - a ring
-                                   view_of(context.region, context.region_data))  # of the grid)
+                    self._snap(context)              # inside: an ordinary line - a ring of the grid)
+                    n = fill_holes(context, context.scene, P2, view_of(context.region, context.region_data))
+                    if not n:
+                        self._drop_last()
                     if n:
                         self.cur = None
                         self._preview(context)
@@ -1356,16 +1747,21 @@ class MCH_OT_mretopo_draw(bpy.types.Operator):
                         return {'RUNNING_MODAL'}
                 if context.scene.mch_mretopo.mode == 'AREA' and len(P2) >= 8:
                     self.cur = None                  # 0.24.334 Area Fill: the outline's inside, quads
+                    self._snap(context)
                     n = area_fill(context, context.scene, P2, view_of(context.region, context.region_data),
                                   context.scene.mch_mretopo.area_size)
                     self._preview(context)
                     context.area.tag_redraw()
+                    if not n:
+                        self._drop_last()
                     self.report({'INFO'} if n else {'WARNING'},
-                                f'Area Fill: {n} face(s)' if n else 'Area Fill: draw round an area of the model')
+                                f'Area Fill: {n} face(s)  (Ctrl+Z: back)' if n else
+                                'Area Fill: draw round an area of the model')
                     return {'RUNNING_MODAL'}
                 if len(self.cur) >= 2:
                     tol = float(np.median([t for t in self.tols if t] or [0.0]))
                     self.L.append((tol, np.array(self.cur), view_of(context.region, context.region_data)))
+                    self.history.append(('LINE', ''))
                     self._save(context)
                 self.cur = None
                 context.area.tag_redraw()
@@ -1390,9 +1786,8 @@ class MCH_OT_mretopo_draw(bpy.types.Operator):
             self._status(context)
             return {'RUNNING_MODAL'}
         if event.type == 'Z' and event.value == 'PRESS' and (event.ctrl or event.oskey):
-            if self.L:
-                self.L.pop()
-                self._save(context)
+            what = self._undo(context)
+            self.report({'INFO'}, {'line': 'Undo: the last line', 'fill': 'Undo: the last fill'}.get(what, 'Nothing to undo'))
             return {'RUNNING_MODAL'}
         if event.type in {'RET', 'NUMPAD_ENTER', 'SPACE'} and event.value == 'PRESS':
             self._end(context)
@@ -1493,7 +1888,8 @@ class MCH_OT_mretopo_edit(bpy.types.Operator):
 
     action: bpy.props.EnumProperty(items=[(a, n, d) for a, n, d, _o, _p in EDIT_ACTIONS]
                                    + [('POLYBUILD', 'Poly Build', 'Blender\'s Poly Build tool: click to add faces'),
-                                      ('RELAX', 'Relax', 'The selected points smoothed, then back on the surface'),
+                                      ('RELAX', 'Relax', 'Untwist: the inside points spread out evenly, on the model - '
+                                                         'the border stays (Edit Mode: the selected points; else all)'),
                                       ('SNAP', 'Snap to Surface', 'The points (selected in Edit Mode) onto the model'),
                                       ('MODE', 'Edit / Object', 'Edit Mode on the low, or back')])
 
@@ -1530,14 +1926,20 @@ class MCH_OT_mretopo_edit(bpy.types.Operator):
             n = snap_low(context, context.scene, only_selected=low.mode == 'EDIT')
             self.report({'INFO'}, f'{n} point(s) on the surface')
             return {'FINISHED'}
+        was_edit = low.mode == 'EDIT'
         if low.mode != 'EDIT':
             bpy.ops.object.mode_set(mode='EDIT')
         try:
             if self.action == 'POLYBUILD':
                 bpy.ops.wm.tool_set_by_id(name='builtin.poly_build')
-            elif self.action == 'RELAX':
-                bpy.ops.mesh.vertices_smooth(factor=0.5, repeat=3)
-                snap_low(context, context.scene, only_selected=True)
+            elif self.action == 'RELAX':            # 0.24.335 untwist: the inside points spread out, on the model
+                bpy.ops.object.mode_set(mode='OBJECT')
+                sel = {v.index for v in low.data.vertices if v.select}
+                rv = context.region_data if context.area is not None and context.area.type == 'VIEW_3D' else None
+                n = relax_low(context.scene, sel if was_edit and sel else None,
+                              view=view_of(context.region, rv) if rv is not None else None)
+                bpy.ops.object.mode_set(mode='EDIT' if was_edit else 'OBJECT')
+                self.report({'INFO'}, f'Relax: {n} point(s) spread out (the border stays)')
             else:
                 _a, _n, _d, op, props = _EDIT[self.action]
                 mod, name = op.split('.')
