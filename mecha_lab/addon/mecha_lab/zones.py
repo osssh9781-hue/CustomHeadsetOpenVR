@@ -45,7 +45,8 @@ from mathutils import Matrix, Vector
 from . import mech_shader as ms
 
 PREFIX = 'mchz:'
-MASK_MAX = 1024
+MASK_MAX = 2048                   # (0.24.344 over the lasso's own area (+ room for lines), not the whole view)
+MASK_UP = 5.0                     # (at most this many times finer than the old whole-view picture)
 LINE_GAIN = 3.0                   # (Line Height 1 = 3 x the Mech bump's unit: a line reads at its narrow width)
 SDF_R = 96.0                      # (the distance field's reach, mask pixels: 0 / 1 in the picture = 96 px out / in;
 #                                    a zone keeps the reach its picture was made with: ``reach``)
@@ -106,14 +107,40 @@ def fill_polygon(pts, w, h, ss=2):
     return out.reshape(h, ss, w, ss).mean(axis=(1, 3))
 
 
+def _sdf_engine():
+    try:
+        from . import fast_shade
+        L = fast_shade.lib()
+        if L is None or L.mbake_version() < 7:
+            return None
+        if not getattr(L, '_sdf_set', False):
+            import ctypes
+            L.mbake_sdf.restype = None
+            L.mbake_sdf.argtypes = [ctypes.c_int, ctypes.POINTER(ctypes.c_float), ctypes.c_int, ctypes.c_int,
+                                    ctypes.c_float, ctypes.POINTER(ctypes.c_float), ctypes.c_int]
+            L._sdf_set = True
+        return L
+    except (ImportError, AttributeError, OSError):
+        return None
+
+
 def signed_distance(pts, w, h, reach=SDF_R):
     """(h, w) float32: each pixel's distance to the polygon's outline (pixels), + inside, - outside, cut at
-    +-``reach`` (only the band round the outline is measured)."""
+    +-``reach`` (only the band round the outline is measured).  0.24.344: by Mecha Lab's engine (C, threads) when it
+    is there - the finer, wider fields of the cropped mask."""
     inside = fill_polygon(pts, w, h) >= 0.5
     d = np.full((h, w), reach, np.float32)
     loops = as_loops(pts)
     if not loops:
         return -d
+    L = _sdf_engine()
+    if L is not None:
+        import ctypes
+        a, b = _edges(loops)
+        seg = np.ascontiguousarray(np.concatenate([a, b], 1), np.float32)
+        L.mbake_sdf(int(len(seg)), seg.ctypes.data_as(ctypes.POINTER(ctypes.c_float)), int(w), int(h), float(reach),
+                    d.ctypes.data_as(ctypes.POINTER(ctypes.c_float)), max(1, min(64, __import__('os').cpu_count() or 1)))
+        return np.where(inside, d, -d)
     for (ax, ay), (bx, by) in zip(*_edges(loops)):
         x0, x1 = int(max(0, math.floor(min(ax, bx) - reach))), int(min(w, math.ceil(max(ax, bx) + reach) + 1))
         y0, y1 = int(max(0, math.floor(min(ay, by) - reach))), int(min(h, math.ceil(max(ay, by) + reach) + 1))
@@ -150,21 +177,37 @@ def _upsample(a, w, h, f):
     return (top * (1 - ty) + bot * ty).astype(np.float32)
 
 
-def mask_image(name, pts, rw, rh):
-    """A packed grey image of the lasso over the whole view (``rw`` x ``rh`` pixels), at most MASK_MAX on its long
-    side: a signed distance field, 0.5 on the outline, + SDF_R pixels inside = 1, outside = 0.  Image row 0 is the
-    bottom (Blender's)."""
-    s = min(1.0, MASK_MAX / float(max(rw, rh)))
-    w, h = max(8, int(round(rw * s))), max(8, int(round(rh * s)))
-    sx, sy = w / float(rw), h / float(rh)
-    loops = [[(p[0] * sx, p[1] * sy) for p in lp] for lp in as_loops(pts)]
-    sd = signed_distance(loops, w, h)
-    a = np.clip(0.5 + sd / (2.0 * SDF_R), 0.0, 1.0)
-    # (the coarse field: a quarter of the size, its reach SDF_R2, scaled back up - smooth, so that is enough)
-    f = 4
-    cw, ch = max(4, (w + f - 1) // f), max(4, (h + f - 1) // f)
-    sdc = signed_distance([[(x / f, y / f) for x, y in lp] for lp in loops], cw, ch, reach=SDF_R2 / f) * f
-    c = np.clip(0.5 + _upsample(sdc, w, h, f) / (2.0 * SDF_R2), 0.0, 1.0)
+def mask_image(name, pts, rw, rh, pad=None):
+    """A packed grey image of the lasso: a signed distance field, 0.5 on the outline, + reach pixels inside = 1,
+    outside = 0 (red / blue the fine field, green the coarse one for wide lines).  Image row 0 is the bottom (Blender's).
+    0.24.344 (user: "영역 나눠서 칠하는 거 경계 해상도를 높일 수 있어?"): the picture covers only the lasso's area and
+    ``pad`` screen pixels round it (room for the boundary line / an airbrushed edge), MASK_MAX on its long side - not the
+    whole view at 1024 - so the outline is many times finer on the part.  The crop (screen pixels) is kept on the image
+    (``mch_crop``) for the projection; the coarse field's reach on it (``mch_reach2``)."""
+    loops0 = as_loops(pts)
+    allp = np.concatenate([np.asarray(lp, np.float64)[:, :2] for lp in loops0]) if loops0 else np.zeros((1, 2))
+    if pad is None:
+        pad = 0.25 * float(max(rw, rh))
+    x0, y0 = allp.min(0) - pad
+    x1, y1 = allp.max(0) + pad
+    cw, chh = max(4.0, x1 - x0), max(4.0, y1 - y0)
+    fast = _sdf_engine() is not None
+    s_old = min(1.0, 1024.0 / float(max(rw, rh)))            # (the old whole-view picture's scale)
+    s = min((MASK_UP if fast else 2.0) * s_old, MASK_MAX / float(max(cw, chh)))
+    s = max(s, s_old) if fast else s
+    k = s / s_old                                             # (the fields reach as far on the screen as before)
+    w, h = max(8, int(round(cw * s))), max(8, int(round(chh * s)))
+    sx, sy = w / cw, h / chh
+    reach = SDF_R * k
+    loops = [[((p[0] - x0) * sx, (p[1] - y0) * sy) for p in lp] for lp in loops0]
+    sd = signed_distance(loops, w, h, reach)
+    a = np.clip(0.5 + sd / (2.0 * reach), 0.0, 1.0)
+    # (the coarse field: reaching the pad (wide lines), worked out smaller and scaled back up - smooth, so enough)
+    reach2 = float(max(SDF_R2 * k, pad * min(sx, sy)))
+    f = max(4, int(round(reach2 / 120.0)))
+    ccw, cch = max(4, (w + f - 1) // f), max(4, (h + f - 1) // f)
+    sdc = signed_distance([[(x / f, y / f) for x, y in lp] for lp in loops], ccw, cch, reach=reach2 / f) * f
+    c = np.clip(0.5 + _upsample(sdc, w, h, f) / (2.0 * reach2), 0.0, 1.0)
     img = bpy.data.images.new(name, w, h, alpha=False, float_buffer=False)
     img.colorspace_settings.name = 'Non-Color'          # (before the pixels: changing it re-makes a new image's buffer)
     px = np.empty((h, w, 4), np.float32)
@@ -174,7 +217,73 @@ def mask_image(name, pts, rw, rh):
     img.pixels.foreach_set(px.ravel())
     img.update()
     img.pack()
+    img['mch_crop'] = [float(x0), float(y0), float(x0 + cw), float(y0 + chh), float(rw), float(rh)]
+    img['mch_reach2'] = reach2
+    img['mch_reach'] = reach
     return img
+
+
+def mask_at(z, x, y, channel=0):
+    """The zone's mask (0..1, 0.5 on the outline; red the fine field, green - ``channel`` 1 - the coarse one) at view
+    pixel (x, y) of the view it was drawn in - the crop and the picture's scale taken into account (bilinear)."""
+    img = z.mask
+    w, h = img.size
+    a = np.empty(w * h * 4, np.float32)
+    img.pixels.foreach_get(a)
+    a = a.reshape(h, w, 4)[..., channel]
+    c = img.get('mch_crop')
+    if c:
+        x0, y0, x1, y1 = (float(v) for v in list(c)[:4])
+        fx, fy = (x - x0) / (x1 - x0) * w - 0.5, (y - y0) / (y1 - y0) * h - 0.5
+    else:
+        fx, fy = x - 0.5, y - 0.5
+    ix, iy = int(np.floor(fx)), int(np.floor(fy))
+    tx, ty = fx - ix, fy - iy
+
+    def px(i, j):
+        if 0 <= i < w and 0 <= j < h:
+            return float(a[j, i])
+        return 0.0
+    return ((px(ix, iy) * (1 - tx) + px(ix + 1, iy) * tx) * (1 - ty) +
+            (px(ix, iy + 1) * (1 - tx) + px(ix + 1, iy + 1) * tx) * ty)
+
+
+def mask_scale(img):
+    """Mask pixels a view pixel (1 for a whole-view picture made before 0.24.344 at 1000 px)."""
+    c = img.get('mch_crop')
+    if not c:
+        return 1.0
+    return img.size[0] / max(float(c[2]) - float(c[0]), 1e-9)
+
+
+def crop_window(window_matrix, img):
+    """The view's window (projection) matrix narrowed to the mask's crop: the crop maps to the whole picture."""
+    c = img.get('mch_crop')
+    if not c:
+        return window_matrix
+    x0, y0, x1, y1, rw, rh = (float(v) for v in c)
+    ax, bx = 2.0 * x0 / rw - 1.0, 2.0 * x1 / rw - 1.0
+    ay, by = 2.0 * y0 / rh - 1.0, 2.0 * y1 / rh - 1.0
+    sx, sy = 2.0 / (bx - ax), 2.0 / (by - ay)
+    C = Matrix(((sx, 0.0, 0.0, -(ax + bx) / (bx - ax)), (0.0, sy, 0.0, -(ay + by) / (by - ay)), (0.0, 0.0, 1.0, 0.0),
+                (0.0, 0.0, 0.0, 1.0)))
+    return C @ window_matrix
+
+
+def zone_pad(ob, view_matrix, window_matrix, rw, rh):
+    """Screen pixels round the lasso the mask keeps: the widest soft edge (30 % of the part's size) / half the widest
+    boundary line, plus a little, as the part is seen."""
+    c = ob.matrix_world @ (sum((Vector(v) for v in ob.bound_box), Vector()) / 8.0)
+    size = max(ob.dimensions) or 1.0
+    vc = view_matrix @ c
+    pts = []
+    for dy in (0.0, 1.0):
+        v = window_matrix @ Vector((vc.x, vc.y + dy, vc.z, 1.0))
+        pts.append(v.y / v.w if abs(v.w) > 1e-12 else 0.0)
+    px_unit = abs(pts[1] - pts[0]) * 0.5 * rh
+    s_old = min(1.0, 1024.0 / float(max(rw, rh)))
+    # (the widest Edge Width is 30 % of the part, a line's half 20 %; never past the old coarse field's reach)
+    return max(24.0, min(0.32 * size * px_unit + 16.0, SDF_R2 / s_old))
 
 
 # -----------------------------------------------------------------------------
@@ -1015,6 +1124,7 @@ def _fill_zone(z, ob, proj, img, view_matrix, window_matrix, persp):
     """A zone's projector, mask and view (shared by a Paint Zone and a Split Zone's line)."""
     z.projector = proj
     z.mask = img
+    window_matrix = crop_window(window_matrix, img)        # (0.24.344 the mask covers the lasso's area only)
     z.win = [window_matrix[r][c] for r in range(4) for c in range(4)]
     z.persp = persp
     to_part = ob.matrix_world.inverted() @ view_matrix.inverted()
@@ -1022,8 +1132,8 @@ def _fill_zone(z, ob, proj, img, view_matrix, window_matrix, persp):
     z.look = tuple((to_part.to_3x3() @ Vector((0.0, 0.0, -1.0))).normalized())
     z.near, z.far = _depth_range(ob, view_matrix, persp)
     z.size = max(ob.dimensions) or 1.0
-    z.reach = SDF_R
-    z.reach2 = SDF_R2
+    z.reach = float(img.get('mch_reach', SDF_R))
+    z.reach2 = float(img.get('mch_reach2', SDF_R2))
     z.px_per_unit = _px_per_unit(ob, view_matrix, window_matrix, img.size[1])
 
 
@@ -1038,7 +1148,7 @@ def add_paint_zone(context, ob, pts, view_matrix, window_matrix, persp, rw, rh, 
     zs = zones_of(mat)
     n = len(zs) + 1
     creature = _cs().is_creature(mat)
-    img = mask_image(f'.MCH Zone {mat.name} {n}', pts, rw, rh)
+    img = mask_image(f'.MCH Zone {mat.name} {n}', pts, rw, rh, zone_pad(ob, view_matrix, window_matrix, rw, rh))
     proj = _projector(context, ob, f'Zone {n} ({ob.name})', view_matrix)
     z = zs.add()
     z.name = f'Zone {n}'
@@ -1362,7 +1472,7 @@ def split_zone(context, ob, pts, view_matrix, window_matrix, persp, rw, rh, pres
         pass
     # the boundary line on both sides of the cut: a line-only zone in the part's material and in the zone's
     n = sum(1 for m in me.materials if m is not None and getattr(m, 'mch_zone_parent', None) == mat)
-    img = mask_image(f'.MCH Zone {zmat.name} line', pts, rw, rh)
+    img = mask_image(f'.MCH Zone {zmat.name} line', pts, rw, rh, zone_pad(ob, view_matrix, window_matrix, rw, rh))
     proj = _projector(context, ob, f'Split Zone {n} ({ob.name})', view_matrix)
     for m in (mat, zmat):
         z = zones_of(m).add()

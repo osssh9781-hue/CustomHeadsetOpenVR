@@ -935,6 +935,25 @@ def apply_preset(mat, ident):
     return True
 
 
+LAYERS_OFF = ('edge_wear', 'scratches', 'rust', 'rust_scratch', 'dirt', 'dirt_top', 'dirt_low', 'snow', 'dust',
+              'streaks', 'primer', 'emission')
+
+
+def clear_layers(mat):
+    """0.24.344 (user: "메크 메테리얼 추가하면 기본으로 더스트인지 러스트인지가 켜져 있는데 처음엔 다 꺼져 있고 내가 하나씩
+    키고 싶어"): every wear / weather layer off - chips, scratches, rust, dirt (crevices, top, low), snow, dust, rain
+    streaks, primer, glow; the surface's own look untouched (one sync at the end)."""
+    st = getattr(mat, KEY)
+    _SYNCING[0] = True
+    try:
+        for k in LAYERS_OFF:
+            if hasattr(st, k):
+                setattr(st, k, 0.0)
+    finally:
+        _SYNCING[0] = False
+    sync(mat)
+
+
 def apply_wear(mat, ident):
     """0.24.95 An Edge Wear preset: only the edge wear's settings (WEAR_KEYS) - 'PRESET' = the material preset's."""
     st = getattr(mat, KEY)

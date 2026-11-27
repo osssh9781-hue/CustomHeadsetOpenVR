@@ -109,13 +109,8 @@ def square(c, r):
 
 
 def mask_at(z, x, y):
-    """The zone's mask (0..1, 0.5 on the outline) at view pixel (x, y)."""
-    img = z.mask
-    w, h = img.size
-    a = np.empty(w * h * 4, np.float32)
-    img.pixels.foreach_get(a)
-    a = a.reshape(h, w, 4)
-    return float(a[int(y * h / 1000.0), int(x * w / 1000.0), 0])
+    """The zone's mask (0..1, 0.5 on the outline) at view pixel (x, y) (0.24.344: through the crop)."""
+    return zn.mask_at(z, x, y)
 
 
 def select(*obs):

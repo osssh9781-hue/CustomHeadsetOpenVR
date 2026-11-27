@@ -98,17 +98,22 @@ check('The Mech Shader has the zone hubs (mask, cover, rough, metal, colour; own
 own = sorted(n.name for n in mat.node_tree.nodes)
 z = zn.add_paint_zone(C, part, square, vm, wm, True, RW, RH, color=(0.8, 0.35, 0.0))
 proj = z.projector
-check('Paint Zone: a projector parented to the part (hidden, no render), a packed mask picture of the lasso',
+check('Paint Zone: a projector parented to the part (hidden, no render), a packed mask picture of the lasso '
+      '(0.24.344: the lasso\'s area only, finer than the old whole view - 1000 px)',
       proj is not None and proj.parent == part and proj.hide_get() and proj.hide_render and z.mask.packed_file
-      is not None and z.mask.size[0] == 1000 and z.mask.size[1] == 1000)
-mpx = np.array(z.mask.pixels[:]).reshape(1000, 1000, 4)[..., 0]
+      is not None and zn.mask_scale(z.mask) >= 1.0 and z.mask.get('mch_crop') is not None)
 cx, cy = int(sum(p[0] for p in square) / 4), int(sum(p[1] for p in square) / 4)
-ins = mpx > 0.5
-edge_v = mpx[cy, int(round(square[0][0]))]
+edge_v = zn.mask_at(z, square[0][0], cy + 0.5)
+img_ = z.mask
+w_, h_ = img_.size
+a_ = np.empty(w_ * h_ * 4, np.float32)
+img_.pixels.foreach_get(a_)
+a_ = a_.reshape(h_, w_, 4)[..., 0]
+ins_area = float((a_ > 0.5).sum()) / (zn.mask_scale(img_) ** 2)
 check('... the mask: a distance field of the lasso - 1 deep inside, 0 outside, 0.5 on the outline, the inside as big '
-      'as the square', mpx[cy, cx] > 0.99 and mpx[5, 5] < 0.01 and abs(edge_v - 0.5) < 0.03
-      and abs(ins.sum() - (square[1][0] - square[0][0]) * (square[2][1] - square[1][1])) < 2500,
-      (round(float(edge_v), 3), int(ins.sum())))
+      'as the square', zn.mask_at(z, cx, cy) > 0.99 and zn.mask_at(z, 5, 5) < 0.01 and abs(edge_v - 0.5) < 0.03
+      and abs(ins_area - (square[1][0] - square[0][0]) * (square[2][1] - square[1][1])) < 2500,
+      (round(float(edge_v), 3), int(ins_area)))
 nodes = mat.node_tree.nodes
 check('... linked into the Mech Shader (the hubs fed by the zone\'s nodes)',
       nodes['mch:zone_mask'].inputs[0].is_linked and nodes['mch:zone_color'].inputs[6].is_linked

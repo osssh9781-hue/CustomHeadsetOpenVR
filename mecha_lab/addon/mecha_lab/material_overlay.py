@@ -25,7 +25,7 @@ NODES = 'mch_over_nodes'           # the user's nodes (JSON list of names) - kep
 SOCKS = 'mch_over_socks'           # what fed their Material Output (JSON {input: [node, output identifier]})
 KINDS = (('MECH', 'Mech', 'The Mech Shader over it: chips / scratches through it, rust, dirt, snow on top'),
          ('CREATURE', 'Creature', 'The Creature Shader over it: mud, dust, blood, slime, snow ... on top'))
-DEFAULT_MECH = 'DIRTY'             # (shows at once over any material - low-poly too: dirt in the crevices, scratches)
+DEFAULT_MECH = 'DIRTY'             # (its surface / maps; 0.24.344 its layers all off at first - the user turns each on)
 DEFAULT_COND = 'SWAMP'
 
 
@@ -219,6 +219,8 @@ class MCH_OT_material_over(bpy.types.Operator):
         if self.kind == 'MECH':
             ms.build(mat)
             ms.apply_preset(mat, self.preset if self.preset in ms.PRESET_IDS else DEFAULT_MECH)
+            if self.preset not in ms.PRESET_IDS:
+                ms.clear_layers(mat)                 # (0.24.344 over yours: everything off - switch on what you want)
         else:
             cs.build(mat)
             st = getattr(mat, cs.KEY)

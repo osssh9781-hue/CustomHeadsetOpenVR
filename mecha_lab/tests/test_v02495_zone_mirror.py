@@ -302,20 +302,25 @@ zz.line_width = 6.0
 hw_fine, sel_fine = zn.line_px(zz)
 zz.line_width = 35.0
 hw_wide, sel_wide = zn.line_px(zz)
-check('... drawn zoomed in (the part 900 px wide): a 35 % line is wider than the fine distance field reaches (96 '
-      'px) - it reads the coarse one (480 px); 6 % the fine one', sel_fine == 0.0 and sel_wide == 1.0
-      and hw_wide > 96.0 and hw_wide <= 0.95 * zn.SDF_R2
+check('... drawn zoomed in (the part 900 px wide): a 35 % line is wider than the fine distance field reaches - it '
+      'reads the coarse one; 6 % the fine one', sel_fine == 0.0 and sel_wide == 1.0
+      and hw_wide > zz.reach * 0.8 and hw_wide <= 0.95 * zn._reach2(zz)
       and nd[f'mchz:{zi}:lsel'].outputs[0].default_value == 1.0
       and abs(nd[f'mchz:{zi}:lw'].outputs[0].default_value - hw_wide) < 1e-3, (round(hw_fine, 1), round(hw_wide, 1)))
 img = z1.mask
-iw, ih = img.size
-px_ = np.empty(iw * ih * 4, np.float32)
-img.pixels.foreach_get(px_)
-px_ = px_.reshape(ih, iw, 4)
-far = (int(c0[1] * ih / 1000), int((c0[0] + 45 + 200) * iw / 1000))
-check('... the mask holds both: red the fine field (0 200 px out), green the coarse one (still falling there)',
-      px_[far][0] < 0.01 and abs(px_[far][1] - (0.5 - 200 / 960)) < 0.03, (round(float(px_[far][0]), 3),
-                                                                           round(float(px_[far][1]), 3)))
+k_ = zn.mask_scale(img)
+fy_ = c0[1]
+crop_ = list(img['mch_crop'])
+pad_ = crop_[2] - (c0[0] + 45)                 # (screen pixels kept past the lasso on this side)
+dpx = 0.8 * pad_
+red_far = zn.mask_at(z1, c0[0] + 45 + dpx, fy_)
+green_far = zn.mask_at(z1, c0[0] + 45 + dpx, fy_, 1)
+want_r = max(0.0, 0.5 - dpx * k_ / (2.0 * z1.reach))
+want_g = max(0.0, 0.5 - dpx * k_ / (2.0 * z1.reach2))
+check('... the mask holds both fields (0.24.344 over the lasso\'s area + room for the widest edge): red the fine one, '
+      'green the coarse one - each as far out as it should be', abs(red_far - want_r) < 0.03
+      and abs(green_far - want_g) < 0.03 and green_far > red_far,
+      (round(float(red_far), 3), round(float(green_far), 3), round(want_r, 3), round(want_g, 3)))
 z1.reach2 = 0.0
 check('... a zone made before (no coarse field): never reads it, the line no wider than the fine one',
       zn.line_px(z1)[1] == 0.0 and zn.line_px(z1)[0] <= 0.95 * z1.reach)

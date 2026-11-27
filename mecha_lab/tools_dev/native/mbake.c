@@ -384,7 +384,7 @@ static void margin_fill(float *out, int ch, const unsigned char *mask, int w, in
   free(ring); free(m);
 }
 
-EXPORT int mbake_version(void) { return 6; }
+EXPORT int mbake_version(void) { return 7; }
 
 /* v2: the Normal map and, in the same rays, the Height (hit distance along the low's normal, world units; NULL: not
  * wanted) and a value of the high's points (hA, e.g. its curvature, between the hit triangle's corners; NULL: not
@@ -932,4 +932,56 @@ EXPORT void mbake_image_box(const float *img, int iw, int ih, int ch, int interp
   j.im.img = img; j.im.iw = iw; j.im.ih = ih; j.im.ch = ch; j.im.interp = interp; j.im.ext = ext; j.im.uv = NULL;
   j.im.out = out; j.co = co; j.N = N; j.blend = blend;
   parallel(box_work, &j, n, threads);
+}
+
+
+/* v7 (0.24.344): each pixel's distance (pixel centres) to the nearest of ``nseg`` segments (x0 y0 x1 y1, pixels),
+ * cut at ``reach`` - the lasso Zones' distance field, rows in threads */
+typedef struct { const float *seg; int nseg, w, h; float reach; float *out; } SdfJob;
+static void sdf_work(void *c, int r0, int r1) {
+  SdfJob *j = (SdfJob *)c;
+  float R = j->reach;
+  for (int y = r0; y < r1; y++) {
+    float py = y + 0.5f;
+    float *row = j->out + (size_t)y * j->w;
+    for (int x = 0; x < j->w; x++) row[x] = R;
+    for (int k = 0; k < j->nseg; k++) {
+      const float *sg = j->seg + k * 4;
+      float ax = sg[0], ay = sg[1], bx = sg[2], by = sg[3];
+      if (py < fminf(ay, by) - R || py > fmaxf(ay, by) + R) continue;
+      int x0 = (int)floorf(fminf(ax, bx) - R), x1 = (int)ceilf(fmaxf(ax, bx) + R) + 1;
+      if (x0 < 0) x0 = 0;
+      if (x1 > j->w) x1 = j->w;
+      float ex = bx - ax, ey = by - ay, ll = ex * ex + ey * ey;
+      for (int x = x0; x < x1; x++) {
+        float px = x + 0.5f;
+        float t = ll > 0.f ? ((px - ax) * ex + (py - ay) * ey) / ll : 0.f;
+        if (t < 0.f) t = 0.f; else if (t > 1.f) t = 1.f;
+        float dx = px - (ax + t * ex), dy = py - (ay + t * ey);
+        float d = sqrtf(dx * dx + dy * dy);
+        if (d < row[x]) row[x] = d;
+      }
+    }
+  }
+}
+EXPORT void mbake_sdf(int nseg, const float *seg, int w, int h, float reach, float *out, int threads) {
+  if (w <= 0 || h <= 0) return;
+  SdfJob j = {seg, nseg, w, h, reach, out};
+  int nt = threads < 1 ? 1 : threads;
+  if (h < 64) nt = 1;
+  /* (rows split between the threads) */
+  Work wk[64];
+  if (nt > 64) nt = 64;
+  for (int k = 0; k < nt; k++) { wk[k].f = sdf_work; wk[k].ctx = &j; wk[k].i0 = h * k / nt; wk[k].i1 = h * (k + 1) / nt; }
+#ifdef _WIN32
+  HANDLE th[64];
+  for (int k = 1; k < nt; k++) th[k] = CreateThread(NULL, 0, work_thread, &wk[k], 0, NULL);
+  sdf_work(&j, wk[0].i0, wk[0].i1);
+  for (int k = 1; k < nt; k++) if (th[k]) { WaitForSingleObject(th[k], INFINITE); CloseHandle(th[k]); } else sdf_work(&j, wk[k].i0, wk[k].i1);
+#else
+  pthread_t th[64]; int ok[64];
+  for (int k = 1; k < nt; k++) ok[k] = pthread_create(&th[k], NULL, work_thread, &wk[k]) == 0;
+  sdf_work(&j, wk[0].i0, wk[0].i1);
+  for (int k = 1; k < nt; k++) { if (ok[k]) pthread_join(th[k], NULL); else sdf_work(&j, wk[k].i0, wk[k].i1); }
+#endif
 }
