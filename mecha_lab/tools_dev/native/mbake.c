@@ -251,6 +251,7 @@ typedef struct {
   int n0, n1, green_neg; float maxdist;
   float *out, *outh, *outa, *outo;
   int ao_n; float ao_dist;
+  float *hq, *hn, *hg; int *ht;     /* (v9: the hit itself - point, smooth / geometric normal, triangle - for the GPU) */
 } Job;
 
 static void norm3(float *v) {
@@ -283,6 +284,7 @@ static void run_job(Job *j) {
     }
     float tt, u, v, n[3];
     int h = trace(j->bvh, o, d, j->maxdist, &tt, &u, &v);
+    if (j->ht) j->ht[px] = h;
     if (h < 0) {
       n[0] = N[0]; n[1] = N[1]; n[2] = N[2];
       if (j->outh) j->outh[px] = 0.f;
@@ -293,6 +295,17 @@ static void run_job(Job *j) {
       float w0 = 1.f - u - v;
       for (int a = 0; a < 3; a++) n[a] = w0 * hn[a] + u * hn[3 + a] + v * hn[6 + a];
       norm3(n);
+      if (j->hq) {                     /* (v9) the hit for the GPU's AO: point, smooth normal, face normal toward it */
+        const int *tri = j->bvh->T + h * 3;
+        const float *p0 = j->bvh->V + tri[0] * 3, *p1 = j->bvh->V + tri[1] * 3, *p2 = j->bvh->V + tri[2] * 3;
+        float e1[3] = {p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]}, e2[3] = {p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]};
+        float g[3] = {e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]};
+        norm3(g);
+        if (g[0] * n[0] + g[1] * n[1] + g[2] * n[2] < 0) { g[0] = -g[0]; g[1] = -g[1]; g[2] = -g[2]; }
+        for (int a = 0; a < 3; a++) {
+          j->hq[px * 3 + a] = o[a] + d[a] * tt; j->hn[px * 3 + a] = n[a]; j->hg[px * 3 + a] = g[a];
+        }
+      }
       if (j->outh) {                   /* height: the hit over the low's point, along the low's normal */
         float q[3] = {o[0] + d[0] * tt - P[0], o[1] + d[1] * tt - P[1], o[2] + d[2] * tt - P[2]};
         j->outh[px] = q[0] * N[0] + q[1] * N[1] + q[2] * N[2];
@@ -384,16 +397,42 @@ static void margin_fill(float *out, int ch, const unsigned char *mask, int w, in
   free(ring); free(m);
 }
 
-EXPORT int mbake_version(void) { return 7; }
+EXPORT int mbake_version(void) { return 9; }
 
 /* v2: the Normal map and, in the same rays, the Height (hit distance along the low's normal, world units; NULL: not
  * wanted) and a value of the high's points (hA, e.g. its curvature, between the hit triangle's corners; NULL: not
  * wanted).  out may be NULL too (only Height / the value). */
+static int maps_impl(int nlt, const float *luv, const float *lP, const float *lN, const float *lT, const float *lS,
+                     const float *lC, int nhv, const float *hV, int nht, const int *hT, const float *hN,
+                     const float *hA, int w, int h, float maxdist, int green_neg, int margin, int threads,
+                     float *out, float *outh, float *outa, float *outo, int ao_n, float ao_dist,
+                     unsigned char *mask, float *hq, float *hn, float *hg, int *ht);
+
 EXPORT int mbake_maps(int nlt, const float *luv, const float *lP, const float *lN, const float *lT, const float *lS,
                       const float *lC, int nhv, const float *hV, int nht, const int *hT, const float *hN,
                       const float *hA, int w, int h, float maxdist, int green_neg, int margin, int threads,
                       float *out, float *outh, float *outa, float *outo, int ao_n, float ao_dist,
-                      unsigned char *mask)
+                      unsigned char *mask) {
+  return maps_impl(nlt, luv, lP, lN, lT, lS, lC, nhv, hV, nht, hT, hN, hA, w, h, maxdist, green_neg, margin, threads,
+                   out, outh, outa, outo, ao_n, ao_dist, mask, NULL, NULL, NULL, NULL);
+}
+
+/* v9 (0.24.346): mbake_maps + each texel's hit (point, smooth normal, face normal, triangle; -1: none) - the AO then
+ * on the GPU from these */
+EXPORT int mbake_maps_hits(int nlt, const float *luv, const float *lP, const float *lN, const float *lT,
+                           const float *lS, const float *lC, int nhv, const float *hV, int nht, const int *hT,
+                           const float *hN, const float *hA, int w, int h, float maxdist, int green_neg, int margin,
+                           int threads, float *out, float *outh, float *outa, unsigned char *mask, float *hq,
+                           float *hn, float *hg, int *ht) {
+  return maps_impl(nlt, luv, lP, lN, lT, lS, lC, nhv, hV, nht, hT, hN, hA, w, h, maxdist, green_neg, margin, threads,
+                   out, outh, outa, NULL, 0, 0.f, mask, hq, hn, hg, ht);
+}
+
+static int maps_impl(int nlt, const float *luv, const float *lP, const float *lN, const float *lT, const float *lS,
+                     const float *lC, int nhv, const float *hV, int nht, const int *hT, const float *hN,
+                     const float *hA, int w, int h, float maxdist, int green_neg, int margin, int threads,
+                     float *out, float *outh, float *outa, float *outo, int ao_n, float ao_dist,
+                     unsigned char *mask, float *hq, float *hn, float *hg, int *ht)
 {
   if (nlt <= 0 || nht <= 0 || nhv <= 0 || w <= 0 || h <= 0) return 1;
   for (int i = 0; i < nht * 3; i++) if (hT[i] < 0 || hT[i] >= nhv) return 1;
@@ -446,6 +485,7 @@ EXPORT int mbake_maps(int nlt, const float *luv, const float *lP, const float *l
   if (outh) for (size_t i = 0; i < np; i++) outh[i] = 0.f;
   if (outa) for (size_t i = 0; i < np; i++) outa[i] = 0.5f;
   if (outo) for (size_t i = 0; i < np; i++) outo[i] = 1.f;
+  if (ht) for (size_t i = 0; i < np; i++) ht[i] = -1;
   if (outa && !hA) { rc = 1; goto done; }
   {
     int nt = threads < 1 ? 1 : (threads > 64 ? 64 : threads);
@@ -454,7 +494,7 @@ EXPORT int mbake_maps(int nlt, const float *luv, const float *lP, const float *l
     for (int k = 0; k < nt; k++) {
       Job jb = {&b, lP, lN, lT, lS, lC, hN, hA, ptri, pbar, plist, (int)((long long)n * k / nt),
                 (int)((long long)n * (k + 1) / nt), green_neg, maxdist, out, outh, outa, outo,
-                ao_n < 1 ? 1 : ao_n, ao_dist};
+                ao_n < 1 ? 1 : ao_n, ao_dist, hq, hn, hg, ht};
       jobs[k] = jb;
     }
 #ifdef _WIN32
@@ -984,4 +1024,34 @@ EXPORT void mbake_sdf(int nseg, const float *seg, int w, int h, float reach, flo
   sdf_work(&j, wk[0].i0, wk[0].i1);
   for (int k = 1; k < nt; k++) { if (ok[k]) pthread_join(th[k], NULL); else sdf_work(&j, wk[k].i0, wk[k].i1); }
 #endif
+}
+
+
+/* v8 (0.24.346): a scene's BVH for the GPU - its node count / triangle count, then the nodes (8 floats: min xyz,
+ * first / left child, max xyz, count (> 0 leaf, else - right child)) and the triangles in leaf order (12 floats: three
+ * corners xyz + the triangle's own index in the 4th of the first) */
+EXPORT void mbake_scene_size(void *p, int *nn, int *nt) {
+  Scene *s = (Scene *)p;
+  *nn = s ? s->b.nn : 0;
+  *nt = s ? s->b.nt : 0;
+}
+EXPORT void mbake_scene_export(void *p, float *nodes, float *tris) {
+  Scene *s = (Scene *)p;
+  if (!s) return;
+  const BVH *b = &s->b;
+  for (int i = 0; i < b->nn; i++) {
+    const Node *n = &b->nodes[i];
+    float *o = nodes + i * 8;
+    o[0] = n->mn[0]; o[1] = n->mn[1]; o[2] = n->mn[2]; o[3] = (float)n->left;
+    o[4] = n->mx[0]; o[5] = n->mx[1]; o[6] = n->mx[2]; o[7] = (float)n->count;
+  }
+  for (int k = 0; k < b->nt; k++) {
+    int t = b->idx[k];
+    float *o = tris + k * 12;
+    for (int c = 0; c < 3; c++) {
+      const float *v = b->V + b->T[t * 3 + c] * 3;
+      o[c * 4] = v[0]; o[c * 4 + 1] = v[1]; o[c * 4 + 2] = v[2]; o[c * 4 + 3] = 0.f;
+    }
+    o[3] = (float)t;
+  }
 }

@@ -110,6 +110,9 @@ class MCH_PG_BakeMaps(bpy.types.PropertyGroup):
     folder: StringProperty(name='Folder', default='//bake_maps/', subtype='DIR_PATH',
                            description='Where the PNGs go (// = next to the .blend)')
     show: BoolProperty(name='Show Low', default=True, description='After baking show the low (the high hidden)')
+    gpu: BoolProperty(name='GPU', default=True,
+                      description='Fast Bake\'s rays (AO, the AO nodes) on the graphics card - the same result, faster '
+                      'on a big card; no GPU / it fails: the CPU engine as before')
     fast: BoolProperty(name='Fast Bake', default=True,
                        description='Bake with Mecha Lab\'s own engine instead of Cycles - with a High Poly: Normal, '
                        'Height, Curvature, AO; No High Poly: the material\'s nodes worked out directly (a node it does '
@@ -788,6 +791,7 @@ def bake_pair_steps(context, low, highs, st, keep_state=None):
         ext = size * float(st.ray) / 100.0
         # 0.24.340 (user: "베이크를 좀 더 빠르게") Normal / Height / Curvature by our own engine, all from the same
         # rays (fast_bake); the rest (and these, should it fail) by Cycles as before
+        got = None
         fast_kinds = [k for k in kinds if k in ('NORMAL', 'HEIGHT', 'CURV') or (k == 'AO' and not st.ao_others)] \
             if getattr(st, 'fast', True) else []      # (0.24.341 AO too - unless other objects shade it)
         cy_kinds = list(kinds)
@@ -798,7 +802,8 @@ def bake_pair_steps(context, low, highs, st, keep_state=None):
                 try:
                     got = fast_bake.bake_maps(context, low, highs, res, res, ext, fast_kinds, st.green,
                                               int(st.margin), ao_samples=int(st.ao_samples),
-                                              ao_dist=size * float(st.ao_distance) / 100.0)
+                                              ao_dist=size * float(st.ao_distance) / 100.0,
+                                              use_gpu=bool(getattr(st, 'gpu', False)))
                 except RuntimeError as ex:
                     print('Mecha Lab fast bake: Cycles instead -', ex)
                     got = None
@@ -895,7 +900,8 @@ def bake_pair_steps(context, low, highs, st, keep_state=None):
                 s.material = mat
     info = dict(low=low.name, highs=[h.name for h in highs], maps=kinds, res=res, uv=uv, sharp=sharp,
                 ray=size * float(st.ray) / 100.0, stored=stored, material=mat.name if mat else None,
-                seconds=time.time() - t0, gpu=gpu, fast=[k for k in kinds if k not in cy_kinds])
+                seconds=time.time() - t0, gpu=gpu, fast=[k for k in kinds if k not in cy_kinds],
+                fast_gpu=bool(got.get('gpu')) if isinstance(got, dict) else False)
     LAST.clear()
     LAST.update(info)
     return info
@@ -1180,10 +1186,18 @@ def bake_self_steps(context, low, st, kinds, keep_state=None):
             s.material = mat
     info = dict(low=low.name, highs=[], maps=kinds, res=res, uv=uv, sharp=sharp, ray=0.0, stored=stored,
                 material=mat.name if mat else None, seconds=time.time() - t0, own=True, skipped=skipped, gpu=gpu,
-                fast=sorted(fast_px), fast_why=fast_why)
+                fast=sorted(fast_px), fast_why=fast_why, fast_gpu=_gpu_rays() > 0)
     LAST.clear()
     LAST.update(info)
     return info
+
+
+def _gpu_rays():
+    try:
+        from . import fast_shade
+        return fast_shade.GPU_RAYS[0]
+    except (ImportError, AttributeError):
+        return 0
 
 
 def kinds_of(st):
@@ -1433,7 +1447,7 @@ def bake_self_one_steps(context, objs, st, keep_state=None):
     context.view_layer.objects.active = joined
     info = dict(low=joined.name, highs=[], maps=sorted(images), res=res, uv='smart', sharp=None, ray=0.0,
                 stored=stored, material=mat.name, seconds=time.time() - t0, own=True, one=[o.name for o in objs],
-                skipped=skipped, gpu=False, fast=sorted(fast_all), fast_why=why_all)
+                skipped=skipped, gpu=False, fast=sorted(fast_all), fast_why=why_all, fast_gpu=_gpu_rays() > 0)
     LAST.clear()
     LAST.update(info)
     return info
@@ -1555,7 +1569,12 @@ def draw(layout, context):
     r.prop(st, 'rough', toggle=True)
     r.prop(st, 'metal', toggle=True)
     r.prop(st, 'curv', toggle=True)
-    col.prop(st, 'fast', toggle=True, icon='SORTTIME')                # 0.24.340 (0.24.341 No High Poly too)
+    r_f = col.row(align=True)                                         # 0.24.340 (0.24.341 No High Poly too)
+    r_f.prop(st, 'fast', toggle=True, icon='SORTTIME')
+    if st.fast:
+        r_f.prop(st, 'gpu', toggle=True, icon='MEMORY')                # 0.24.346 its rays on the graphics card
+        if st.gpu:
+            col.operator('mch.gpu_bake_check', icon='TIME')
     r.prop(st, 'height', toggle=True)
     r.prop(st, 'emit', toggle=True)                  # 0.24.325
     col = box.column(align=True)

@@ -1009,7 +1009,10 @@ def draw(layout, context, colour=None):
     r.prop(st, 'curv', toggle=True)
     r.prop(st, 'height', toggle=True)
     r.prop(st, 'emit', toggle=True)                  # 0.24.325
-    col.prop(st, 'fast', toggle=True, icon='SORTTIME')    # 0.24.340 our own baker (0.24.341 No High Poly too)
+    r_f = col.row(align=True)                        # 0.24.340 our own baker (0.24.341 No High Poly too)
+    r_f.prop(st, 'fast', toggle=True, icon='SORTTIME')
+    if st.fast:
+        r_f.prop(st, 'gpu', toggle=True, icon='MEMORY')            # 0.24.346 its rays on the graphics card
     r = pc.primary(box.row(align=True))
     r.scale_y = 1.3
     r.enabled = n_low > 0

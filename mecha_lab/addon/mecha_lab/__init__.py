@@ -2084,6 +2084,8 @@ def _register():
     manual_retopo.register()                      # 0.24.332 Manual Retopo (draw the low)
     from . import retopo_project
     retopo_project.register()                     # 0.24.342 Project to Original
+    from . import gpu_bench
+    gpu_bench.register()                          # 0.24.346 Check GPU Bake
     from . import mecha_guides
     mecha_guides.register()                       # 0.24.338 Rig > Mecha Guides
     hair_cards.register()                         # 0.24.241 hair -> hair cards
@@ -2403,6 +2405,7 @@ def _unregister_steps():
         ('rigging', rigging.unregister),
         ('hair_cards', hair_cards.unregister),
         ('mecha_guides', __import__(__name__ + '.mecha_guides', fromlist=['x']).unregister),
+        ('gpu_bench', __import__(__name__ + '.gpu_bench', fromlist=['x']).unregister),
         ('retopo_project', __import__(__name__ + '.retopo_project', fromlist=['x']).unregister),
         ('manual_retopo', __import__(__name__ + '.manual_retopo', fromlist=['x']).unregister),
         ('retopo_bake', retopo_bake.unregister),

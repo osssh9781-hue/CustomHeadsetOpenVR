@@ -59,6 +59,11 @@ def lib():
                     L.mbake_image_box.argtypes = [_FP, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
                                                   ctypes.c_int, ctypes.c_int, _FP, _FP, ctypes.c_float, _FP,
                                                   ctypes.c_int]
+                    if L.mbake_version() >= 8:                 # (0.24.346 the BVH for the GPU)
+                        L.mbake_scene_size.restype = None
+                        L.mbake_scene_size.argtypes = [ctypes.c_void_p, _IP, _IP]
+                        L.mbake_scene_export.restype = None
+                        L.mbake_scene_export.argtypes = [ctypes.c_void_p, _FP, _FP]
                     L.mbake_cast.restype = None
                     L.mbake_cast.argtypes = [ctypes.c_void_p, ctypes.c_int, _FP, _FP, ctypes.c_float, _IP, _FP, _FP,
                                              _FP, ctypes.c_int]
@@ -1214,8 +1219,7 @@ class Eval:
         if sc:
             P, Nn, Ng = _c(g.P), _c(_unit(N)), _c(g.Ng)
             tri = _c(g.tri, np.int32) if sc is self.local else None
-            L.mbake_ao(sc, int(g.n), _ptr(P), _ptr(Nn), _ptr(Ng), _ptr(tri, _IP) if tri is not None else None,
-                       _ptr(self.seeds, _UIP), int(ns), float(dist), 1 if n.inside else 0, _ptr(out), _threads())
+            _ao(sc, P, Nn, Ng, tri, self.seeds, int(ns), float(dist), n.inside, out)
         if s.identifier == 'AO':
             return out
         col = np.asarray(col, np.float32)
@@ -1452,6 +1456,40 @@ def _add_c(a, b, kind):
 # the bake
 # ---------------------------------------------------------------------------------------------------------------------
 
+USE_GPU = [False]                 # (0.24.346 set by bake_parts from the Bake settings' GPU switch)
+GPU_RAYS = [0]                    # (rays the GPU took in the last bake - for the report / tests)
+
+
+def _ao(sc, P, N, Ng, tri, seeds, ns, dist, inside, out):
+    """AO of points into ``out``: on the GPU when it is on and works, else the C engine."""
+    L = lib()
+    if USE_GPU[0]:
+        try:
+            from . import gpu_bake as gb
+            if gb.available():
+                r = gb.ao(L, sc, P, N, Ng, tri, seeds, ns, dist, bool(inside))
+                if r is not None:
+                    out[:] = r
+                    GPU_RAYS[0] += len(P) * int(ns)
+                    return
+        except Exception:                            # (anything: the C engine)
+            pass
+    L.mbake_ao(sc, int(len(P)), _ptr(_c(P)), _ptr(_c(N)), _ptr(_c(Ng)),
+               _ptr(_c(tri, np.int32), _IP) if tri is not None else None, _ptr(_c(seeds, np.uint32), _UIP), int(ns),
+               float(dist), 1 if inside else 0, _ptr(out), _threads())
+
+
+def _scene_free(sc):
+    if not sc:
+        return
+    try:
+        from . import gpu_bake as gb
+        gb.forget(sc)
+    except ImportError:
+        pass
+    lib().mbake_scene_free(sc)
+
+
 def _scene_new(V, T, N):
     L = lib()
     return L.mbake_scene_new(int(len(V)), _ptr(_c(V)), int(len(T)), _ptr(_c(T, np.int32), _IP), _ptr(_c(N)))
@@ -1670,6 +1708,8 @@ def bake_parts(context, parts, kinds, res, st, margin=16, ray_quality=1.0, decal
     if L is None:
         return {}, {k: 'no engine' for k in kinds}, 0.0
     from . import bake_maps as bm_
+    USE_GPU[0] = bool(getattr(st, 'gpu', False))
+    GPU_RAYS[0] = 0
     why = {}
     geos = []
     for ob in parts:
@@ -1706,11 +1746,11 @@ def bake_parts(context, parts, kinds, res, st, margin=16, ray_quality=1.0, decal
                 if 'AO' in kinds:
                     o = np.ones(g.n, np.float32)
                     ns = min(int(st.ao_samples), bm_.AO_CAP.get(getattr(st, 'quality', 'NORMAL'), 10 ** 6))
-                    L.mbake_ao(scene or local, int(g.n), _ptr(_c(g.P)), _ptr(_c(g.N)), _ptr(_c(g.Ng)), None,
-                               _ptr(seeds, _UIP), int(max(ns, 16)), float(ao_dist), 0, _ptr(o), _threads())
+                    _ao(scene or local, _c(g.P), _c(g.N), _c(g.Ng), None, seeds, int(max(ns, 16)), float(ao_dist), False,
+                        o)
                     pix['AO'] = np.repeat(o[:, None], 3, 1)
             finally:
-                L.mbake_scene_free(local)
+                _scene_free(local)
             for k, v in pix.items():
                 if k in why:
                     continue
@@ -1731,7 +1771,7 @@ def bake_parts(context, parts, kinds, res, st, margin=16, ray_quality=1.0, decal
             mask |= g.mask
     finally:
         if scene:
-            L.mbake_scene_free(scene)
+            _scene_free(scene)
     out = {}
     for k in kinds:
         if k in why:

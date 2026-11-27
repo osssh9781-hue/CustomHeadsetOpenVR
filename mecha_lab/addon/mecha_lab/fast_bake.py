@@ -162,7 +162,7 @@ def _high_arrays(context, highs, want_curv=False):
 
 
 def bake_maps(context, low, highs, w, h, ext, kinds=('NORMAL',), green='OPENGL', margin=16, threads=None,
-              ao_samples=64, ao_dist=1.0):
+              ao_samples=64, ao_dist=1.0, use_gpu=False):
     """The maps ``kinds`` (NORMAL / HEIGHT / CURV / AO - 0.24.341: ``ao_samples`` cosine rays a texel from the high's
     point, ``ao_dist`` world units) of ``highs`` onto ``low`` (w x h), all from the same rays, with
     the cage ``ext`` (world units).  Returns {kind: pixels (h, w, 4) float32}, 'HEIGHT_RANGE': the height range
@@ -189,6 +189,13 @@ def bake_maps(context, low, highs, w, h, ext, kinds=('NORMAL',), green='OPENGL',
         return a.ctypes.data_as(_FP)
     a_HT = np.ascontiguousarray(HT, np.int32)
     th = threads or max(1, min(64, os.cpu_count() or 1))
+    # 0.24.346 (user: "나 gpu가 5090인데 안 쓰면 아깝잖아") the AO's rays on the graphics card: the engine finds each
+    # texel's hit (point, normals) with the other maps, the GPU shoots the AO from there
+    if outo is not None and use_gpu and _gpu_ok(L):
+        got = _maps_gpu_ao(L, uv, P, N, T, S, C, nlt, HV, HT, HN, HA, w, h, ext, green, margin, th, out, outh,
+                           outa, outo, mask, ao_samples, ao_dist, fp, keep)
+        if got:
+            return _finish(out, outh, outa, outo, mask, w, h, t0, gpu=True)
     rc = L.mbake_maps(int(nlt), fp(uv), fp(P), fp(N), fp(T), fp(S), fp(C), int(len(HV)), fp(HV), int(len(HT)),
                       a_HT.ctypes.data_as(_IP), fp(HN), fp(HA), int(w), int(h), float(2.0 * ext),
                       1 if green == 'DIRECTX' else 0, int(margin), int(th),
@@ -199,6 +206,67 @@ def bake_maps(context, low, highs, w, h, ext, kinds=('NORMAL',), green='OPENGL',
                       mask.ctypes.data_as(_UP))
     if rc != 0:
         raise RuntimeError(f'the fast baker stopped (code {rc})')
+    return _finish(out, outh, outa, outo, mask, w, h, t0)
+
+
+def _gpu_ok(L):
+    try:
+        if L.mbake_version() < 9:
+            return False
+        from . import fast_shade, gpu_bake
+        return fast_shade.lib() is not None and gpu_bake.available()
+    except Exception:
+        return False
+
+
+def _maps_gpu_ao(L, uv, P, N, T, S, C, nlt, HV, HT, HN, HA, w, h, ext, green, margin, th, out, outh, outa, outo,
+                 mask, ao_samples, ao_dist, fp, keep):
+    """The maps by the engine, the AO by the GPU from each texel's hit.  False: something failed (CPU instead)."""
+    try:
+        from . import fast_shade as fs, gpu_bake as gb
+        n = w * h
+        hq = np.zeros(n * 3, np.float32)
+        hn = np.zeros(n * 3, np.float32)
+        hg = np.zeros(n * 3, np.float32)
+        ht = np.full(n, -1, np.int32)
+        if not getattr(L, '_hits_set', False):
+            L.mbake_maps_hits.restype = ctypes.c_int
+            L.mbake_maps_hits.argtypes = [ctypes.c_int, _FP, _FP, _FP, _FP, _FP, _FP, ctypes.c_int, _FP, ctypes.c_int,
+                                          _IP, _FP, _FP, ctypes.c_int, ctypes.c_int, ctypes.c_float, ctypes.c_int,
+                                          ctypes.c_int, ctypes.c_int, _FP, _FP, _FP, _UP, _FP, _FP, _FP, _IP]
+            L._hits_set = True
+        a_HT = np.ascontiguousarray(HT, np.int32)
+        rc = L.mbake_maps_hits(int(nlt), fp(uv), fp(P), fp(N), fp(T), fp(S), fp(C), int(len(HV)), fp(HV), int(len(HT)),
+                               a_HT.ctypes.data_as(_IP), fp(HN), fp(HA), int(w), int(h), float(2.0 * ext),
+                               1 if green == 'DIRECTX' else 0, int(margin), int(th),
+                               out.ctypes.data_as(_FP) if out is not None else None,
+                               outh.ctypes.data_as(_FP) if outh is not None else None,
+                               outa.ctypes.data_as(_FP) if outa is not None else None, mask.ctypes.data_as(_UP),
+                               hq.ctypes.data_as(_FP), hn.ctypes.data_as(_FP), hg.ctypes.data_as(_FP),
+                               ht.ctypes.data_as(_IP))
+        if rc != 0:
+            return False
+        hit = np.nonzero(ht >= 0)[0]
+        outo[:] = 1.0
+        if len(hit):
+            sc = fs._scene_new(np.asarray(HV, np.float32), a_HT, np.asarray(HN, np.float32).reshape(-1, 9))
+            try:
+                seeds = ((hit.astype(np.uint64) * 9781 + 1) % (2 ** 32)).astype(np.uint32)
+                r = gb.ao(fs.lib(), sc, hq.reshape(-1, 3)[hit], hn.reshape(-1, 3)[hit], hg.reshape(-1, 3)[hit], None,
+                          seeds, max(1, int(ao_samples)), float(ao_dist), False, mode=1)
+            finally:
+                fs._scene_free(sc)
+            if r is None:
+                return False
+            outo[hit] = r
+        if margin > 0:
+            fs.lib().mbake_margin(outo.ctypes.data_as(_FP), 1, mask.ctypes.data_as(_UP), int(w), int(h), int(margin))
+        return True
+    except Exception:
+        return False
+
+
+def _finish(out, outh, outa, outo, mask, w, h, t0, gpu=False):
     res = {}
     if out is not None:
         res['NORMAL'] = out.reshape(h, w, 4)
@@ -216,6 +284,7 @@ def bake_maps(context, low, highs, w, h, ext, kinds=('NORMAL',), green='OPENGL',
         res['AO'] = np.repeat(outo, 4).reshape(h, w, 4)
         res['AO'][..., 3] = 1.0
     res['seconds'] = time.time() - t0
+    res['gpu'] = gpu
     return res
 
 
