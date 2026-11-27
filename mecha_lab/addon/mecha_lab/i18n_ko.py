@@ -4028,7 +4028,7 @@ KO = {
     'Hide the low poly meshes after making the high poly copies': '하이 폴리 복사본을 만든 뒤 로우 폴리 메쉬를 숨깁니다',
     'Hide the meshes inside the shape (Alt: show again)': '모양 안쪽의 메쉬를 숨깁니다 (Alt: 다시 보이기)',
     'Hide the selected faces of your mesh (Alt+H shows them again)': '메쉬의 선택한 면을 숨깁니다 (Alt+H로 다시 보이기)',
-    'High': '높음',
+    'High': '하이',
     'High Poly': '하이 폴리',
     'High Poly Mode': '하이 폴리 모드',
     'High Poly Mode on': '하이 폴리 모드 켜짐',
