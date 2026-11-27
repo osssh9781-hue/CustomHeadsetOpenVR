@@ -1244,6 +1244,7 @@ def bake_self_one_steps(context, objs, st, keep_state=None):
     keep = keep_state or _Keep(context, list(objs))
     saved = {k: getattr(st, k) for k in ('margin', 'use_on_low', 'save', 'new_uv')}
     joined = None
+    hidden_r = []
     try:
         for i, o in enumerate(objs):
             c = _baked_copy(context, o, coll, dg)
@@ -1306,7 +1307,11 @@ def bake_self_one_steps(context, objs, st, keep_state=None):
             at = jm.attributes.get(nm)
             if at is not None:
                 jm.attributes.remove(at)
-        # each copy baked in its own place, its texels kept
+        # each copy baked in its own place, its texels kept; the originals and the joined copy (in the same place)
+        # out of the render meanwhile - they would shade the AO / Bevel as a second skin
+        for o in list(objs) + [joined]:
+            hidden_r.append((o, o.hide_render))
+            o.hide_render = True
         st.margin, st.use_on_low, st.save, st.new_uv = 0, False, False, False
         acc, cover, fast_all, why_all, skipped = {}, np.zeros(res * res, bool), set(), {}, []
         n = len(copies)
@@ -1367,6 +1372,11 @@ def bake_self_one_steps(context, objs, st, keep_state=None):
     finally:
         st.margin, st.use_on_low, st.save, st.new_uv = (saved['margin'], saved['use_on_low'], saved['save'],
                                                         saved['new_uv'])
+        for o, h in hidden_r:
+            try:
+                o.hide_render = h
+            except ReferenceError:
+                pass
         for c in made:                               # (the copies; the joined one too if it failed)
             try:
                 me = c.data
