@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Mecha Lab — Cut & Mechanical Modeling",
     "author": "OpenAI / ChatGPT, Claude Code",
-    "version": (0, 24, 331),
+    "version": (0, 24, 332),
     "blender": (4, 3, 0),
     "location": "MECHA LAB workspace tab / 3D View > Sidebar (N) > Mecha Lab",
     "description": "Cut, Split, Base Mesh, Boolean, Face Extract, Armor Sculpt, Molding, Cable, Hollow, curve arrays, Mirror",
@@ -2080,6 +2080,8 @@ def _register():
     simple_material.register()                    # 0.24.263 Simple (Principled) material page
     progress.register()                           # 0.24.242 the progress card for long jobs
     retopo_bake.register()                        # 0.24.241 Retopo + Bake (0.24.242 two steps)
+    from . import manual_retopo
+    manual_retopo.register()                      # 0.24.332 Manual Retopo (draw the low)
     hair_cards.register()                         # 0.24.241 hair -> hair cards
     rigging.register()                            # 0.24.241 Rig tool
     locomotion.register()                         # 0.24.244 Auto Animation + Unreal FBX
@@ -2396,6 +2398,7 @@ def _unregister_steps():
         ('locomotion', locomotion.unregister),
         ('rigging', rigging.unregister),
         ('hair_cards', hair_cards.unregister),
+        ('manual_retopo', __import__(__name__ + '.manual_retopo', fromlist=['x']).unregister),
         ('retopo_bake', retopo_bake.unregister),
         ('progress', progress.unregister),
         ('bevel_normal', bevel_normal.unregister),

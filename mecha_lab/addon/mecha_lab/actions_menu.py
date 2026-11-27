@@ -314,6 +314,9 @@ class MCH_OT_actions_menu(bpy.types.Operator):
     def poll(cls, context):
         # 0.24.227 (user: "왜 셀렉트가 아니라 작업 메뉴 들어가면 우클릭 레디얼이 안 떠?"): also in a tool whose own keymap
         # has no right button (Smart Move, Press Cut, Boolean Bevel ...) while the row of boxes is on - the Tool Wheel
+        from . import manual_retopo                  # 0.24.332 the Retopo scene has its own right-click menu
+        if manual_retopo.in_scene(context):
+            return False
         return select_rmb_ok(context) or tool_rmb_ok(context)      # elsewhere RMB keeps Blender's meaning
 
     def invoke(self, context, event):

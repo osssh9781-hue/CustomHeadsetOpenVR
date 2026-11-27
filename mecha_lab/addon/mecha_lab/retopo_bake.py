@@ -958,6 +958,8 @@ def draw(layout, context, colour=None):
         n_low = len(mine)
     box = layout.box()
     box.label(text='RETOPO + BAKE', icon=f'STRIP_COLOR_{colour}' if colour else 'MOD_REMESH')
+    from . import manual_retopo                      # 0.24.332 draw the low by hand
+    manual_retopo.draw_button(box, context)
     box.row(align=True).prop(S, 'mch_rb_method', expand=True)
     col = box.column(align=True)
     col.prop(S, 'mch_rb_faces')
