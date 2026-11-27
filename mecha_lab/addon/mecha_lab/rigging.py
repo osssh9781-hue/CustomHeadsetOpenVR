@@ -38,6 +38,8 @@ SPRING_KEY = 'mch_spring'      # on the armature: {chain root bone: [stiffness, 
 KINDS = [('BODY', 'Human', 'A standing body (feet on the ground, facing -Y): spine, arms, legs, IK'),
          ('QUAD', 'Quadruped', 'A four-legged body (head toward -Y): spine, neck, head, four legs, tail, IK'),
          ('MECHA', 'Mecha', 'Rigid parts: one bone per selected part, the parts ride their bones'),
+         ('MGUIDE', 'Mecha Guides', 'Mecha parts: drag guide lines through them - ONE bone for each part a line '
+                                    'crosses, joints where the line goes from part to part; Leg / IK lines get IK'),
          ('NAMED', 'Mecha Names', 'Mecha parts named Pelvis, Torso, Head, UpperArm.L, Forearm.L, Hand.L, Thigh.R ... '
                                   '(or 골반 몸통 머리 위팔 ...): bones by the names, joints where they meet, IK on '
                                   'the arms and legs'),
@@ -68,6 +70,12 @@ class MCH_PG_Rig(bpy.types.PropertyGroup):
                               description='Mecha: the order and the joints from where the parts touch; the legs (parts '
                               'down to one on the ground) get IK')
     face: BoolProperty(name='Face Bones', default=True, description='Jaw, eyes (looking at a target), brows, lips')
+    mguide_kind: EnumProperty(name='Line Kind', default='AUTO', items=[
+        ('AUTO', 'Auto', 'The first line the body; a line ending on the ground a leg (IK); the others plain'),
+        ('BODY', 'Body', 'The body: the bones everything hangs on'),
+        ('LEG', 'Leg', 'A leg: IK on its last part (knee in front), walked by Auto Animation'),
+        ('IK', 'IK', 'An arm / a claw: IK on its last part (elbow behind)'),
+        ('BONES', 'Plain', 'Plain bones, no IK')])
     seamless: BoolProperty(name='Seamless', default=True,
                            description='Mecha Names: the parts bend by weights the same on both sides of every cut - '
                            'a body cut into parts keeps its cuts shut in any pose (off: each part rides its bone stiff, '
@@ -1651,6 +1659,14 @@ class MCH_OT_rig_make(bpy.types.Operator):
                        f'{info["lips"]} lip bones, {info["fingers"]} fingers, {info["bones"]} bones'
                        + (f', {body.name} bound ({"automatic" if how == "auto" else "nearest-bone"} weights)' if how else ''))
                 _show(context, arm)
+            elif st.kind == 'MGUIDE':                  # 0.24.338 the user's own guide lines over mecha parts
+                from . import mecha_guides as mg
+                parts = [o for o in (sel or [act]) if o.type == 'MESH']
+                arm, rep = mg.build(context, parts, mg.lines(), st.seamless)
+                msg = (f'{arm.name}: {len(rep["bones"])} bones (one a part)'
+                       + (f', IK on {", ".join(rep["ik"])}' if rep['ik'] else '')
+                       + (f'; {len(rep["rode"])} part(s) no line crosses on the nearest bone' if rep['rode'] else ''))
+                _show(context, arm)
             elif st.kind == 'NAMED':                   # 0.24.336 by the parts' names
                 from . import mecha_named
                 arm, rep = mecha_named.build(context, [o for o in (sel or [act]) if o.type == 'MESH'], st.seamless)
@@ -2185,7 +2201,8 @@ class MCH_TOOL_rig(bpy.types.WorkSpaceTool):
     bl_icon = 'ops.generic.select'
     bl_widget = None
     bl_keymap = (('mch.rig_click', {'type': 'LEFTMOUSE', 'value': 'CLICK'}, None),
-                 ('mch.rig_guide_draw', {'type': 'LEFTMOUSE', 'value': 'CLICK_DRAG'}, None))   # 0.24.258 Guides
+                 ('mch.rig_guide_draw', {'type': 'LEFTMOUSE', 'value': 'CLICK_DRAG'}, None),   # 0.24.258 Guides
+                 ('mch.mecha_guide_draw', {'type': 'LEFTMOUSE', 'value': 'CLICK_DRAG'}, None))  # 0.24.338
 
     def draw_settings(context, layout, tool):
         return
@@ -2215,6 +2232,9 @@ def draw(layout, context):
     elif st.kind == 'MECHA':
         col.row(align=True).prop(st, 'auto_joints', toggle=True)
         box.label(text='Select the parts; then click a part: its joint', icon='INFO')
+    elif st.kind == 'MGUIDE':                        # 0.24.338
+        from . import mecha_guides
+        mecha_guides.draw(box, context, st)
     elif st.kind == 'NAMED':                         # 0.24.336
         from . import mecha_named
         r = col.row(align=True)
