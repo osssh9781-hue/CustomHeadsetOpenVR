@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## 0.24.345 — 심플 머티리얼: 베이스 컬러 텍스처 + 그 그림으로 러프니스 / 범프 (2026-11-27)
+
+- (사용자: "심플 메테리얼에 베이스 컬러에 텍스처 불러올 수 있게 해 주고 그 소스로 범프랑 러프니스도 다 조절할 수 있게")
+  심플 페이지 Surface 아래 **Texture** 섹션: **Load Texture** (파일 선택) → 그림이 베이스 컬러에.
+  - 투영: UV (메쉬에 UV 가 있으면 기본) / Box (UV 없으면 기본 - 여섯 방향에서), Scale, Rotation
+  - 색: Texture Tint (곱하기, 흰색 = 그대로), Brightness, Contrast, Hue, Saturation, Value
+  - **Roughness from Texture** (기본 켬): 그림의 명암 → 러프니스. Amount (0 = 러프니스 슬라이더만 .. 1 = 그림),
+    At Dark / At Light (어두운 곳 / 밝은 곳의 러프니스), Invert
+  - **Bump from Texture** (기본 켬): 그림의 명암을 높이로. Strength, Distance, Invert
+  - Change Texture / **Remove Texture** (슬라이더 값으로 돌아감, 우리 노드 다 빠짐)
+  - 노드는 셰이더 에디터에서도 보이는 평범한 노드 ("mchs:..." 이름) - 다른 곳으로 내보내도 그대로. Fast Bake (No High
+    Poly) 도 그대로 구움 (테스트: 컬러 · 러프니스 · 노멀이 그림을 따라감).
+
 ## 0.24.344 — 존(영역) 경계 5배 촘촘하게 + 내 머티리얼 위 메카는 효과 다 꺼진 채로 시작 (2026-11-27)
 
 - (사용자: "메카 텍스처에서 영역 나눠서 칠하는 거 경계 해상도를 높일 수 있어?") Paint Zone / Split Zone 의 마스크가

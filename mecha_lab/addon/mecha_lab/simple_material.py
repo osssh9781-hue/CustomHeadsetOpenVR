@@ -10,7 +10,7 @@ Principled node over (its values read in).
 from __future__ import annotations
 
 import bpy
-from bpy.props import BoolProperty, FloatProperty, FloatVectorProperty, PointerProperty
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, FloatVectorProperty, PointerProperty, StringProperty
 
 PAGE = 'SIMPLE'
 NODE = 'Principled BSDF'
@@ -85,6 +85,8 @@ def _updater(prop):
         mat = self.id_data
         if isinstance(mat, bpy.types.Material) and self.on:
             _write(mat, prop)
+            if prop == 'roughness' and getattr(self, 'tex_image', None) is not None:
+                tex_sync(mat)                        # (0.24.345 the slider's share of the textured roughness)
     return upd
 
 
@@ -121,6 +123,169 @@ def new_material(name='Simple'):
     return mat
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# 0.24.345 (user: "심플 메테리얼에 베이스 컬러에 텍스처 불러올 수 있게 해 주고 그 소스로 범프랑 러프니스도 다 조절할 수
+# 있게"): one picture for the Base Color, its colour adjusted (Bright / Contrast / Hue / Saturation / Value / Tint), and
+# the same picture's grey made the Roughness (Amount, From / To, Invert) and the Bump (Strength, Distance, Invert).
+# Our nodes are named "mchs:..." - made anew when the picture / a switch changes, their values set when a slider does.
+# ---------------------------------------------------------------------------------------------------------------------
+TEX = 'mchs:'
+
+
+def _tex_nodes(mat):
+    return [n for n in mat.node_tree.nodes if n.name.startswith(TEX)] if mat and mat.node_tree else []
+
+
+def tex_build(mat):
+    """The texture's nodes (made anew) into the material - or taken out (no picture): the sliders back in charge."""
+    n = principled(mat)
+    if n is None:
+        return
+    nt = mat.node_tree
+    st = mat.mch_simple
+    for x in _tex_nodes(mat):
+        nt.nodes.remove(x)
+    img = st.tex_image
+    if img is None:
+        for prop in ('base_color', 'roughness'):
+            _write(mat, prop)
+        return
+    x0, y0 = n.location.x - 1100, n.location.y
+
+    def node(kind, name, dx, dy):
+        nd = nt.nodes.new(kind)
+        nd.name = nd.label = TEX + name
+        nd.location = (x0 + dx, y0 + dy)
+        return nd
+    tc = node('ShaderNodeTexCoord', 'coord', 0, 0)
+    mp = node('ShaderNodeMapping', 'map', 180, 0)
+    nt.links.new(tc.outputs['UV' if st.tex_proj == 'UV' else 'Object'], mp.inputs['Vector'])
+    tx = node('ShaderNodeTexImage', 'image', 380, 0)
+    tx.image = img
+    if st.tex_proj == 'BOX':
+        tx.projection = 'BOX'
+        tx.projection_blend = 0.2
+    nt.links.new(mp.outputs['Vector'], tx.inputs['Vector'])
+    bc = node('ShaderNodeBrightContrast', 'bc', 680, 120)
+    nt.links.new(tx.outputs['Color'], bc.inputs['Color'])
+    hs = node('ShaderNodeHueSaturation', 'hsv', 860, 120)
+    nt.links.new(bc.outputs['Color'], hs.inputs['Color'])
+    tint = node('ShaderNodeMix', 'tint', 1040, 120)
+    tint.data_type = 'RGBA'
+    tint.blend_type = 'MULTIPLY'
+    tint.inputs['Factor'].default_value = 1.0
+    nt.links.new(hs.outputs['Color'], tint.inputs['A'])
+    nt.links.new(tint.outputs['Result'], n.inputs['Base Color'])
+    bw = node('ShaderNodeRGBToBW', 'grey', 680, -160)
+    nt.links.new(tx.outputs['Color'], bw.inputs['Color'])
+    if st.rough_on:
+        mr = node('ShaderNodeMapRange', 'rough_range', 860, -120)
+        mr.clamp = True
+        nt.links.new(bw.outputs['Val'], mr.inputs['Value'])
+        mx = node('ShaderNodeMix', 'rough_amount', 1040, -120)
+        mx.data_type = 'FLOAT'
+        nt.links.new(mr.outputs['Result'], mx.inputs['B'])
+        nt.links.new(mx.outputs['Result'], n.inputs['Roughness'])
+    else:
+        _write(mat, 'roughness')
+    nin = n.inputs['Normal']
+    if st.bump_on:
+        bp = node('ShaderNodeBump', 'bump', 1040, -380)
+        nt.links.new(bw.outputs['Val'], bp.inputs['Height'])
+        nt.links.new(bp.outputs['Normal'], nin)
+    tex_sync(mat)
+
+
+def tex_sync(mat):
+    """The sliders' values into our nodes (no rebuild)."""
+    st = mat.mch_simple
+    nd = mat.node_tree.nodes if mat and mat.node_tree else None
+    if nd is None or nd.get(TEX + 'image') is None:
+        return
+    mp = nd.get(TEX + 'map')
+    if mp is not None:
+        sc = max(st.tex_scale, 1e-4)
+        mp.inputs['Scale'].default_value = (sc, sc, sc)
+        mp.inputs['Rotation'].default_value = (0.0, 0.0, st.tex_rotation)
+    bc = nd.get(TEX + 'bc')
+    if bc is not None:
+        bc.inputs['Bright'].default_value = st.tex_bright
+        bc.inputs['Contrast'].default_value = st.tex_contrast
+    hs = nd.get(TEX + 'hsv')
+    if hs is not None:
+        hs.inputs['Hue'].default_value = st.tex_hue
+        hs.inputs['Saturation'].default_value = st.tex_saturation
+        hs.inputs['Value'].default_value = st.tex_value
+    tn = nd.get(TEX + 'tint')
+    if tn is not None:
+        tn.inputs['B'].default_value = (*st.tex_tint, 1.0)
+    mr = nd.get(TEX + 'rough_range')
+    if mr is not None:
+        lo, hi = st.rough_from, st.rough_to
+        if st.rough_invert:
+            lo, hi = hi, lo
+        mr.inputs['To Min'].default_value = lo
+        mr.inputs['To Max'].default_value = hi
+    mx = nd.get(TEX + 'rough_amount')
+    if mx is not None:
+        mx.inputs['Factor'].default_value = st.rough_amount
+        mx.inputs['A'].default_value = st.roughness
+    bp = nd.get(TEX + 'bump')
+    if bp is not None:
+        bp.inputs['Strength'].default_value = st.bump_strength
+        bp.inputs['Distance'].default_value = st.bump_distance
+        bp.invert = st.bump_invert
+
+
+def _tex_rebuild(self, context):
+    mat = self.id_data
+    if isinstance(mat, bpy.types.Material) and self.on:
+        tex_build(mat)
+
+
+def _tex_values(self, context):
+    mat = self.id_data
+    if isinstance(mat, bpy.types.Material) and self.on:
+        tex_sync(mat)
+
+
+TEX_PROPS = dict(
+    tex_image=PointerProperty(name='Texture', type=bpy.types.Image, update=_tex_rebuild,
+                              description='The picture on the Base Color (its grey also makes the Roughness and the '
+                              'Bump)'),
+    tex_proj=EnumProperty(name='Projection', items=[('UV', 'UV', 'Along the mesh\'s UVs'),
+                                                     ('BOX', 'Box', 'From the six sides (no UVs needed)')],
+                          default='UV', update=_tex_rebuild),
+    tex_scale=FloatProperty(name='Scale', default=1.0, min=0.001, soft_min=0.1, soft_max=20.0, update=_tex_values,
+                            description='How many times the picture repeats'),
+    tex_rotation=FloatProperty(name='Rotation', default=0.0, subtype='ANGLE', update=_tex_values),
+    tex_bright=FloatProperty(name='Brightness', default=0.0, soft_min=-1.0, soft_max=1.0, update=_tex_values),
+    tex_contrast=FloatProperty(name='Contrast', default=0.0, soft_min=-1.0, soft_max=1.0, update=_tex_values),
+    tex_hue=FloatProperty(name='Hue', default=0.5, min=0.0, max=1.0, update=_tex_values),
+    tex_saturation=FloatProperty(name='Saturation', default=1.0, min=0.0, soft_max=2.0, update=_tex_values),
+    tex_value=FloatProperty(name='Value', default=1.0, min=0.0, soft_max=2.0, update=_tex_values),
+    tex_tint=FloatVectorProperty(name='Texture Tint', subtype='COLOR', size=3, min=0.0, soft_max=1.0, default=(1.0, 1.0, 1.0),
+                                 update=_tex_values, description='The picture x this colour (white: as it is)'),
+    rough_on=BoolProperty(name='Roughness from Texture', default=True, update=_tex_rebuild,
+                          description='The picture\'s grey makes the Roughness'),
+    rough_amount=FloatProperty(name='Amount', default=1.0, min=0.0, max=1.0, update=_tex_values,
+                               description='0: the Roughness slider only .. 1: the picture\'s'),
+    rough_from=FloatProperty(name='At Dark', default=0.3, min=0.0, max=1.0, update=_tex_values,
+                             description='The roughness where the picture is darkest'),
+    rough_to=FloatProperty(name='At Light', default=0.8, min=0.0, max=1.0, update=_tex_values,
+                           description='The roughness where the picture is lightest'),
+    rough_invert=BoolProperty(name='Invert', default=False, update=_tex_values,
+                              description='Light parts smooth, dark parts rough'),
+    bump_on=BoolProperty(name='Bump from Texture', default=True, update=_tex_rebuild,
+                         description='The picture\'s grey as a height: light up, dark down'),
+    bump_strength=FloatProperty(name='Strength', default=0.3, min=0.0, max=1.0, update=_tex_values),
+    bump_distance=FloatProperty(name='Distance', default=0.05, min=0.0, soft_max=1.0, update=_tex_values,
+                                description='How deep the picture\'s dark parts go'),
+    bump_invert=BoolProperty(name='Invert', default=False, update=_tex_values,
+                             description='Dark parts up, light parts down'),
+)
+
+
 class MCH_PG_Simple(bpy.types.PropertyGroup):
     on: BoolProperty(default=False, options={'HIDDEN'})
 
@@ -134,6 +299,7 @@ def _make_pg():
         else:
             ann[prop] = FloatProperty(name=sock.replace(' Weight', ''), default=d, min=0.0, soft_max=mx,
                                       max=100000.0, update=_updater(prop))
+    ann.update(TEX_PROPS)
     MCH_PG_Simple.__annotations__.update(ann)
 
 
@@ -181,6 +347,66 @@ class MCH_OT_simple_adopt(bpy.types.Operator):
         mat = active_material(context)
         read(mat)
         self.report({'INFO'}, f'{mat.name}: Simple settings')
+        return {'FINISHED'}
+
+
+class MCH_OT_simple_tex_load(bpy.types.Operator):
+    """Load a picture onto the Base Color of the active Simple material - its grey makes the Roughness and the Bump
+    too (each adjustable below)"""
+    bl_idname = 'mch.simple_tex_load'
+    bl_label = 'Load Texture'
+    bl_options = {'REGISTER', 'UNDO'}
+    filepath: StringProperty(subtype='FILE_PATH')
+    filter_image: BoolProperty(default=True, options={'HIDDEN', 'SKIP_SAVE'})
+    filter_folder: BoolProperty(default=True, options={'HIDDEN', 'SKIP_SAVE'})
+
+    @classmethod
+    def poll(cls, context):
+        return is_simple(active_material(context))
+
+    def invoke(self, context, event):
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        mat = active_material(context)
+        if not is_simple(mat):
+            self.report({'WARNING'}, 'Load Texture: the active object needs a Simple material')
+            return {'CANCELLED'}
+        try:
+            img = bpy.data.images.load(self.filepath, check_existing=True)
+        except (RuntimeError, OSError) as ex:
+            self.report({'WARNING'}, f'Load Texture: {ex}')
+            return {'CANCELLED'}
+        st = mat.mch_simple
+        ob = context.active_object
+        has_uv = ob is not None and ob.type == 'MESH' and len(ob.data.uv_layers) > 0
+        st.on = False
+        st.tex_proj = 'UV' if has_uv else 'BOX'
+        st.on = True
+        st.tex_image = img                                 # (builds the nodes)
+        try:
+            from . import side_panel as sp
+            sp.dirty()
+        except (ImportError, AttributeError):
+            pass
+        self.report({'INFO'}, f'{img.name} on {mat.name} ({"UVs" if has_uv else "Box: no UVs"})')
+        return {'FINISHED'}
+
+
+class MCH_OT_simple_tex_remove(bpy.types.Operator):
+    """Take the picture off: the Base Color / Roughness sliders back, the bump gone"""
+    bl_idname = 'mch.simple_tex_remove'
+    bl_label = 'Remove Texture'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        mat = active_material(context)
+        return is_simple(mat) and mat.mch_simple.tex_image is not None
+
+    def execute(self, context):
+        active_material(context).mch_simple.tex_image = None
         return {'FINISHED'}
 
 
@@ -255,10 +481,45 @@ def page(context, x, width, k):
                     continue
                 mu.row(b, sx, sw, [mu.prop_cell(st, p)])
         mu.section(b, 'simple_' + key, title, x, width, fill, start_folded=folded)
+        if key == 'surface':
+            texture_section(b, x, width, mat)
     return b.out, -b.y
 
 
-CLASSES = (MCH_PG_Simple, MCH_OT_simple_new, MCH_OT_simple_adopt, MCH_OT_simple_single)
+def texture_section(b, x, width, mat):
+    """0.24.345 the Base Color picture and what it drives (Roughness, Bump)."""
+    from . import mech_shader_ui as mu
+    st = mat.mch_simple
+
+    def fill(sx, sw):
+        img = st.tex_image
+        if img is None:
+            b.note(('note', 'A picture on the Base Color - its grey makes the Roughness and the Bump too', False, None,
+                    None, None, True), sx, sw)
+            mu.row(b, sx, sw, [mu.button('Load Texture', 'mch.simple_tex_load')])
+            return
+        b.note(('note', img.name, False, None, None, None, True), sx, sw)
+        mu.row(b, sx, sw, [mu.button('Change Texture', 'mch.simple_tex_load'),
+                           mu.button('Remove Texture', 'mch.simple_tex_remove')])
+        mu.row(b, sx, sw, [mu.prop_cell(st, 'tex_proj')])
+        mu.row(b, sx, sw, [mu.prop_cell(st, 'tex_scale'), mu.prop_cell(st, 'tex_rotation')])
+        mu.row(b, sx, sw, [mu.prop_cell(st, 'tex_tint')])
+        mu.row(b, sx, sw, [mu.prop_cell(st, 'tex_bright'), mu.prop_cell(st, 'tex_contrast')])
+        mu.row(b, sx, sw, [mu.prop_cell(st, 'tex_hue'), mu.prop_cell(st, 'tex_saturation'),
+                           mu.prop_cell(st, 'tex_value')])
+        mu.row(b, sx, sw, [mu.prop_cell(st, 'rough_on')])
+        if st.rough_on:
+            mu.row(b, sx, sw, [mu.prop_cell(st, 'rough_amount'), mu.prop_cell(st, 'rough_invert')])
+            mu.row(b, sx, sw, [mu.prop_cell(st, 'rough_from'), mu.prop_cell(st, 'rough_to')])
+        mu.row(b, sx, sw, [mu.prop_cell(st, 'bump_on')])
+        if st.bump_on:
+            mu.row(b, sx, sw, [mu.prop_cell(st, 'bump_strength'), mu.prop_cell(st, 'bump_distance')])
+            mu.row(b, sx, sw, [mu.prop_cell(st, 'bump_invert')])
+    mu.section(b, 'simple_texture', 'Texture', x, width, fill, start_folded=False)
+
+
+CLASSES = (MCH_PG_Simple, MCH_OT_simple_new, MCH_OT_simple_adopt, MCH_OT_simple_single, MCH_OT_simple_tex_load,
+           MCH_OT_simple_tex_remove)
 
 
 def register():
