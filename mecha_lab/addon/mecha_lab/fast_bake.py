@@ -17,7 +17,7 @@ import time
 import bpy
 import numpy as np
 
-VERSION = 2
+VERSION = 3
 _FP = ctypes.POINTER(ctypes.c_float)
 _IP = ctypes.POINTER(ctypes.c_int)
 _UP = ctypes.POINTER(ctypes.c_ubyte)
@@ -38,7 +38,8 @@ def lib():
                     L.mbake_maps.restype = ctypes.c_int
                     L.mbake_maps.argtypes = [ctypes.c_int, _FP, _FP, _FP, _FP, _FP, _FP, ctypes.c_int, _FP,
                                              ctypes.c_int, _IP, _FP, _FP, ctypes.c_int, ctypes.c_int, ctypes.c_float,
-                                             ctypes.c_int, ctypes.c_int, ctypes.c_int, _FP, _FP, _FP, _UP]
+                                             ctypes.c_int, ctypes.c_int, ctypes.c_int, _FP, _FP, _FP, _FP,
+                                             ctypes.c_int, ctypes.c_float, _UP]
                     _L[0] = L
             except AttributeError:                    # (an older engine without the baker)
                 pass
@@ -160,8 +161,10 @@ def _high_arrays(context, highs, want_curv=False):
             np.concatenate(Cs) if want_curv else None)
 
 
-def bake_maps(context, low, highs, w, h, ext, kinds=('NORMAL',), green='OPENGL', margin=16, threads=None):
-    """The maps ``kinds`` (NORMAL / HEIGHT / CURV) of ``highs`` onto ``low`` (w x h), all from the same rays, with
+def bake_maps(context, low, highs, w, h, ext, kinds=('NORMAL',), green='OPENGL', margin=16, threads=None,
+              ao_samples=64, ao_dist=1.0):
+    """The maps ``kinds`` (NORMAL / HEIGHT / CURV / AO - 0.24.341: ``ao_samples`` cosine rays a texel from the high's
+    point, ``ao_dist`` world units) of ``highs`` onto ``low`` (w x h), all from the same rays, with
     the cage ``ext`` (world units).  Returns {kind: pixels (h, w, 4) float32}, 'HEIGHT_RANGE': the height range
     (world units, 0.5 grey = on the low), 'seconds'.  Raises RuntimeError (no engine: the caller bakes with Cycles)."""
     L = lib()
@@ -174,6 +177,7 @@ def bake_maps(context, low, highs, w, h, ext, kinds=('NORMAL',), green='OPENGL',
     out = np.zeros(n * 4, np.float32) if 'NORMAL' in kinds else None
     outh = np.zeros(n, np.float32) if 'HEIGHT' in kinds else None
     outa = np.zeros(n, np.float32) if 'CURV' in kinds else None
+    outo = np.zeros(n, np.float32) if 'AO' in kinds else None
     mask = np.zeros(n, np.uint8)
     keep = []
 
@@ -190,7 +194,9 @@ def bake_maps(context, low, highs, w, h, ext, kinds=('NORMAL',), green='OPENGL',
                       1 if green == 'DIRECTX' else 0, int(margin), int(th),
                       out.ctypes.data_as(_FP) if out is not None else None,
                       outh.ctypes.data_as(_FP) if outh is not None else None,
-                      outa.ctypes.data_as(_FP) if outa is not None else None, mask.ctypes.data_as(_UP))
+                      outa.ctypes.data_as(_FP) if outa is not None else None,
+                      outo.ctypes.data_as(_FP) if outo is not None else None, int(ao_samples), float(ao_dist),
+                      mask.ctypes.data_as(_UP))
     if rc != 0:
         raise RuntimeError(f'the fast baker stopped (code {rc})')
     res = {}
@@ -206,6 +212,9 @@ def bake_maps(context, low, highs, w, h, ext, kinds=('NORMAL',), green='OPENGL',
     if outa is not None:
         res['CURV'] = np.repeat(outa, 4).reshape(h, w, 4)
         res['CURV'][..., 3] = 1.0
+    if outo is not None:
+        res['AO'] = np.repeat(outo, 4).reshape(h, w, 4)
+        res['AO'][..., 3] = 1.0
     res['seconds'] = time.time() - t0
     return res
 

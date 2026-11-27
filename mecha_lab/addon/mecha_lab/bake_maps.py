@@ -105,8 +105,8 @@ class MCH_PG_BakeMaps(bpy.types.PropertyGroup):
                            description='Where the PNGs go (// = next to the .blend)')
     show: BoolProperty(name='Show Low', default=True, description='After baking show the low (the high hidden)')
     fast: BoolProperty(name='Fast Bake', default=True,
-                       description='Normal, Height and Curvature by Mecha Lab\'s own baker (one ray a pixel, all three '
-                       'at once - several times faster than Cycles, the same result); off: Cycles bakes them')
+                       description='Normal, Height, Curvature and AO by Mecha Lab\'s own baker (all from the same '
+                       'rays - several times faster than Cycles, the same result); off: Cycles bakes them')
 
 
 def settings(context):
@@ -781,7 +781,8 @@ def bake_pair_steps(context, low, highs, st, keep_state=None):
         ext = size * float(st.ray) / 100.0
         # 0.24.340 (user: "베이크를 좀 더 빠르게") Normal / Height / Curvature by our own engine, all from the same
         # rays (fast_bake); the rest (and these, should it fail) by Cycles as before
-        fast_kinds = [k for k in kinds if k in ('NORMAL', 'HEIGHT', 'CURV')] if getattr(st, 'fast', True) else []
+        fast_kinds = [k for k in kinds if k in ('NORMAL', 'HEIGHT', 'CURV') or (k == 'AO' and not st.ao_others)] \
+            if getattr(st, 'fast', True) else []      # (0.24.341 AO too - unless other objects shade it)
         cy_kinds = list(kinds)
         if fast_kinds:
             from . import fast_bake
@@ -789,7 +790,8 @@ def bake_pair_steps(context, low, highs, st, keep_state=None):
                 yield (0.06, 'Fast bake: ' + ', '.join(SUFFIX[k] for k in fast_kinds))
                 try:
                     got = fast_bake.bake_maps(context, low, highs, res, res, ext, fast_kinds, st.green,
-                                              int(st.margin))
+                                              int(st.margin), ao_samples=int(st.ao_samples),
+                                              ao_dist=size * float(st.ao_distance) / 100.0)
                 except RuntimeError as ex:
                     print('Mecha Lab fast bake: Cycles instead -', ex)
                     got = None

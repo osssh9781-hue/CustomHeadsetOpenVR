@@ -199,12 +199,58 @@ static int trace(const BVH *b, const float *o, const float *d, float tmax, float
   return hit;
 }
 
+/* is anything hit by the ray (o, d) within (tmin, tmax]?  (the first hit ends it: AO needs no nearest) */
+static int occluded(const BVH *b, const float *o, const float *d, float tmin, float tmax) {
+  float inv[3];
+  for (int a = 0; a < 3; a++) inv[a] = 1.f / (fabsf(d[a]) > 1e-20f ? d[a] : (d[a] < 0 ? -1e-20f : 1e-20f));
+  int stack[96], sp = 0;
+  float tn;
+  if (!ray_box(o, inv, &b->nodes[0], tmax, &tn)) return 0;
+  stack[sp++] = 0;
+  while (sp) {
+    const Node *n = &b->nodes[stack[--sp]];
+    if (n->count > 0) {
+      for (int i = n->left; i < n->left + n->count; i++) {
+        int t = b->idx[i];
+        const float *p0 = b->V + b->T[t * 3] * 3, *p1 = b->V + b->T[t * 3 + 1] * 3, *p2 = b->V + b->T[t * 3 + 2] * 3;
+        float e1[3] = {p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]};
+        float e2[3] = {p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]};
+        float pv[3] = {d[1] * e2[2] - d[2] * e2[1], d[2] * e2[0] - d[0] * e2[2], d[0] * e2[1] - d[1] * e2[0]};
+        float det = e1[0] * pv[0] + e1[1] * pv[1] + e1[2] * pv[2];
+        if (fabsf(det) < 1e-20f) continue;
+        float id = 1.f / det;
+        float tv[3] = {o[0] - p0[0], o[1] - p0[1], o[2] - p0[2]};
+        float u = (tv[0] * pv[0] + tv[1] * pv[1] + tv[2] * pv[2]) * id;
+        if (u < 0.f || u > 1.f) continue;
+        float qv[3] = {tv[1] * e1[2] - tv[2] * e1[1], tv[2] * e1[0] - tv[0] * e1[2], tv[0] * e1[1] - tv[1] * e1[0]};
+        float v = (d[0] * qv[0] + d[1] * qv[1] + d[2] * qv[2]) * id;
+        if (v < 0.f || u + v > 1.f) continue;
+        float tt = (e2[0] * qv[0] + e2[1] * qv[1] + e2[2] * qv[2]) * id;
+        if (tt > tmin && tt <= tmax) return 1;
+      }
+    } else {
+      int l = n->left, r = -n->count;
+      float tl, tr;
+      if (sp > 92) continue;
+      if (ray_box(o, inv, &b->nodes[l], tmax, &tl)) stack[sp++] = l;
+      if (ray_box(o, inv, &b->nodes[r], tmax, &tr)) stack[sp++] = r;
+    }
+  }
+  return 0;
+}
+
+static inline unsigned int hash32(unsigned int x) {
+  x ^= x >> 16; x *= 0x7feb352dU; x ^= x >> 15; x *= 0x846ca68bU; x ^= x >> 16;
+  return x;
+}
+
 typedef struct {
   const BVH *bvh;
   const float *lP, *lN, *lT, *lS, *lC, *hN, *hA;
   const int *ptri; const float *pbar; const int *plist;
   int n0, n1, green_neg; float maxdist;
-  float *out, *outh, *outa;
+  float *out, *outh, *outa, *outo;
+  int ao_n; float ao_dist;
 } Job;
 
 static void norm3(float *v) {
@@ -241,6 +287,7 @@ static void run_job(Job *j) {
       n[0] = N[0]; n[1] = N[1]; n[2] = N[2];
       if (j->outh) j->outh[px] = 0.f;
       if (j->outa) j->outa[px] = 0.5f;
+      if (j->outo) j->outo[px] = 1.f;
     } else {
       const float *hn = j->hN + h * 9;
       float w0 = 1.f - u - v;
@@ -249,6 +296,41 @@ static void run_job(Job *j) {
       if (j->outh) {                   /* height: the hit over the low's point, along the low's normal */
         float q[3] = {o[0] + d[0] * tt - P[0], o[1] + d[1] * tt - P[1], o[2] + d[2] * tt - P[2]};
         j->outh[px] = q[0] * N[0] + q[1] * N[1] + q[2] * N[2];
+      }
+      if (j->outo) {                   /* ambient occlusion at the hit: the share of a cosine hemisphere open */
+        const int *tri = j->bvh->T + h * 3;
+        const float *p0 = j->bvh->V + tri[0] * 3, *p1 = j->bvh->V + tri[1] * 3, *p2 = j->bvh->V + tri[2] * 3;
+        float e1[3] = {p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]}, e2[3] = {p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]};
+        float g[3] = {e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]};
+        norm3(g);
+        if (g[0] * n[0] + g[1] * n[1] + g[2] * n[2] < 0) { g[0] = -g[0]; g[1] = -g[1]; g[2] = -g[2]; }
+        float Q[3] = {o[0] + d[0] * tt, o[1] + d[1] * tt, o[2] + d[2] * tt};
+        float eps = j->ao_dist * 1e-4f + 1e-7f;
+        float O[3] = {Q[0] + g[0] * eps, Q[1] + g[1] * eps, Q[2] + g[2] * eps};
+        float ta[3], tb[3];                       /* a frame round the smooth normal */
+        if (fabsf(n[0]) > 0.9f) { ta[0] = 0; ta[1] = 1; ta[2] = 0; } else { ta[0] = 1; ta[1] = 0; ta[2] = 0; }
+        tb[0] = n[1] * ta[2] - n[2] * ta[1]; tb[1] = n[2] * ta[0] - n[0] * ta[2]; tb[2] = n[0] * ta[1] - n[1] * ta[0];
+        norm3(tb);
+        ta[0] = tb[1] * n[2] - tb[2] * n[1]; ta[1] = tb[2] * n[0] - tb[0] * n[2]; ta[2] = tb[0] * n[1] - tb[1] * n[0];
+        int ns = j->ao_n, sq = (int)sqrtf((float)ns);
+        if (sq < 1) sq = 1;
+        unsigned int hs = hash32((unsigned int)px * 9781u + 1u);
+        float r0 = (hs & 0xffff) / 65536.f, r1 = (hs >> 16) / 65536.f;   /* (a turn of the pattern a texel) */
+        int open = 0, tot = 0;
+        for (int k = 0; k < ns; k++) {
+          float u1 = ((k % sq) + 0.5f) / sq, u2 = (((k / sq) % sq) + 0.5f) / sq;
+          if (k >= sq * sq) { unsigned int hk = hash32(hs + k * 747796405u); u1 = (hk & 0xffff) / 65536.f; u2 = (hk >> 16) / 65536.f; }
+          u1 = u1 + r0; if (u1 >= 1.f) u1 -= 1.f;
+          u2 = u2 + r1; if (u2 >= 1.f) u2 -= 1.f;
+          float rr = sqrtf(u1), ph = 6.2831853f * u2;
+          float lx = rr * cosf(ph), ly = rr * sinf(ph), lz = sqrtf(fmaxf(0.f, 1.f - u1));
+          float dir[3] = {ta[0] * lx + tb[0] * ly + n[0] * lz, ta[1] * lx + tb[1] * ly + n[1] * lz,
+                          ta[2] * lx + tb[2] * ly + n[2] * lz};
+          if (dir[0] * g[0] + dir[1] * g[1] + dir[2] * g[2] <= 0.f) continue;   /* (under the face itself) */
+          tot++;
+          if (!occluded(j->bvh, O, dir, 0.f, j->ao_dist)) open++;
+        }
+        j->outo[px] = tot ? (float)open / tot : 1.f;
       }
       if (j->outa) {                   /* the high's own value there (curvature), between its corners */
         const int *tri = j->bvh->T + h * 3;
@@ -302,7 +384,7 @@ static void margin_fill(float *out, int ch, const unsigned char *mask, int w, in
   free(ring); free(m);
 }
 
-EXPORT int mbake_version(void) { return 2; }
+EXPORT int mbake_version(void) { return 3; }
 
 /* v2: the Normal map and, in the same rays, the Height (hit distance along the low's normal, world units; NULL: not
  * wanted) and a value of the high's points (hA, e.g. its curvature, between the hit triangle's corners; NULL: not
@@ -310,7 +392,8 @@ EXPORT int mbake_version(void) { return 2; }
 EXPORT int mbake_maps(int nlt, const float *luv, const float *lP, const float *lN, const float *lT, const float *lS,
                       const float *lC, int nhv, const float *hV, int nht, const int *hT, const float *hN,
                       const float *hA, int w, int h, float maxdist, int green_neg, int margin, int threads,
-                      float *out, float *outh, float *outa, unsigned char *mask)
+                      float *out, float *outh, float *outa, float *outo, int ao_n, float ao_dist,
+                      unsigned char *mask)
 {
   if (nlt <= 0 || nht <= 0 || nhv <= 0 || w <= 0 || h <= 0) return 1;
   for (int i = 0; i < nht * 3; i++) if (hT[i] < 0 || hT[i] >= nhv) return 1;
@@ -362,6 +445,7 @@ EXPORT int mbake_maps(int nlt, const float *luv, const float *lP, const float *l
   if (out) for (size_t i = 0; i < np; i++) { out[i * 4] = 0.5f; out[i * 4 + 1] = 0.5f; out[i * 4 + 2] = 1.f; out[i * 4 + 3] = 1.f; }
   if (outh) for (size_t i = 0; i < np; i++) outh[i] = 0.f;
   if (outa) for (size_t i = 0; i < np; i++) outa[i] = 0.5f;
+  if (outo) for (size_t i = 0; i < np; i++) outo[i] = 1.f;
   if (outa && !hA) { rc = 1; goto done; }
   {
     int nt = threads < 1 ? 1 : (threads > 64 ? 64 : threads);
@@ -369,7 +453,8 @@ EXPORT int mbake_maps(int nlt, const float *luv, const float *lP, const float *l
     Job jobs[64];
     for (int k = 0; k < nt; k++) {
       Job jb = {&b, lP, lN, lT, lS, lC, hN, hA, ptri, pbar, plist, (int)((long long)n * k / nt),
-                (int)((long long)n * (k + 1) / nt), green_neg, maxdist, out, outh, outa};
+                (int)((long long)n * (k + 1) / nt), green_neg, maxdist, out, outh, outa, outo,
+                ao_n < 1 ? 1 : ao_n, ao_dist};
       jobs[k] = jb;
     }
 #ifdef _WIN32
@@ -388,6 +473,7 @@ EXPORT int mbake_maps(int nlt, const float *luv, const float *lP, const float *l
     if (out) margin_fill(out, 4, mask, w, h, margin);
     if (outh) margin_fill(outh, 1, mask, w, h, margin);
     if (outa) margin_fill(outa, 1, mask, w, h, margin);
+    if (outo) margin_fill(outo, 1, mask, w, h, margin);
   }
 done:
   free(b.pr); free(b.idx); free(b.nodes); free(ptri); free(pbar); free(plist);
@@ -399,5 +485,5 @@ EXPORT int mbake_normal(int nlt, const float *luv, const float *lP, const float 
                         int w, int h, float maxdist, int green_neg, int margin, int threads,
                         float *out, unsigned char *mask) {
   return mbake_maps(nlt, luv, lP, lN, lT, lS, lC, nhv, hV, nht, hT, hN, NULL, w, h, maxdist, green_neg, margin,
-                    threads, out, NULL, NULL, mask);
+                    threads, out, NULL, NULL, NULL, 0, 0.f, mask);
 }

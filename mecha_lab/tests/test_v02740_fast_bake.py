@@ -16,8 +16,8 @@ C = bpy.context
 S = C.scene
 RES = 512
 L = fb.lib()
-check('the engine has the baker (mbake v2), here and in the Windows build',
-      L is not None and L.mbake_version() == 2
+check('the engine has the baker (mbake v3), here and in the Windows build',
+      L is not None and L.mbake_version() == 3
       and b'mbake_maps' in open(os.path.join(os.path.dirname(fd.__file__), 'bin', 'mdecim_win_x64.dll'), 'rb').read())
 
 bpy.ops.mesh.primitive_uv_sphere_add(segments=64, ring_count=32, radius=1.0)
