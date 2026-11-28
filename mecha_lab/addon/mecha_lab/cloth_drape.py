@@ -3554,6 +3554,7 @@ def draw(layout, context):
     col.prop(st, 'offset', slider=True)
     box.prop(st, 'frames')
     box.prop(st, 'thickness', slider=True)
+    box.operator('mch.gpu_cloth_check', icon='TIME')        # 0.24.359 a GPU cloth TEST: how fast on this card
     box = _section(layout, 'Finish', 7)
     r = box.row(align=True)                              # 0.24.95 Padding + Trim
     r.prop(st, 'padding', toggle=True, icon='MESH_GRID')

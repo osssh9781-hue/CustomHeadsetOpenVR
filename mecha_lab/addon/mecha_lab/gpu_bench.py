@@ -135,7 +135,29 @@ class MCH_OT_gpu_bake_check(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MCH_OT_gpu_bake_check,)
+class MCH_OT_gpu_cloth_check(bpy.types.Operator):
+    """0.24.359 GPU cloth TEST: the same falling sheet on the CPU (the C engine) and on the graphics card, three sizes
+    - how long each took.  Nothing is added to the file.  The result in the Info report and the System Console"""
+    bl_idname = 'mch.gpu_cloth_check'
+    bl_label = 'Check GPU Cloth'
+    bl_options = {'REGISTER'}
+
+    def execute(self, context):
+        from . import gpu_cloth as gc
+        if not gc.available():
+            self.report({'WARNING'}, 'GPU cloth: no GPU here (' + (gc.why_not() or 'no context') + ')')
+            return {'CANCELLED'}
+        lines = []
+        for pts, tc, tg, used, diff, _sz in gc.bench(sizes=(100, 250, 500), frames=30):
+            lines.append(f'{pts:,} points: CPU {tc:.2f} s, GPU {tg:.2f} s ({tc / max(tg, 1e-6):.1f}x)'
+                         + ('' if used else ' [GPU failed: ' + gc.why_not() + ']'))
+        for ln in lines:
+            print('Mecha Lab GPU cloth check (30 frames):', ln)
+        self.report({'INFO'}, 'GPU cloth (30 frames): ' + ' | '.join(lines))
+        return {'FINISHED'}
+
+
+CLASSES = (MCH_OT_gpu_bake_check, MCH_OT_gpu_cloth_check)
 
 
 def register():

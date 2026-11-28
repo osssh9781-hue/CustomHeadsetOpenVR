@@ -1745,6 +1745,7 @@ KO = {
     'Charcoal': '숯',
     'Check Conflicts': '충돌 검사',
     'Check GPU Bake': 'GPU 베이크 확인',
+    'Check GPU Cloth': 'GPU 클로스 확인',
     'Check Mesh': '메쉬 검사',
     'Check Mesh:': '메쉬 검사:',
     'Check Mesh: clean': '메쉬 검사: 이상 없음',
