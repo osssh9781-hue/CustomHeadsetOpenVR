@@ -44,7 +44,7 @@ check('Bottom Toolbar 0.5 -> half size', abs(d3 - d1 / 2) < 1e-9)
 src = os.path.join(os.path.dirname(wui.__file__))
 raw = []
 for name in os.listdir(src):
-    if name.endswith('.py'):
+    if name.endswith('.py') and name != 'tool_header_icon.py':   # (0.24.349 that one passes Blender's own icon's scale on)
         for i, line in enumerate(open(os.path.join(src, name), encoding='utf-8'), 1):
             if 'template_icon' in line and 'scale=' in line and 'isz(' not in line:
                 raw.append(f'{name}:{i}')
