@@ -1051,6 +1051,10 @@ def draw(layout, context, colour=None):
     r.operator('mch.retopo_make', text=(f'1  Retopo {len(parts)} as One' if one else
                                         f'1  Retopo {len(items)} Meshes' if many else
                                         '1  Retopo Again' if low is not None else '1  Retopo'), icon='MOD_REMESH')
+    sr = r.row(align=True)                           # 0.24.354 Solo: only this retopo and its high showing
+    sr.scale_x = 0.9
+    sr.operator('mch.retopo_solo', text='Solo', icon='HIDE_ON' if solo_on(context) else 'HIDE_OFF',
+                depress=solo_on(context))
     try:                                             # 0.24.342 the retopo snapped onto the original's surface
         from . import retopo_project as rp
         if rp.targets(context):
@@ -1104,7 +1108,73 @@ def draw(layout, context, colour=None):
         box.label(text='Your own low: select it and its high(s), then 2 Bake', icon='INFO')
 
 
-CLASSES = (MCH_OT_retopo_make, MCH_OT_retopo_bake)
+SOLO_KEY = 'mch_rb_solo'          # 0.24.354 on the scene: what Solo hid / showed, to put back
+
+
+def solo_on(context):
+    return bool(context.scene.get(SOLO_KEY))
+
+
+def solo_keep(context):
+    """The meshes Solo leaves showing: the selected retopo(s) and their high(s)."""
+    keep = []
+    for h, lo in selected_pairs(context):
+        keep += [o for o in (h, lo) if o is not None]
+    op_ = own_pair(context)
+    if op_ is not None:
+        keep += [op_[1]] + list(op_[2])
+    if not keep:
+        keep = [o for o in context.selected_objects if o.type == 'MESH']
+    return list(dict.fromkeys(keep))
+
+
+class MCH_OT_retopo_solo(bpy.types.Operator):
+    """Solo: only the selected retopo (low) and its high stay showing - every other object hidden (the eye off);
+    again: all back as they were"""
+    bl_idname = 'mch.retopo_solo'
+    bl_label = 'Solo'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        import json
+        S = context.scene
+        vl = context.view_layer
+        if S.get(SOLO_KEY):                                   # off: what it hid comes back, what it showed goes
+            try:
+                rec = json.loads(S[SOLO_KEY])
+            except (TypeError, ValueError):
+                rec = {}
+            for n in rec.get('hid', []):
+                o = bpy.data.objects.get(n)
+                if o is not None and o.name in vl.objects:
+                    o.hide_set(False)
+            for n in rec.get('shown', []):
+                o = bpy.data.objects.get(n)
+                if o is not None and o.name in vl.objects:
+                    o.hide_set(True)
+            del S[SOLO_KEY]
+            self.report({'INFO'}, 'Solo off: everything back as it was')
+            return {'FINISHED'}
+        keep = solo_keep(context)
+        if not keep:
+            self.report({'WARNING'}, 'Select a retopo (low) or its high')
+            return {'CANCELLED'}
+        names = {o.name for o in keep}
+        hid, shown = [], []
+        for o in vl.objects:
+            if o.name in names:
+                if o.hide_get():
+                    o.hide_set(False)
+                    shown.append(o.name)
+            elif not o.hide_get() and o.type != 'CAMERA' and o.type != 'LIGHT':
+                o.hide_set(True)
+                hid.append(o.name)
+        S[SOLO_KEY] = json.dumps({'hid': hid, 'shown': shown})
+        self.report({'INFO'}, f'Solo: {", ".join(sorted(names))} ({len(hid)} other(s) hidden)')
+        return {'FINISHED'}
+
+
+CLASSES = (MCH_OT_retopo_make, MCH_OT_retopo_bake, MCH_OT_retopo_solo)
 
 
 def register():
