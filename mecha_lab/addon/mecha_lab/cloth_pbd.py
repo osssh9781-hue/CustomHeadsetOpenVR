@@ -52,6 +52,19 @@ def edges_of(faces_vi, faces_start, faces_tot):
 def ring_pairs(edges, n, rings=(2, 3, 4)):
     """Point pairs at graph distance exactly r for r in ``rings``: a BFS from every point over the edge graph.
     Returns {r: (M, 2) int64 (a < b)}."""
+    L = clib() if ENGINE[0] else None
+    if L is not None and hasattr(L, 'mcloth_ring_pairs') and n > 0 and len(rings):
+        import ctypes                                       # 0.24.358 the same BFS, the same order, in C
+        ip = ctypes.POINTER(ctypes.c_longlong)
+        e = np.ascontiguousarray(edges, np.int64).reshape(-1, 2)
+        R = int(max(rings))
+        cnt = np.zeros(R + 1, np.int64)
+        if L.mcloth_ring_pairs(int(n), len(e), e.ctypes.data_as(ip), R, cnt.ctypes.data_as(ip), None, None) == 0:
+            offs = np.concatenate([[0], np.cumsum(cnt)[:-1]]).astype(np.int64)
+            out = np.zeros((int(cnt.sum()), 2), np.int64)
+            if L.mcloth_ring_pairs(int(n), len(e), e.ctypes.data_as(ip), R, cnt.ctypes.data_as(ip),
+                                   out.ctypes.data_as(ip), offs.ctypes.data_as(ip)) == 0:
+                return {r: out[offs[r]:offs[r] + cnt[r]].copy() for r in rings}
     nb = [[] for _ in range(n)]
     for a, b in np.asarray(edges, np.int64).tolist():
         nb[a].append(b)
@@ -113,7 +126,116 @@ def tethers(co, edges, pinned, scale=1.0):
     return free, src[free], dist[free] * float(scale)
 
 
+ENGINE = [True]          # 0.24.358 the constraint passes in Mecha Lab's C engine when it is there (False: numpy)
+_C = [None]
+
+
+def clib():
+    """0.24.358 (user: "클로스가 좀 느린데 ... c 엔진으로 옮겨 줘") the engine with the cloth passes (mcloth.c), or None
+    (then numpy, as before)."""
+    if _C[0] is None:
+        _C[0] = False
+        try:
+            import ctypes
+            from . import fast_decimate as fd
+            L = fd.lib()
+            if L is not None and hasattr(L, 'mcloth_version'):
+                L.mcloth_version.restype = ctypes.c_int
+                L.mcloth_version.argtypes = []
+                if L.mcloth_version() >= 1:
+                    vp, dp, ip = ctypes.c_void_p, ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_longlong)
+                    L.mcloth_plan.restype = vp
+                    L.mcloth_plan.argtypes = [ctypes.c_int, ctypes.c_int, ip]
+                    L.mcloth_plan_free.restype = None
+                    L.mcloth_plan_free.argtypes = [vp]
+                    L.mcloth_project.restype = ctypes.c_int
+                    L.mcloth_project.argtypes = [vp, dp, dp, dp, ctypes.c_double, ctypes.c_double, ctypes.c_double,
+                                                 ctypes.c_int]
+                    L.mcloth_smooth.restype = ctypes.c_int
+                    L.mcloth_smooth.argtypes = [vp, dp, ctypes.c_double, ctypes.c_int]
+                    if L.mcloth_version() >= 3:
+                        L.mcloth_ring_pairs.restype = ctypes.c_int
+                        L.mcloth_ring_pairs.argtypes = [ctypes.c_int, ctypes.c_int, ip, ctypes.c_int, ip, ip, ip]
+                        L.mcloth_splat.restype = ctypes.c_int
+                        L.mcloth_splat.argtypes = [ctypes.c_int, dp, dp, dp, ctypes.c_double, ip, ip, ctypes.c_int, dp,
+                                                   ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+                    if L.mcloth_version() >= 2:
+                        fp, up = ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_ubyte)
+                        L.mcloth_push.restype = ctypes.c_int
+                        L.mcloth_push.argtypes = [ctypes.c_int, dp, dp, ctypes.c_double, ip, ip, fp, fp, ctypes.c_double,
+                                                  ctypes.c_double, up, ctypes.c_int]
+                    _C[0] = L
+        except (ImportError, OSError, AttributeError):
+            _C[0] = False
+    return _C[0] or None
+
+
+_NT = [0]
+
+
+def _threads():
+    if not _NT[0]:
+        import os
+        _NT[0] = max(1, min(64, int(os.environ.get('MECH_CLOTH_THREADS', 0)) or os.cpu_count() or 1))
+    return _NT[0]
+
+
 class Cloth:
+    _plans = None        # 0.24.358 {id(pairs): (pairs, C plan)} - the engine's per-point lists of each constraint set
+
+    def _plan(self, pairs, L):
+        import ctypes
+        if self._plans is None:
+            self._plans = {}
+        hit = self._plans.get(id(pairs))
+        if hit is not None and hit[0] is pairs:
+            return hit[1]
+        if len(self._plans) > 24:                          # (a caller making new pair lists every frame: no pile-up)
+            self.free_plans()
+            self._plans = {}
+        pr = np.ascontiguousarray(pairs, np.int64)
+        h = L.mcloth_plan(int(self.n), int(len(pr)), pr.ctypes.data_as(ctypes.POINTER(ctypes.c_longlong)))
+        if not h:
+            return None
+        self._plans[id(pairs)] = (pairs, h)
+        return h
+
+    def free_plans(self):
+        L = clib()
+        if L is not None and self._plans:
+            for _p, h in self._plans.values():
+                L.mcloth_plan_free(h)
+        self._plans = None
+
+    def __del__(self):
+        try:
+            self.free_plans()
+        except Exception:                                  # noqa: BLE001  (interpreter shutting down)
+            pass
+
+    def _co_c(self):
+        if self.co.dtype != np.float64 or not self.co.flags.c_contiguous or not self.co.flags.writeable:
+            self.co = np.ascontiguousarray(self.co, np.float64)
+        return self.co
+
+    def _project_c(self, pairs, rest, strength, max_move):
+        L = clib() if ENGINE[0] else None
+        if L is None or len(self.co) != self.n:
+            return False
+        h = self._plan(pairs, L)
+        if h is None:
+            return False
+        import ctypes
+        dp = ctypes.POINTER(ctypes.c_double)
+        co = self._co_c()
+        r = np.ascontiguousarray(np.broadcast_to(rest, (len(pairs),)), np.float64)
+        w = getattr(self, '_w', None)
+        if w is None or getattr(self, '_w_of', None) is not self.mass:
+            w = self._w = np.ascontiguousarray(1.0 / np.asarray(self.mass, np.float64))
+            self._w_of = self.mass
+        return L.mcloth_project(h, co.ctypes.data_as(dp), w.ctypes.data_as(dp), r.ctypes.data_as(dp), float(strength),
+                                float(self.sor), float(max_move) if max_move is not None else 0.0, _threads()) == 0
+
     def __init__(self, co, faces_vi, faces_start, faces_tot, mass=None, bend=0.5, keep=0.0, pin=None):
         self.co = np.array(co, np.float64)
         self.init = self.co.copy()
@@ -144,6 +266,8 @@ class Cloth:
         corrections its constraints ask for (the mass-weighted split between the two ends).  ``max_move`` caps the
         pull of one pass in length units (a seam a body-width apart must not tunnel through the collider)."""
         if not len(pairs):
+            return
+        if np.ndim(strength) == 0 and self._project_c(pairs, rest, strength, max_move):
             return
         a, b = pairs[:, 0], pairs[:, 1]
         d = self.co[b] - self.co[a]
@@ -186,6 +310,14 @@ class Cloth:
     #                      soft instead of a quilt of cell-sized creases (the 2-ring bending alone is too weak)
 
     def _smooth(self, amount):
+        L = clib() if ENGINE[0] else None
+        if L is not None and len(self.co) == self.n and len(self.edges):
+            h = self._plan(self.edges, L)
+            if h is not None:
+                import ctypes
+                co = self._co_c()
+                if L.mcloth_smooth(h, co.ctypes.data_as(ctypes.POINTER(ctypes.c_double)), float(amount), _threads()) == 0:
+                    return
         a, b = self.edges[:, 0], self.edges[:, 1]
         acc = np.zeros_like(self.co)
         for k in range(3):
@@ -437,6 +569,18 @@ class GridCollider:
         sdf = np.full(total, self.FAR, np.float32)
         grad = np.zeros((total, 3), np.float32)
         step = max(1, 2_000_000 // len(off))                  # points per chunk (memory: chunk x offsets)
+        L = clib() if ENGINE[0] else None
+        if L is not None and hasattr(L, 'mcloth_splat') and len(P):
+            import ctypes                                   # 0.24.358 the same splat in C (1 s -> a few ms on 20k points)
+            dp, ip, fp = ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_longlong), ctypes.POINTER(ctypes.c_float)
+            Pc, Nc = np.ascontiguousarray(P, np.float64), np.ascontiguousarray(N, np.float64)
+            loc = np.ascontiguousarray(lo, np.float64)
+            dm, sd = np.ascontiguousarray(dims, np.int64), np.ascontiguousarray(self.strides, np.int64)
+            if L.mcloth_splat(len(Pc), Pc.ctypes.data_as(dp), Nc.ctypes.data_as(dp), loc.ctypes.data_as(dp), self.cell,
+                              dm.ctypes.data_as(ip), sd.ctypes.data_as(ip), self.band, best.ctypes.data_as(dp),
+                              sdf.ctypes.data_as(fp), grad.ctypes.data_as(fp)) == 0:
+                step = len(P) + 1                           # (done: the numpy chunks below are skipped)
+                P = P[:0]
         for s0 in range(0, len(P), step):
             pi = np.arange(s0, min(s0 + step, len(P)))
             cells = (ijk[pi, None, :] + off[None, :, :]).reshape(-1, 3)
@@ -500,6 +644,22 @@ class GridCollider:
     def push(self, co, margin, touch_at=1.5):
         """Points closer than ``margin`` are moved out along the gradient to ``margin`` (in place; the gradient is
         looked up only for them).  Returns the mask of points touching (closer than ``touch_at`` x margin)."""
+        L = clib() if ENGINE[0] else None
+        if (L is not None and hasattr(L, 'mcloth_push') and isinstance(co, np.ndarray) and co.dtype == np.float64
+                and co.flags.c_contiguous and co.flags.writeable and co.ndim == 2 and co.shape[1] == 3):
+            import ctypes                                   # 0.24.358 the same look-up in the C engine
+            if getattr(self, '_cargs', None) is None:
+                self._cargs = (np.ascontiguousarray(self.origin, np.float64), np.ascontiguousarray(self.dims, np.int64),
+                               np.ascontiguousarray(self.strides, np.int64), np.ascontiguousarray(self.sdf, np.float32),
+                               np.ascontiguousarray(self.grad, np.float32))
+            o, dm, sd, sdf, grad = self._cargs
+            touch = np.zeros(len(co), np.uint8)
+            dp, ip, fp = ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_longlong), ctypes.POINTER(ctypes.c_float)
+            r = L.mcloth_push(len(co), co.ctypes.data_as(dp), o.ctypes.data_as(dp), float(self.cell), dm.ctypes.data_as(ip),
+                              sd.ctypes.data_as(ip), sdf.ctypes.data_as(fp), grad.ctypes.data_as(fp), float(margin),
+                              float(touch_at), touch.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)), _threads())
+            if r >= 0:
+                return touch.astype(bool)
         inside, ws, idxs = self._corners(co)
         d = np.zeros(len(co), np.float32)
         for w, idx in zip(ws, idxs):
