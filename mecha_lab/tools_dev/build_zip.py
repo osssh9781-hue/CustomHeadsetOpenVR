@@ -19,6 +19,28 @@ import datetime
 stamp = datetime.datetime.now().strftime('%Y%m%d-%H%M')
 out = os.path.join(ROOT, 'dist', f'mecha_lab-{version}_{stamp}.zip')
 os.makedirs(os.path.dirname(out), exist_ok=True)
+
+
+def _lossless_jpeg(path):
+    """0.24.349 (the zip at 99.7 of GitHub's 100 MB a file) a JPEG re-packed without loss by jpegtran (optimized
+    Huffman tables, progressive): the same pixels, ~9 % fewer bytes.  None when jpegtran is missing or not smaller -
+    the file goes in as it is.  The files in the add-on folder are not touched."""
+    import shutil
+    import subprocess
+    import tempfile
+    if not shutil.which('jpegtran'):
+        return None
+    with tempfile.TemporaryDirectory() as td:
+        tmp = os.path.join(td, 'o.jpg')
+        try:
+            subprocess.run(['jpegtran', '-copy', 'all', '-optimize', '-progressive', '-outfile', tmp, path],
+                           check=True, capture_output=True, timeout=60)
+            data = open(tmp, 'rb').read()
+        except (OSError, subprocess.SubprocessError):
+            return None
+    return data if 0 < len(data) < os.path.getsize(path) else None
+
+
 with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
     z.writestr('mecha_lab/build_stamp.txt', f'{version} build {stamp}\n')
     for base, dirs, files in os.walk(SRC):
@@ -27,6 +49,11 @@ with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
             if fn.endswith('.pyc') or fn.startswith('.'):
                 continue
             full = os.path.join(base, fn)
-            z.write(full, 'mecha_lab/' + os.path.relpath(full, SRC).replace(os.sep, '/'))
+            arc = 'mecha_lab/' + os.path.relpath(full, SRC).replace(os.sep, '/')
+            small = _lossless_jpeg(full) if fn.lower().endswith(('.jpg', '.jpeg')) else None
+            if small is not None:
+                z.writestr(zipfile.ZipInfo.from_file(full, arc), small, zipfile.ZIP_STORED)
+            else:
+                z.write(full, arc)
 print(out, os.path.getsize(out), 'bytes')
 sys.exit(0)
