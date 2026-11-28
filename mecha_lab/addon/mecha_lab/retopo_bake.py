@@ -436,6 +436,60 @@ def make_one_steps(context, parts, faces, method='QUAD'):
     return low, note
 
 
+JOIN_SHAPE = 60.0      # 0.24.353 Retopo Decimate: triangle pairs joined up to this shape angle (Decimate's own 40)
+
+
+def decimate_low(context, high, low, faces):
+    """0.24.353 (user: "베이크 할 때도 데시메이트로 하면 잘 되더라", "리토포 베이크에 데시메이트도 넣고 ... 프로젝트도")
+    the low as a Decimate of the high (Mecha Lab's own engine: detail kept where the shape needs it).  Allow Quads:
+    triangle pairs joined into quads (about 60 % - a decimate's triangles do not all pair up); All Quads: then every
+    face split into quads (its corners, side middles and middle).  Last, snapped onto the high (Project to Original,
+    without evening out: the decimate's own spacing - dense where the shape is - stays).  Returns a note."""
+    import bmesh
+    from . import fast_decimate as fd, retopo_project as rp
+    S = context.scene
+    quads = bool(getattr(S, 'mch_rb_quads', True))
+    allq = quads and bool(getattr(S, 'mch_rb_allq', False))
+    me = low.data
+    me.calc_loop_triangles()
+    nt = len(me.loop_triangles)
+    # triangles to keep for about ``faces`` at the end (measured: joined ~0.61 faces a triangle, split ~2.2)
+    want = max(12, int(int(faces) / (2.2 if allq else 0.61 if quads else 1.0)))
+    note = ''
+    if nt > want:
+        n0 = len(me.polygons)
+        msg = fd.decimate_object(low, 100.0 * want / max(nt, 1), keep_borders=True) or ''
+        if len(low.data.polygons) == n0 and ' > ' not in msg:          # (it said why it did nothing)
+            raise RuntimeError(msg or 'Decimate did nothing')
+        me = low.data
+        note = msg
+    if quads:
+        bm_ = bmesh.new()
+        try:
+            bm_.from_mesh(me)
+            bmesh.ops.join_triangles(bm_, faces=bm_.faces[:], angle_face_threshold=math.radians(40.0),
+                                     angle_shape_threshold=math.radians(JOIN_SHAPE), cmp_seam=True,
+                                     cmp_materials=True)
+            if allq:
+                from . import quad_remesh as qr
+                from mathutils.bvhtree import BVHTree
+                out = qr._split_quads(bm_, BVHTree.FromBMesh(bm_))
+                bm_.free()
+                bm_ = out
+            bm_.to_mesh(me)
+        finally:
+            bm_.free()
+        me.update()
+    q = sum(1 for p in me.polygons if len(p.vertices) == 4)
+    note = (note + ' | ' if note else '') + f'{len(me.polygons):,} faces, {100 * q / max(1, len(me.polygons)):.0f} % quads'
+    try:
+        r = rp.project(context, low, [high], relax=0)
+        note += f' | projected onto the high (moved {r["moved"]:.3g})'
+    except RuntimeError as ex:
+        note += f' | not projected: {ex}'
+    return note
+
+
 def make_low_steps(context, high, faces, method='QUAD', low=None):
     """Generator: the low for ``high`` (new, or ``low``'s mesh replaced).  Returns (low, note)."""
     yield (0.02, 'Reading the high')
@@ -451,7 +505,8 @@ def make_low_steps(context, high, faces, method='QUAD', low=None):
             raise RuntimeError(f'{high.name} has no faces')
         for lay in list(me.uv_layers):               # (the remesh makes new faces: old UVs do not fit)
             me.uv_layers.remove(lay)
-        yield (0.1, f'Quad remesh to about {int(faces):,} faces (one step - please wait)')
+        yield (0.1, (f'Decimate to about {int(faces):,} faces' if method == 'DECIMATE' else
+                     f'Quad remesh to about {int(faces):,} faces (one step - please wait)'))
     me.name = high.name + '_Low'
     if low is None:
         low = bpy.data.objects.new(high.name + '_Low', me)
@@ -468,7 +523,9 @@ def make_low_steps(context, high, faces, method='QUAD', low=None):
             low.data.uv_layers.remove(lay)
     low.matrix_world = high.matrix_world.copy()
     low[HIGH_KEY] = high.name
-    if method != 'WRAP':
+    if method == 'DECIMATE':
+        note = decimate_low(context, high, low, faces)
+    elif method != 'WRAP':
         before = len(me.polygons)
         try:
             from . import quad_field as qf
@@ -812,7 +869,7 @@ class MCH_OT_retopo_make(bpy.types.Operator):
                 lo.select_set(True)
             if lows:
                 context.view_layer.objects.active = lows[-1]
-            msg = (f'Retopo ({"Wrap" if method == "WRAP" else "Quad"}): {len(lows)} low(s), '
+            msg = (f'Retopo ({ {"WRAP": "Wrap", "DECIMATE": "Decimate"}.get(method, "Quad")}): {len(lows)} low(s), '
                    f'{sum(len(lo.data.polygons) for lo in lows):,} faces, {time.time() - t0:.1f} s')
             notes = [r[1] for _it, r in res if not isinstance(r, Exception) and r[1] and not r[1].startswith('Quad Remesh:')]
             if notes:
@@ -975,7 +1032,14 @@ def draw(layout, context, colour=None):
     box.row(align=True).prop(S, 'mch_rb_method', expand=True)
     col = box.column(align=True)
     col.prop(S, 'mch_rb_faces')
-    if hasattr(S, 'mch_rb_hard'):                    # 0.24.255 Wrap keeps them too
+    if S.mch_rb_method == 'DECIMATE':                # 0.24.353 Decimate: pairs of triangles as quads
+        if hasattr(S, 'mch_rb_quads'):
+            r_ = col.row(align=True)
+            r_.prop(S, 'mch_rb_quads', toggle=True)
+            sub_ = r_.row(align=True)
+            sub_.active = S.mch_rb_quads
+            sub_.prop(S, 'mch_rb_allq', toggle=True)
+    elif hasattr(S, 'mch_rb_hard'):                  # 0.24.255 Wrap keeps them too
         col.prop(S, 'mch_rb_hard', toggle=True)
     parts = selected_parts(context) if hasattr(S, 'mch_rb_join') else []
     one = len(parts) > 1 and S.mch_rb_join == 'ONE'
@@ -1062,11 +1126,20 @@ def register():
         name='Method', default='QUAD',
         items=[('QUAD', 'Quad', 'Quad remesh: the edge flow follows the shape'),
                ('WRAP', 'Vacuum Wrap', 'All even quads laid onto the high: the shape itself turned into quads (holes, '
-                                'hollows and arms kept) or a box, whichever lies on it better')])
+                                'hollows and arms kept) or a box, whichever lies on it better'),
+               ('DECIMATE', 'Decimate', 'The high decimated (detail kept where the shape needs it, the shape '
+                                        'itself), then snapped onto the high: good for baking')])
+    bpy.types.Scene.mch_rb_quads = BoolProperty(
+        name='Allow Quads', default=True,
+        description='Decimate: pairs of triangles joined into quads (off: all triangles)')
+    bpy.types.Scene.mch_rb_allq = BoolProperty(
+        name='All Quads', default=False,
+        description='Decimate with Allow Quads: then every face split into quads (all quads, the shape kept; the '
+                    'face count is aimed at Faces)')
 
 
 def unregister():
-    for a in ('mch_rb_faces', 'mch_rb_method', 'mch_rb_hard', 'mch_rb_join'):
+    for a in ('mch_rb_faces', 'mch_rb_method', 'mch_rb_hard', 'mch_rb_join', 'mch_rb_quads', 'mch_rb_allq'):
         if hasattr(bpy.types.Scene, a):
             delattr(bpy.types.Scene, a)
     for c in reversed(CLASSES):
