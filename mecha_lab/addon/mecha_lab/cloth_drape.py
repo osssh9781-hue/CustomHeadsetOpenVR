@@ -2798,6 +2798,7 @@ class MCH_OT_cdrape_sim(bpy.types.Operator):
             SIM['want'] = 'toggle'
             return {'CANCELLED'}
         SIM['modal'] = True
+        stop_playback(context)                       # 0.24.362 (Blender's playback would eat the next Space)
         self._toggle(context)
         wm = context.window_manager
         self._timer = wm.event_timer_add(0.02, window=context.window)
@@ -2857,6 +2858,7 @@ class MCH_OT_cdrape_sim(bpy.types.Operator):
                 self._hint(context)
                 return {'RUNNING_MODAL'}
         if event.type == 'SPACE' and event.value == 'PRESS':
+            stop_playback(context)                   # 0.24.362
             self._toggle(context)
             self._hint(context)
             return {'RUNNING_MODAL'}
@@ -3651,8 +3653,55 @@ class MCH_OT_cdrape_reset(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MCH_OT_cdrape_space(bpy.types.Operator):
+    """Space while a cloth is being draped, wherever the mouse is: the cloth runs / pauses (Blender's own animation
+    playback, if it started, is stopped)"""
+    bl_idname = 'mch.cdrape_space'
+    bl_label = 'Cloth Drape: Run / Pause'
+    bl_options = {'INTERNAL'}
+
+    @classmethod
+    def poll(cls, context):
+        # 0.24.362 (user: "Anim Player 가 뜨면서 스페이스바가 먹혀"): Space over anything but the 3D view (the tool
+        # window, the sidebar, a header) went to Blender's "Frames" keymap and started the timeline playback - and
+        # from then on every Space played / stopped it.  Only while a cloth session is live: otherwise Space is
+        # Blender's as always.
+        return context.mode == 'OBJECT' and sim_active()
+
+    def invoke(self, context, event):
+        stop_playback(context)
+        win = context.window
+        area = next((a for a in win.screen.areas if a.type == 'VIEW_3D'), None) if win else None
+        region = next((r for r in area.regions if r.type == 'WINDOW'), None) if area else None
+        if area is None or region is None:
+            return {'CANCELLED'}
+        with context.temp_override(window=win, area=area, region=region):
+            if SIM.get('modal'):
+                SIM['want'] = 'toggle'
+            else:
+                bpy.ops.mch.cdrape_sim('INVOKE_DEFAULT')
+        return {'FINISHED'}
+
+
+def stop_playback(context):
+    """0.24.362 Blender's timeline playback stopped (it would take every Space and change the frame under the cloth)."""
+    try:
+        scr = context.screen or (context.window.screen if context.window else None)
+        if scr is not None and scr.is_animation_playing:
+            win = context.window
+            with context.temp_override(window=win, screen=scr):
+                bpy.ops.screen.animation_cancel(restore_frame=True)
+            return True
+    except (RuntimeError, AttributeError, TypeError):
+        pass
+    return False
+
+
+_SPACE_KM = []
+
+
 CLASSES = (MCH_PG_ClothDrape, MCH_OT_cdrape_reset, MCH_OT_cdrape_stitch, MCH_OT_cdrape_sim, MCH_OT_cdrape_mesh, MCH_OT_cdrape_mask, MCH_OT_cdrape_tack, MCH_OT_cdrape_tack_clear, MCH_OT_cdrape_wrap, MCH_OT_cdrape_sew_copy, MCH_OT_cdrape_lines,
-           MCH_OT_cdrape_control, MCH_OT_cdrape_keep)
+           MCH_OT_cdrape_control, MCH_OT_cdrape_keep, MCH_OT_cdrape_space)
 
 
 @bpy.app.handlers.persistent
@@ -3673,10 +3722,21 @@ def register():
         undo_keep.AFTER_RESTORE.append(collider_proxy.sync)
     if _sync_proxies_on_load not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(_sync_proxies_on_load)
+    wm = bpy.context.window_manager
+    kc = wm.keyconfigs.addon if wm else None
+    if kc is not None:                                # 0.24.362 Space for the cloth wherever the mouse is (poll: a cloth
+        km = kc.keymaps.new(name='Frames')            #  session is live - else Blender's playback, as always)
+        _SPACE_KM.append((km, km.keymap_items.new('mch.cdrape_space', 'SPACE', 'PRESS')))
 
 
 def unregister():
     from . import collider_proxy, undo_keep
+    for km, kmi in _SPACE_KM:
+        try:
+            km.keymap_items.remove(kmi)
+        except (ReferenceError, RuntimeError):
+            pass
+    _SPACE_KM.clear()
     if collider_proxy.sync in undo_keep.AFTER_RESTORE:
         undo_keep.AFTER_RESTORE.remove(collider_proxy.sync)
     for h in [h for h in bpy.app.handlers.load_post if getattr(h, '__name__', '') == '_sync_proxies_on_load']:
