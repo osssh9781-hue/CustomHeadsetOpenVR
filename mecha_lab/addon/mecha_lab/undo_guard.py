@@ -1,4 +1,4 @@
-"""0.24.349 Ctrl+Z / Ctrl+Shift+Z / file load: one shared "stay out" window for every depsgraph handler that reads
+"""0.24.349 Ctrl+Z / Ctrl+Shift+Z: one shared "stay out" window for every depsgraph handler that reads
 ``depsgraph.updates`` (user: "어떤 기능들은 랜덤하게 컨트롤 z 누르면 꺼지니까").
 
 Right after an undo the depsgraph's update list can still point at IDs the undo freed; reading them (``u.id``,
@@ -25,7 +25,7 @@ def quiet():
 
 
 def on_undo(fn):
-    """``fn()`` runs after each undo / redo / load (drop a cache).  Returns fn (a decorator)."""
+    """``fn()`` runs after each undo / redo (drop a cache).  Returns fn (a decorator)."""
     if fn not in _CLEARS:
         _CLEARS.append(fn)
     return fn
@@ -47,7 +47,7 @@ def _post(*_a):
             pass
 
 
-_LISTS = ('undo_pre', 'redo_pre', 'load_pre', 'undo_post', 'redo_post', 'load_post')
+_LISTS = ('undo_pre', 'redo_pre', 'undo_post', 'redo_post')      # (a file load: not needed - its own reset)
 
 
 def register():

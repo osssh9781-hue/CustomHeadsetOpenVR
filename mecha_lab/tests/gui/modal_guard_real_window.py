@@ -6,7 +6,7 @@ import os
 import bpy
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'addon'))
-COUNT = {'draw': 0, 'cancel': 0}
+COUNT = {'draw': 0, 'cancel': 0, 'draw_off': 0, 'draw_on': 0}
 RES = []
 
 
@@ -15,8 +15,8 @@ def check(name, ok, detail=''):
     print(('PASS ' if ok else 'FAIL ') + name + (f'  -- {detail}' if detail else ''))
 
 
-def _draw():
-    COUNT['draw'] += 1
+def _draw(key):
+    COUNT[key] += 1
 
 
 def make(name):
@@ -25,7 +25,7 @@ def make(name):
         bl_label = 'Guard Test'
 
         def invoke(self, context, event):
-            self._h = bpy.types.SpaceView3D.draw_handler_add(_draw, (), 'WINDOW', 'POST_PIXEL')
+            self._h = bpy.types.SpaceView3D.draw_handler_add(_draw, ('draw_' + name,), 'WINDOW', 'POST_PIXEL')
             self._timer = context.window_manager.event_timer_add(0.05, window=context.window)
             context.window_manager.modal_handler_add(self)
             return {'RUNNING_MODAL'}
@@ -53,17 +53,18 @@ def run_case(guard, then):
     region = next(r for r in area.regions if r.type == 'WINDOW')
     with bpy.context.temp_override(window=win, area=area, region=region):
         getattr(bpy.ops.mch, cls.bl_idname.split('.')[1])('INVOKE_DEFAULT')
-    COUNT['draw'] = 0
+    key_ = 'draw_' + ('on' if guard else 'off')
+    COUNT[key_] = 0
     COUNT['cancel'] = 0
     x, y = area.x + area.width // 2, area.y + area.height // 2
     win.event_simulate('MOUSEMOVE', 'NOTHING', x=x, y=y)
     win.event_simulate('MOUSEMOVE', 'NOTHING', x=x + 5, y=y + 5)
 
     def after():
-        a = COUNT['draw']
+        a = COUNT[key_]
         with bpy.context.temp_override(window=win, area=area, region=region):
             bpy.ops.wm.redraw_timer(type='DRAW', iterations=5)
-        drawn_after = COUNT['draw'] - a
+        drawn_after = COUNT[key_] - a
         then(guard, drawn_after, COUNT['cancel'], mg.ERRORS[:])
         return None
     bpy.app.timers.register(after, first_interval=0.5)

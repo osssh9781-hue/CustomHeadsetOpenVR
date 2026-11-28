@@ -2246,6 +2246,8 @@ def register():
     _reset_module_state()
     try:
         _register()
+        from . import modal_guard
+        modal_guard.install()                     # 0.24.349 a modal tool that hits an error ends cleanly
     except Exception:
         # Roll back completely so a retry (or a disable/enable) starts clean
         # instead of leaving half the add-on registered.
@@ -2443,6 +2445,11 @@ def _unregister_steps():
 
 
 def unregister():
+    try:
+        from . import modal_guard
+        modal_guard.uninstall()
+    except Exception:                             # noqa: BLE001  (never stop the unregister)
+        pass
     addon_safety.run_steps(_unregister_steps())
     # Anything a failing step left behind is removed here, so the next
     # enable never sees "already registered".

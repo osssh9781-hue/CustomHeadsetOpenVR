@@ -487,9 +487,11 @@ class MCH_OT_station_insert(bpy.types.Operator):
         ob = active_station_primitive(context)
         p = ob.mch_station
         i = max(1, min(self.index, len(p.stations) - 1))
-        a, b = p.stations[i - 1], p.stations[i]
         p.live = False
         st = p.stations.add()
+        # 0.24.349 the stations read only after the add: adding to the list can move it in memory, and stations
+        # taken before pointed at freed memory - Blender crashed at random on Insert Station
+        a, b = p.stations[i - 1], p.stations[i]
         for k in ss.STATION_KEYS:
             setattr(st, k, getattr(b, k))
         for k in ss.BLEND_KEYS:                    # halfway profile

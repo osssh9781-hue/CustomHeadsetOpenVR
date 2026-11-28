@@ -118,7 +118,11 @@ def install(classes=None):
     n = 0
     for cls in classes:
         fn = cls.__dict__.get('modal')
-        if fn is None or cls in _WRAPPED or getattr(fn, '__wrapped__', None) is not None:
+        if fn is None:                                     # (from a shared logic class: GateLogic, LeanModal ...)
+            fn = next((k.__dict__['modal'] for k in cls.__mro__[1:] if 'modal' in k.__dict__), None)
+            if fn is None or not _ours(next(k for k in cls.__mro__ if 'modal' in k.__dict__)):
+                continue
+        if cls in _WRAPPED or getattr(fn, '__wrapped__', None) is not None:
             continue
         _WRAPPED[cls] = fn
         cls.modal = _wrap(cls, fn)
@@ -129,7 +133,11 @@ def install(classes=None):
 def uninstall():
     for cls, fn in list(_WRAPPED.items()):
         try:
-            cls.modal = fn
+            if cls.__dict__.get('modal') is not None and getattr(cls.__dict__['modal'], '__wrapped__', None) is fn:
+                if any('modal' in k.__dict__ and k.__dict__['modal'] is fn for k in cls.__mro__[1:]):
+                    del cls.modal                  # (it was inherited: the wrapper goes, the shared one shows)
+                else:
+                    cls.modal = fn
         except (AttributeError, TypeError):
             pass
     _WRAPPED.clear()

@@ -312,6 +312,8 @@ def rebuild(ob):
     crease = me.attributes.get('mch_crease')
     if crease is not None and crease.domain == 'EDGE':
         sharp = me.attributes.get('sharp_edge') or me.attributes.new('sharp_edge', 'BOOLEAN', 'EDGE')
+        crease = me.attributes.get('mch_crease')     # (0.24.349 again after the new one: the old reference
+        #                                              could point at freed memory - a random crash)
         vals = [0.0] * len(me.edges)
         crease.data.foreach_get('value', vals)
         flags = [False] * len(me.edges)

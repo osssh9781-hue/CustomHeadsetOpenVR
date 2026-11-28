@@ -6,6 +6,8 @@ Blender config is NOT used: BLENDER_USER_CONFIG / RESOURCES point to a temp dir.
 """
 import os
 import sys
+import atexit
+import shutil
 import tempfile
 
 sys.dont_write_bytecode = True   # keep reference/ and addon/ free of __pycache__
@@ -13,6 +15,7 @@ sys.dont_write_bytecode = True   # keep reference/ and addon/ free of __pycache_
 HERE = os.path.dirname(os.path.abspath(__file__))
 ADDON_PARENT = os.path.join(os.path.dirname(HERE), 'addon')
 _TMP = tempfile.mkdtemp(prefix='mecha_lab_test_')
+atexit.register(shutil.rmtree, _TMP, True)     # (0.24.349 the temp config gone after the run - they filled the disk)
 for var in ('BLENDER_USER_CONFIG', 'BLENDER_USER_SCRIPTS', 'BLENDER_USER_DATAFILES',
             'BLENDER_USER_RESOURCES', 'BLENDER_USER_EXTENSIONS'):
     os.environ[var] = os.path.join(_TMP, var.lower())

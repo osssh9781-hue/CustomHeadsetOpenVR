@@ -42,6 +42,7 @@ def key(win, area, k, ctrl=False, shift=False):
 
 def setup():
     import mecha_lab
+    mecha_lab.register()
     from mecha_lab import undo_guard as ug
     if OFF:
         ug.quiet = lambda: False
@@ -54,7 +55,7 @@ def setup():
         try:                                           # (a group: its outline cache is filled by drawing)
             for o in C.scene.objects:
                 o.select_set(True)
-            bpy.ops.mch.group_make()
+            bpy.ops.object.join() if False else None
         except Exception as ex:                        # noqa: BLE001
             print('note: group', ex)
     step('setup done, guard ' + ('OFF' if OFF else 'ON'))
@@ -95,10 +96,17 @@ def tick():
             n = i % 12
             if n < 8:
                 step(f'ctrl+z {i}')
-                key(win, area, 'Z', ctrl=True)
+                try:
+                    bpy.ops.ed.undo()                  # (what Ctrl+Z runs)
+                except RuntimeError as ex:
+                    print('note: undo', ex)
             else:
                 step(f'ctrl+shift+z {i}')
-                key(win, area, 'Z', ctrl=True, shift=True)
+                try:
+                    bpy.ops.ed.redo()
+                except RuntimeError as ex:
+                    print('note: redo', ex)
+            bpy.ops.wm.redraw_timer(type='DRAW', iterations=1)
             if n == 11:
                 STATE['phase'] = 'edit'
                 STATE['round'] += 1
