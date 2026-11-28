@@ -73,9 +73,12 @@ for name, was in before.items():
 n_before = sum(len(v) for v in before.values())
 check(f'every control of 0.24.212 is still in the window, the same (its action, text, enabled) - {n_before:,} checked '
       f'over {len(before)} states of the tool, {len(gone)} gone', not gone and set(states) == set(before), gone[:5])
-extra = sorted({json.loads(k)[2] for k in new})
-check(f'the only new things are the six section titles ({extra})', extra == sorted(TITLES)
-      and all(json.loads(k)[0] == 'label' for k in new))
+# 0.24.359 / 0.24.361 added on purpose: Check GPU Cloth, the GPU toggle, Reset Settings
+ADDED = {('op', 'mch.gpu_cloth_check'), ('prop', 'MCH_PG_ClothDrape.gpu'), ('op', 'mch.cdrape_reset')}
+added = {tuple(json.loads(k)[:2]) for k in new if json.loads(k)[0] != 'label'}
+extra = sorted({json.loads(k)[2] for k in new if json.loads(k)[0] == 'label'})
+check(f'the only new things are the six section titles ({extra}) and the GPU Cloth Check / GPU / Reset Settings '
+      f'controls ({sorted(added)})', extra == sorted(TITLES) and added == ADDED)
 st.drape_mode = 'AREA'
 root = pc.capture(cd.draw, C)
 boxes = [n for n in root.children if n.kind == 'box']

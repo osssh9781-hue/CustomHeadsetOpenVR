@@ -18,6 +18,9 @@ import time
 import numpy as np
 
 TEX_W = 4096
+FAST_MODE = [0]          # FAST: 0 = every set's mean correction added up, 1 = one mean over all the constraints
+FAST_BLEND = [0.6]       # ... x this (measured: 0.6 with 2x the passes keeps the edges as long as the CPU does)
+FAST_ITER = [2.0]        # FAST: passes x this (a pass is one cheap dispatch; smoothing / keep / friction scaled to match)
 _STATE = {'failed': None}
 _SH = {}
 
@@ -111,6 +114,65 @@ void main() {
 }
 '''
 
+FAST = r"""
+void main() {
+  int i = int(gl_GlobalInvocationID.x);
+  if (i >= count) return;
+  vec4 me = fetch(cur, i), info = fetch(pinfo, i), a = fetch(init, i), cs = fetch(pset, i);
+  int s = int(cs.x), n = int(cs.y);
+  vec3 p = me.xyz;
+  vec3 acc[6]; float cnt[6];
+  for (int k = 0; k < 6; k++) { acc[k] = vec3(0.0); cnt[k] = 0.0; }
+  vec3 m = vec3(0.0); float ne = 0.0;
+  for (int k = s; k < s + n; k++) {
+    vec4 e = fetch(ent, k);
+    int set = int(e.z);
+    vec4 o = fetch(cur, int(e.x));
+    vec3 d = o.xyz - p;
+    float L = max(length(d), 1e-12);
+    float st = set == 0 ? s0 : (set == 1 ? s1 : (set == 2 ? s2 : (set == 3 ? s3 : (set == 4 ? s4 : s5))));
+    float c = clamp((L - e.y) / L * st * sor, -0.5, 0.5);
+    acc[set] += d * (c * me.w / (me.w + o.w)); cnt[set] += 1.0;
+    if (set == 0) { m += o.xyz; ne += 1.0; }
+  }
+  vec3 q = p;
+  if (mode == 0) {                                     /* every set's mean correction, added up (scaled) */
+    vec3 tot = vec3(0.0);
+    for (int k = 0; k < 6; k++) if (cnt[k] > 0.0) tot += acc[k] / cnt[k];
+    q += tot * blend;
+  } else {                                             /* one mean over all the constraints */
+    vec3 tot = vec3(0.0); float c_ = 0.0;
+    for (int k = 0; k < 6; k++) { tot += acc[k]; c_ += cnt[k]; }
+    if (c_ > 0.0) q += tot / c_ * blend;
+  }
+  if (smoothk > 0.0 && ne > 0.0) q += (m / ne - p) * smoothk;
+  if (info.y > 0.0) q += (a.xyz - q) * (info.y * keeprate);
+  q = q * (1.0 - info.x) + a.xyz * info.x;
+  if (info.z >= 0.0) {
+    vec3 an = fetch(init, int(info.z)).xyz;
+    vec3 d = q - an; float l = length(d);
+    if (l > info.w) q = an + d * (info.w / l);
+  }
+  if (use_grid != 0) {
+    vec3 f = (q - vec3(ox, oy, oz)) / cell - 0.5;
+    ivec3 i0 = ivec3(floor(f));
+    vec3 t = f - vec3(i0);
+    float dist = 1e9; vec3 g = vec3(0.0);
+    if (all(greaterThanEqual(i0, ivec3(0))) && all(lessThan(i0 + 1, ivec3(dx, dy, dz)))) {
+      dist = 0.0;
+      for (int cx = 0; cx < 2; cx++) for (int cy = 0; cy < 2; cy++) for (int cz = 0; cz < 2; cz++) {
+        float w = (cx == 1 ? t.x : 1.0 - t.x) * (cy == 1 ? t.y : 1.0 - t.y) * (cz == 1 ? t.z : 1.0 - t.z);
+        vec4 gc = fetch(grid, (i0.x + cx) * dy * dz + (i0.y + cy) * dz + (i0.z + cz));
+        dist += w * gc.w; g += w * gc.xyz;
+      }
+    }
+    if (dist < margin) { float l = length(g); if (l < 1e-9) l = 1.0; q += g / l * (margin - dist); }
+    if (friction > 0.0 && dist < margin * 1.5) q += (fetch(prev, i).xyz - q) * friction;
+  }
+  put(i, vec4(q, me.w));
+}
+"""
+
 
 def _make(key, src, samplers, ints, floats):
     if key in _SH:
@@ -145,7 +207,11 @@ def _shaders():
             _make('post', POST, ('cur', 'prev', 'init', 'pinfo', 'ent', 'pset0', 'grid'),
                   ('count', 'use_grid', 'dx', 'dy', 'dz'), ('smoothk', 'keeprate', 'cell', 'margin', 'friction',
                                                             'ox', 'oy', 'oz')),
-            _make('final', FINAL, ('cur', 'prev'), ('count', 'use_floor'), ('maxstep', 'fx', 'fy', 'fz', 'level')))
+            _make('final', FINAL, ('cur', 'prev'), ('count', 'use_floor'), ('maxstep', 'fx', 'fy', 'fz', 'level')),
+            _make('fast', FAST, ('cur', 'prev', 'init', 'pinfo', 'ent', 'pset', 'grid'),
+                  ('count', 'use_grid', 'dx', 'dy', 'dz', 'mode'),
+                  ('s0', 's1', 's2', 's3', 's4', 's5', 'sor', 'blend', 'smoothk', 'keeprate', 'cell', 'margin',
+                   'friction', 'ox', 'oy', 'oz')))
 
 
 def available():
@@ -193,6 +259,8 @@ class GPUSession:
     """``cloth`` (cloth_pbd.Cloth) on the GPU, with its ``grid`` collider (cloth_pbd.GridCollider or None),
     ``margin`` and ``friction`` (the collide callback's).  ``step(...)`` = ``cloth.step(...)``; the points come back
     into ``cloth.co`` / ``cloth.prev`` every frame (the mesh shows them)."""
+
+    fast = True          # 0.24.361 one dispatch a pass (FAST); False: the CPU's order, set by set (EXACT)
 
     def __init__(self, cloth, grid=None, margin=0.0, friction=0.0):
         if not available():
@@ -258,6 +326,25 @@ class GPUSession:
             base += len(own)
         if base >= (1 << 24):
             raise RuntimeError('GPU cloth: too many constraints')
+        # 0.24.361 (user: "꼭 cpu 랑 1 대 1 로 안 맞추고 최대한 빠른 버전으로") all the sets in one list per point, each
+        # entry with its set: a pass is ONE dispatch (FAST)
+        own_a, oth_a, rst_a, set_a = [], [], [], []
+        for si, (pairs, rest, _k) in enumerate(sets[:6]):
+            pairs = np.asarray(pairs, np.int64)
+            rest = np.broadcast_to(np.asarray(rest, np.float64), (len(pairs),))
+            own_a += [pairs[:, 0], pairs[:, 1]]
+            oth_a += [pairs[:, 1], pairs[:, 0]]
+            rst_a += [rest, rest]
+            set_a += [np.full(2 * len(pairs), si)]
+        own_a, oth_a = np.concatenate(own_a), np.concatenate(oth_a)
+        rst_a, set_a = np.concatenate(rst_a), np.concatenate(set_a)
+        order = np.argsort(own_a, kind='stable')
+        cnt = np.bincount(own_a, minlength=n)
+        fe = np.zeros((len(own_a), 4), np.float32)
+        fe[:, 0], fe[:, 1], fe[:, 2] = oth_a[order], rst_a[order], set_a[order]
+        fp = np.zeros((n, 4), np.float32)
+        fp[:, 0], fp[:, 1] = np.concatenate([[0], np.cumsum(cnt)[:-1]]), cnt
+        self.t_fent, self.t_fpset = _tex(fe), _tex(fp)
         self.t_ent = _tex(np.concatenate(ents) if ents else np.zeros((1, 4), np.float32))
         self.t_psets = [_tex(p) for p in psets]
         pinfo = np.zeros((n, 4), np.float32)
@@ -296,7 +383,7 @@ class GPUSession:
         groups = (self.n + 63) // 64
         pr, cu, sp = self.t
         before = c.co.copy()
-        sh_p, sh_c, sh_q, sh_f = _shaders()
+        sh_p, sh_c, sh_q, sh_f = _shaders()[:4]
         g = np.zeros(3) if gravity is None else np.asarray(gravity, np.float64)
         if force is not None:
             f4 = np.zeros((self.n, 4), np.float32)
@@ -315,7 +402,41 @@ class GPUSession:
         gpu.compute.dispatch(sh_p, groups, 1, 1)
         pr, cu, sp = cu, sp, pr                             # (the frame's start is the new "prev")
         keeprate = float(keep_rate) / max(1, int(iterations))
-        for _k in range(int(iterations)):
+        sh_x = _shaders()[4] if self.fast else None
+        st6 = (list(self.strengths) + [0.0] * 6)[:6]
+        npass = max(1, int(round(int(iterations) * FAST_ITER[0])))
+        per = int(iterations) / npass                      # (more, cheaper passes: the smoothing, keep and friction
+        f_smooth = 1.0 - (1.0 - float(c.smooth)) ** per     #  a pass scaled so a frame gets the same of each)
+        f_keep = keeprate * per
+        f_fric = 1.0 - (1.0 - self.friction) ** per
+        for _k in range(npass if sh_x is not None else 0):
+            sh_x.uniform_sampler('cur', cu)
+            sh_x.uniform_sampler('prev', pr)
+            sh_x.uniform_sampler('init', self.t_init)
+            sh_x.uniform_sampler('pinfo', self.t_pinfo)
+            sh_x.uniform_sampler('ent', self.t_fent)
+            sh_x.uniform_sampler('pset', self.t_fpset)
+            sh_x.uniform_sampler('grid', self.t_grid)
+            sh_x.image('result', sp)
+            sh_x.uniform_int('count', self.n)
+            sh_x.uniform_int('use_grid', 1 if self.use_grid else 0)
+            for nm, v in zip(('dx', 'dy', 'dz'), self.gdims):
+                sh_x.uniform_int(nm, v)
+            sh_x.uniform_int('mode', int(FAST_MODE[0]))
+            for k_, v in enumerate(st6):
+                sh_x.uniform_float(f's{k_}', float(v))
+            sh_x.uniform_float('sor', float(c.sor))
+            sh_x.uniform_float('blend', float(FAST_BLEND[0]))
+            sh_x.uniform_float('smoothk', f_smooth)
+            sh_x.uniform_float('keeprate', f_keep)
+            sh_x.uniform_float('cell', self.gcell)
+            sh_x.uniform_float('margin', self.margin)
+            sh_x.uniform_float('friction', f_fric)
+            for nm, v in zip(('ox', 'oy', 'oz'), self.gorigin):
+                sh_x.uniform_float(nm, v)
+            gpu.compute.dispatch(sh_x, groups, 1, 1)
+            cu, sp = sp, cu
+        for _k in range(int(iterations) if sh_x is None else 0):
             for ps, k in zip(self.t_psets, self.strengths):
                 sh_c.uniform_sampler('cur', cu)
                 sh_c.uniform_sampler('ent', self.t_ent)
