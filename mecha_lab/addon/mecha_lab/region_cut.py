@@ -74,11 +74,40 @@ class cache_scope:
         if _SCOPE[0] <= 0:
             _SCOPE[0] = 0
             _TCACHE.clear()
+            _free_prep()
         return False
 
 
 def forget(me=None):
     _TCACHE.clear()
+
+
+_PREP = {}                        # 0.24.357 a Split's two booleans: the region, patch, knife pieces and walls shared
+
+
+def _free_prep():
+    for prep in _PREP.values():
+        try:
+            pm = prep.get('patch')
+            if pm is not None and pm.name in bpy.data.meshes and pm.users == 0:
+                bpy.data.meshes.remove(pm)
+        except (ReferenceError, KeyError, RuntimeError):
+            pass
+    _PREP.clear()
+
+
+def _prep_key(target, cutter):
+    if not _SCOPE[0]:
+        return None
+    k = _ckey(target.data)
+    try:
+        cme = cutter.data
+        ck = (cme.session_uid, len(cme.vertices), len(cme.polygons))
+        mt = tuple(round(x, 9) for r in target.matrix_world for x in r)
+        mc = tuple(round(x, 9) for r in cutter.matrix_world for x in r)
+    except (AttributeError, ReferenceError):
+        return None
+    return None if k is None else (k, ck, mt, mc)
 
 
 def _ckey(me):
@@ -232,57 +261,71 @@ def region_boolean(context, target, cutter, operation, log=None):
         context.view_layer.update()            # (a cutter linked a moment ago: its matrix_world is not set yet)
     except (AttributeError, RuntimeError):
         pass
-    co, tot, start, vi = target_arrays(me)
-    inv = target.matrix_world.inverted()
-    cb = np.array([(inv @ (cutter.matrix_world @ v.co))[:] for v in cutter.data.vertices])
-    mu, R = _frame(cb)
-    cl = (cb - mu) @ R
-    lo, hi = cl.min(0), cl.max(0)
-    ext = hi - lo
-    if not (ext > 0).any():
-        return None
-    m = MARGIN * float(np.sort(ext)[1])     # (of the cutter's middle extent: a long prism's width, not its depth)
-    fmask = region_mask(co, tot, start, vi, lo - m, hi + m, frame=(mu, R))
-    fmask0 = fmask
-    nreg = int(fmask.sum())
-    t0b = time.perf_counter()
-    if os.environ.get('MECH_REGION_DEBUG'):
-        print(f'[region] cutter {len(cb)} pts ext {np.round(ext, 3).tolist()} margin {m:.3f} region {nreg:,} of {len(tot):,} '
-              f'cutter at {np.round(np.array(cutter.matrix_world.translation), 3).tolist()} target at {np.round(np.array(target.matrix_world.translation), 3).tolist()}', flush=True)
-    if nreg == 0 or nreg > 0.6 * len(tot):           # (nothing near, or most of the part: no gain)
-        return None
-    # the patch (region faces, points compacted) with its origin tag
-    lm = np.repeat(fmask, tot)
-    pverts, pcorners = np.unique(vi[lm], return_inverse=True)
-    patch = build(co[pverts], pcorners, tot[fmask], 'MCH_RegionPatch', like=me)   # (its material slots: the solver
-                                                                                #  clamps indices to the slots it has)
-    a = patch.attributes.new(TAG, 'INT', 'FACE')
-    a.data.foreach_set('value', np.ones(len(patch.polygons), np.int32))
-    a = patch.attributes.new(SRC, 'INT', 'FACE')              # (which part face each triangle came from: the quads
-    a.data.foreach_set('value', np.nonzero(fmask)[0].astype(np.int32))   #  are put back together after the boolean)
-    for name, domain, dtype in _attr_list(me):        # (the patch carries the part's attributes into the boolean)
-        vals = target_attr(me, name, domain, dtype)
-        if vals is None or domain == 'EDGE':
-            continue
-        idx = pverts if domain == 'POINT' else (np.nonzero(fmask)[0] if domain == 'FACE' else np.nonzero(lm)[0])
-        try:
-            b = patch.attributes.new(name, dtype, domain)
-            b.data.foreach_set(_TYPES[dtype][0], vals[idx].ravel())
-        except (RuntimeError, TypeError, ValueError):
-            pass
-    # the patch's quads / n-gons split into triangles once, here: the boolean and the knife then see the same
-    # triangles and cut the same seam (each would split a non-planar quad its own way - a T-junction per quad)
-    if int(tot[fmask].max()) > 3:
-        import bmesh
-        bmp = bmesh.new()
-        try:
-            bmp.from_mesh(patch)
-            bmesh.ops.triangulate(bmp, faces=[f for f in bmp.faces if len(f.verts) > 3], quad_method='BEAUTY', ngon_method='BEAUTY')
-            bmp.to_mesh(patch)
-        finally:
-            bmp.free()
-        patch.update()
-    pco, ptot, _pst, pvi = arrays(patch)
+    pkey = _prep_key(target, cutter)
+    prep = _PREP.get(pkey) if pkey is not None else None
+    if prep is not None:                      # 0.24.357 the Split's second boolean: the first one's preparation
+        co, tot, start, vi = prep['arrays']
+        mu, R, fmask, fmask0, nreg, lm = prep['mu'], prep['R'], prep['fmask'], prep['fmask0'], prep['nreg'], prep['lm']
+        pverts, pcorners, patch = prep['pverts'], prep['pcorners'], prep['patch']
+        t0b = time.perf_counter()
+    else:
+        co, tot, start, vi = target_arrays(me)
+        inv = target.matrix_world.inverted()
+        cb = np.array([(inv @ (cutter.matrix_world @ v.co))[:] for v in cutter.data.vertices])
+        mu, R = _frame(cb)
+        cl = (cb - mu) @ R
+        lo, hi = cl.min(0), cl.max(0)
+        ext = hi - lo
+        if not (ext > 0).any():
+            return None
+        m = MARGIN * float(np.sort(ext)[1])     # (of the cutter's middle extent: a long prism's width, not its depth)
+        fmask = region_mask(co, tot, start, vi, lo - m, hi + m, frame=(mu, R))
+        fmask0 = fmask
+        nreg = int(fmask.sum())
+        t0b = time.perf_counter()
+        if os.environ.get('MECH_REGION_DEBUG'):
+            print(f'[region] cutter {len(cb)} pts ext {np.round(ext, 3).tolist()} margin {m:.3f} region {nreg:,} of {len(tot):,} '
+                  f'cutter at {np.round(np.array(cutter.matrix_world.translation), 3).tolist()} target at {np.round(np.array(target.matrix_world.translation), 3).tolist()}', flush=True)
+        if nreg == 0 or nreg > 0.6 * len(tot):           # (nothing near, or most of the part: no gain)
+            return None
+        # the patch (region faces, points compacted) with its origin tag
+        lm = np.repeat(fmask, tot)
+        pverts, pcorners = np.unique(vi[lm], return_inverse=True)
+        patch = build(co[pverts], pcorners, tot[fmask], 'MCH_RegionPatch', like=me)   # (its material slots: the solver
+                                                                                    #  clamps indices to the slots it has)
+        a = patch.attributes.new(TAG, 'INT', 'FACE')
+        a.data.foreach_set('value', np.ones(len(patch.polygons), np.int32))
+        a = patch.attributes.new(SRC, 'INT', 'FACE')              # (which part face each triangle came from: the quads
+        a.data.foreach_set('value', np.nonzero(fmask)[0].astype(np.int32))   #  are put back together after the boolean)
+        for name, domain, dtype in _attr_list(me):        # (the patch carries the part's attributes into the boolean)
+            vals = target_attr(me, name, domain, dtype)
+            if vals is None or domain == 'EDGE':
+                continue
+            idx = pverts if domain == 'POINT' else (np.nonzero(fmask)[0] if domain == 'FACE' else np.nonzero(lm)[0])
+            try:
+                b = patch.attributes.new(name, dtype, domain)
+                b.data.foreach_set(_TYPES[dtype][0], vals[idx].ravel())
+            except (RuntimeError, TypeError, ValueError):
+                pass
+        # the patch's quads / n-gons split into triangles once, here: the boolean and the knife then see the same
+        # triangles and cut the same seam (each would split a non-planar quad its own way - a T-junction per quad)
+        if int(tot[fmask].max()) > 3:
+            import bmesh
+            bmp = bmesh.new()
+            try:
+                bmp.from_mesh(patch)
+                bmesh.ops.triangulate(bmp, faces=[f for f in bmp.faces if len(f.verts) > 3], quad_method='BEAUTY', ngon_method='BEAUTY')
+                bmp.to_mesh(patch)
+            finally:
+                bmp.free()
+            patch.update()
+        if pkey is not None:
+            prep = _PREP[pkey] = dict(arrays=(co, tot, start, vi), mu=mu, R=R, fmask=fmask, fmask0=fmask0, nreg=nreg,
+                                      lm=lm, pverts=pverts, pcorners=pcorners, patch=patch)
+    pco, ptot, _pst, pvi = prep['parr'] if prep is not None and 'parr' in prep else arrays(patch)
+    if prep is not None:
+        prep['parr'] = (pco, ptot, _pst, pvi)
+    shared = prep is not None
     tmp = bpy.data.objects.new('MCH_RegionPatch', patch)
     context.scene.collection.objects.link(tmp)
     tmp.matrix_world = target.matrix_world.copy()
@@ -312,10 +355,16 @@ def region_boolean(context, target, cutter, operation, log=None):
         # patch cannot give (a thin column through a part: the pieces inside vanish from Intersect, Union and
         # Difference alike) - so the cutter is only SPLIT along the patch (Edit-mode Intersect / Knife, no sorting)
         # and the pieces are sorted here, by a ray along the cutter's axis (``_walls``)
-        pieces = _knife_pieces(context, target, cutter, pco, pvi, ptot, M)
+        if shared and 'pieces' in prep:
+            pieces = prep['pieces']
+        else:
+            pieces = _knife_pieces(context, target, cutter, pco, pvi, ptot, M)
+            if shared and pieces is not None:
+                prep['pieces'] = pieces
     except Exception:
         bpy.data.objects.remove(tmp)
-        bpy.data.meshes.remove(patch)
+        if not shared:
+            bpy.data.meshes.remove(patch)
         return None
     finally:
         ct = cme.attributes.get(TAG)
@@ -328,7 +377,12 @@ def region_boolean(context, target, cutter, operation, log=None):
     try:
         if pieces is None:
             return None
-        wV, wC, wS = _walls(patch, pieces, R)
+        if shared and 'walls' in prep:
+            wV, wC, wS = prep['walls']
+        else:
+            wV, wC, wS = _walls(patch, pieces, R)
+            if shared:
+                prep['walls'] = (wV, wC, wS)
         t2b = time.perf_counter()
         if os.environ.get('MECH_REGION_DEBUG'):
             print(f'[region] walls inside the part: {len(wS)} faces', flush=True)
@@ -344,7 +398,7 @@ def region_boolean(context, target, cutter, operation, log=None):
         out = _stitch(me, co, tot, vi, fmask, lm, kept, (wV, wC, wS), target, cutter, rim, operation)
     finally:
         bpy.data.objects.remove(tmp)
-        for mm in (patch, kept):
+        for mm in ((kept,) if shared else (patch, kept)):
             bpy.data.meshes.remove(mm)
     t3 = time.perf_counter()
     LAST_TIMES.clear()
