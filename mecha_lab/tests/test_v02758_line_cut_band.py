@@ -60,8 +60,11 @@ def run(mode, pts, band=True):
         rc.points_inside = lambda co, tris: None
     try:
         ob = body()
+        rc.LAST_REGION.clear()
         msg = ce.perform_line(C, mode, [ob], pts, TOP, side_xy=(700, 500))
-        return msg, shape()
+        # (the message names the solver only when the cut took over 1.5 s: the region record says it went through
+        # the band, however fast the machine)
+        return msg + (' [region]' if rc.LAST_REGION.get('faces') else ''), shape()
     finally:
         rc.points_inside = keep
         for o in [o for o in S.objects if o.type == 'MESH']:
@@ -74,7 +77,7 @@ for mode in ('CUT', 'SPLIT'):
     m_old, s_old = run(mode, BENT, band=False)
     same = len(s_new) == len(s_old) and all(abs(a[0] - b[0]) < 1e-4 * max(1e-9, b[0]) for a, b in zip(s_new, s_old))
     check(f'bent line {mode}: the band through the boolean ({m_new[:40]!r}), the same volume as the whole-part one '
-          f'({[round(x[0], 5) for x in s_new]} / {[round(x[0], 5) for x in s_old]})', '(Region)' in m_new and same)
+          f'({[round(x[0], 5) for x in s_new]} / {[round(x[0], 5) for x in s_old]})', '[region]' in m_new and same)
     check(f'bent line {mode}: closed (open edges {[x[1] for x in s_new]}), about the same faces '
           f'({[x[2] for x in s_new]} / {[x[2] for x in s_old]})',
           all(x[1] == 0 for x in s_new) and all(abs(a[2] - b[2]) <= 0.001 * b[2] for a, b in zip(s_new, s_old)))
