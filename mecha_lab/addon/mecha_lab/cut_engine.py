@@ -668,13 +668,24 @@ def _gn_on(cut, side=None):
 
 
 def _finish_wanted(cut, mode):
-    """0.24.364 a Surface GN Edge follows this cut (it needs the cut's rim on a High Poly cut; the other finishes are
-    left as they were there)."""
+    """0.24.364 an edge finish that needs the cut's rim follows this cut: on a High Poly cut the rim is flagged again
+    first (``_region_rim``).  A Surface GN Edge (0.24.364); 0.24.366 the Edge Finish (Blender's bevel) and a Split
+    side's finish too - they found no rim on a High Poly cut either.  The Sweep stays as it was there (with the rim
+    back it tore the dense rim)."""
+    surf = getattr(cut, 'gn_method', 'SWEEP') == 'SURFACE'
     if mode == 'SPLIT':
         if not getattr(cut, 'split_cap', False):
             return False
-        return (_gn_on(cut, 'a') or _gn_on(cut, 'b')) and getattr(cut, 'gn_method', 'SWEEP') == 'SURFACE'
-    return _gn_on(cut) and getattr(cut, 'gn_method', 'SWEEP') == 'SURFACE'
+        for x in ('a', 'b'):
+            if _gn_on(cut, x):
+                if surf:
+                    return True
+            elif getattr(cut, f'side_{x}_finish', 'NONE') != 'NONE' and getattr(cut, f'side_{x}_width', 0.0) > 0:
+                return True
+        return False
+    if _gn_on(cut):
+        return surf
+    return getattr(cut, 'edge_finish', 'NONE') != 'NONE' and getattr(cut, 'finish_width', 0.0) > 0
 
 
 def _region_rim(me, t, cutter):
