@@ -94,7 +94,7 @@ def subdivide(V, T, tsrc, vsrc):
     return V2, T2, np.tile(tsrc, 4), np.concatenate([vsrc, vsrc[a]])
 
 
-def hard_segments(V, T, crease_deg):
+def hard_segments(V, T, crease_deg, with_angles=False):
     """The input's hard edges as line segments (n, 2, 3): sides where its faces meet at more than ``crease_deg``,
     and open borders."""
     fn = np.cross(V[T[:, 1]] - V[T[:, 0]], V[T[:, 2]] - V[T[:, 0]]).astype(np.float64)
@@ -115,6 +115,10 @@ def hard_segments(V, T, crease_deg):
     ok = (ln[fa] > 1e-30) & (ln[fb] > 1e-30)                # (a zero-area triangle has no direction)
     hard[two] = ok & ((fn[fa] * fn[fb]).sum(1) < math.cos(math.radians(crease_deg)))
     ee = e[starts[hard]]
+    if with_angles:                                  # 0.24.351 (Keep Edges: the sharpest line of a band kept)
+        ang = np.full(len(counts), math.pi)
+        ang[two] = np.arccos(np.clip((fn[fa] * fn[fb]).sum(1), -1.0, 1.0))
+        return np.stack([V[ee[:, 0]], V[ee[:, 1]]], 1).astype(np.float32), ang[hard]
     return np.stack([V[ee[:, 0]], V[ee[:, 1]]], 1).astype(np.float32)
 
 
@@ -300,7 +304,7 @@ def is_cut_mesh(me, target):
 
 
 def remesh_cut(me, target, all_quads=False, crease_deg=30.0, nthreads=None, extra=None, flow=0.0, adapt=0.0,
-               marks=None):
+               marks=None, keep=False):
     """Quad Remesh of a low-poly part (see ``is_cut_mesh``).  Returns (points, faces, polygon under each face,
     part's point nearest each point, stats with 'tries' = how much finer it had to go, 'open' = sides left open)."""
     area = sum(p.area for p in me.polygons)
@@ -310,7 +314,7 @@ def remesh_cut(me, target, all_quads=False, crease_deg=30.0, nthreads=None, extr
         V, T, tpoly, near = even_triangles(me, h)
         P, Fq, tsrc, psrc, st = remesh_arrays(V, T, target * k, all_quads=all_quads, crease_deg=crease_deg,
                                               nthreads=nthreads, guide=True, extra=extra, flow=flow, adapt=adapt,
-                                              marks=None if marks is None else np.asarray(marks)[near])
+                                              marks=None if marks is None else np.asarray(marks)[near], keep=keep)
         bad = len(holes(P, open_edges(Fq), border_tree(me, 0.25 * h), 0.5 * h))   # (an open plate's border stays)
         if best is not None and bad >= best[0]:
             break                                    # 0.24.76 finer did not help: no use going finer still
@@ -496,7 +500,7 @@ ADAPT_ERR = 0.012               # the bulge (of the quad size) a quad may leave 
 ADAPT_GRADE = 0.35              # how fast the size may grow away from a small spot (per quad length)
 
 
-def size_field(P, F, h, adapt, marks=None):
+def size_field(P, F, h, adapt, marks=None, cap=None):
     """0.24.322 the quad size at each point of the fine level (P, F triangles) as a share of the even size ``h``:
     smaller where the surface bends sharply for its size (a curve a quad of size h would cut across - claws, fingers,
     a groove) and on a marked Detail Area, growing slowly away from them; then all scaled so the count stays about
@@ -536,6 +540,8 @@ def size_field(P, F, h, adapt, marks=None):
         f = np.ones(n)
     if marks is not None:                                       # a marked Detail Area: the smallest Detail 1 makes
         f = np.where(np.asarray(marks) > 0.5, np.minimum(f, ADAPT_MIN), f)
+    if cap is not None:                                         # 0.24.351 Keep Edges: a quad row between close lines
+        f = np.minimum(f, np.asarray(cap, np.float64))
     for _ in range(12):                                         # grows by ADAPT_GRADE x its size per step at most
         lim = np.full(n, np.inf)
         np.minimum.at(lim, a, f[b] + ADAPT_GRADE * ln / h)
@@ -546,7 +552,7 @@ def size_field(P, F, h, adapt, marks=None):
 
 
 def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None, seed=0, guide='auto', extra=None,
-                  flow=0.0, adapt=0.0, marks=None):
+                  flow=0.0, adapt=0.0, marks=None, keep=False):
     """Quad remesh triangles T over points V to about ``target`` faces.
 
     guide: 'auto' - a coarse input (a decimated part: at most GUIDE_RATIO triangles per wanted face) is followed edge
@@ -570,16 +576,27 @@ def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None,
     h = math.sqrt(area / n_ext)
     if guide == 'auto':
         guide = len(T) <= GUIDE_RATIO * max(int(target), 1)
-    segs = hard_segments(V, T, crease_deg) if guide else np.zeros((0, 2, 3), np.float32)
+    seg_ang = None
+    if guide and keep:
+        segs, seg_ang = hard_segments(V, T, crease_deg, with_angles=True)
+    else:
+        segs = hard_segments(V, T, crease_deg) if guide else np.zeros((0, 2, 3), np.float32)
     if guide and extra is not None and len(extra):
         # 0.24.95 the part's remembered lines (Edge Memory) are fixed lines too, whatever their angle: an Edge
         # Finish band's 15-degree borders, a chamfer's rows - the angle test alone let the quads run across them
         segs = np.concatenate([segs, np.asarray(extra, np.float32).reshape(-1, 2, 3)])
     counts = [int(n_ext * m) for m in LEVELS]
     counts = [c for k, c in enumerate(counts) if k == 0 or c >= 100]
-    use_sizes = adapt > 0.0 or (marks is not None and bool((np.asarray(marks) > 0.5).any()))
+    all_segs = segs
+    if keep and len(segs):                          # 0.24.351 Keep Edges: one fixed line per band of close lines
+        segs = thin_bands(segs, h, np.r_[seg_ang, np.full(len(segs) - len(seg_ang), math.pi)]
+                          if seg_ang is not None else None)
+    caps = edge_caps(segs, h) if (keep and KEEP_CAPS and len(segs)) else None
+    use_sizes = adapt > 0.0 or (marks is not None and bool((np.asarray(marks) > 0.5).any())) or caps is not None
     if use_sizes:                                   # 0.24.322 the fine level fine enough for the smallest quads
         fmin0 = 1.0 / (1.0 + (1.0 / ADAPT_MIN - 1.0) * max(0.0, min(1.0, adapt))) if adapt > 0.0 else ADAPT_MIN
+        if caps is not None:
+            fmin0 = min(fmin0, float(caps[1].min()))
         counts[0] = int(counts[0] * max(1.0, ADAPT_SAMPLE / (fmin0 * fmin0)))
     # the fine level needs small, even triangles: subdivide a coarse mesh first, then sample it evenly
     tsrc = np.arange(len(T), dtype=np.int64)
@@ -614,7 +631,7 @@ def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None,
     o = _Opts()
     o.scale = h
     o.crease_deg = crease_deg
-    o.min_chain = MIN_CHAIN * h
+    o.min_chain = MIN_CHAIN * h * (float(caps[1].min()) if caps is not None else 1.0)   # (0.24.351 short lines kept)
     o.all_quads = 1 if all_quads else 0
     o.threads = nthreads or fd.threads()
     o.seed = seed
@@ -626,7 +643,7 @@ def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None,
         mk = None
         if marks is not None:
             mk = np.asarray(marks, np.float32)[np.clip(vsrc, 0, len(marks) - 1)] if len(vsrc) == len(fV) else None
-        sizes, _fmin = size_field(fV, fF, h, adapt, mk)
+        sizes, _fmin = size_field(fV, fF, h, adapt, mk, caps_at(fV, caps, h) if caps is not None else None)
         sizes = np.ascontiguousarray(sizes, np.float32)
         o.sizes = sizes.ctypes.data_as(_FP)
     for k, (io, ip) in enumerate(level_iters(counts, [len(lv[1]) for lv in levels])):
@@ -657,11 +674,146 @@ def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None,
             raise RuntimeError('Quad Remesh: the engine returned broken faces')
     finally:
         L.mquad_free(ctypes.byref(out))
+    if keep and len(segs) and len(hard):         # 0.24.351 Keep Edges: the fixed lines' points onto the input's lines
+        stats['snapped'] = snap_hard(P, hard, all_segs, 0.25 * h)
     stats['levels'] = [len(lv[1]) for lv in levels]
     stats['scale'] = h
     stats['hard'] = hard
+    stats['keep_bands'] = int((caps[1] < 0.999).sum()) if caps is not None else 0
     stats['guide'] = len(segs)
     return P, Fq, tsrc[fsrc], vsrc[psrc], stats
+
+
+KEEP_CAPS = False              # 0.24.351 the finer-quads-in-bands try (more triangles, slow): off
+KEEP_FMIN = 0.2                # 0.24.351 Keep Edges: the smallest quad (x the even size) a band of close lines asks for
+KEEP_PARALLEL = 0.8            # lines this parallel (|cos|) count as one band's (a bevel's rows), not a corner
+
+
+def edge_caps(segs, h):
+    """0.24.351 (user: "쿼드 플로우에 엣지 지키는 걸 좀 강화") Where the hard lines run closer together than a quad (a
+    bevel's 3 - 4 rows 2 mm apart, quads 8 mm): the quad size there as a share of ``h`` - the gap to the nearest
+    parallel line, so a row of quads fits between each two lines.  Returns (the segments' midpoints (n, 3), cap per
+    segment (n,), 1 = no change) or None when every gap is wide enough."""
+    from mathutils.kdtree import KDTree
+    segs = np.asarray(segs, np.float64).reshape(-1, 2, 3)
+    if len(segs) < 2:
+        return None
+    a, b = segs[:, 0], segs[:, 1]
+    mid = 0.5 * (a + b)
+    d = b - a
+    ln = np.linalg.norm(d, axis=1)
+    ok = ln > 1e-12
+    u = d / np.maximum(ln, 1e-12)[:, None]
+    kd = KDTree(len(mid))
+    for i, m in enumerate(mid):
+        kd.insert(m, i)
+    kd.balance()
+    cap = np.ones(len(mid))
+    for i in np.nonzero(ok)[0]:
+        best = np.inf
+        for _co, j, _dist in kd.find_range(mid[i], 1.2 * h + 0.5 * ln[i]):
+            if j == i or not ok[j] or abs(float(u[i] @ u[j])) < KEEP_PARALLEL:
+                continue
+            # the other line's distance across this one (0 when it continues the same line)
+            w = mid[j] - mid[i]
+            across = np.linalg.norm(w - (w @ u[i]) * u[i])
+            if across < 1e-4 * h:
+                continue
+            # (beside it, not past its end)
+            if abs(float(w @ u[i])) > 0.5 * (ln[i] + ln[j]) + 0.25 * h:
+                continue
+            best = min(best, across)
+        if best < h:
+            cap[i] = max(KEEP_FMIN, 0.9 * best / h)
+    if not (cap < 0.999).any():
+        return None
+    return mid.astype(np.float32), cap.astype(np.float32)
+
+
+def thin_bands(segs, h, angles=None, gap=0.6):
+    """0.24.351 Keep Edges: where hard lines run side by side closer than ``gap`` quads (a bevel's rows, 2 mm apart
+    under 8 mm quads), only ONE of them is kept as a fixed line - the sharpest (else the first) - and the others are
+    left to the surface: a row of quads can follow one line, and the field no longer jumps between several (the
+    outline wobbled).  Returns the kept segments."""
+    from mathutils.kdtree import KDTree
+    segs = np.asarray(segs, np.float64).reshape(-1, 2, 3)
+    if len(segs) < 2:
+        return segs.astype(np.float32)
+    a, b = segs[:, 0], segs[:, 1]
+    mid = 0.5 * (a + b)
+    d = b - a
+    ln = np.linalg.norm(d, axis=1)
+    u = d / np.maximum(ln, 1e-12)[:, None]
+    order = np.argsort(-np.asarray(angles)) if angles is not None else np.arange(len(segs))
+    kd = KDTree(len(mid))
+    for i, m in enumerate(mid):
+        kd.insert(m, i)
+    kd.balance()
+    kept = np.zeros(len(segs), bool)
+    for i in order:
+        if ln[i] <= 1e-12:
+            continue
+        drop = False
+        for _co, j, _dist in kd.find_range(mid[i], gap * h + 0.5 * ln[i]):
+            if not kept[j] or abs(float(u[i] @ u[j])) < KEEP_PARALLEL:
+                continue
+            w = mid[j] - mid[i]
+            across = np.linalg.norm(w - (w @ u[i]) * u[i])
+            if 1e-4 * h < across < gap * h and abs(float(w @ u[i])) <= 0.5 * (ln[i] + ln[j]) + 0.25 * h:
+                drop = True
+                break
+        kept[i] = not drop
+    return segs[kept].astype(np.float32)
+
+
+def caps_at(P, caps, h):
+    """The Keep Edges size cap at each point of P (n,) - the nearest band line's within its gap, else 1."""
+    from mathutils.kdtree import KDTree
+    mid, cap = caps
+    sel = np.nonzero(cap < 0.999)[0]
+    out = np.ones(len(P), np.float32)
+    if not len(sel):
+        return out
+    kd = KDTree(len(sel))
+    for k, i in enumerate(sel):
+        kd.insert(mid[i], k)
+    kd.balance()
+    for v, p in enumerate(np.asarray(P, np.float64)):
+        _co, k, dist = kd.find(p)
+        if k is not None and dist <= 0.75 * h:
+            out[v] = cap[sel[k]]
+    return out
+
+
+def snap_hard(P, hard, segs, tol):
+    """0.24.351 Keep Edges: each point of the result's hard edges put exactly on the nearest input hard line (within
+    ``tol``) - the quads' fixed lines were near them, now on them.  Returns how many moved."""
+    from mathutils.kdtree import KDTree
+    segs = np.asarray(segs, np.float64).reshape(-1, 2, 3)
+    if not len(segs) or not len(hard):
+        return 0
+    a, b = segs[:, 0], segs[:, 1]
+    mid = 0.5 * (a + b)
+    kd = KDTree(len(mid))
+    for i, m in enumerate(mid):
+        kd.insert(m, i)
+    kd.balance()
+    reach = float(np.linalg.norm(b - a, axis=1).max()) * 0.5 + tol
+    moved = 0
+    for v in np.unique(np.asarray(hard).ravel()):
+        p = P[v].astype(np.float64)
+        best, bq = tol, None
+        for _co, i, _dd in kd.find_range(p, reach):
+            d = b[i] - a[i]
+            t = float(np.clip(((p - a[i]) @ d) / max(float(d @ d), 1e-30), 0.0, 1.0))
+            q = a[i] + t * d
+            dist = float(np.linalg.norm(q - p))
+            if dist < best:
+                best, bq = dist, q
+        if bq is not None and best > 0.0:
+            P[v] = bq
+            moved += 1
+    return moved
 
 
 MEMO_SHARE = 0.5               # a mesh with more than this share of its edges remembered: the marks are smeared
@@ -710,7 +862,7 @@ def set_subdiv(ob, levels):
     return f', Subdivision {levels}'
 
 
-def remesh_object(ob, target, all_quads=False, crease_deg=30.0, nthreads=None, flow=0.0, detail=0.0):
+def remesh_object(ob, target, all_quads=False, crease_deg=30.0, nthreads=None, flow=0.0, detail=0.0, keep=False):
     """Quad remesh mesh object ``ob`` (Object Mode) to about ``target`` polygons.  Returns a message."""
     me = ob.data
     if me.shape_keys is not None:
@@ -732,13 +884,14 @@ def remesh_object(ob, target, all_quads=False, crease_deg=30.0, nthreads=None, f
             bpy.data.meshes.remove(fixed)
             fixed = fixst = None
     try:
-        return _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nthreads, flow, detail)
+        return _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nthreads, flow, detail, keep)
     finally:
         if fixed is not None and fixed.users == 0:
             bpy.data.meshes.remove(fixed)
 
 
-def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nthreads, flow=0.0, detail=0.0):
+def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nthreads, flow=0.0, detail=0.0,
+                   keep=False):
     me.calc_loop_triangles()
     nt = len(me.loop_triangles)
     if nt < 4:
@@ -764,12 +917,14 @@ def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nth
             eng = DETAIL_MODE == 'ENGINE'
             P, Fq, fpoly, pvert, st = remesh_cut(me, target, all_quads=all_q, crease_deg=crease_deg,
                                                  nthreads=nthreads, extra=memo, flow=flow,
-                                                 adapt=detail if eng else 0.0, marks=marks if eng else None)
+                                                 adapt=detail if eng else 0.0, marks=marks if eng else None,
+                                                 keep=keep)
         else:
             eng = DETAIL_MODE == 'ENGINE'
             P, Fq, tsrc, psrc, st = remesh_arrays(V, T.reshape(-1, 3), target, all_quads=all_q,
                                                   crease_deg=crease_deg, nthreads=nthreads, extra=memo, flow=flow,
-                                                  adapt=detail if eng else 0.0, marks=marks if eng else None)
+                                                  adapt=detail if eng else 0.0, marks=marks if eng else None,
+                                                  keep=keep)
             fpoly, pvert = tpoly[tsrc], psrc
         return P, Fq, fpoly, pvert, st
     try:
@@ -855,7 +1010,7 @@ def _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nth
             _st_tries[id(ob)] = tries + 1
             try:
                 return _remesh_object(ob, me, polys0, t0, fixst, target * 2, all_quads, crease_deg, nthreads, flow,
-                                      detail)
+                                      detail, keep)
             finally:
                 _st_tries.pop(id(ob), None)
         why = (f'{open_new} sides would stay open' if open_new > max(OPEN_OK_MIN, OPEN_OK * max(1, n_new))
