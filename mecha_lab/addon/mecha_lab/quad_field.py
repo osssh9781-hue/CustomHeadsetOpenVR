@@ -684,6 +684,7 @@ def remesh_arrays(V, T, target, all_quads=False, crease_deg=30.0, nthreads=None,
     return P, Fq, tsrc[fsrc], vsrc[psrc], stats
 
 
+KEEP_MICRO = 0.08             # 0.24.351 Keep Edges: points closer than this share of the quad size are one point
 KEEP_CAPS = False              # 0.24.351 the finer-quads-in-bands try (more triangles, slow): off
 KEEP_FMIN = 0.2                # 0.24.351 Keep Edges: the smallest quad (x the even size) a band of close lines asks for
 KEEP_PARALLEL = 0.8            # lines this parallel (|cos|) count as one band's (a bevel's rows), not a corner
@@ -883,6 +884,23 @@ def remesh_object(ob, target, all_quads=False, crease_deg=30.0, nthreads=None, f
         else:
             bpy.data.meshes.remove(fixed)
             fixed = fixst = None
+    if keep:                                           # 0.24.351 Keep Edges: micro edges (rows 0.1 mm apart) merged
+        import bmesh                                   # first - the field followed several of them at once
+        area = sum(p.area for p in me.polygons)
+        tiny = KEEP_MICRO * math.sqrt(area / max(int(target), 1))
+        work = me.copy() if fixed is None else me
+        bm = bmesh.new()
+        try:
+            bm.from_mesh(work)
+            n0 = len(bm.verts)
+            bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=tiny)
+            bmesh.ops.dissolve_degenerate(bm, edges=bm.edges[:], dist=tiny)
+            bm.to_mesh(work)
+        finally:
+            bm.free()
+        if fixed is None:
+            fixed = work
+        me = work
     try:
         return _remesh_object(ob, me, polys0, t0, fixst, target, all_quads, crease_deg, nthreads, flow, detail, keep)
     finally:

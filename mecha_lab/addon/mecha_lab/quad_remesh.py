@@ -325,6 +325,12 @@ def _fill_region(bm, faces, g, mode=0):
     keep_tris = [t for t, k in zip(tris, keep) if k]
     if not keep_tris:
         return None
+    # 0.24.351 the same area as the region, or the inside test was fooled (a notch's opening filled over: test v02751,
+    # 33 mm off the part) - the triangulation's own inside then, else the region is left as it was
+    a_old = sum(f.calc_area() for f in faces)
+    a_new = 0.5 * sum(area2(t) for t in keep_tris)
+    if a_old > 0.0 and abs(a_new - a_old) > 0.01 * a_old:
+        return _fill_region(bm, faces, g, mode=2) if mode == 0 else None
     # 0.24.351 every outline edge must be a side of the new triangles - else (a sliver along collinear outline points
     # dropped, two outline points merged) the region would come back with a slit along its border, open through the
     # part (test tret01: 3 open edges a region, 98 in all): such a region keeps its own faces
@@ -456,10 +462,58 @@ def _close_patch_holes(bm, max_sides=16):
 MICRO = 0.08          # 0.24.351 Patch: points closer than this share of the quad size are one point
 
 
+def _surface_dev(me, ref):
+    """The farthest any point of ``me`` lies from the surface of ``ref``."""
+    from mathutils.bvhtree import BVHTree
+    if not len(ref.polygons) or not len(me.vertices):
+        return 0.0
+    bvh = BVHTree.FromPolygons([v.co for v in ref.vertices], [p.vertices for p in ref.polygons])
+    return max((bvh.find_nearest(v.co)[0] - v.co).length for v in me.vertices)
+
+
 def build_patch(me, faces):
     """0.24.48 Patch method: the hard edges cut the part into flat regions; each is filled with an even grid
     lined up with its outline, then split so it is all quads.  The hard edges stay exactly where they were.
-    Curved areas (no flat region) keep their own faces, split into quads."""
+    Curved areas (no flat region) keep their own faces, split into quads.
+    0.24.351 the micro edges are merged first (MICRO); when that made the result leave the surface somewhere
+    (a short edge folded a notch's wall into a face over the notch - test v02751), it is made again without, and the
+    closer of the two kept."""
+    if MICRO <= 0.0:
+        _build_patch(me, faces, 0.0)
+        return
+    src = me.copy()
+    try:
+        _build_patch(me, faces, MICRO)
+        h = math.sqrt(sum(p.area for p in src.polygons) / max(faces, 1))
+        dev = _surface_dev(me, src)
+        PATCH_LOG.clear()
+        PATCH_LOG.update(micro_dev=dev, h=h)
+        if dev > PATCH_DEV * h:
+            alt = src.copy()
+            try:
+                _build_patch(alt, faces, 0.0)
+                dev0 = _surface_dev(alt, src)
+                PATCH_LOG.update(plain_dev=dev0)
+                if dev > max(PATCH_DEV * h, 1.5 * dev0):     # (clearly worse than without: the plain one)
+                    PATCH_LOG.update(used='plain')
+                    bm = bmesh.new()
+                    try:
+                        bm.from_mesh(alt)
+                        bm.to_mesh(me)
+                    finally:
+                        bm.free()
+                    me.update()
+            finally:
+                bpy.data.meshes.remove(alt)
+    finally:
+        bpy.data.meshes.remove(src)
+
+
+PATCH_LOG = {}
+PATCH_DEV = 0.25      # 0.24.351 farther than this share of the quad size from the surface: made again without MICRO
+
+
+def _build_patch(me, faces, micro):
     from mathutils.bvhtree import BVHTree
     bm = bmesh.new()
     try:
@@ -470,9 +524,8 @@ def build_patch(me, faces):
         # 0.24.351 micro edges (a bevel's rows 0.1 mm apart, faces 0.03 mm wide - test tret01: 232 of 554 faces)
         # merged first: kept exactly they came back as near-zero quads (sparks in a wireframe); the shape moves
         # by at most MICRO x the quad size
-        tiny = MICRO * h
-        bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=tiny)
-        bmesh.ops.dissolve_degenerate(bm, edges=bm.edges[:], dist=tiny)
+        if micro > 0.0:
+            bmesh.ops.dissolve_degenerate(bm, edges=bm.edges[:], dist=micro * h)   # (only edges that ARE that short)
         bvh = BVHTree.FromBMesh(bm)
         groups = {}
         for e in bm.edges:
