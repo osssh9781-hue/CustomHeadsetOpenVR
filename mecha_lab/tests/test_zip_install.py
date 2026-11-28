@@ -25,6 +25,12 @@ if zips:
     sys.path[:] = [p for p in sys.path if not p.rstrip('/').endswith('addon')]
     repo = next((r for r in bpy.context.preferences.extensions.repos if r.module == 'user_default'), None)
     check('user_default repo available', repo is not None)
+    if repo is not None:                         # 0.24.350 the temp config's repo folder made first ("not a known repo")
+        os.makedirs(repo.directory, exist_ok=True)
+        try:
+            bpy.ops.extensions.repo_refresh_all()
+        except Exception as ex:                  # noqa: BLE001
+            print('refresh', ex)
     try:
         r = bpy.ops.extensions.package_install_files(filepath=zips[-1], repo='user_default', enable_on_install=True)
         ok = r == {'FINISHED'}
