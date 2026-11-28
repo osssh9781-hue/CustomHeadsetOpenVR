@@ -307,6 +307,18 @@ class MCH_OT_bend_freeze(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def _knife_row(col, context):
+    """0.24.350 (user: "라이브 스택 밴드에도 나이프 메쉬 메뉴 똑같은 거 넣어 줘") Silhouette Move's Knife Mesh row: Cuts and
+    the button - a low-poly part gets even slices first, so the bend is smooth instead of folding at its few edges.
+    The same setting and operator as there (the shape does not change)."""
+    st = getattr(context.scene, 'mch_concept', None)
+    if st is None or not hasattr(bpy.types, 'MCH_OT_knife_grid'):
+        return
+    row = col.row(align=True)
+    row.prop(st, 'knife_cuts', text='Cuts')
+    row.operator('mch.knife_grid', icon='MOD_EDGESPLIT')
+
+
 def draw(layout, context, ob=None):
     """The Bend card (the Base Mesh window's): on any part."""
     ob = ob if ob is not None else context.active_object
@@ -314,6 +326,7 @@ def draw(layout, context, ob=None):
         return
     col = layout.column(align=True)
     col.label(text='Bend')
+    _knife_row(col, context)
     if not has(ob):
         col.operator('mch.bend_add', text='Bend', icon='MOD_SIMPLEDEFORM')
         return
