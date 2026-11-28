@@ -182,6 +182,7 @@ def draw_gn_edge(layout, context, mode='CUT'):
             ramp_edit.draw_panel(box, context)
     if cut.gn_finish == 'NONE':
         return
+    box.row(align=True).prop(cut, 'gn_method', expand=True)       # 0.24.364
     c = box.column(align=True)
     c.prop(cut, 'gn_width')
     if cut.gn_finish == 'BEVEL':

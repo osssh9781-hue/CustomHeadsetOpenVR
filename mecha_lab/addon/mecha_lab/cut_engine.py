@@ -659,13 +659,42 @@ def _gn_on(cut, side=None):
     return side is None or cut.gn_sides in {'BOTH', side.upper()}
 
 
+def _finish_wanted(cut, mode):
+    """0.24.364 a Surface GN Edge follows this cut (it needs the cut's rim on a High Poly cut; the other finishes are
+    left as they were there)."""
+    if mode == 'SPLIT':
+        if not getattr(cut, 'split_cap', False):
+            return False
+        return (_gn_on(cut, 'a') or _gn_on(cut, 'b')) and getattr(cut, 'gn_method', 'SWEEP') == 'SURFACE'
+    return _gn_on(cut) and getattr(cut, 'gn_method', 'SWEEP') == 'SURFACE'
+
+
+def _region_rim(me, t, cutter):
+    """0.24.364 a High Poly (region) cut's result: its walls flagged as the cutter's faces again, for the finish (the
+    region stitch carries the part's attributes only - GN Edge / Edge Finish found no rim on a High Poly cut)."""
+    from . import region_cut as rc
+    first = rc.untouched(me)
+    if not first:
+        return 0
+    try:
+        return rc.flag_on_cutter(me, t, cutter, cg.mesh_size(t.data))
+    except (RuntimeError, ValueError, AttributeError, TypeError, MemoryError) as ex:
+        print('Mecha: region rim:', ex)
+        return 0
+
+
 def _gn_finish(cut, me, scale):
     from . import rim_sweep
     from . import edge_memory
     rim_sweep.LAST.pop('skipped', None)          # 0.24.95 (the cut's message reads it: never an older cut's reason)
     width = cut.gn_width / scale
+    if getattr(cut, 'gn_method', 'SWEEP') == 'SURFACE':          # 0.24.364 no second boolean
+        from . import surface_bevel
+        make = surface_bevel.finish
+    else:
+        make = rim_sweep.finish
     return _finish_guarded(me, lambda: edge_memory.finish_marks(
-        me, lambda: rim_sweep.finish(me, cut.gn_finish, width, ts.res_n(cut.gn_segments)), width),
+        me, lambda: make(me, cut.gn_finish, width, ts.res_n(cut.gn_segments)), width),
         me.name.replace('_mch_sub', ''))
 
 
@@ -1069,6 +1098,7 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
     edge_counts = []
     side_counts = {}
     skipped, failed = [], []
+    finish_on = _finish_wanted(cut, mode)
     try:
         for t in targets:
             scale = _object_scale(t)
@@ -1082,6 +1112,8 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
                     _bm.remember_sweep_cut(t, cutter_t, op)
                     solvers.append(_solver)
                     temp.append(me)
+                    if finish_on:
+                        _region_rim(me, t, cutter_t)
                     if _gn_on(cut):
                         edge_counts.append(_gn_finish(cut, me, scale))
                     else:
@@ -1101,6 +1133,9 @@ def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto
                                                   outer_groups if gap else groups, projector, near_t, far_t, False)
                     solvers += [_s1, _s2]
                     temp.append(outer)
+                    if finish_on:
+                        _region_rim(outer, t, cutter_out or cutter_t)
+                        _region_rim(inner, t, cutter_t)
                     # Side A = remaining original object, Side B = the new "_Split" piece.
                     for me, side in ((outer, 'a'), (inner, 'b')):
                         if cut.split_cap and _gn_on(cut, side):

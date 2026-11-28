@@ -931,6 +931,47 @@ def _stitch(me, co, tot, vi, fmask, lm, kept, walls, target, cutter, rim, operat
         bpy.data.meshes.remove(sub)
 
 
+def flag_on_cutter(out, target, cutter, size):
+    """0.24.364 (a finish follows the cut) the faces of a High Poly (region) cut's result that lie on the cutter's
+    surface - its walls and floor - flagged ``mch_cutter_face``, as a whole-part boolean flags its cutter's faces:
+    the region stitch carries the part's attributes only, so a High Poly cut came out with no rim and GN Edge / Edge
+    Finish found nothing.  A face is the cutter's when every point and its middle are within a hundred-thousandth
+    of the part's size of the cutter (only the points in the cutter's box are looked at)."""
+    from . import core_geometry as cg
+    from mathutils.bvhtree import BVHTree
+    if cutter is None or cutter.type != 'MESH' or not len(cutter.data.polygons) or not len(out.polygons):
+        return 0
+    cme = cutter.data
+    M = target.matrix_world.inverted() @ cutter.matrix_world
+    cco = np.empty(len(cme.vertices) * 3)
+    cme.vertices.foreach_get('co', cco)
+    cco = cco.reshape(-1, 3) @ np.array(M.to_3x3()).T + np.array(M.translation)
+    tree = BVHTree.FromPolygons(cco.tolist(), [tuple(p.vertices) for p in cme.polygons])
+    co, tot, start, vi = arrays(out)
+    eps = 1e-5 * max(size, 1e-9)
+    near = tree.find_nearest
+    box = np.all((co >= cco.min(0) - 2 * eps) & (co <= cco.max(0) + 2 * eps), axis=1)
+    cand = np.nonzero(box)[0]
+    von = np.zeros(len(co), bool)
+    von[cand] = np.fromiter((near(p, eps)[0] is not None for p in co[cand].tolist()), bool, len(cand))
+    fon = np.minimum.reduceat(von[vi].astype(np.int8), start).astype(bool)
+    if fon.any():
+        cen = np.add.reduceat(co[vi], start) / tot[:, None]
+        for i in np.nonzero(fon)[0].tolist():
+            if near(tuple(cen[i]), eps)[0] is None:
+                fon[i] = False
+    if not fon.any():
+        return 0
+    a = out.attributes.get(cg.CUTTER_ATTR)
+    if a is not None and (a.domain != 'FACE' or a.data_type != 'BOOLEAN'):
+        out.attributes.remove(a)
+        a = None
+    if a is None:
+        a = out.attributes.new(cg.CUTTER_ATTR, 'BOOLEAN', 'FACE')
+    a.data.foreach_set('value', fon)
+    return int(fon.sum())
+
+
 def debug_open_edges(out, V=None):
     """(MECH_REGION_DEBUG) Where are the open edges of a stitched result: by side and nearest other point."""
     import bmesh

@@ -698,6 +698,12 @@ class MCH_PG_Cut(bpy.types.PropertyGroup):
         default='NONE', description='Geometry Nodes edge: a profile is swept along the new border and carved off - '
                                     'even all the way round (the Edge Finish above is skipped while this is on)',
         update=_live_cut_update)
+    gn_method: EnumProperty(name='Method', default='SWEEP', update=_live_cut_update, items=[
+        ('SWEEP', 'Sweep', 'The profile swept along the border and cut off with a second boolean (as before)'),
+        ('SURFACE', 'Surface', '0.24.364: no second boolean - the band round the border cut at an even distance on '
+                               'the surface and down the wall, its points moved onto the profile (faster; narrows '
+                               'where a wall is shallower than the width; works on High Poly cuts too)')],
+        description='How the GN edge is made')
     gn_width: FloatProperty(name='Width', default=0.01, min=0.0, soft_max=10.0, precision=4, unit='LENGTH',
                             description='How far the GN edge reaches along the surface and down the cut wall',
                             update=_live_cut_update)
