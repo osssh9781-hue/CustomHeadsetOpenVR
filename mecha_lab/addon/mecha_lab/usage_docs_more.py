@@ -826,7 +826,73 @@ DOCS_MORE = {'CBASE': {'what': ('외곽선을 그려 둥근 새 솔리드 파트
                    ('New Points', '새 점: 직선 · 스무스', 'Straight · Smooth'),
                    ('Section', '직사각형 · 실린더 / 원형 · 육각형 … 단면', 'Rectangle · Cylinder / Round · Hexagon ... sections'),
                    ('Width / Depth', '단면의 폭 · 깊이', "the section's width and depth")],
-          'tips': []}}
+          'tips': []},
+ # 0.24.350 the four tools that had no usage yet (Clean (Planar), Edge Clear, SDF Builder, Line Array)
+ 'PLANAR': {'what': ('스컬핑한 면을 외곽선 안에서 평평하게 밀어 정리한다 (지브러시 Planar 처럼)',
+                     'Flattens a sculpted surface inside an outline onto one plane (like ZBrush Planar)'),
+            'how': [('파트 위에 외곽선을 그린다 (공용 모양: 라쏘 · 사각형 · 원 ...)',
+                     'Draw an outline over the part (the shared shapes: Lasso, Rectangle, Circle ...)'),
+                    ('보이는 쪽 면만 한 평면으로 밀림 - 뒷면은 그대로', 'Only the side you see goes onto one plane - '
+                     'the back is never touched'),
+                    ('점 · 면 수는 그대로 (리메시 없음), 한 번에 실행 취소 한 번', 'Points and faces stay (no remesh); one '
+                     'undo step')],
+            'keys': [('드래그 / 클릭', '외곽선 그리기', 'draw the outline'),
+                     ('Esc', '취소', 'cancel')],
+            'opts': [('Push', '둘 다 · 깎기 (튀어나온 것만) · 채우기 (패인 것만)', 'Both / Cut (only what stands '
+                      'above) / Fill (only the hollows)'),
+                     ('Plane', '안쪽 점에 맞춘 평면 · 화면을 향한 평면', 'fitted through the points inside / facing '
+                      'the view'),
+                     ('Height', '평면을 바깥 (+) 안쪽 (-) 으로', 'the plane moved out (+) or in (-)'),
+                     ('Soft Edge', '외곽선 근처에서 서서히 줄어듦 (턱 없이)', 'fades out near the outline (no step)'),
+                     ('Strength', '평면까지 얼마나 가는지', 'how far the points go onto the plane'),
+                     ('Merge Flat', '평평해진 곳을 큰 면 몇 개로', 'the flattened area as a few big faces')],
+            'tips': [('지브러시에서 가져온 덩어리의 옆면 정리에 좋음', 'Good for the sides of a block-out brought '
+                      'from ZBrush')]},
+ 'ECLEAR': {'what': ('파트의 크리스 (와 샤프) 엣지를 클릭해서 지운다', 'Clears a creased (and sharp) edge of a part '
+                     'with a click'),
+            'how': [('크리스 / 샤프 엣지가 표시됨', 'The creased / sharp edges are shown'),
+                    ('엣지를 클릭하면 그 선 전체가 지워짐 (선이 만나는 곳까지)', 'Click one: its whole line is cleared '
+                     '(up to where lines meet)'),
+                    ('메쉬는 움직이지 않음, 클릭 한 번에 실행 취소 한 번', 'The mesh does not move; one undo step a '
+                     'click')],
+            'keys': [('클릭', '크리스 지우기 (선 전체)', 'clear the crease (the whole line)'),
+                     ('Shift + 클릭', '그 엣지 하나만', 'only that edge'),
+                     ('Alt + 클릭', '엣지 루프에 크리스 넣기', 'crease an edge loop'),
+                     ('Alt + Shift + 클릭', '엣지 하나에 크리스', 'crease one edge')],
+            'opts': [('Whole Line', '클릭하면 선 전체 (끄면 클릭한 엣지만)', 'a click takes the whole line (off: '
+                      'only that edge)'),
+                     ('Also Sharp', '샤프 표시도 같이 끔', 'the sharp mark off too')],
+            'tips': []},
+ 'SDF': {'what': ('여러 파트를 거리장 (SDF) 으로 합쳐 한 모양으로 만든다 - 부드러운 필렛 · 홈',
+                  'Makes one shape out of a stack of parts through distance fields - soft fillets and grooves'),
+         'how': [('파트들을 선택한다 (활성 파트가 바탕)', 'Select the parts (the active one is the base)'),
+                 ('새로 만들기: 나머지를 합치기 또는 빼기', 'New: the others Union or Subtract'),
+                 ('SDF 오브젝트를 선택하면 파트마다 Union / Subtract / Intersect 와 Blend',
+                  'Select the SDF object: each part Union / Subtract / Intersect with a Blend'),
+                 ('파트를 움직이면 모양이 따라옴 (라이브), Make Real 로 메쉬', 'Move a part: the shape follows (live); '
+                  'Make Real makes it a mesh')],
+         'keys': [],
+         'opts': [('New: Others Union', '나머지 파트를 합친 새 SDF', 'a new SDF with the others added'),
+                  ('New: Others Subtract', '나머지 파트를 뺀 새 SDF', 'a new SDF with the others cut away')],
+         'tips': [('뷰포트는 거칠게, 렌더는 곱게 (Viewport / Render Voxel)', 'Coarse in the viewport, fine in a render '
+                   '(Viewport / Render Voxel)')]},
+ 'LARRAY': {'what': ('파트에서 선을 그으면 그 선을 따라 복사본이 늘어선다', 'Draw from a part: copies of it along the '
+                     'line'),
+            'how': [('파트에서 시작해서 선을 그린다 (공용 모양 · 닫힌 모양은 외곽선을 따라)', 'Draw starting on the part '
+                     '(the shared shapes; a closed one: round its outline)'),
+                    ('라이브 오브젝트가 생김 - 파트를 바꾸면 따라옴', 'A live object - change the part, the copies '
+                     'follow'),
+                    ('Enter 로 실제 메쉬', 'Enter makes it real')],
+            'keys': [('드래그', '선 그리기', 'draw the line'),
+                     ('Enter', '실제 메쉬로', 'make it real'),
+                     ('Esc', '취소', 'cancel')],
+            'opts': [('Path', '직선 · 그린 경로 따라', 'Straight / Follow the drawn path'),
+                     ('Snap', '자유 · 수평/수직 · 45도', 'Free / Straight / Diagonal'),
+                     ('Fill', '개수 · 간격', 'Count / Spacing'),
+                     ('Count', '복사본 수', 'how many copies'),
+                     ('Align', '경로 방향으로 돌림', 'each copy turned with the path')],
+            'tips': [('Target: Auto (시작점의 파트) · Selected (선택한 것 각각) · Active', 'Target: Auto (the part under '
+                      'the start) / Selected (each its own) / Active')]}}
 
 
 FEATURES_MORE = {'MATERIAL:PRESETS': {'name': ('프리셋', 'Presets'),

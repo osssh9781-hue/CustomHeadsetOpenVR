@@ -63,19 +63,38 @@ before = json.load(open(os.path.join(HERE, 'data', 'side_panel_cells_0.24.214.js
 ADDED = {'MCH_PG_BoolBevel.method'}
 for k_ in states:
     states[k_]['cells'] = [c for c in states[k_]['cells'] if c[5] not in ADDED]
-order = [k for k in before if before[k]['cells'] != states[k]['cells']]
+# 0.24.350 the cells changed on purpose since 0.24.214 (CHANGELOG): the Stamp shapes as named thumbnail tiles (0.24.177,
+# the same click), SubD Plane edited in Object Mode (0.24.231: its Edit-Mode-only "Set Crease on Selected Edges" button
+# and "Tab: Edit Mode" notes replaced by the Object Mode notes).  So: (1) nothing a click does or a setting is gone
+# since 0.24.214 apart from that button, no title / note gone apart from those; (2) every cell exactly as in 0.24.350
+# (its own snapshot, written once when missing) - any later change shows.
+import collections as _co
+def _act(c):
+    return json.dumps([c[4], c[5]])
+lost = _co.Counter()
+for k in before:
+    lost.update(_co.Counter(_act(c) for c in before[k]['cells']) - _co.Counter(_act(c) for c in states.get(k, {}).get('cells', [])))
+lost = {k: v for k, v in lost.items() if json.loads(k)[0][:2] != ['op', 'mch.subd_set_crease']}
 n_cells = sum(len(v['cells']) for v in before.values())
-check(f'every cell of every tool\'s window is as in 0.24.214 - kind, name, on / off, enabled, what a click does, its '
-      f'setting - and in the same order ({n_cells:,} cells, {len(before)} tool states, {len(order)} differ)',
-      not order and set(before) == set(states), order[:5])
+check(f'every click and setting of every tool\'s window in 0.24.214 is still there ({n_cells:,} cells, {len(before)} '
+      f'tool states; only SubD Plane\'s Edit-Mode crease button went, 0.24.231)',
+      not lost and set(before) <= set(states), list(lost.items())[:5])
 gone, new = collections.Counter(), collections.Counter()
 for k in before:
     cb, ca = collections.Counter(before[k]['texts']), collections.Counter(states[k]['texts'])
     gone.update(cb - ca)
     new.update(ca - cb)
-check(f'every title and note is still shown ({sum(len(v["texts"]) for v in before.values()):,} texts, {sum(gone.values())} '
-      f'gone); new: only the names of the sections made from loose settings {dict(new)}',
-      not gone and all(k.replace('MORE ', '').rstrip(' +') in {'SETTINGS', 'ACTIONS'} for k in new), list(gone.items())[:5])
+REPLACED = {'EDGE CREASE (EDIT MODE)', 'TAB: EDIT MODE, E: EXTRUDE EDGES'}
+check(f'every title and note is still shown ({sum(len(v["texts"]) for v in before.values()):,} texts; gone only the '
+      f'0.24.231 SubD Edit Mode notes)', set(gone) <= REPLACED, list(gone.items())[:5])
+SNAP = os.path.join(HERE, 'data', 'side_panel_cells_0.24.350.json')
+if not os.path.exists(SNAP):
+    json.dump(states, open(SNAP, 'w'))
+now = json.load(open(SNAP))
+order = [k for k in now if now[k] != states.get(k)]
+check(f'every cell and text of every tool\'s window is exactly as in 0.24.350 - kind, name, on / off, enabled, what a '
+      f'click does, its setting, in the same order ({sum(len(v["cells"]) for v in now.values()):,} cells, '
+      f'{len(now)} tool states, {len(order)} differ)', not order and set(now) == set(states), order[:5])
 for o in list(bpy.data.objects):
     bpy.data.objects.remove(o)
 sp.FOLDED.clear(); sp.OPENED.clear()

@@ -106,6 +106,11 @@ pick, passthru = src.index('switch_to(context, other)'), src.index("return {'PAS
 check('ZBrush select mode (Q): a click on another SubTool picks it - checked before "not a brush: pass through" '
       '(Alt + click did nothing in the select mode)', pick < passthru and '(event.alt or gizmo)' in src)
 
+def _bar(ctx):
+    # 0.24.350 (0.24.226) the bar in two parts: the LASSO block at the top, the tool's own block above the dock
+    return tb.items(ctx, W, H, 1.0) + tb.items(ctx, W, H, 1.0, part='BOTTOM')
+
+
 # --- Concept Move family in the Mecha top bar --------------------------------------------------------------------
 TOOL = ['CPATH']
 real_eff = ts.effective_tool
@@ -113,23 +118,23 @@ ts.effective_tool = lambda c: TOOL[0]
 st = S.mch_concept
 st.path_method = 'EXTEND'
 g = [t for t, _c in tb.groups(CTX, 'CPATH')]
-bar = tb.items(CTX, W, H, 1.0)
+bar = _bar(CTX)
 props = {i.prop for i in bar if i.prop}
 check('Path Move: METHOD (Extend v, Brush | Whole) and BRUSH (Size, Real Size, Hardness, Taper, Follow Turns, Back '
       'Mask, Shape) in the Mecha top bar', g[:2] == ['Method', 'Brush'] and {
           'path_method', 'path_area', 'radius_px', 'lock_size', 'path_hardness', 'path_taper', 'path_turn',
           'path_back_mask', 'shape', 'keep_density', 'follow_view'} <= props, (g, sorted(props)))
 TOOL[0] = 'SMOVE'
-props = {i.prop for i in tb.items(CTX, W, H, 1.0) if i.prop}
+props = {i.prop for i in _bar(CTX) if i.prop}
 check('Silhouette Move: no method / area / back mask (always Extend, Whole)', 'path_method' not in props
       and 'path_back_mask' not in props and 'path_hardness' in props)
 TOOL[0] = 'CMOVE'
 st.falloff = 'CLAY'
-props = {i.prop for i in tb.items(CTX, W, H, 1.0) if i.prop}
+props = {i.prop for i in _bar(CTX) if i.prop}
 check('Concept Move: Size, Hardness (Clay), Falloff, Strength, Shape, Mirror X, Generate, Follow View',
       {'radius_px', 'hardness', 'falloff', 'strength', 'shape', 'mirror_x', 'keep_density', 'follow_view'} <= props)
 st.lock_size = True
-check('... Real Size on: the size in scene units', 'radius_world' in {i.prop for i in tb.items(CTX, W, H, 1.0)})
+check('... Real Size on: the size in scene units', 'radius_world' in {i.prop for i in _bar(CTX)})
 st.lock_size = False
 real_on = sp.on
 sp.on = lambda c: True

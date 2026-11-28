@@ -78,9 +78,12 @@ edge = np.c_[500 + 120 * np.cos(ang), 500 + 90 * np.sin(ang)]
 r_root = np.hypot(sx - 500, sy - 500)
 r_edge = np.hypot(edge[:, 0] - 500, edge[:, 1] - 500)
 past = np.maximum(r_root - r_edge, 0.0)
+# (0.24.350 a root on a face the outline crosses can be up to that face's diagonal past it - 6.5 px x 1.42; the max
+#  was held to one face's width and runs went 4.0 .. 6.8 px)
 check(f'every root inside the drawn outline as seen from the front (at most {past.max():.1f} px past it - a face of '
-      f'the sphere is 6.5 px; {np.mean(past > 0) * 100:.1f} % past at all) and on the side that faced the view',
-      len(P) > 0 and past.max() < 6.5 and np.mean(past > 0) < 0.03 and roots[:, 1].max() < 0.0)
+      f'the sphere is 6.5 px, 9.2 px corner to corner; {np.mean(past > 0) * 100:.1f} % past at all) and on the side '
+      f'that faced the view', len(P) > 0 and past.max() < 6.5 * 1.42 and np.mean(past > 0) < 0.03
+      and roots[:, 1].max() < 0.0)
 d = np.linalg.norm(roots, axis=1)
 check('... on the surface (1 from the centre)', abs(d - 1).max() < 0.01, (d.min(), d.max()))
 

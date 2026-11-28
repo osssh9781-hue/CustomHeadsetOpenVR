@@ -228,9 +228,10 @@ check('... the Mech and Creature pages no decal balls any more',
       not any(i.kind == 'mtile' and i.action[:2] == ('op', 'mch.decal_place') for i in mits + cits))
 tabs = [i for i in sp.items(C, 1200, 900, 1.0) if i.kind == 'ptab']
 from mecha_lab import ui_gpu  # noqa: E402
-check('Tabs: Tool | Mech | Creature | Decals | Render | Shapes (0.24.137 HDRI -> Render), each name whole in its pill '
+check('Tabs: Tool | Mech | Creature | Simple | Decals | Render | Shapes (0.24.137 HDRI -> Render, 0.24.263 Simple), '
+      'each name whole in its pill '
       '(drawn at 11 px, 6 px padding - before, letter counts cut "Mech" to "Me…")',
-      [t.label for t in tabs] == ['Tool', 'Mech', 'Creature', 'Decals', 'Render', 'Shapes']
+      [t.label for t in tabs] == ['Tool', 'Mech', 'Creature', 'Simple', 'Decals', 'Render', 'Shapes']
       and all(ui_gpu.fit(t.label, 11.0, t.w - 6.0) == t.label for t in tabs), [(t.label, round(t.w)) for t in tabs])
 for o in C.selected_objects:
     o.select_set(False)

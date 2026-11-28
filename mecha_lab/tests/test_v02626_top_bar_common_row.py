@@ -82,8 +82,13 @@ check(f'every cell of 0.24.213 is still in the bar, the same (kind, name, on / o
       f'{n_before:,} checked over {len(before)} tool states, {len(gone)} gone',
       not gone and set(before) <= set(states), gone[:4])        # (0.24.241 a new tool adds states)
 kinds = {json.loads(k)[0] for k in new if json.loads(k)[1] != tb.LANG_LABEL}     # (0.24.225 + the 한글 switch)
+# 0.24.350 the cells added after 0.24.213 on purpose (the Cut depth: Depth / Steps / Wall Angle, Flat / Follow / Level)
+LATER = {('mini', 'Depth'), ('mini', 'Steps'), ('mini', 'Wall Angle'), ('seg', 'Flat'), ('seg', 'Follow'),
+         ('seg', 'Level')}
 check(f'the only new things are the 한글 switch and group names shown a second time ({sorted(set(json.loads(k)[1] for k in new))}: Press Cut\'s '
-      f'own Line / Lasso switch stays with the tool\'s own groups)', kinds <= {'glabel'})
+      f'own Line / Lasso switch stays with the tool\'s own groups; later: the Depth cells)',
+      {(json.loads(k)[0], json.loads(k)[1]) for k in new if json.loads(k)[0] != 'glabel'
+       and json.loads(k)[1] != tb.LANG_LABEL} <= LATER)
 
 # --- 0.24.226: the LASSO bar alone at the top (long, in every tool); the rest in the tool's box; Options in the dock ---
 BLOCK = {}

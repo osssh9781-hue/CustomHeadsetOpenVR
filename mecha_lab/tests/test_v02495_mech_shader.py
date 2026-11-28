@@ -276,7 +276,11 @@ check('Panel: the preset, every map with its slider and Height, Clear Coat, AO, 
        'weave_map', 'edge_wear', 'scratches', 'rust', 'rust_scratch', 'dirt', 'snow', 'emission', 'cloth',
        'roughness', 'map_scale', 'bump', 'h_base', 'h_scratch', 'h_chip', 'h_rust', 'h_dirt', 'h_snow', 'h_weave',
        'coat', 'ao', 'aniso', 'dust', 'streaks', 'variation', 'primer', 'primer_color', 'paint_pattern',
-       'dirt_low', 'glass', 'alpha', 'snow_soft', 'dirt_top', 'color', 'solid_too'} <= props
+       'dirt_low', 'glass', 'alpha', 'snow_soft', 'dirt_top'} <= props
       and not {'mch_mech_hdri', 'mch_mech_hdri_blur', 'mch_mech_hdri_strength', 'mch_mech_hdri_rot'} & props,
       sorted(props))
+# 0.24.142 the Background box has its own panel at the top of the tab (bg_color.draw_panel), not in this one
+from mecha_lab import bg_color as _bgc  # noqa: E402
+bg_props = {n.prop for n in walk(capture(lambda layout, context: _bgc.draw_panel(layout, context), C)) if n.kind == 'prop'}
+check('... the Background (colour, Solid View Too) in its own panel', {'color', 'solid_too'} <= bg_props, sorted(bg_props))
 summary()

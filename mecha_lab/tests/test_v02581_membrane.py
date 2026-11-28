@@ -150,7 +150,8 @@ W3 = world(mem)
 sol = mem.modifiers.get(cm.THICK_MOD)
 check(f'Enter keeps it ({tg}): a plain mesh as it hangs (no cloth), Thickness added (Solidify '
       f'{sol and round(sol.thickness, 4)}), still on the bones (its parent), the frame back',
-      tg is not None and tg[0] == 'membrane_keep' and r == {'FINISHED'} and not cd.sim_active()
+      tg is not None and tg[0] in ('membrane_keep', 'cdrape_keep') and r == {'FINISHED'} and not cd.sim_active()   # (0.24.350
+      #  0.24.190's cloth Keep comes first in Enter's list - the same cd.confirm)
       and mem.modifiers.get(cm.CLOTH_MOD) is None and sol is not None and sol.thickness > 0
       and mem.parent == bones and np.abs(W3 - Wcl).max() < 1e-4 and not cm.is_membrane(mem) and S.frame_current == 1)
 bones.location.x += 1.0

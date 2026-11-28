@@ -265,7 +265,8 @@ class MCH_OT_radial_menu(bpy.types.Operator):
     bl_label = 'Tool Wheel'
     bl_options = {'INTERNAL'}
     key: StringProperty(default='V')
-    held: bpy.props.BoolProperty(default=True)       # (False: opened by a click - it stays, click mode)
+    held: bpy.props.BoolProperty(default=True, options={'SKIP_SAVE'})   # (False: opened by a click - it stays,
+    #                                              click mode; 0.24.350 not remembered: RMB is always held mode)
 
     @classmethod
     def poll(cls, context):
