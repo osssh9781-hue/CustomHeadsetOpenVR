@@ -2975,26 +2975,38 @@ def _untangle_band(mesh, band_ix, width):
 
 def flat_cut_faces(mesh):
     """0.24.26 the faces a cutter made shade flat with sharp borders (a smooth plate next to them no longer smears
-    dark streaks into the cut walls); the other faces keep their own shading."""
+    dark streaks into the cut walls); the other faces keep their own shading.  0.24.366 in numpy (a Python loop over
+    every face and edge: 7.7 s on a 385k-face High Poly cut) - the same result."""
+    import numpy as np
     attr = mesh.attributes.get(CUTTER_ATTR)
     if attr is None or attr.domain != 'FACE':
         return 0
-    cut = [i for i, d in enumerate(attr.data) if d.value]
-    if not cut:
+    nf = len(mesh.polygons)
+    cut = np.zeros(nf, bool)
+    attr.data.foreach_get('value', cut)
+    n = int(cut.sum())
+    if not n:
         return 0
-    cut_set = set(cut)
-    for i in cut:
-        mesh.polygons[i].use_smooth = False
+    smooth = np.zeros(nf, bool)
+    mesh.polygons.foreach_get('use_smooth', smooth)
+    smooth[cut] = False
+    mesh.polygons.foreach_set('use_smooth', smooth)
     sharp = mesh.attributes.get('sharp_edge') or mesh.attributes.new('sharp_edge', 'BOOLEAN', 'EDGE')
-    edge_faces = {}
-    for poly in mesh.polygons:
-        for ek in poly.edge_keys:
-            edge_faces.setdefault(ek, []).append(poly.index)
-    for e in mesh.edges:
-        fs = edge_faces.get(e.key, ())
-        if any(f in cut_set for f in fs) and any(f not in cut_set for f in fs):
-            sharp.data[e.index].value = True
-    return len(cut)
+    ne = len(mesh.edges)
+    if not ne:
+        return n
+    tot = np.zeros(nf, np.int64)
+    mesh.polygons.foreach_get('loop_total', tot)
+    ce = np.zeros(len(mesh.loops), np.int64)
+    mesh.loops.foreach_get('edge_index', ce)
+    fc = np.repeat(cut, tot)
+    on_cut = np.bincount(ce[fc], minlength=ne) > 0
+    on_old = np.bincount(ce[~fc], minlength=ne) > 0
+    vals = np.zeros(ne, bool)
+    sharp.data.foreach_get('value', vals)
+    vals |= on_cut & on_old
+    sharp.data.foreach_set('value', vals)
+    return n
 
 
 def remove_cutter_attribute(mesh, old_co=None, old_ev=None, old_sharp=None):
