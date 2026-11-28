@@ -1683,9 +1683,13 @@ def mesh_size(me):
     import numpy as np
     if not len(me.vertices):
         return 0.0
-    from . import mesh_io as mio
-    co = mio.read_co(me)
-    return float(np.linalg.norm(co.max(0) - co.min(0)))
+    from . import region_cut as rc                     # 0.24.357 inside a Cut / Split: once per mesh
+
+    def size():
+        from . import mesh_io as mio
+        co = mio.read_co(me)
+        return float(np.linalg.norm(co.max(0) - co.min(0)))
+    return rc._cached(me, 'size', size)
 
 
 def _bad_edges(bm):
@@ -3013,6 +3017,8 @@ def remove_cutter_attribute(mesh, old_co=None, old_ev=None, old_sharp=None):
 
 def commit_mesh(target, new_mesh, shared_policy='SINGLE'):
     """Write ``new_mesh`` geometry into the target. Returns a short info string."""
+    from . import region_cut as _rc
+    _rc.forget()                                        # 0.24.357 the part changes: nothing read of it stays
     info = ''
     me = target.data
     if me.users > 1 and target.get('mch_linked'):      # 0.24.85 a linked group copy: the one mesh for all of them

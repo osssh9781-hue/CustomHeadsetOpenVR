@@ -55,6 +55,63 @@ def untouched(me):
     return 0
 
 
+_SCOPE = [0]                      # 0.24.357 inside one Cut / Split: the target's arrays read once (see cache_scope)
+_TCACHE = {}
+
+
+class cache_scope:
+    """0.24.357 (user: "하이폴리 컷 좀 더 빠르게 ... 스플릿도") for the time of one Cut / Split the target meshes' arrays
+    and attributes are read once and shared (a Split reads its 5 M-face part for both booleans; each read is ~0.5 s).
+    Only meshes that are not changed in that time are asked for (the part, before its result is written back);
+    ``forget()`` empties it when one is written (commit)."""
+
+    def __enter__(self):
+        _SCOPE[0] += 1
+        return self
+
+    def __exit__(self, *_a):
+        _SCOPE[0] -= 1
+        if _SCOPE[0] <= 0:
+            _SCOPE[0] = 0
+            _TCACHE.clear()
+        return False
+
+
+def forget(me=None):
+    _TCACHE.clear()
+
+
+def _ckey(me):
+    try:
+        return (me.session_uid, len(me.vertices), len(me.polygons), len(me.loops), len(me.edges))
+    except (AttributeError, ReferenceError):
+        return None
+
+
+def _cached(me, what, make):
+    if not _SCOPE[0]:
+        return make()
+    k = _ckey(me)
+    if k is None:
+        return make()
+    ent = _TCACHE.get(k)
+    if ent is None:
+        _TCACHE.clear() if len(_TCACHE) > 8 else None
+        ent = _TCACHE[k] = {}
+    if what not in ent:
+        ent[what] = make()
+    return ent[what]
+
+
+def target_arrays(me):
+    """``arrays(me)`` - shared inside a ``cache_scope`` (do not change the arrays you get)."""
+    return _cached(me, 'arrays', lambda: arrays(me))
+
+
+def target_attr(me, name, domain, dtype):
+    return _cached(me, ('attr', name, domain, dtype), lambda: _read_attr(me, name, domain, dtype))
+
+
 def arrays(me):
     """(points (n, 3) float64, face sizes, face starts, corner point indices int64) - from the mesh's built-in
     attributes (0.24.86: 0.36 s -> 0.06 s on 1.3M faces)."""
@@ -175,7 +232,7 @@ def region_boolean(context, target, cutter, operation, log=None):
         context.view_layer.update()            # (a cutter linked a moment ago: its matrix_world is not set yet)
     except (AttributeError, RuntimeError):
         pass
-    co, tot, start, vi = arrays(me)
+    co, tot, start, vi = target_arrays(me)
     inv = target.matrix_world.inverted()
     cb = np.array([(inv @ (cutter.matrix_world @ v.co))[:] for v in cutter.data.vertices])
     mu, R = _frame(cb)
@@ -204,7 +261,7 @@ def region_boolean(context, target, cutter, operation, log=None):
     a = patch.attributes.new(SRC, 'INT', 'FACE')              # (which part face each triangle came from: the quads
     a.data.foreach_set('value', np.nonzero(fmask)[0].astype(np.int32))   #  are put back together after the boolean)
     for name, domain, dtype in _attr_list(me):        # (the patch carries the part's attributes into the boolean)
-        vals = _read_attr(me, name, domain, dtype)
+        vals = target_attr(me, name, domain, dtype)
         if vals is None or domain == 'EDGE':
             continue
         idx = pverts if domain == 'POINT' else (np.nonzero(fmask)[0] if domain == 'FACE' else np.nonzero(lm)[0])
@@ -1136,7 +1193,7 @@ def replace_faces_gn(context, me, fmask, sub, size, name):
     ``sub`` (the caller falls back)."""
     from mathutils.kdtree import KDTree
     T = [time.perf_counter()]
-    co, tot, start, vi = arrays(me)
+    co, tot, start, vi = target_arrays(me)
     lm = np.repeat(fmask, tot)
     rim_part = _shared_points(vi, lm, len(co))
     sc = mio.read_co(sub)
@@ -1202,7 +1259,9 @@ def replace_faces_gn(context, me, fmask, sub, size, name):
             out.materials.append(mat)
     if len(out.materials) > len(me.materials):        # (an empty slot the join brought along and no face uses)
         mi = np.zeros(len(out.polygons), np.int32)
-        out.polygons.foreach_get('material_index', mi)
+        a_mi = out.attributes.get('material_index')      # 0.24.357 the attribute: 0.6 s -> 0.02 s on 5.2 M faces
+        if a_mi is not None and a_mi.domain == 'FACE' and a_mi.data_type == 'INT':
+            a_mi.data.foreach_get('value', mi)
         need = max(len(me.materials), int(mi.max()) + 1 if len(mi) else 0)
         while len(out.materials) > need and out.materials[len(out.materials) - 1] is None:
             out.materials.pop(index=len(out.materials) - 1)

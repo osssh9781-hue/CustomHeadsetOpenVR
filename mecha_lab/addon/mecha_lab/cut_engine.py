@@ -1009,7 +1009,9 @@ def _perform_closed_base(context, mode, targets, loops, projector, invert=False)
     for n in sheet_ok:
         del broken[n]
     try:
-        report = _perform_closed(context, mode, targets, groups, projector, invert, cut, auto_apply, baked, frozen)
+        from . import region_cut as rc
+        with rc.cache_scope():                       # 0.24.357 the parts' arrays read once per Cut / Split
+            report = _perform_closed(context, mode, targets, groups, projector, invert, cut, auto_apply, baked, frozen)
         report += mesh_fix.auto_fix_note(fixed)
         if sheets:
             report += f' | Thin sheet: {", ".join(sheets)} given {cg.SHEET_THICK * 1000:.1f} mm thickness to cut it'
