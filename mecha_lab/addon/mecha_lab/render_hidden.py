@@ -14,6 +14,8 @@ acted on: a camera you turn on again yourself while the eye stays off is left on
 """
 from __future__ import annotations
 
+import time
+
 import bpy
 
 MARK = 'mch_render_off'
@@ -116,9 +118,31 @@ def sync(scene, view_layer, first=False):
     return len(went_off), len(came_on)
 
 
-def _on_update(scene, depsgraph=None):
+THROTTLE = 0.2              # 0.24.349 seconds between two looks while updates stream in (a drag, a sculpt stroke)
+_LAST_T = [0.0]
+
+
+def _later():
+    """The look skipped during a burst of updates, made once it is over (the last state always counts)."""
+    try:
+        sc = bpy.context.scene
+        if sc is not None:
+            _on_update(sc, None, force=True)
+    except (ReferenceError, AttributeError, RuntimeError):
+        pass
+    return None
+
+
+def _on_update(scene, depsgraph=None, force=False):
     if _BUSY[0] or not auto_on(scene):
         return
+    now = time.monotonic()
+    if not force and not bpy.app.background and now - _LAST_T[0] < THROTTLE:   # (0.24.349 every object's eye
+        #                                              was read at every update:
+        if not bpy.app.timers.is_registered(_later):   #  ~1.3 ms with 2,000 objects; now ~5 times a second)
+            bpy.app.timers.register(_later, first_interval=THROTTLE)
+        return
+    _LAST_T[0] = now
     try:
         ctx = bpy.context
         if getattr(ctx, 'mode', 'OBJECT') not in {'OBJECT'}:
@@ -206,6 +230,8 @@ def register():
 
 
 def unregister():
+    if bpy.app.timers.is_registered(_later):
+        bpy.app.timers.unregister(_later)
     if _on_update in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(_on_update)
     if _on_load in bpy.app.handlers.load_post:

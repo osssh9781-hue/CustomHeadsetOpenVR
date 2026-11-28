@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import bpy
 
+from . import scene_scan
+
 MOD = 'MCH Viewport Width'
 TREE = 'MCH Viewport Width'
 TREE_V = 2                                       # (0.24.269 Width: the Render Thickness slider)
@@ -153,7 +155,9 @@ def _render_pre(scene, *_a):
 def _changed(scene, *_a):
     """The camera, its lens or the resolution changed: the pixel again (cheap check)."""
     try:
-        if not any(o.type == 'CURVES' and o.modifiers.get(MOD) is not None for o in scene.objects):
+        if not scene_scan.candidates(                     # (0.24.349 not every object at every update)
+                'hair_view_width', scene, lambda o: o.type == 'CURVES' and o.modifiers.get(MOD) is not None,
+                _a[0] if _a else None):
             return
         cam = scene.camera
         key = (cam.name if cam else '', pixel(scene))

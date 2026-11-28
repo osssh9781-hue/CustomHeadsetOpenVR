@@ -1,7 +1,7 @@
 """0.24.95 fixes found by the combination fuzz (user: "복스 하이드, 베이스 메쉬 빼기, 컷, 스플릿 이거 다 조합해 가지고
 한 100개 만들어 보고 문제 계속 추적해 줄래?" - tests/fuzz/combo_scenario.py): the pieces checked one by one."""
 import numpy as np
-from _harness import bmesh, bpy, check, fresh, summary
+from _harness import script_cmd, script_env, bmesh, bpy, check, fresh, summary
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 
@@ -198,7 +198,8 @@ import subprocess
 import sys
 FUZZ = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fuzz', 'combo_scenario.py')
 for seed in (466, 662, 895, 552, 155):
-    out = subprocess.run([sys.executable, FUZZ, str(seed), '14'], capture_output=True, text=True, timeout=600).stdout
+    out = subprocess.run(script_cmd(FUZZ, seed, 14), env=script_env(), capture_output=True, text=True,
+                         timeout=600).stdout
     bad = [line for line in out.splitlines() if line.startswith(('BAD', 'ERROR'))]
     res = [line for line in out.splitlines() if line.startswith('RESULT')]
     worst = None

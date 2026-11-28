@@ -20,6 +20,8 @@ import math
 
 import bmesh
 import bpy
+
+from . import scene_scan
 from bpy.app.handlers import persistent
 from bpy.props import (BoolProperty, CollectionProperty, EnumProperty, FloatProperty, IntProperty,
                        PointerProperty)
@@ -359,13 +361,16 @@ def _on_depsgraph(scene, depsgraph):
     if _building or _UNDO_QUIET[0]:
         return
     try:            # nothing live -> never touch the update list
-        if not any(getattr(getattr(o, 'mch_loft', None), 'live', False) for o in scene.objects):
+        lofts = scene_scan.candidates(                    # (0.24.349 not every object at every update)
+            'loft_live', scene, lambda o: o.type == 'MESH' and getattr(getattr(o, 'mch_loft', None), 'live', False),
+            depsgraph)
+        if not lofts:
             return
     except (ReferenceError, AttributeError, RuntimeError):
         return
     # 0.24.3 compare the source curves' state instead of reading depsgraph.updates (crash after Ctrl+Z /
     # removed temporary IDs)
-    for ob in list(scene.objects):
+    for ob in lofts:
         p = getattr(ob, 'mch_loft', None)
         if p is None or not p.live or ob.type != 'MESH':
             continue

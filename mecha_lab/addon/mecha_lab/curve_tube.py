@@ -25,6 +25,8 @@ from .i18n import tr as _tr
 import math
 
 import bpy
+
+from . import scene_scan
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty
 from mathutils import Matrix, Vector
 from . import target_rules
@@ -1359,8 +1361,9 @@ def _on_depsgraph(scene, depsgraph):
     if _busy[0] or _UNDO_QUIET[0]:
         return
     try:            # nothing to follow -> never touch the update list
-        repeats = [ob for ob in scene.objects if is_tube(ob) and ob.mch_tube.mode in REPEAT_MODES
-                   and ob.mch_tube.source is not None]
+        repeats = scene_scan.candidates(                  # (0.24.349 not every object at every update)
+            'tube_repeat', scene, lambda ob: is_tube(ob) and ob.mch_tube.mode in REPEAT_MODES
+            and ob.mch_tube.source is not None, depsgraph)
     except (ReferenceError, AttributeError, RuntimeError):
         return
     if not repeats:

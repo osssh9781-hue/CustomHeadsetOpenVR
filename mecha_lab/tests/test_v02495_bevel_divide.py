@@ -13,7 +13,7 @@ import subprocess
 import sys
 
 import numpy as np
-from _harness import bmesh, bpy, check, fresh, summary
+from _harness import script_cmd, script_env, bmesh, bpy, check, fresh, summary
 
 import mecha_lab
 from mecha_lab import bake_highpoly as bk, core_geometry as cg
@@ -65,7 +65,7 @@ check('_folded_points: the points of two faces folded back over each other (180 
 
 # ---- the fuzz seeds, rerun as they were found
 def run(seed, steps):
-    p = subprocess.run([sys.executable, os.path.join(HERE, 'fuzz', 'bevel_scenario.py'), str(seed), str(steps)],
+    p = subprocess.run(script_cmd(os.path.join(HERE, 'fuzz', 'bevel_scenario.py'), seed, steps), env=script_env(),
                        capture_output=True, text=True, timeout=600)
     out = p.stdout + p.stderr
     div = {}

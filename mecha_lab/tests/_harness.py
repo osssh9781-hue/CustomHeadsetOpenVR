@@ -94,3 +94,20 @@ def summary():
     failed = [r for r in RESULTS if not r[1]]
     print(f'\n{len(RESULTS) - len(failed)}/{len(RESULTS)} passed')
     return failed
+
+
+def script_cmd(script, *args):
+    """0.24.349 the command that runs ``script`` (a test helper) in a fresh process with bpy: this Python when it is
+    bpy-enabled, else (the tests run inside Blender, ``blender -b --python``) the Blender binary itself - before,
+    ``sys.executable`` there was Blender's bare Python and the fuzz reruns got no result at all."""
+    exe = getattr(bpy.app, 'binary_path', '') or ''
+    if exe and 'blender' in os.path.basename(exe).lower():
+        return [exe, '-b', '--factory-startup', '--python-use-system-env', '--python', script, '--'] + [str(a) for a in args]
+    return [sys.executable, script] + [str(a) for a in args]
+
+
+def script_env():
+    env = dict(os.environ)
+    env['PYTHONPATH'] = HERE + (os.pathsep + env['PYTHONPATH'] if env.get('PYTHONPATH') else '')
+    return env
+

@@ -26,6 +26,8 @@ import json
 import math
 
 import bpy
+
+from . import scene_scan
 import numpy as np
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty
 from mathutils import Matrix, Vector
@@ -1459,7 +1461,8 @@ def _edit_watch(scene, *_a):
     if _BUSY[0]:
         return
     try:
-        rigs = [o for o in scene.objects if o.type == 'ARMATURE' and RIG_KEY in o]
+        rigs = scene_scan.candidates(                     # (0.24.349 not every object at every update)
+            'rigs', scene, lambda o: o.type == 'ARMATURE' and RIG_KEY in o, _a[0] if _a else None)
     except ReferenceError:
         return
     for arm in rigs:

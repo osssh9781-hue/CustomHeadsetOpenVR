@@ -2088,6 +2088,8 @@ def _register():
     gpu_bench.register()                          # 0.24.346 Check GPU Bake
     from . import undo_guard
     undo_guard.register()                         # 0.24.349 Ctrl+Z: update lists left alone a moment
+    from . import scene_scan
+    scene_scan.register()                         # 0.24.349 handlers look at their few objects, not all
     from . import mecha_guides
     mecha_guides.register()                       # 0.24.338 Rig > Mecha Guides
     hair_cards.register()                         # 0.24.241 hair -> hair cards
@@ -2409,6 +2411,7 @@ def _unregister_steps():
         ('rigging', rigging.unregister),
         ('hair_cards', hair_cards.unregister),
         ('mecha_guides', __import__(__name__ + '.mecha_guides', fromlist=['x']).unregister),
+        ('scene_scan', __import__(__name__ + '.scene_scan', fromlist=['x']).unregister),
         ('undo_guard', __import__(__name__ + '.undo_guard', fromlist=['x']).unregister),
         ('gpu_bench', __import__(__name__ + '.gpu_bench', fromlist=['x']).unregister),
         ('retopo_project', __import__(__name__ + '.retopo_project', fromlist=['x']).unregister),

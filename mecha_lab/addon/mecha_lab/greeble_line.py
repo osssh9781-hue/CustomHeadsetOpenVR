@@ -39,6 +39,8 @@ import time
 
 import bmesh
 import bpy
+
+from . import scene_scan
 import numpy as np
 from bpy.props import BoolProperty, CollectionProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty, \
     StringProperty
@@ -617,9 +619,11 @@ def sync_material(ob):
 def _material_watch(_scene, depsgraph=None):
     """Any way a line got a material (a Mech / Creature page preset, Blender's slots, drag and drop): its parts follow."""
     try:
-        for ob in bpy.context.scene.objects:
-            if ob.type == 'MESH' and (LINE_KEY in ob.keys() or 'mch_cover' in ob.keys()):   # (0.24.172 covers)
-                sync_material(ob)
+        for ob in scene_scan.candidates(                  # (0.24.349 not every object at every update)
+                'greeble_lines', bpy.context.scene,
+                lambda ob: ob.type == 'MESH' and (LINE_KEY in ob.keys() or 'mch_cover' in ob.keys()),   # (0.24.172 covers)
+                depsgraph):
+            sync_material(ob)
     except (AttributeError, ReferenceError, RuntimeError):
         pass
 
