@@ -1766,7 +1766,10 @@ def bake_parts(context, parts, kinds, res, st, margin=16, ray_quality=1.0, decal
     size = max(bm_.size_of(ob) for ob, _g in geos)
     ao_dist = size * float(st.ao_distance) / 100.0
     skip = set(parts)
-    scene = _scene_all(context, [g for _o, g in geos], skip, max(ao_dist, 0.5)) if (
+    # 0.24.355 (user: "솔로 모드 했는데도 옆에 메쉬 그림자가 같이 베이크") Others Shade AO off (as by default): each part's
+    # AO from itself only - the other meshes (another selected part too) no longer cast a shadow into it
+    others = bool(getattr(st, 'ao_others', False))
+    scene = _scene_all(context, [g for _o, g in geos], skip, max(ao_dist, 0.5)) if others and (
         'AO' in kinds or any(n.type == 'AMBIENT_OCCLUSION' for ob, _g in geos for s_ in ob.material_slots
                              if s_.material and s_.material.node_tree for n in s_.material.node_tree.nodes)) else None
     images = Images()

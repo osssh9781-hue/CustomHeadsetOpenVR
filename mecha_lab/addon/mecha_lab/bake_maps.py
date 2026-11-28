@@ -1134,7 +1134,18 @@ def bake_self_steps(context, low, st, kinds, keep_state=None):
                     keep.temp_world = bpy.data.worlds.new('.MCH Bake World')
                     S.world = keep.temp_world
                 S.world.light_settings.distance = size_of(low) * float(st.ao_distance) / 100.0
-                r = bpy.ops.object.bake(type='AO', **common)
+                off = []                            # 0.24.355 Others Shade AO off: the other meshes out of it
+                if not getattr(st, 'ao_others', False):
+                    for o in context.view_layer.objects:
+                        if o is not low and not o.hide_render and o.type in {'MESH', 'CURVE', 'SURFACE', 'META',
+                                                                               'FONT', 'CURVES', 'VOLUME'}:
+                            o.hide_render = True
+                            off.append(o)
+                try:
+                    r = bpy.ops.object.bake(type='AO', **common)
+                finally:
+                    for o in off:
+                        o.hide_render = False
             elif kind == 'COLOR':                   # (its Base Color glowed: the Diffuse pass is black on metal)
                 S.cycles.samples = spp
                 back = _metal_glow(mats, 'Base Color')
