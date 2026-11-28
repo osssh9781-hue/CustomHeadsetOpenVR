@@ -16,6 +16,8 @@ import math
 
 import bmesh
 import bpy
+
+from . import undo_guard
 from bpy.props import BoolProperty, EnumProperty, IntProperty, PointerProperty
 from bpy_extras import view3d_utils
 from mathutils import Matrix, Vector
@@ -147,7 +149,7 @@ _SYNC_BUSY = [False]
 @bpy.app.handlers.persistent
 def _on_depsgraph(scene, depsgraph):
     """A member or the pivot moved / turned: re-place the copies round the fixed pivot."""
-    if _SYNC_BUSY[0]:
+    if _SYNC_BUSY[0] or undo_guard.quiet():                   # (0.24.349 not just after Ctrl+Z)
         return
     st = getattr(scene, 'mch_rsym', None)
     if st is None or not st.active or st.pivot is None:

@@ -36,6 +36,8 @@ from __future__ import annotations
 import math
 
 import bpy
+
+from . import undo_guard
 import numpy as np
 from bpy.app.handlers import persistent
 from bpy.props import (BoolProperty, CollectionProperty, EnumProperty, FloatProperty, FloatVectorProperty,
@@ -1861,7 +1863,7 @@ _WATCHING = [False]
 def _mirror_watch(scene, depsgraph=None):
     """0.24.95 A part with zones changed (its Mirror turned on / off, its axes, the part moved against its mirror
     object): the zones' mirror copies follow (``update_mirrors``: their matrices in place, made anew when needed)."""
-    if _WATCHING[0] or depsgraph is None:
+    if _WATCHING[0] or depsgraph is None or undo_guard.quiet():     # (0.24.349 not just after Ctrl+Z)
         return
     mats = []
     try:

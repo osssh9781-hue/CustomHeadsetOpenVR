@@ -17,6 +17,8 @@ bubbles comes from ``mch.ui_hover`` (a pass-through on mouse move).
 from __future__ import annotations
 
 import bpy
+
+from . import undo_guard
 from bpy.props import BoolProperty, FloatProperty, FloatVectorProperty
 
 from . import tool_state as ts
@@ -1188,6 +1190,8 @@ def _dirty_handler(*args):
 
 
 def moved_only(depsgraph):
+    if undo_guard.quiet():                  # (0.24.349 just after Ctrl+Z: no update list read - rebuilt)
+        return False
     try:
         ups = list(depsgraph.updates)
         return bool(ups) and all(isinstance(u.id, bpy.types.Object) and u.is_updated_transform

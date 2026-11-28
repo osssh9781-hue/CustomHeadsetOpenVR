@@ -33,6 +33,8 @@ import threading
 import time
 
 import bpy
+
+from . import undo_guard
 import numpy as np
 from bpy.props import BoolProperty, IntProperty
 
@@ -1183,7 +1185,7 @@ def _tick():
 @bpy.app.handlers.persistent
 def _on_update(scene, depsgraph):
     st = getattr(scene, 'mch_light', None)
-    if st is None or not st.on:
+    if st is None or not st.on or undo_guard.quiet():           # (0.24.349 not just after Ctrl+Z)
         return
     now = time.monotonic()
     try:

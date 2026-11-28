@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import bpy
 
+from . import undo_guard
+
 GREEN = (0.22, 1.0, 0.36, 1.0)
 BLUE = (0.3, 0.62, 1.0, 1.0)      # 0.24.114 (user: "그룹을 그룹으로 만든 거는 파란색으로") a group that holds groups
 
@@ -126,6 +128,8 @@ def _entry(ob, depsgraph, shader):
 
 @bpy.app.handlers.persistent
 def _on_depsgraph(scene, depsgraph):
+    if undo_guard.quiet():                  # (0.24.349 just after Ctrl+Z: no update list read - the cache dropped)
+        return
     try:
         for u in depsgraph.updates:
             if u.is_updated_geometry and isinstance(u.id, bpy.types.Object):
@@ -408,3 +412,6 @@ def unregister():
             pass
     _state.update(shader=None, shader_failed=False, off=None, size=(0, 0), quad=None)
     _cache.clear()
+
+
+undo_guard.on_undo(lambda: _cache.clear())          # (0.24.349 after Ctrl+Z / load: drawn anew)

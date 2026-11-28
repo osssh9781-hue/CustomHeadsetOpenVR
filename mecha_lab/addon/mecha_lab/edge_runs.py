@@ -11,6 +11,8 @@ from __future__ import annotations
 import math
 
 import bpy
+
+from . import undo_guard
 import numpy as np
 from mathutils import Vector
 from mathutils.kdtree import KDTree
@@ -349,6 +351,8 @@ def clear():
 
 @bpy.app.handlers.persistent
 def _on_update(scene, depsgraph):
+    if undo_guard.quiet():                  # (0.24.349 just after Ctrl+Z: no update list read - the cache dropped)
+        return
     try:
         for u in depsgraph.updates:
             if u.is_updated_geometry and isinstance(u.id, bpy.types.Object):
@@ -475,3 +479,6 @@ def portion_segs(ob, runs, rid, s0, s1, lift=None):
     n = np.mean(ns, axis=0)
     n = n / max(np.linalg.norm(n), 1e-12) * lift
     return [(mw @ Vector(pa + n), mw @ Vector(pb + n)) for pa, pb in pts]
+
+
+undo_guard.on_undo(lambda: _CACHE.clear())          # (0.24.349 after Ctrl+Z / load: worked out again when asked)

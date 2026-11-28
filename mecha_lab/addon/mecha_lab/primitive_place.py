@@ -35,6 +35,8 @@ import math
 
 import bmesh
 import bpy
+
+from . import undo_guard
 import numpy as np
 from bpy.props import (BoolProperty, EnumProperty, FloatProperty, FloatVectorProperty, IntProperty,
                        PointerProperty, StringProperty)
@@ -788,6 +790,8 @@ def _bvh_world(ob, depsgraph):
 @bpy.app.handlers.persistent
 def _changed(scene, depsgraph):
     """A mesh changed (edit, sculpt, modifier, moved): its cached BVH goes."""
+    if undo_guard.quiet():                  # (0.24.349 just after Ctrl+Z: no update list read - the cache dropped)
+        return
     try:
         gone = False
         for u in depsgraph.updates:
@@ -1734,3 +1738,6 @@ def unregister():
             bpy.utils.unregister_class(c)
         except RuntimeError:
             pass
+
+
+undo_guard.on_undo(lambda: _BVH.clear())            # (0.24.349 after Ctrl+Z / load: built again when needed)
