@@ -172,7 +172,9 @@ from mecha_lab import key_legend as kl
 kl._stroke_tool = lambda c: 'CUT'
 CALLS.clear()
 kl._draw()
-check('Key legend paints its card and lines', CALLS.count('rect') >= 2 and CALLS.count('text') >= len(kl.lines('CUT')))
+_rows = kl.box(C, 1.0)[4]                          # (0.24.350 the card starts folded now: its title row only)
+check('Key legend paints its card and lines', CALLS.count('rect') >= 2 and CALLS.count('text') >= len(_rows) >= 1,
+      (CALLS, len(_rows)))
 for n, f in real.items():
     setattr(G, n, f)
 summary()

@@ -143,8 +143,10 @@ check('... the sidebar list draws (stand-in layout)', lay.calls.count('operator'
 from mecha_lab import tool_state as ts
 groups = ts.grouped_tools()
 ids = [t[0] for _n, rows in groups for t in rows]
-check('Tool list by job: about 10 groups, every visible tool exactly once', 8 <= len(groups) <= 11
-      and sorted(ids) == sorted(t[0] for t in ts.VISIBLE_TOOLS) and len(ids) == len(set(ids)),
+check('Tool list by job: about 10 groups, every visible tool once (Creature Cloth in two)', 8 <= len(groups) <= 11
+      and sorted(set(ids)) == sorted(t[0] for t in ts.VISIBLE_TOOLS)
+      and sorted(i for i in set(ids) if ids.count(i) > 1) == ['MEMBRANE'],      # (0.24.173 Creature Cloth on purpose
+      #                                                         in both Creature and Cloth)
       [(n, len(r)) for n, r in groups])
 from mecha_lab import workspace_ui as wui
 lay = _L()

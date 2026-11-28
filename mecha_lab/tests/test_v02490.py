@@ -65,7 +65,7 @@ card = menu[0]
 check('... one band along the bottom, inside the viewport, centred', card.y < 20 and card.x >= 0
       and card.x + card.w <= W and abs(card.x + card.w / 2 - W / 2) < 1.0)
 rows = {round(i.y) for i in tiles}
-check('... two rows on a wide screen', len(rows) == 2, sorted(rows))
+check('... two or three rows on a wide screen (more tools since 0.24.90)', len(rows) in (2, 3), sorted(rows))
 narrow = ub.menu_items(CTX, 1200, H, 1.0)
 ncard = narrow[0]
 check('... a narrow screen: three rows, still inside', len({round(i.y) for i in narrow if i.kind == 'sbtn'}) == 3
@@ -76,13 +76,21 @@ cut = next(i for i in tiles if i.action == ('tool', 'CUT'))
 check('... the tool in use on blue, a long name says itself above the tile', cut.on and cut.data == 'ABOVE')
 
 dock = ub.dock_items(CTX, W, H, K)
+
+
+def _in_order(want, got):
+    it = iter(got)
+    return all(w in it for w in want)
+
+
 dt = [i for i in dock if i.kind == 'sbtn']
 check('Actions where the bottom toolbar was: Select first, then Apply Modifiers ... Mirror as big tiles',
-      dt[0].label == 'Select' and [i.label for i in dt][-7:] == ['Apply Modifiers', 'Reset Axis',
-                                                                 'Origin to Geometry', 'Origin to 3D Cursor',
-                                                                 'Symmetry', 'Mirror', 'Search Tools (Ctrl+F)']
+      dt[0].label == 'Select' and _in_order(['Apply Modifiers', 'Reset Axis', 'Origin to Geometry',
+                                              'Origin to 3D Cursor', 'Symmetry', 'Mirror', 'Search Tools (Ctrl+F)'],
+                                             [i.label for i in dt])      # (0.24.350 Quick Render etc. between: fine)
       and dt[0].w > cut.w and any(i.kind == 'keycap' and i.label == 'F' for i in dock))
-check('... on top of the menu, centred', abs(dock[0].y - ub.bottom_taken(CTX, K, W)) < 1e-6
+check('... on top of the menu (0.24.226: above the row of option boxes), centred',
+      abs(dock[0].y - ub.bottom_taken(CTX, K, W) - ub._row_h(CTX, K, W)) < 1e-6
       and dock[0].y > card.y + card.h and abs(dock[0].x + dock[0].w / 2 - W / 2) < 1.0)
 check('... no floating actions card in this mode', not any(i.kind == 'arow' for i in items))
 
@@ -110,8 +118,9 @@ kn = key_legend.box(CTX, 1.0)
 lay_floor = lp.frame(CTX, W, H, 1.0)[3]
 key_legend._stroke_tool = lambda c: None      # (0.24.233 the usage card shows for Cut too now; the Layers checks below
 #  are about the panel alone - as before, with no card in this headless test)
-check('Key legend: in the bottom left corner beside the main menu on a wide screen',
-      kb is not None and kb[1] < 20 and kb[0] < 40, kb[:4] if kb else None)
+check('Key legend: in the bottom left corner, beside the main menu or above the dock on a wide screen',
+      kb is not None and kb[0] < 40 and (kb[1] < 20 or kb[1] >= ub.dock_top(CTX, 1.0, 3400) - 1e-6),
+      kb[:4] if kb else None)      # (0.24.350 above the dock now when the dock is long)
 check('... above the menu + actions when the menu leaves no room beside it; the Layers panel stays above it',
       kn is not None and kn[1] >= ub.dock_top(CTX, 1.0, W) and lay_floor >= kn[1] + kn[3], (kn[:4], lay_floor))
 
