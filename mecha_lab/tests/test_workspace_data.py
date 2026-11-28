@@ -56,7 +56,10 @@ items = [(km.name, ki.idname, ki.type) for km in kc.keymaps for ki in km.keymap_
          if ki.idname.startswith('mch.') and not ki.idname.startswith('mch.zb_')]
 check('addon keymap: 0.23.13 no Space tool menu (Space moves the outline while drawing; 0.24.92 the Wrinkle Lines tool '
       'alone uses Space = simulate, like the reference add-on - it draws no outline)',
-      not any(i[2] == 'SPACE' and i[1] not in ('mch.wrinkle_sim', 'mch.cdrape_sim') for i in items), items)
+      not any(i[2] == 'SPACE' and i[1] not in ('mch.wrinkle_sim', 'mch.cdrape_sim')
+              and i[:2] != ('Frames', 'mch.cdrape_space') for i in items), items)
+# 0.24.362 (user: "이거 뜨면서 스페이스바가 먹혀"): Frames Space -> mch.cdrape_space, which only polls in Object Mode
+# while a Cloth Drape sim is active (it then stops the Anim Player); otherwise Space plays as before.
 check('addon keymap: B/C via gated mch.hotkey only', {('Object Mode', 'mch.hotkey', 'B'), ('Object Mode', 'mch.hotkey', 'C')} <= set(items))
 check('no ungated mch.boolean / draw_delete_cut keys', not any(i[1] in ('mch.boolean', 'mch.draw_delete_cut') for i in items))
 

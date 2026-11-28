@@ -1376,13 +1376,16 @@ def perform_line(context, mode, targets, points, projector, side_xy, invert=Fals
             for t, me in results:
                 cg.tidy_result(me, cg.mesh_size(t.data), before=t.data, warped=True)
                 _shut_holes(t, me, capped)
+            # 0.24.363 the other side tidied before the commit, against the part before the cut (as the kept side and
+            # a closed Split): after the commit it was compared with the kept half - every face "new", all scanned
+            for t, me in pieces:
+                cg.tidy_result(me, cg.mesh_size(t.data), before=t.data, warped=True)
             from . import mesh_io as mio                 # 0.24.95 (the pieces' Edge Memory: the part before the cut)
             olds = {t.name: (mio.read_co(t.data), mio.read_edge_verts(t.data)) for t, _me in pieces
                     if len(t.data.vertices)}
             infos = [_commit_result(t, me, cut.shared_mesh) for t, me in results]
             for t, me in pieces:
                 temp.remove(me)
-                cg.tidy_result(me, cg.mesh_size(t.data), before=t.data, warped=True)
                 if cg.is_junk(me, cg.mesh_size(t.data), not capped):
                     bpy.data.meshes.remove(me)
                     continue
