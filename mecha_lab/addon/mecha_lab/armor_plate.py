@@ -137,6 +137,32 @@ def _seg_dist(p, a, b):
     return math.dist(p, (a[0] + ax * t, a[1] + ay * t))
 
 
+def _far_from(qs, segs, limit, chunk=2048):
+    """For each point of ``qs``: is its distance to the nearest segment of ``segs`` (``_seg_dist``) over ``limit``?"""
+    import numpy as np
+    Q = np.asarray(qs, np.float64)
+    A = np.asarray([a for a, _b in segs], np.float64).reshape(-1, 2)
+    B = np.asarray([b for _a, b in segs], np.float64).reshape(-1, 2)
+    if not len(A):
+        return np.ones(len(Q), bool)
+    D = B - A
+    L = (D * D).sum(1)
+    deg = L < 1e-12
+    Ls = np.where(deg, 1.0, L)
+    out = np.empty(len(Q), bool)
+    for s0 in range(0, len(Q), chunk):
+        q = Q[s0:s0 + chunk]
+        px = q[:, 0:1] - A[None, :, 0]
+        py = q[:, 1:2] - A[None, :, 1]
+        t = np.clip((px * D[None, :, 0] + py * D[None, :, 1]) / Ls[None, :], 0.0, 1.0)
+        t[:, deg] = 0.0                                 # (a zero-length segment: the distance to its point)
+        cx = A[None, :, 0] + D[None, :, 0] * t
+        cy = A[None, :, 1] + D[None, :, 1] * t
+        d = np.hypot(q[:, 0:1] - cx, q[:, 1:2] - cy)
+        out[s0:s0 + chunk] = d.min(1) > limit
+    return out
+
+
 def screen_patch(groups, spacing=14.0, min_spacing=2.0):
     """Clean triangulation of the outline groups [(outer, [holes])] in pixels.
 
@@ -159,16 +185,22 @@ def screen_patch(groups, spacing=14.0, min_spacing=2.0):
     ys = [p[1] for p in pts]
     row = 0
     y = min(ys) + spacing * 0.5
+    inside = []
+    all_l = [g for o, hs in groups for g in [o] + list(hs)]
     while y < max(ys):
         x = min(xs) + spacing * (0.5 + 0.5 * (row % 2))       # staggered rows: even triangles
         while x < max(xs):
             q = (x, y)
-            if cg.point_in_loops(q, [g for o, hs in groups for g in [o] + list(hs)]) and \
-                    min(_seg_dist(q, a, b) for a, b in segs) > spacing * 0.45:
-                pts.append(q)
+            if cg.point_in_loops(q, all_l):
+                inside.append(q)
             x += spacing
         y += spacing * 0.866
         row += 1
+    # 0.24.363 (user: "마스크 씌워서 천 생기는 건 아직도 좀 느리지?") the distance to the outline for all the inside points
+    # at once (numpy) - the same rule as _seg_dist, point for point (a mask patch: 1.25 M Python calls, 2.2 s -> ~0.05 s)
+    if inside:
+        keep = _far_from(inside, segs, spacing * 0.45)
+        pts += [q for q, k in zip(inside, keep) if k]
     vs = [Vector(p) for p in pts]
     out_v, _e, out_f, out_vo, _eo, _fo = delaunay_2d_cdt(vs, edges, [], 0, 1e-6, True)
     remap = {}
