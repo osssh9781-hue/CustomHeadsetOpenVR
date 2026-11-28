@@ -255,7 +255,7 @@ def _direction(edges, n):
     return u.normalized()
 
 
-def _fill_region(bm, faces, g):
+def _fill_region(bm, faces, g, mode=0):
     """Replace a flat region by a grid (spacing ``g``) laid on its main direction, filled up to the outline
     with triangles that are then joined into quads.  Returns the new faces (or None: left as it was)."""
     import numpy as np
@@ -291,7 +291,7 @@ def _fill_region(bm, faces, g):
         grid = grid[_seg_dist(grid, segs) > 0.45 * g]
     pts = [Vector(p) for p in co2] + [Vector(p) for p in grid]
     try:
-        out_co, _oe, out_f, orig_v, _o2, _o3 = delaunay_2d_cdt(pts, cons, [], 0, g * 1e-4, True)
+        out_co, _oe, out_f, orig_v, _o2, _o3 = delaunay_2d_cdt(pts, cons, [], mode, g * 1e-4, True)
     except Exception:
         return None
     if not out_f:
@@ -304,8 +304,11 @@ def _fill_region(bm, faces, g):
     tris = [t for t in out_f if len(t) == 3 and area2(t) > g * g * 1e-6]
     if not tris:
         return None
-    cen = np.array([[sum(out_co[i][k] for i in t) / 3.0 for k in (0, 1)] for t in tris])
-    keep = _inside(cen, segs)
+    if mode == 2:                                      # (0.24.351 the second try: the triangulation's own inside)
+        keep = [True] * len(tris)
+    else:
+        cen = np.array([[sum(out_co[i][k] for i in t) / 3.0 for k in (0, 1)] for t in tris])
+        keep = _inside(cen, segs)
     nb = len(bverts)
     made = {}
 
@@ -322,6 +325,28 @@ def _fill_region(bm, faces, g):
     keep_tris = [t for t, k in zip(tris, keep) if k]
     if not keep_tris:
         return None
+    # 0.24.351 every outline edge must be a side of the new triangles - else (a sliver along collinear outline points
+    # dropped, two outline points merged) the region would come back with a slit along its border, open through the
+    # part (test tret01: 3 open edges a region, 98 in all): such a region keeps its own faces
+    pos = {}
+    for i in range(len(out_co)):
+        for j in orig_v[i]:
+            if j < nb:
+                pos[j] = i
+    sides = set()
+    for t in keep_tris:
+        for a_, b_ in ((t[0], t[1]), (t[1], t[2]), (t[2], t[0])):
+            sides.add((min(a_, b_), max(a_, b_)))
+    for a_, b_ in cons:
+        ia, ib = pos.get(a_), pos.get(b_)
+        if ia is None or ib is None:
+            return None
+        if (min(ia, ib), max(ia, ib)) not in sides:
+            # (a border edge split by a grid point on it is fine only if both halves are there - simpler: refuse)
+            return None
+    before = [[v_ for v_ in f.verts] for f in faces]   # 0.24.351 (put back if the fill would open the part)
+    near_e = {e for f in faces for v_ in f.verts for e in v_.link_edges}
+    bad0 = {e for e in near_e if len(e.link_faces) not in (0, 2)}
     bmesh.ops.delete(bm, geom=list(faces), context='FACES_ONLY')
     new = []
     for t in keep_tris:
@@ -335,6 +360,29 @@ def _fill_region(bm, faces, g):
             new.append(bm.faces.new(vs))
         except ValueError:
             pass
+    def broken(e):                                         # (a side of 1 or 3+ faces - the old inner edges, now
+        return len(e.link_faces) not in (0, 2)             #  wire until tidied below, do not count)
+    opened = {e for f in new for e in f.edges if broken(e)} | {e for e in near_e if e.is_valid and broken(e)}
+    if opened - bad0:                                      # 0.24.351 the fill opens the part here: as it was
+        made_new = [v_ for v_ in made.values() if v_ not in set(bverts)]
+        bmesh.ops.delete(bm, geom=new, context='FACES_ONLY')
+        back = []
+        for vs in before:
+            try:
+                back.append(bm.faces.new(vs))
+            except ValueError:
+                pass
+        loose_v = [v_ for v_ in made_new if v_.is_valid and not v_.link_faces]
+        loose_e = [e for e in bm.edges if not e.link_faces]
+        if loose_e:
+            bmesh.ops.delete(bm, geom=loose_e, context='EDGES')
+        loose_v = [v_ for v_ in loose_v if v_.is_valid]
+        if loose_v:
+            bmesh.ops.delete(bm, geom=loose_v, context='VERTS')
+        bm.normal_update()
+        if mode == 0 and back:                         # one more try with the triangulation's own inside test
+            return _fill_region(bm, back, g, mode=2)
+        return None
     loose_e = [e for e in bm.edges if not e.link_faces]
     if loose_e:
         bmesh.ops.delete(bm, geom=loose_e, context='EDGES')
@@ -385,6 +433,29 @@ def _split_quads(bm, bvh):
     return out
 
 
+def _close_patch_holes(bm, max_sides=16):
+    """0.24.351 the few small holes left open (each a loop of at most ``max_sides`` edges): filled, an even one as
+    quads (the Patch result stays all quads), an odd one with one face more."""
+    bnd = [e for e in bm.edges if e.is_boundary]
+    if not bnd:
+        return 0
+    new = list(bmesh.ops.holes_fill(bm, edges=bnd, sides=max_sides)['faces'])
+    for f in new:
+        while f.is_valid and len(f.verts) > 4 and len(f.verts) % 2 == 0:
+            vs = [lp.vert for lp in f.loops]
+            res = bmesh.ops.connect_verts(bm, verts=[vs[0], vs[3]])
+            if not res.get('edges'):
+                break
+            rest = [g for g in res['edges'][0].link_faces if len(g.verts) > 4]
+            if not rest:
+                break
+            f = rest[0]
+    return len(new)
+
+
+MICRO = 0.08          # 0.24.351 Patch: points closer than this share of the quad size are one point
+
+
 def build_patch(me, faces):
     """0.24.48 Patch method: the hard edges cut the part into flat regions; each is filled with an even grid
     lined up with its outline, then split so it is all quads.  The hard edges stay exactly where they were.
@@ -393,10 +464,16 @@ def build_patch(me, faces):
     bm = bmesh.new()
     try:
         bm.from_mesh(me)
-        bvh = BVHTree.FromBMesh(bm)
         area = sum(f.calc_area() for f in bm.faces)
         h = math.sqrt(area / max(faces, 1))
         g = 2.0 * h
+        # 0.24.351 micro edges (a bevel's rows 0.1 mm apart, faces 0.03 mm wide - test tret01: 232 of 554 faces)
+        # merged first: kept exactly they came back as near-zero quads (sparks in a wireframe); the shape moves
+        # by at most MICRO x the quad size
+        tiny = MICRO * h
+        bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=tiny)
+        bmesh.ops.dissolve_degenerate(bm, edges=bm.edges[:], dist=tiny)
+        bvh = BVHTree.FromBMesh(bm)
         groups = {}
         for e in bm.edges:
             k = int(round(e.calc_length() / g)) - 1
@@ -409,7 +486,11 @@ def build_patch(me, faces):
             if len(group) == 1 and len(group[0].verts) == 3:
                 continue
             _fill_region(bm, group, g)
+        # 0.24.351 a filled region's points can land on its neighbour's (two points in one place - an open seam
+        # through the part, test tret01: 14 small holes): welded before the split
+        bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=g * 1e-3)
         out = _split_quads(bm, bvh)
+        _close_patch_holes(out)
     finally:
         bm.free()
     try:
