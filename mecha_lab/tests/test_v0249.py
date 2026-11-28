@@ -50,8 +50,17 @@ for label, pts, scale_x, want in (('original side', RIGHT, 1.0, (2.2, 2.8)), ('m
     r, m = lasso(pts)
     xs = hole_x(b)
     check(f'live Mirror, {label}: cut', r == {'FINISHED'} and m.startswith('Cut:'), (r, m))
-    check(f'live Mirror, {label}: pocket on the base half at local x 2.2 .. 2.8',
-          xs and abs(min(xs) - want[0]) < 0.03 and abs(max(xs) - want[1]) < 0.03, xs)
+    # (0.24.350 a flipped part comes out of the cut with its scale applied (+1, the mesh mirrored): its base half and
+    #  the pocket are checked in world space - the base half is on the left then, the pocket at world -2.8 .. -2.2)
+    wx = sorted({round((b.matrix_world @ v.co).x, 3) for v in b.data.vertices if abs(abs(v.co.y) - 0.3) < 0.02})
+    ww = want if scale_x > 0 else (-want[1], -want[0])
+    check(f'live Mirror, {label}: pocket on the base half at world x {ww[0]} .. {ww[1]}',
+          wx and abs(min(wx) - ww[0]) < 0.03 and abs(max(wx) - ww[1]) < 0.03, (wx, xs))
+    _ev = b.evaluated_get(C.evaluated_depsgraph_get()).to_mesh()
+    _evx = sorted({round((b.matrix_world @ v.co).x, 2) for v in _ev.vertices if abs(abs(v.co.y) - 0.3) < 0.02})
+    b.evaluated_get(C.evaluated_depsgraph_get()).to_mesh_clear()
+    check(f'live Mirror, {label}: the pocket shows on both sides (base and mirrored copy)',
+          {-2.8, -2.2, 2.2, 2.8} <= set(_evx), _evx)
     check(f'live Mirror, {label}: still one closed solid', non_manifold(b) == 0)
     wipe()
 
