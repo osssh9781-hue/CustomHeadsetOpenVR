@@ -399,6 +399,106 @@ def _fill_region(bm, faces, g, mode=0):
     return res.get('faces', new)
 
 
+CAP_DEG = 175.0       # 0.24.352 Patch: a triangle with a corner wider than this is flat (its points on one line)
+
+
+def _drop_caps(bm):
+    """0.24.352 before the split: a triangle flat as a line (a corner over CAP_DEG - a micro bevel's end; split, it
+    gave three quads of no area - tret01: 23, each a "spike" in a wireframe) is taken out, its middle point put into
+    the face across its long side.  Returns how many."""
+    lim = math.radians(CAP_DEG)
+    caps = 0
+    skip = set()
+    bm.faces.index_update()
+    for _r in range(200):                                    # (one at a time: each weld changes the faces round it)
+        hit = None
+        for f in bm.faces:
+            if len(f.loops) != 3 or f.index in skip:
+                continue
+            wide = max(f.loops, key=lambda lp: lp.calc_angle())
+            if wide.calc_angle() > lim:
+                hit = (f, wide.vert, wide.link_loop_next.edge)
+                break
+        if hit is None:
+            break
+        f, m, e = hit
+        if m in e.verts or len(e.link_faces) != 2:
+            bm.faces.index_update()
+            skip.add(f.index)
+            continue
+        _ne, nv = bmesh.utils.edge_split(e, e.verts[0], 0.5)
+        nv.co = m.co.copy()
+        bmesh.ops.weld_verts(bm, targetmap={nv: m})
+        bm.faces.index_update()
+        caps += 1
+    return caps
+
+
+BAD_DEG = 8.0         # 0.24.352 Patch: a quad with a corner under this (or folded over) gets its points eased
+
+
+def _bad_faces(bm):
+    lim = math.radians(BAD_DEG)
+    bad = set()
+    for f in bm.faces:
+        if f.normal.length < 0.5 or min(lp.calc_angle() for lp in f.loops) < lim:
+            bad.add(f)
+    for e in bm.edges:
+        if len(e.link_faces) == 2:
+            a, b = e.link_faces
+            if a.normal.dot(b.normal) < -0.5:                # (folded over its neighbour)
+                bad.update((a, b))
+    return bad
+
+
+def _ease_bad(bm, bvh, rounds=12):
+    """0.24.352 thin or folded quads after the split (tret01: 41 folds, 11 faces of no area - "spikes", a wireframe
+    thrown metres out): their points - not those on a hard edge or the open border - are moved to the middle of
+    their neighbours and back onto the old surface, a few times; only there, the rest stays as it was.
+    Returns (bad faces before, after)."""
+    bm.normal_update()
+    bad = _bad_faces(bm)
+    n0 = len(bad)
+    for _r in range(rounds):
+        if not bad:
+            break
+        move = set()
+        line = {}
+        for f in bad:
+            for v in f.verts:
+                if v.is_boundary:
+                    continue
+                he = [e for e in v.link_edges if not e.smooth]
+                if len(he) == 2:                            # (on a hard line, not at its corner: along the line only)
+                    a_, b_ = (e.other_vert(v) for e in he)
+                    d = b_.co - a_.co
+                    if d.length > 1e-12 and (v.co - a_.co).cross(d).length / d.length < 1e-3 * d.length:
+                        line[v] = (a_, b_)
+                    continue
+                if he:
+                    continue
+                move.add(v)
+                for e in v.link_edges:                      # (the ring round it too: room to ease into)
+                    w = e.other_vert(v)
+                    if not w.is_boundary and all(x.smooth for x in w.link_edges):
+                        move.add(w)
+        if not move and not line:
+            break
+        new = {}
+        for v, (a_, b_) in line.items():                    # (the middle of its two neighbours on the line)
+            new[v] = (a_.co + b_.co) * 0.5
+        for v in move:
+            nb = [e.other_vert(v).co for e in v.link_edges]
+            p = sum(nb, v.co * 0.0) / len(nb)
+            hit = bvh.find_nearest(p)
+            new[v] = hit[0] if hit[0] is not None else p
+        for v, p in new.items():
+            v.co = p
+        bm.normal_update()
+        bad = _bad_faces(bm)
+    return n0, len(bad)
+
+
 def _split_quads(bm, bvh):
     """Every n-sided face becomes n quads (corner, edge middles, face middle): all quads, the hard edges
     keep their place (their middles stay on them).  New points go onto the old surface."""
@@ -460,6 +560,99 @@ def _close_patch_holes(bm, max_sides=16):
 
 
 MICRO = 0.08          # 0.24.351 Patch: points closer than this share of the quad size are one point
+
+
+def _collapse_micro(bm, dist):
+    """0.24.352 the edges shorter than ``dist`` merged into one point each, shortest first - but only where no face
+    round it turns over (dissolve_degenerate merged them all, and on tret01 two big faces of a curve came out folded
+    over: the start of the "spikes").  The point kept is the one on more hard edges (a corner stays a corner).
+    Returns how many were merged."""
+    from mathutils.geometry import normal as _normal
+
+    def hardness(v):
+        return sum(1 for x in v.link_edges if not x.smooth or not x.is_manifold)
+
+    def ok(gone, keep):
+        p = keep.co
+        for f in gone.link_faces:
+            if keep in f.verts:
+                continue                                     # (it loses the merged side: it shrinks or goes)
+            n0 = f.normal
+            if n0.length < 0.5 or f.calc_area() < small:     # (a sliver itself: its way round means nothing)
+                continue
+            n1 = _normal([p if v == gone else v.co for v in f.verts])
+            if n1.length < 0.5 or n1.dot(n0) < 0.5:
+                return False
+        return True
+
+    n = 0
+    small = 0.05 * dist * dist
+    bm.normal_update()
+    for _r in range(4):
+        es = sorted((e for e in bm.edges if e.calc_length() < dist), key=lambda e: e.calc_length())
+        done = 0
+        for e in es:
+            if not e.is_valid or e.calc_length() >= dist:
+                continue
+            a, b = e.verts
+            pairs = ((a, b), (b, a)) if hardness(a) >= hardness(b) else ((b, a), (a, b))
+            for keep, gone in pairs:
+                if ok(gone, keep):
+                    bmesh.ops.pointmerge(bm, verts=[gone, keep], merge_co=keep.co.copy())
+                    done += 1
+                    break
+        n += done
+        if not done:
+            break
+        bm.normal_update()
+    bmesh.ops.dissolve_degenerate(bm, edges=bm.edges[:], dist=0.0)     # (faces of no area left by the merges)
+    bm.normal_update()
+    return n
+
+
+def _folds(bm):
+    """How many sides join two faces (of some area) that face opposite ways (one folded over the other)."""
+    bm.normal_update()
+    n = 0
+    for e in bm.edges:
+        if len(e.link_faces) == 2:
+            a, b = e.link_faces
+            if a.normal.dot(b.normal) < -0.95 and a.calc_area() > 0.0 and b.calc_area() > 0.0:
+                n += 1
+    return n
+
+
+def _cut_long(bm, groups):
+    """The long edges cut in ``k`` parts (``groups``: k -> edges).  0.24.352 subdivide_edges also joins the new points
+    across each face; in a very wide triangle (a corner of 150 deg - tret01) that line ran outside it and the face
+    came out folded over.  When that happens, the points are only put on the edges instead (the faces stay whole,
+    the split makes them quads)."""
+    if not groups:
+        return False
+    before = _folds(bm)
+    bm.edges.index_update()
+    trial = bm.copy()
+    try:
+        trial.edges.ensure_lookup_table()
+        tg = {k: [trial.edges[e.index] for e in es] for k, es in groups.items()}
+        for k, es in tg.items():
+            bmesh.ops.subdivide_edges(trial, edges=es, cuts=k, use_grid_fill=False)
+        bad = _folds(trial) > before
+    finally:
+        trial.free()
+    if not bad:
+        for k, es in groups.items():
+            bmesh.ops.subdivide_edges(bm, edges=es, cuts=k, use_grid_fill=False)
+        return False
+    for k, es in groups.items():
+        for e in es:
+            start, end = e.verts
+            cur = e
+            for i in range(k):                               # (k points, evenly: each takes its share of the rest)
+                _ne, nv = bmesh.utils.edge_split(cur, start, 1.0 / (k + 1 - i))
+                cur = next(x for x in nv.link_edges if end in x.verts)
+                start = nv
+    return True
 
 
 def _surface_dev(me, ref):
@@ -525,15 +718,14 @@ def _build_patch(me, faces, micro):
         # merged first: kept exactly they came back as near-zero quads (sparks in a wireframe); the shape moves
         # by at most MICRO x the quad size
         if micro > 0.0:
-            bmesh.ops.dissolve_degenerate(bm, edges=bm.edges[:], dist=micro * h)   # (only edges that ARE that short)
+            PATCH_LOG['merged'] = _collapse_micro(bm, micro * h)
         bvh = BVHTree.FromBMesh(bm)
         groups = {}
         for e in bm.edges:
             k = int(round(e.calc_length() / g)) - 1
             if k >= 1:
                 groups.setdefault(min(k, 400), []).append(e)
-        for k, es in groups.items():
-            bmesh.ops.subdivide_edges(bm, edges=es, cuts=k, use_grid_fill=False)
+        _cut_long(bm, groups)
         bm.normal_update()
         for group in _regions(bm, _size(me) * 1e-4):
             if len(group) == 1 and len(group[0].verts) == 3:
@@ -542,7 +734,9 @@ def _build_patch(me, faces, micro):
         # 0.24.351 a filled region's points can land on its neighbour's (two points in one place - an open seam
         # through the part, test tret01: 14 small holes): welded before the split
         bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=g * 1e-3)
+        PATCH_LOG['caps'] = _drop_caps(bm)
         out = _split_quads(bm, bvh)
+        PATCH_LOG['eased'] = _ease_bad(out, bvh)
         _close_patch_holes(out)
     finally:
         bm.free()
