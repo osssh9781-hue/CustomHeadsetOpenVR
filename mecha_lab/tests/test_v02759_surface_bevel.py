@@ -74,4 +74,28 @@ want = 0.5 * W * W * perim
 check(f'High Poly (region) cut: Surface chamfers the rim ({v0 - vf:.5f}, the corner {want:.5f}), closed ({of})',
       region and abs((v0 - vf) - want) < 0.15 * want and of == 0)
 check(f'High Poly cut, Sweep as before: no rim found ({ms[-60:]!r})', 'no new border edges' in ms and abs(vs - v0) < 1e-6)
+
+# 0.24.365 (user's low-poly tube: long spikes) a low-poly part round the cut: the Sweep, said so - no folded faces
+bpy.ops.mesh.primitive_cylinder_add(vertices=32, radius=1.7, depth=3.1)
+ob = C.active_object
+for o in C.selected_objects:
+    o.select_set(False)
+ob.select_set(True); C.view_layer.objects.active = ob
+from mathutils import Euler
+cut.depth_mode, cut.gn_finish, cut.gn_method, cut.gn_width = 'THROUGH', 'CHAMFER', 'SURFACE', 0.235
+side = Euler((math.radians(90), 0, math.radians(20))).to_quaternion()
+LOOP2 = [(560 + 60 * math.cos(a), 430 + 45 * math.sin(a)) for a in [2 * math.pi * k / 40 for k in range(40)]]
+msg = ce.perform_closed(C, 'CUT', [ob], [LOOP2], cg.OrthoProjector(side))
+bm = bmesh.new(); bm.from_mesh(ob.data); bm.normal_update()
+fn = {f.index: f.normal.copy() for f in bm.faces}
+t = bm.copy(); ol = t.faces.layers.int.new('o')
+for f in t.faces:
+    f[ol] = f.index
+bmesh.ops.triangulate(t, faces=t.faces[:])
+folds = len({f[ol] for f in t.faces if f.normal.length > 0 and f.normal.dot(fn[f[ol]]) < 0})
+op = sum(1 for e in bm.edges if not e.is_manifold)
+t.free(); bm.free()
+check(f'low-poly tube, Surface: the Sweep used and said ({msg[-70:]!r}), no folded faces ({folds}), closed ({op})',
+      'Sweep used' in msg and 'GN Chamfer' in msg and folds == 0 and op == 0)
+bpy.data.objects.remove(ob)
 summary()

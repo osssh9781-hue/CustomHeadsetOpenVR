@@ -635,11 +635,19 @@ def _finish_guarded(me, fn, who):
         bpy.data.meshes.remove(backup)
 
 
-def _dropped_note():
+def _dropped_note_():
     if not _DROPPED:
         return ''
     names = ', '.join(dict.fromkeys(_DROPPED))
     return f' | Edge Finish skipped on {names}: it broke the mesh there (too wide for the surface) - the plain cut kept'
+
+
+def _dropped_note():
+    """... and 0.24.365 the parts the Surface GN Edge left to the Sweep."""
+    note = _dropped_note_()
+    if _SURFACE_SWEPT:
+        note += f' | Surface: low-poly at the cut ({", ".join(dict.fromkeys(_SURFACE_SWEPT))}) - Sweep used'
+    return note
 
 
 def _finish_side(cut, me, side, scale):
@@ -683,16 +691,21 @@ def _region_rim(me, t, cutter):
         return 0
 
 
+_SURFACE_SWEPT = []   # 0.24.365 the parts a Surface GN Edge left to the Sweep (low-poly round the rim)
+
+
 def _gn_finish(cut, me, scale):
     from . import rim_sweep
     from . import edge_memory
     rim_sweep.LAST.pop('skipped', None)          # 0.24.95 (the cut's message reads it: never an older cut's reason)
     width = cut.gn_width / scale
+    make = rim_sweep.finish
     if getattr(cut, 'gn_method', 'SWEEP') == 'SURFACE':          # 0.24.364 no second boolean
         from . import surface_bevel
-        make = surface_bevel.finish
-    else:
-        make = rim_sweep.finish
+        if surface_bevel.coarse(me, width):                       # 0.24.365 a low-poly part: the Sweep
+            _SURFACE_SWEPT.append(me.name.replace('_mch_sub', ''))
+        else:
+            make = surface_bevel.finish
     return _finish_guarded(me, lambda: edge_memory.finish_marks(
         me, lambda: make(me, cut.gn_finish, width, ts.res_n(cut.gn_segments)), width),
         me.name.replace('_mch_sub', ''))
@@ -1058,6 +1071,7 @@ def _perform_closed_base(context, mode, targets, loops, projector, invert=False)
 
 def _perform_closed(context, mode, targets, groups, projector, invert, cut, auto_apply, baked, frozen):
     _DROPPED.clear()
+    _SURFACE_SWEPT.clear()
     near, far = _planes(context, targets, projector, [g[0] for g in groups])
     gap = mode == 'SPLIT' and cut.split_mode == 'GAP' and cut.gap_width > 0
     if gap and not auto_apply:
@@ -1336,6 +1350,7 @@ class _fixed_already:
 def perform_line(context, mode, targets, points, projector, side_xy, invert=False):
     """Open line cut / split. ``side_xy`` picks the half removed by Cut."""
     _DROPPED.clear()
+    _SURFACE_SWEPT.clear()
     scene = context.scene
     cut = scene.mch_cut
     auto_apply = scene.mch_settings.auto_apply if hasattr(scene, 'mch_settings') else True

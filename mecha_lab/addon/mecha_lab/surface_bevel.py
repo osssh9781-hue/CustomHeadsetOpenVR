@@ -16,6 +16,7 @@ from __future__ import annotations
 import math
 
 import bmesh
+import bpy
 from mathutils import Vector
 from mathutils.kdtree import KDTree
 
@@ -211,9 +212,14 @@ def _inset_wide(bm, layer, rimset, rim_e, frames, R, levels, d, side, near, tol)
         rows = [chain]
         for j, L in enumerate(levels):
             row = [prev[j]]
-            for r in chain[1:-1]:
+            for ci in range(1, len(chain) - 1):
+                r = chain[ci]
                 us, uw, _es = frames[r]
-                u = uw if s == 2 else us
+                # (into the face, square to the chain there: the frame's direction is averaged with the next face's
+                # and its rows ran over this face's side)
+                run = chain[ci + 1].co - chain[ci - 1].co
+                u = nrm.cross(run)
+                u = u.normalized() if u.length > 1e-15 else (uw if s == 2 else us)
                 wr = R.width(r)
                 p = r.co + u * (L * wr)
                 p -= nrm * (p - r.co).dot(nrm)
@@ -239,18 +245,54 @@ def _inset_wide(bm, layer, rimset, rim_e, frames, R, levels, d, side, near, tol)
                 k = (k + 1) % n
             new.append(bm.faces.new([prev[-1]] + rows[M][1:-1] + [nxt[-1]] + outer, f))
         except ValueError:
-            for g in new:
-                bm.faces.remove(g)
-            for r in rows[1:]:
-                for v in r[1:-1]:
-                    if not v.link_faces:
-                        bm.verts.remove(v)
+            _undo(bm, new, rows, d)
+            continue
+        if not all(_flat_ok(g, nrm) for g in new):    # 0.24.365 (a low-poly tube: rows across a curved face
+            _undo(bm, new, rows, d)                   #  folded the rest of it over - long spikes): left as it was,
+                                                      #  for the triangles below
+            if DEBUG:
+                LAST['inset_undone'] = LAST.get('inset_undone', 0) + 1
             continue
         bm.faces.remove(f)
         made += len(new)
         if len(new[-1].verts) > 4:
             queue.append(new[-1])                     # (the rest of the face: another chain of it, if any)
     return made
+
+
+def _undo(bm, new, rows, d):
+    """The faces an inset made taken away again, with the edges and the row points only they used."""
+    edges = {e for g in new if g.is_valid for e in g.edges}
+    for g in new:
+        if g.is_valid:
+            bm.faces.remove(g)
+    for e in edges:
+        if e.is_valid and not e.link_faces:
+            bm.edges.remove(e)
+    for r in rows[1:]:
+        for v in r[1:-1]:
+            if v.is_valid and not v.link_edges:
+                d.pop(v, None)
+                bm.verts.remove(v)
+
+
+def _flat_ok(f, nrm):
+    """The face lies the way ``nrm`` faces and does not fold over itself (its triangles all face that way)."""
+    from mathutils.geometry import tessellate_polygon
+    pts = [v.co for v in f.verts]
+    if len(pts) < 3:
+        return False
+    try:
+        tris = tessellate_polygon([pts])
+    except (ValueError, TypeError):
+        return False
+    area = 0.0
+    for a, b, c in tris:
+        n = (pts[b] - pts[a]).cross(pts[c] - pts[a])
+        if n.dot(nrm) < -1e-12:
+            return False
+        area += n.length
+    return area > 1e-20
 
 
 def _profile(a, c, b, t, mode, wt):
@@ -261,11 +303,62 @@ def _profile(a, c, b, t, mode, wt):
     return (a * w0 + c * w1 + b * w2) / (w0 + w1 + w2)
 
 
+EXACT = '.mch_fin_exact'   # (the faces the finish made: edge_memory.finish_band reads them, no geometry guessing)
+LOCAL_MIN = 50_000         # a part this dense: the band round the rim taken out, finished on its own and put back
+
+
+COARSE = 1.5   # the part's edges at the rim this many widths long (median): a low-poly part - the Sweep instead
+
+
+def coarse(mesh, width):
+    """0.24.365 (user's low-poly tube: the band crossed faces wider than itself and the moved points bent them into
+    long spikes) the part is coarse round the rim: the median length of the old surface's edges at the rim is over
+    ``COARSE`` widths.  Surface moves points, so it needs a dense mesh; a low-poly part gets the Sweep."""
+    import numpy as np
+    from . import region_cut as rc
+    a = mesh.attributes.get(cg.CUTTER_ATTR)
+    if a is None or a.domain != 'FACE' or not len(mesh.polygons):
+        return False
+    co, tot, start, vi = rc.arrays(mesh)
+    flag = np.zeros(len(tot), bool)
+    a.data.foreach_get('value', flag)
+    lm = np.repeat(flag, tot)
+    on_cut = np.zeros(len(co), bool)
+    on_cut[vi[lm]] = True
+    on_old = np.zeros(len(co), bool)
+    on_old[vi[~lm]] = True
+    rim = on_cut & on_old
+    if not rim.any():
+        return False
+    # the old surface's edges (face corners in order) with one end on the rim and the other off it
+    nxt = np.arange(len(vi)) + 1
+    ends = start + tot
+    nxt[ends - 1] = start
+    a0, a1 = vi[~lm], vi[nxt][~lm]
+    keep = rim[a0] ^ rim[a1]
+    if not keep.any():
+        return False
+    ln = np.linalg.norm(co[a0[keep]] - co[a1[keep]], axis=1)
+    return float(np.median(ln)) > COARSE * width
+
+
 def finish(mesh, mode='CHAMFER', width=0.01, segments=3):
     """Chamfer / round the cut's rim on ``mesh`` (object space) by moving the points round it onto the profile."""
     LAST.clear()
     if mode not in {'CHAMFER', 'BEVEL'} or width <= 0 or mesh.attributes.get(cg.CUTTER_ATTR) is None:
         return 0
+    if len(mesh.polygons) >= LOCAL_MIN:
+        try:
+            got = _finish_local(mesh, mode, width, segments)
+        except (RuntimeError, ValueError, AttributeError, TypeError, IndexError, MemoryError) as ex:
+            print('Mecha: surface bevel (local):', ex)
+            got = None
+        if got is not None:
+            return got
+    return _finish_mesh(mesh, mode, width, segments)
+
+
+def _finish_mesh(mesh, mode, width, segments):
     bm = bmesh.new()
     try:
         bm.from_mesh(mesh)
@@ -285,6 +378,110 @@ def finish(mesh, mode='CHAMFER', width=0.01, segments=3):
         bm.free()
 
 
+def _finish_local(mesh, mode, width, segments):
+    """0.24.364 (a dense part: reading / writing all of it and the whole-part tidy after took most of the time) the
+    faces round the rim - every face with a point within the width plus two edges of it, and two rings more - taken
+    out as a small mesh, finished and tidied there, and put back (``region_cut.replace_faces``: the band's border
+    points stay where they are).  Returns the rim edges finished, or None when the local path cannot be used."""
+    import numpy as np
+    from . import region_cut as rc
+    co, tot, start, vi = rc.arrays(mesh)
+    nf = len(tot)
+    a = mesh.attributes.get(cg.CUTTER_ATTR)
+    if a is None or a.domain != 'FACE':
+        return None
+    flag = np.zeros(nf, bool)
+    a.data.foreach_get('value', flag)
+    if not flag.any() or flag.all():
+        return 0
+    lm = np.repeat(flag, tot)
+    on_cut = np.zeros(len(co), bool)
+    on_cut[vi[lm]] = True
+    on_old = np.zeros(len(co), bool)
+    on_old[vi[~lm]] = True
+    rimv = np.flatnonzero(on_cut & on_old)
+    if not len(rimv):
+        return 0
+    # the longest edge at the rim (a wall face from the cutter can be long: its far end is then taken too)
+    ev = np.empty(len(mesh.edges) * 2, np.int64)
+    mesh.edges.foreach_get('vertices', ev)
+    ev = ev.reshape(-1, 2)
+    at_rim = np.zeros(len(co), bool)
+    at_rim[rimv] = True
+    re = ev[at_rim[ev[:, 0]] | at_rim[ev[:, 1]]]
+    elen = float(np.linalg.norm(co[re[:, 0]] - co[re[:, 1]], axis=1).max()) if len(re) else 0.0
+    rad = width + 2.0 * min(elen, 4.0 * width)
+    # points within ``rad`` of a rim point (a grid of ``rad`` cells: a point looks at its cell and the 26 round it)
+    cell = max(rad, 1e-12)
+    rk = np.floor(co[rimv] / cell).astype(np.int64)
+    keys = set(map(tuple, rk.tolist()))
+    pk = np.floor(co / cell).astype(np.int64)
+    near = np.zeros(len(co), bool)
+    offs = [(i, j, k) for i in (-1, 0, 1) for j in (-1, 0, 1) for k in (-1, 0, 1)]
+    karr = np.array(sorted(keys), np.int64)
+    span = int(max(1, (np.abs(pk).max() if len(pk) else 0) + 2)) * 2 + 1
+    def code(x):
+        return (x[:, 0] * span + x[:, 1]) * span + x[:, 2]
+    kc = np.sort(code(karr + 0))
+    for o in offs:
+        c = code(pk + np.array(o, np.int64))
+        pos = np.searchsorted(kc, c)
+        pos[pos >= len(kc)] = 0
+        near |= kc[pos] == c
+    cand = np.flatnonzero(near)
+    if len(cand):
+        tree = KDTree(len(rimv))
+        for i, p in zip(range(len(rimv)), co[rimv].tolist()):
+            tree.insert(p, i)
+        tree.balance()
+        keep = np.fromiter((tree.find(p)[2] <= rad for p in co[cand].tolist()), bool, len(cand))
+        near[:] = False
+        near[cand[keep]] = True
+    fmask = np.maximum.reduceat(near[vi].astype(np.int8), start).astype(bool)
+    for _ring in range(2):
+        vm = np.zeros(len(co), bool)
+        vm[vi[np.repeat(fmask, tot)]] = True
+        fmask = np.maximum.reduceat(vm[vi].astype(np.int8), start).astype(bool)
+    if fmask.sum() > 0.5 * nf:
+        return None                                  # (most of the part: no gain)
+    size = float(np.linalg.norm(np.ptp(co, axis=0))) or 1.0
+    was_region = rc.untouched(mesh) > 0               # (a High Poly cut's result, tidied in its stitch)
+    ex = mesh.attributes.get(EXACT)
+    if ex is not None and (ex.domain != 'FACE' or ex.data_type != 'INT'):
+        mesh.attributes.remove(ex)
+        ex = None
+    if ex is None:
+        mesh.attributes.new(EXACT, 'INT', 'FACE')    # (carried out and back by the sub-mesh)
+    sub, _used = rc.extract_faces(mesh, fmask, 'MCH_SurfBevel')
+    sub0 = sub.copy()                                 # (the tidy then looks only at what the finish changed)
+    try:
+        n = _finish_mesh(sub, mode, width, segments)
+        if not n:
+            ex = mesh.attributes.get(EXACT)
+            if ex is not None:
+                mesh.attributes.remove(ex)
+            return 0
+        try:
+            cg.tidy_result(sub, size, before=sub0, flip=False)
+        except (RuntimeError, ValueError, AttributeError, IndexError, MemoryError):
+            pass
+        if not rc.replace_faces(mesh, fmask, sub, size):
+            ex = mesh.attributes.get(EXACT)
+            if ex is not None:
+                mesh.attributes.remove(ex)
+            return None
+    finally:
+        bpy.data.meshes.remove(sub)
+        bpy.data.meshes.remove(sub0)
+    # a High Poly cut's result stays one (its own faces first, in order; the region and the band both tidied): the
+    # cut's tidy after skips it as before.  Any other cut's result: its tidy runs as before
+    if was_region:
+        rc.LAST_REGION.update(name=mesh.name, faces=len(mesh.polygons), untouched=int((~fmask).sum()))
+    LAST['local'] = int(fmask.sum())
+    return n
+
+
+SNAP = 0.04                              # a line this near a point (share of the edge): the point taken as on it
 CREASE = math.cos(math.radians(35.0))   # two faces of one side meeting sharper than this: a crease
 
 
@@ -439,42 +636,133 @@ def _finish_bm(bm, layer, rim, mode, w, segments):
             stack.append(o)
     LAST['band'] = len(d)
 
-    # 2 the mesh cut along lines at an even distance from the rim (the levels above)
     eps = 1e-7                                       # (in shares of the width)
-    cuts = 0
-    for s in (1, 2):
-        for L in levels:
-            touched = set()
-            for e in [e for e in {e for v in d if side[v] in (0, s) for e in v.link_edges}]:
-                a, b = e.verts
-                if a not in d or b not in d or side[a] not in (0, s) or side[b] not in (0, s):
-                    continue
-                da, db = d[a], d[b]
-                if (da - L) * (db - L) >= 0 or abs(da - db) < 1e-15:
-                    continue
-                fac = (L - da) / (db - da)
-                if fac <= 1e-6 or fac >= 1 - 1e-6:
-                    continue
-                _ne, nv = bmesh.utils.edge_split(e, a, fac)
-                d[nv], side[nv] = L, s
-                near[nv] = R.near(nv.co)
-                touched.update(nv.link_faces)
-                cuts += 1
-            for f in touched:
-                if not f.is_valid or len(f.verts) > 5:
-                    continue                          # (a big face: the inset below)
-                for va, vb in _pairs(f, d, side, s, L, eps):
-                    if not (va.is_valid and vb.is_valid):
+
+    # 1b 0.24.365 (user's low-poly tube; a through cut's walls, rim to rim) an edge the lines cross between its ends
+    #    - one passing through the band with both ends outside it, or leaving it with both ends on a rim: points
+    #    where the lines cross it, so the faces split there (it was never cut, and the moved points bent its faces)
+    def fill_d(v):
+        if v not in d:
+            nb = R.near(v.co)
+            sv = side_of(v)
+            d[v], side[v], near[v] = rel(nb), (sv if sv > 0 else 1), nb
+
+    def split_crossings(edges):
+        n_new = 0
+        for e in list(edges):
+            if not e.is_valid or e in rim_e:
+                continue
+            a, b = e.verts
+            fill_d(a)
+            fill_d(b)
+            ln = e.calc_length()
+            if ln < 0.6 * w:
+                continue                              # (a short edge: its ends tell; the pass below splits it)
+            steps = max(8, min(96, int(ln / max(1e-12, 0.2 * w)) + 1))
+            rs = [d[a]] + [rel(R.near(a.co.lerp(b.co, k / steps))) for k in range(1, steps)] + [d[b]]
+            ts = []
+            for L in levels:
+                for k in range(steps):
+                    r0, r1 = rs[k] - L, rs[k + 1] - L
+                    if r0 * r1 >= 0 or (k == 0 and abs(r0) < eps) or (k == steps - 1 and abs(r1) < eps):
                         continue
-                    ff = [g for g in va.link_faces if g in vb.link_faces]
-                    if not ff or any(vb in e.verts for e in va.link_edges if e in ff[0].edges):
-                        continue                      # (already joined by an edge of the face)
-                    try:
-                        bmesh.utils.face_split(ff[0], va, vb)
-                    except (ValueError, RuntimeError):
-                        pass
-    LAST['cuts'] = cuts
+                    lo, hi = k / steps, (k + 1) / steps
+                    for _i in range(18):              # (bisection on the edge)
+                        m = 0.5 * (lo + hi)
+                        rm = rel(R.near(a.co.lerp(b.co, m))) - L
+                        if (rm < 0) == (r0 < 0):
+                            lo = m
+                        else:
+                            hi = m
+                    t = 0.5 * (lo + hi)
+                    if SNAP < t < 1 - SNAP:
+                        ts.append((t, L))
+            if not ts:
+                continue
+            # (a crossing next to an end the regular pass below handles; only crossings inside the edge here)
+            if all((rs[0] - L) * (rs[-1] - L) < 0 for _t, L in ts) and len(ts) == 1:
+                continue
+            lf = e.link_faces
+            sv = 2 if lf and all(f[layer] for f in lf) else 1
+            ts.sort()
+            cur_e, cur_v, done = e, a, 0.0
+            for t, L in ts:
+                fac = (t - done) / (1.0 - done)
+                ne, nv = bmesh.utils.edge_split(cur_e, cur_v, fac)
+                d[nv], side[nv], near[nv] = L, sv, R.near(nv.co)
+                cur_e = ne if b in ne.verts else cur_e
+                cur_v, done = nv, t
+                n_new += 1
+        return n_new
+
+    LAST['dips'] = split_crossings({e for v in list(d) if d[v] < 1.0 for f in v.link_faces for e in f.edges})
+
+    # 2 the mesh cut along lines at an even distance from the rim (the levels above)
+
+    def cut_pass(scope, big=5):
+        """Every edge in ``scope`` crossing a line split there, the faces joined across (up to ``big`` points)."""
+        n_cut = 0
+        for s in (1, 2):
+            for L in levels:
+                touched = set()
+                for e in [e for e in scope() if e.is_valid]:
+                    a, b = e.verts
+                    if a not in d or b not in d or side[a] not in (0, s) or side[b] not in (0, s):
+                        continue
+                    da, db = d[a], d[b]
+                    if (da - L) * (db - L) >= 0 or abs(da - db) < 1e-15:
+                        continue
+                    fac = (L - da) / (db - da)
+                    if fac <= SNAP or fac >= 1 - SNAP:
+                        # (the line passes next to a point: that point taken as on the line - a split there leaves a
+                        # sliver face the tidy then has to find)
+                        v = a if fac <= SNAP else b
+                        if v not in rimset and side[v] == s:
+                            d[v] = L
+                            touched.update(v.link_faces)
+                        continue
+                    _ne, nv = bmesh.utils.edge_split(e, a, fac)
+                    d[nv], side[nv] = L, s
+                    near[nv] = R.near(nv.co)
+                    touched.update(nv.link_faces)
+                    n_cut += 1
+                for f in touched:
+                    if not f.is_valid or len(f.verts) > big:
+                        continue                      # (a big face: the inset below)
+                    for va, vb in _pairs(f, d, side, s, L, eps):
+                        if not (va.is_valid and vb.is_valid):
+                            continue
+                        ff = [g for g in va.link_faces if g in vb.link_faces]
+                        if not ff or any(vb in e.verts for e in va.link_edges if e in ff[0].edges):
+                            continue                  # (already joined by an edge of the face)
+                        try:
+                            bmesh.utils.face_split(ff[0], va, vb)
+                        except (ValueError, RuntimeError):
+                            pass
+        return n_cut
+
+    LAST['cuts'] = cut_pass(lambda: {e for v in list(d) for e in v.link_edges})
     LAST['inset'] = _inset_wide(bm, layer, rimset, rim_e, frames, R, levels, d, side, near, eps)
+
+    # 2b 0.24.365 (user's low-poly tube: long side faces leaning in spikes) a face still across a line - a long face
+    #    of a low-poly part the steps above could not split (its points are moved on one side of the line only, and
+    #    the whole face leaned) - cut into triangles, which always split cleanly along the line, and cut again
+    def straddles(f):
+        for v in f.verts:
+            fill_d(v)
+        ds = [d[v] for v in f.verts]
+        lo, hi = min(ds), max(ds)
+        if any(lo < L - eps and hi > L + eps for L in levels):
+            return True
+        # (all its points in the band, its middle out of it: a wall face from rim to rim)
+        return lo < 1.0 - eps and rel(R.near(f.calc_center_median())) > 1.0 + 1e-3
+    wide = [f for f in {f for v in list(d) if d[v] < 1.0 - eps for f in v.link_faces}
+            if f.is_valid and len(f.verts) > 3 and straddles(f)]
+    if wide:
+        tri = bmesh.ops.triangulate(bm, faces=wide, quad_method='BEAUTY', ngon_method='BEAUTY')
+        LAST['straddled'] = len(tri['faces'])
+        LAST['dips'] += split_crossings({e for f in tri['faces'] if f.is_valid for e in f.edges})
+        LAST['cuts'] += cut_pass(lambda: {e for v in list(d) for e in v.link_edges}, big=12)
 
     # 3 the points inside the band onto the profile (surface line -> round the corner -> wall line)
     moved = 0
@@ -509,6 +797,12 @@ def _finish_bm(bm, layer, rim, mode, w, segments):
         v.co = co
         moved += 1
     LAST['moved'] = moved
+    ex = bm.faces.layers.int.get(EXACT)
+    if ex is None:
+        ex = bm.faces.layers.int.new(EXACT)
+    for v in new_co:
+        for f in v.link_faces:
+            f[ex] = 1
     LAST['maxmove'] = round(mv / w, 3)
     if DEBUG:
         big.sort(reverse=True)
