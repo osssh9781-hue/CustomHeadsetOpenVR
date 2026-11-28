@@ -488,46 +488,151 @@ def build_mesh(context, src, st):
         return me, kept, 0.0, '; '.join(notes)
 
 
+def _open_count(me):
+    """Edges of ``me`` with one face (holes)."""
+    import numpy as np
+    n = len(me.edges)
+    if not n:
+        return 0
+    cnt = np.zeros(n, np.int32)
+    lp = np.empty(len(me.loops), np.int32)
+    me.loops.foreach_get('edge_index', lp)
+    np.add.at(cnt, lp, 1)
+    return int((cnt == 1).sum())
+
+
+def _close_cracks(me, max_sides=16):
+    """0.24.350 the few open edges Fix Mesh lets through (a crack of a closed part) closed before QuadriFlow: it
+    keeps a boundary as a hole in the quads, and an odd one cannot be filled with quads afterwards."""
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+        bnd = [e for e in bm.edges if e.is_boundary]
+        if not bnd:
+            return 0
+        new = bmesh.ops.holes_fill(bm, edges=bnd, sides=max_sides)['faces']
+        if new:
+            bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+            bm.to_mesh(me)
+            me.update()
+        return len(new)
+    finally:
+        bm.free()
+
+
+def close_small_holes(me, max_sides=12):
+    """0.24.350 QuadriFlow keeps a boundary as it finds it: a crack of a closed part that Fix Mesh left (one or two
+    edges are allowed through) came back as a small hole in the quads (test: 6 open edges).  Each hole of at most
+    ``max_sides`` edges is filled, an even one as quads (a hexagon = two quads), so the part stays all quads and
+    closed.  Returns how many holes were filled."""
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+        bnd = [e for e in bm.edges if e.is_boundary]
+        if not bnd:
+            return 0
+        new = list(bmesh.ops.holes_fill(bm, edges=bnd, sides=max_sides)['faces'])
+        if not new:
+            return 0
+        done = []
+        for f in new:
+            while f.is_valid and len(f.verts) > 4 and len(f.verts) % 2 == 0:
+                vs = [lp.vert for lp in f.loops]
+                res = bmesh.ops.connect_verts(bm, verts=[vs[0], vs[3]])
+                if not res.get('edges'):
+                    break
+                e = res['edges'][0]
+                rest = [g for g in e.link_faces if len(g.verts) > 4]
+                done += [g for g in e.link_faces if len(g.verts) == 4]
+                if not rest:
+                    break
+                f = rest[0]
+            if f.is_valid:
+                done.append(f)
+        faces = [g for g in done if g.is_valid]
+        if faces:
+            bmesh.ops.recalc_face_normals(bm, faces=list(set(faces) | {g for f_ in faces for e_ in f_.edges
+                                                                         for g in e_.link_faces}))
+        bm.to_mesh(me)
+        me.update()
+        return len(new)
+    finally:
+        bm.free()
+
+
 FLOW_TIMEOUT = 20.0               # 0.24.140 seconds QuadriFlow may take (plus a second per 400 faces asked) on 5.3+
 
 
 def _flow(context, src, st, me, kept):
     """QuadriFlow on the prepared mesh ``me`` (freed on an error).  Returns (mesh, kept, miss)."""
+    _close_cracks(me)                              # 0.24.350 closed in -> closed (and all quads) out
     src_hard = _hard_list(me)
     area = sum(p.area for p in me.polygons)
     before = len(me.polygons)
     params = dict(use_mesh_symmetry=False, use_preserve_sharp=kept > 0, use_preserve_boundary=True,
                   preserve_attributes=False, smooth_normals=False, mode='FACES', target_faces=st.faces, seed=0)
     from . import bg_jobs
-    if bg_jobs.guard_quadriflow():
-        # 0.24.140 Blender 5.3's QuadriFlow ran forever on a cut part 5.2.3 remeshes in 1 s: in a second Blender with
-        # a time limit, so the window never stays frozen
-        try:
-            new = bg_jobs.run_guarded(me, 'QUADRIFLOW', params, timeout=FLOW_TIMEOUT + st.faces / 400.0)
-        except RuntimeError as ex:
-            bpy.data.meshes.remove(me)
-            raise RuntimeError('QuadriFlow: ' + str(ex))
-        bpy.data.meshes.remove(me)
-        me = new
-    else:
-        tmp = bpy.data.objects.new('MCH_Quad_tmp', me)
+
+    def run(src_me, seed):
+        """QuadriFlow on a copy of ``src_me`` with ``seed``: the new mesh (``src_me`` kept)."""
+        prm = dict(params, seed=seed)
+        work = src_me.copy()
+        if bg_jobs.guard_quadriflow():
+            # 0.24.140 Blender 5.3's QuadriFlow ran forever on a cut part 5.2.3 remeshes in 1 s: in a second Blender
+            # with a time limit, so the window never stays frozen
+            try:
+                out = bg_jobs.run_guarded(work, 'QUADRIFLOW', prm, timeout=FLOW_TIMEOUT + st.faces / 400.0)
+            except RuntimeError as ex:
+                raise RuntimeError('QuadriFlow: ' + str(ex))
+            finally:
+                bpy.data.meshes.remove(work)
+            return out
+        tmp = bpy.data.objects.new('MCH_Quad_tmp', work)
         tmp.matrix_world = src.matrix_world.copy()
         context.scene.collection.objects.link(tmp)
         try:
             with context.temp_override(object=tmp, active_object=tmp, selected_objects=[tmp],
                                        selected_editable_objects=[tmp]):
-                bpy.ops.object.quadriflow_remesh(**params)
+                bpy.ops.object.quadriflow_remesh(**prm)
         except RuntimeError as ex:
             bpy.data.objects.remove(tmp, do_unlink=True)
-            bpy.data.meshes.remove(me)
+            bpy.data.meshes.remove(work)
             raise RuntimeError('QuadriFlow failed: ' + str(ex).strip())
         bpy.data.objects.remove(tmp, do_unlink=True)
+        return work
+
+    def holes(m):
+        return _open_count(m)
+
+    closed_in = holes(me) == 0
+    try:
+        best = run(me, 0)
+        # 0.24.350 QuadriFlow now and then leaves a small hole in a closed part (where depends on its seed): two more
+        # seeds, the result with no hole (else the fewest) kept
+        seed = 1
+        while closed_in and holes(best) and seed <= 2:
+            try:
+                other = run(me, seed)
+            except RuntimeError:
+                break
+            if holes(other) < holes(best):
+                bpy.data.meshes.remove(best)
+                best = other
+            else:
+                bpy.data.meshes.remove(other)
+            seed += 1
+    except RuntimeError:
+        bpy.data.meshes.remove(me)
+        raise
+    bpy.data.meshes.remove(me)
+    me = best
     polys = me.polygons
     if not polys or (len(polys) == before and any(len(p.vertices) != 4 for p in polys)):
         bpy.data.meshes.remove(me)
         raise RuntimeError('QuadriFlow could not remesh this part (try more Faces or a smaller Edge Angle).')
     for name in [a.name for a in me.attributes if a.name.startswith('mch_')]:
         me.attributes.remove(me.attributes[name])
+    close_small_holes(me)                          # 0.24.350 a closed part comes back closed
     if st.smooth_shade:
         _shade(me, st.edge_angle)
     h = math.sqrt(area / max(st.faces, 1))

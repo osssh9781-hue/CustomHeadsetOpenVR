@@ -131,7 +131,8 @@ def fake_context(ws_name='MECHA LAB', native='', space='VIEW_3D', mode='OBJECT')
         screen=None, active_object=c.view_layer.objects.active, object=c.view_layer.objects.active,
         selected_objects=list(c.selected_objects), preferences=c.preferences,
         window_manager=c.window_manager, region=None,
-        space_data=types.SimpleNamespace(type=space), area=None)
+        space_data=types.SimpleNamespace(type=space), area=None,
+        evaluated_depsgraph_get=c.evaluated_depsgraph_get)      # (0.24.350 the Print Measure panel reads it)
 
 
 def run_draw(label, fn, ctx):

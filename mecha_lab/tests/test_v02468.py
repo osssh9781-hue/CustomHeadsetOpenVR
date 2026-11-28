@@ -193,9 +193,14 @@ def run(method):
 
 flow = run('FLOW')
 h = math.sqrt(area / 3000)
-check('Flow on thin slivers: the lost edge length is measured and warned about (panel line too)',
-      flow.get(qr.MISS_KEY, 0) > qr.MISS_LIMIT and 'Some cut edges got lost' in inspect.getsource(qr.draw),
-      round(flow.get(qr.MISS_KEY, 0), 2))
+# 0.24.350 Blender 5.3's QuadriFlow keeps these slivers (edges within 7 % of a quad): either they are lost and
+# that is measured + warned, or they are kept - and then the measure says so too
+_fm, _fp = edge_error(pts, hard_edges(flow.data))
+_miss = flow.get(qr.MISS_KEY, 0)
+check('Flow on thin slivers: the lost edge length is measured and warned about (panel line too) - or nothing is lost',
+      'Some cut edges got lost' in inspect.getsource(qr.draw)
+      and ((_miss > qr.MISS_LIMIT) or (_miss <= qr.MISS_LIMIT and _fp < 0.25 * h)),
+      (round(_miss, 2), round(_fp, 4), round(h, 4)))
 patch = run('PATCH')
 polys = patch.data.polygons
 check('Patch: all quads, near Faces, closed', all(len(p.vertices) == 4 for p in polys)
