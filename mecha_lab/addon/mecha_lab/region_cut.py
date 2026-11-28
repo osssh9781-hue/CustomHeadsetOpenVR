@@ -246,6 +246,60 @@ def region_mask(co, tot, start, vi, lo, hi, rings=RINGS, frame=None):
     return fmask
 
 
+BAND_MAX = 0.6                    # 0.24.363 a band region bigger than this share of the part: the whole-part boolean
+
+
+def _cutter_tris(cutter, inv):
+    """The cutter's faces as triangles (9 floats each) in the part's space (``inv`` = part's inverse world)."""
+    cme = cutter.data
+    M = inv @ cutter.matrix_world
+    cv = np.array([(M @ v.co)[:] for v in cme.vertices], np.float64)
+    tris = []
+    for p in cme.polygons:
+        vs = list(p.vertices)
+        for k in range(1, len(vs) - 1):
+            tris.append((vs[0], vs[k], vs[k + 1]))
+    if not tris:
+        return None
+    return np.ascontiguousarray(cv[np.array(tris, np.int64)].reshape(-1, 9))
+
+
+def points_inside(co, tris):
+    """0.24.363 Which of the points ``co`` are inside the closed triangle mesh ``tris`` (the C engine, all cores);
+    None without the engine."""
+    import ctypes
+    from . import fast_decimate as fd
+    L = fd.lib()
+    if L is None or not hasattr(L, 'mcut_inside'):
+        return None
+    dp = ctypes.POINTER(ctypes.c_double)
+    L.mcut_inside.restype = ctypes.c_int
+    L.mcut_inside.argtypes = [ctypes.c_int, dp, ctypes.c_int, dp, ctypes.POINTER(ctypes.c_ubyte), ctypes.c_int]
+    P = np.ascontiguousarray(co, np.float64)
+    T = np.ascontiguousarray(tris, np.float64)
+    out = np.zeros(len(P), np.uint8)
+    import os as _os
+    if L.mcut_inside(len(P), P.ctypes.data_as(dp), len(T), T.ctypes.data_as(dp),
+                     out.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)), _os.cpu_count() or 1) != 0:
+        return None
+    return out.astype(bool)
+
+
+def band_masks(co, tot, start, vi, inside, rings=RINGS):
+    """0.24.363 (a line cut: the cutter is half the part) the faces the cutter's surface runs through (points on both
+    sides) grown by ``rings`` - the band that goes through the boolean - and of the rest, the faces inside the cutter.
+    Returns (band, inside_faces)."""
+    fin = inside[vi].astype(np.int8)
+    some = np.maximum.reduceat(fin, start).astype(bool)
+    allin = np.minimum.reduceat(fin, start).astype(bool)
+    band = some & ~allin
+    for _ in range(rings):
+        vm = np.zeros(len(co), bool)
+        vm[vi[np.repeat(band, tot)]] = True
+        band = np.maximum.reduceat(vm[vi].astype(np.int8), start).astype(bool)
+    return band, allin & ~band
+
+
 def region_boolean(context, target, cutter, operation, log=None):
     """The ``operation`` (DIFFERENCE / INTERSECT) of ``target`` with the closed ``cutter`` done on the faces round the
     cutter only.  Returns a new mesh (caller owns it) or None when it should not be used (too few faces, the cutter
@@ -266,6 +320,7 @@ def region_boolean(context, target, cutter, operation, log=None):
     if prep is not None:                      # 0.24.357 the Split's second boolean: the first one's preparation
         co, tot, start, vi = prep['arrays']
         mu, R, fmask, fmask0, nreg, lm = prep['mu'], prep['R'], prep['fmask'], prep['fmask0'], prep['nreg'], prep['lm']
+        drop = prep.get('drop')
         pverts, pcorners, patch = prep['pverts'], prep['pcorners'], prep['patch']
         t0b = time.perf_counter()
     else:
@@ -286,7 +341,20 @@ def region_boolean(context, target, cutter, operation, log=None):
         if os.environ.get('MECH_REGION_DEBUG'):
             print(f'[region] cutter {len(cb)} pts ext {np.round(ext, 3).tolist()} margin {m:.3f} region {nreg:,} of {len(tot):,} '
                   f'cutter at {np.round(np.array(cutter.matrix_world.translation), 3).tolist()} target at {np.round(np.array(target.matrix_world.translation), 3).tolist()}', flush=True)
-        if nreg == 0 or nreg > 0.6 * len(tot):           # (nothing near, or most of the part: no gain)
+        drop = None
+        if nreg > 0.6 * len(tot) and len(tot) >= MIN_FACES:
+            # 0.24.363 (user: "왜 라인으로 자르는 건 엄청 느려?") the cutter covers most of the part (a line cut's half
+            # plane): only the band its surface runs through goes through the boolean, the rest is kept or dropped
+            # by an inside test (the C engine) - not the whole part through the boolean (5 M faces: 40 - 60 s)
+            tri = _cutter_tris(cutter, inv)
+            ins = points_inside(co, tri) if tri is not None else None
+            if ins is not None:
+                band, infaces = band_masks(co, tot, start, vi, ins)
+                if 0 < int(band.sum()) <= BAND_MAX * len(tot):
+                    fmask, drop = band, infaces
+                    fmask0 = fmask
+                    nreg = int(fmask.sum())
+        if nreg == 0 or (drop is None and nreg > 0.6 * len(tot)):   # (nothing near, or most of the part: no gain)
             return None
         # the patch (region faces, points compacted) with its origin tag
         lm = np.repeat(fmask, tot)
@@ -321,7 +389,7 @@ def region_boolean(context, target, cutter, operation, log=None):
             patch.update()
         if pkey is not None:
             prep = _PREP[pkey] = dict(arrays=(co, tot, start, vi), mu=mu, R=R, fmask=fmask, fmask0=fmask0, nreg=nreg,
-                                      lm=lm, pverts=pverts, pcorners=pcorners, patch=patch)
+                                      lm=lm, pverts=pverts, pcorners=pcorners, patch=patch, drop=drop)
     pco, ptot, _pst, pvi = prep['parr'] if prep is not None and 'parr' in prep else arrays(patch)
     if prep is not None:
         prep['parr'] = (pco, ptot, _pst, pvi)
@@ -391,10 +459,14 @@ def region_boolean(context, target, cutter, operation, log=None):
             return None
         if operation == 'INTERSECT' and not _tagged(kept, 1).any():
             return None
-        if operation == 'INTERSECT':               # (the piece inside the cutter: none of the untouched faces)
+        if drop is not None:                       # 0.24.363 band mode: the untouched faces on the cut-away side go
+            gone = drop if operation == 'DIFFERENCE' else ~(drop | fmask0)     # (inside the cutter / outside it)
+            fmask = fmask0 | gone
+            lm = np.repeat(fmask, tot)
+        elif operation == 'INTERSECT':             # (the piece inside the cutter: none of the untouched faces)
             fmask = np.ones(len(tot), bool)
             lm = np.ones(len(vi), bool)
-        rim = pverts[_boundary_verts(pcorners, tot[fmask] if operation != 'INTERSECT' else tot[fmask0])]
+        rim = pverts[_boundary_verts(pcorners, tot[fmask] if operation != 'INTERSECT' and drop is None else tot[fmask0])]
         out = _stitch(me, co, tot, vi, fmask, lm, kept, (wV, wC, wS), target, cutter, rim, operation)
     finally:
         bpy.data.objects.remove(tmp)
