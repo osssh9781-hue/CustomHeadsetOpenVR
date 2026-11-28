@@ -135,9 +135,27 @@ class MCH_OT_gpu_bake_check(bpy.types.Operator):
         return {'FINISHED'}
 
 
+LAST_RESULT = []
+
+
+def show_result(title, lines):
+    """0.24.359 (user: "그거 눌러도 파란색으로 안 바뀌어") the result in a box on the screen that stays until the mouse
+    leaves it - a one-off button gives no other sign it ran (the Info line is gone in a few seconds)."""
+    LAST_RESULT[:] = [title] + list(lines)
+    try:
+        wm = bpy.context.window_manager
+
+        def draw(menu, _ctx):
+            for ln in lines:
+                menu.layout.label(text=ln)
+        wm.popup_menu(draw, title=title, icon='INFO')
+    except (AttributeError, RuntimeError, TypeError):
+        pass
+
+
 class MCH_OT_gpu_cloth_check(bpy.types.Operator):
-    """0.24.359 GPU cloth TEST: the same falling sheet on the CPU (the C engine) and on the graphics card, three sizes
-    - how long each took.  Nothing is added to the file.  The result in the Info report and the System Console"""
+    """GPU cloth test: the same falling sheet on the CPU and on the graphics card, three sizes - how long each took
+    (Blender is busy for about half a minute; the result opens in a box).  Nothing is added to the file"""
     bl_idname = 'mch.gpu_cloth_check'
     bl_label = 'Check GPU Cloth'
     bl_options = {'REGISTER'}
@@ -154,6 +172,7 @@ class MCH_OT_gpu_cloth_check(bpy.types.Operator):
         for ln in lines:
             print('Mecha Lab GPU cloth check (30 frames):', ln)
         self.report({'INFO'}, 'GPU cloth (30 frames): ' + ' | '.join(lines))
+        show_result('GPU Cloth Check (30 frames, CPU = C engine)', lines)
         return {'FINISHED'}
 
 
