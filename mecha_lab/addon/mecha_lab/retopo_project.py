@@ -45,8 +45,21 @@ def _high_tree(context, highs):
     return BVHTree.FromPolygons(V.tolist(), F.tolist(), all_triangles=True)
 
 
+FACING = 0.2          # 0.24.356 a surface counts as facing a point's way when cos(angle) is over this
+
+
+def _facing(h, n):
+    """0.24.356 a hit on a surface facing the point's own way (not a thin wall's other side, nor the side of a cuff's
+    rim, square to it) - or no way to tell."""
+    return h[1] is None or n.length < 1e-9 or h[1].dot(n) > FACING * n.length
+
+
 def _snap(tree, P, N, reach):
-    """Each point onto the surface: along its normal (out / in, the nearer), else the nearest point."""
+    """Each point onto the surface: along its normal (out / in, the nearer), else the nearest point.
+    0.24.356 (user: "바지 소매 끝이 찌그러져 ... 프로젝트를 할수록 더") only onto a surface that faces the point's own way:
+    at a thin two-walled edge (a cuff) the nearer surface could be the inside wall - the point went through to it,
+    the rim crumpled, and each Project made it worse.  When nothing facing its way is in reach, the nearest point
+    (as before)."""
     out = P.copy()
     how = np.zeros(len(P), np.int8)                 # 1 ray, 2 nearest
     for i in range(len(P)):
@@ -54,11 +67,16 @@ def _snap(tree, P, N, reach):
         n = Vector(N[i])
         near = tree.find_nearest(p)
         dn = near[3] if near[0] is not None else None
+        if near[0] is not None and not _facing(near, n):
+            # (the nearest is a wall facing away: the nearest facing this way, by a few rays round the normal)
+            alt = _nearest_facing(tree, p, n, reach)
+            if alt is not None:
+                near, dn = alt, alt[3]
         best, bd = None, None
         if n.length > 1e-9:
             for d in (n, -n):
                 hit = tree.ray_cast(p, d, reach)
-                if hit[0] is not None and (bd is None or hit[3] < bd):
+                if hit[0] is not None and _facing(hit, n) and (bd is None or hit[3] < bd):
                     best, bd = hit[0], hit[3]
         # (a ray hit far beyond the nearest surface: a thin wall's other side - the nearest point instead)
         if best is not None and (dn is None or bd <= max(dn * 3.0, reach * 0.05)):
@@ -70,11 +88,36 @@ def _snap(tree, P, N, reach):
     return out, how
 
 
-def _nearest(tree, P):
+def _nearest_facing(tree, p, n, reach):
+    """The nearest surface point facing ``n``'s way, looked for by stepping out along ``n`` (a thin wall: its outer
+    side is just beyond its inner one); None if none."""
+    n = n.normalized()
+    step = reach * 0.01
+    near = tree.find_nearest(p)
+    side = None
+    if near[0] is not None and near[1] is not None:            # (past a cuff's rim: out and down round its edge)
+        side = n - near[1]
+        side = side.normalized() if side.length > 1e-9 else None
+    for k in range(1, 12):
+        t = step * k * k
+        for q in ((p + n * t,) if side is None else (p + n * t, near[0] + side * t)):
+            h = tree.find_nearest(q)
+            if h[0] is not None and _facing(h, n):
+                return (h[0], h[1], h[2], (h[0] - p).length)
+    return None
+
+
+def _nearest(tree, P, N=None, back=None):
+    """Each point to the nearest surface; 0.24.356 with ``N``: only onto one facing its way - else ``back`` (where it
+    was before this round: on the surface already)."""
     out = P.copy()
     for i in range(len(P)):
         h = tree.find_nearest(Vector(P[i]))
         if h[0] is not None:
+            if N is not None and not _facing(h, Vector(N[i])):
+                if back is not None:
+                    out[i] = back[i]
+                continue
             out[i] = h[0]
     return out
 
@@ -146,7 +189,7 @@ def project(context, low, highs, relax=2, strength=0.5):
         move = ~pin & (deg > 0)
         P2 = P.copy()
         P2[move] += strength * d[move]
-        P2[move] = _nearest(tree, P2[move])
+        P2[move] = _nearest(tree, P2[move], Nn[move], P[move])
         P = P2
     # back to the object, the mirror middle kept on its plane
     loc = (P - T) @ Ri.T
