@@ -145,6 +145,11 @@ class MCH_PG_ClothDrape(bpy.types.PropertyGroup):
     stitch_stick: BoolProperty(name='Sewn to Body', description='Stitches: the seam is also held on the body where it was drawn (off: only the cloth is gathered, it moves freely)', default=False)
     stretch: FloatProperty(name='Stretch', description='How much the cloth gives when pulled: 0 = cloth (keeps its length), 100 = rubber', default=0.0, min=0.0, max=100.0, subtype='PERCENTAGE')
     self_collide: BoolProperty(name='Self Collision', description='The cloth does not pass through itself (folds lying on each other, a piece falling onto itself). Slower', default=False)
+    # 0.24.361 (user: RTX 5090 "GPU Cloth Check": 44x) the frames on the graphics card
+    gpu: BoolProperty(name='GPU', default=False,
+                      description='Run the cloth on the graphics card (much faster on a big card; the cloth comes out a '
+                                  'hair different - float32). Self Collision, Stitches / seams, Tack Pins and a grab run '
+                                  'those frames on the CPU')
     keep: FloatProperty(name='Silhouette Keep', description='A soft spring back to the laid patch', default=5.0, min=0.0, max=100.0, subtype='PERCENTAGE')
     gap: FloatProperty(name='Gap', description='How far above the body the cloth rests, as % of the outline size',
                        default=0.6, min=0.0, max=5.0, subtype='PERCENTAGE')
@@ -705,6 +710,27 @@ def seam_pull(sess, strength):
     return force
 
 
+def _gpu_session(sess, st):
+    """0.24.361 the session's GPU cloth when GPU is on and this frame can run there (else None: the CPU)."""
+    if not getattr(st, 'gpu', False) or sess.get('gpu_off'):
+        return None
+    from . import gpu_cloth
+    cloth = sess['cloth']
+    if not gpu_cloth.supports(cloth):
+        return None
+    gs = sess.get('gpu_sess')
+    if gs is None or gs.c is not cloth:
+        if not gpu_cloth.available():
+            sess['gpu_off'] = gpu_cloth.why_not() or 'no GPU'
+            return None
+        try:
+            gs = sess['gpu_sess'] = gpu_cloth.GPUSession(cloth, sess.get('grid'), sess['margin'], sess['friction'])
+        except Exception as ex:                       # noqa: BLE001
+            sess['gpu_off'] = f'{type(ex).__name__}: {ex}'
+            return None
+    return gs
+
+
 def advance(sess, st):
     cloth = sess['cloth']
     force = None
@@ -730,8 +756,20 @@ def advance(sess, st):
     if sess.get('seam') is not None and sess.get('seam_down', 0.0) > 0:      # 0.24.211 the seam sinks: a groove
         f = -sess['seam_dir'] * (sess['seam_down'] * np.clip(sess['seam'], 0.0, 1.0) * (1.0 - cloth.pin))[:, None]
         force = f if force is None else force + f
-    cloth.step(force=force, gravity=g, damping=sess['damping'], iterations=iterations_for(cloth.n),
-               keep_rate=KEEP_RATE if st.keep > 0 else 0.0)
+    kw = dict(force=force, gravity=g, damping=sess['damping'], iterations=iterations_for(cloth.n),
+              keep_rate=KEEP_RATE if st.keep > 0 else 0.0)
+    gs = _gpu_session(sess, st)
+    if gs is not None:
+        try:
+            gs.friction = float(sess['friction'])
+            gs.step(**kw)
+        except Exception as ex:                       # noqa: BLE001  (a GPU problem: the CPU from here on)
+            print('Mecha Lab GPU cloth: the CPU from here on -', ex)
+            sess['gpu_off'] = f'{type(ex).__name__}: {ex}'
+            sess.pop('gpu_sess', None)
+            cloth.step(**kw)
+    else:
+        cloth.step(**kw)
     sess['frame'] += 1
     return cloth.co
 
@@ -3419,6 +3457,7 @@ def draw(layout, context):
         return
     box = layout.box()
     box.label(text='Cloth Drape', icon='STRIP_COLOR_05')
+    box.operator('mch.cdrape_reset', text='Reset Settings', icon='LOOP_BACK')   # 0.24.361 (user: "설정 리셋 버튼")
     live = sim_active()
     hint = {'AREA': 'draw a lasso on the mesh: a loose cloth over that region',
             'CAPE': 'draw a line across the shoulders (Surface: click points), Enter: a cape hangs from it',
@@ -3505,7 +3544,9 @@ def draw(layout, context):
     col.prop(st, 'wrinkles', slider=True)
     col.prop(st, 'keep', slider=True)
     col.prop(st, 'stretch', slider=True)
-    col.prop(st, 'self_collide', toggle=True, icon='MOD_PHYSICS')
+    r = col.row(align=True)
+    r.prop(st, 'self_collide', toggle=True, icon='MOD_PHYSICS')
+    r.prop(st, 'gpu', toggle=True, icon='MEMORY')                    # 0.24.361 the frames on the graphics card
     box = _section(layout, 'Pins & Stitches', 6)
     r = box.row(align=True)
     r.prop(st, 'two_sides', toggle=True, icon='MOD_MIRROR')
@@ -3584,7 +3625,33 @@ def draw(layout, context):
     from . import vacuum_pack                            # 0.24.171 the selected meshes sealed in one film
     vacuum_pack.draw(layout, context)
 
-CLASSES = (MCH_PG_ClothDrape, MCH_OT_cdrape_stitch, MCH_OT_cdrape_sim, MCH_OT_cdrape_mesh, MCH_OT_cdrape_mask, MCH_OT_cdrape_tack, MCH_OT_cdrape_tack_clear, MCH_OT_cdrape_wrap, MCH_OT_cdrape_sew_copy, MCH_OT_cdrape_lines,
+class MCH_OT_cdrape_reset(bpy.types.Operator):
+    """Every Cloth Drape setting back to its default (the mode you are in stays; a cloth being draped is not
+    touched)"""
+    bl_idname = 'mch.cdrape_reset'
+    bl_label = 'Reset Settings'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        st = settings(context)
+        if st is None:
+            return {'CANCELLED'}
+        keep = {'drape_mode'}
+        n = 0
+        for prop in st.bl_rna.properties:
+            k = prop.identifier
+            if k in keep or k == 'rna_type' or prop.is_readonly:
+                continue
+            try:
+                st.property_unset(k)
+                n += 1
+            except (TypeError, AttributeError, RuntimeError):
+                pass
+        self.report({'INFO'}, f'Cloth Drape: {n} settings back to their defaults')
+        return {'FINISHED'}
+
+
+CLASSES = (MCH_PG_ClothDrape, MCH_OT_cdrape_reset, MCH_OT_cdrape_stitch, MCH_OT_cdrape_sim, MCH_OT_cdrape_mesh, MCH_OT_cdrape_mask, MCH_OT_cdrape_tack, MCH_OT_cdrape_tack_clear, MCH_OT_cdrape_wrap, MCH_OT_cdrape_sew_copy, MCH_OT_cdrape_lines,
            MCH_OT_cdrape_control, MCH_OT_cdrape_keep)
 
 
